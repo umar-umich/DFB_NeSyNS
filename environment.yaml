@@ -1,0 +1,43 @@
+name: dfb_nesy
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - torch==2.9.1
+      - torchvision==0.24.1
+      - torchaudio==2.9.1
+      - numpy>=1.26.4,<2.3.0  # Supports Python 3.10
+      - pandas>=2.2.0
+      - scipy>=1.12.0
+      - matplotlib>=3.8.0
+      - seaborn>=0.13.0
+      - tqdm>=4.66.0
+      - pyyaml>=6.0.1
+      - Pillow>=10.0.0
+      - opencv-python>=4.9.0
+      - scikit-image>=0.22.0
+      - scikit-learn>=1.4.0
+      - albumentations>=1.4.0
+      - imgaug==0.4.0
+      - imageio>=2.33.0
+      - imutils>=0.5.4
+      - dlib>=19.24.2
+      - kornia>=0.7.0
+      - timm>=0.9.16
+      - efficientnet-pytorch==0.7.1
+      - segmentation-models-pytorch>=0.3.3
+      - transformers>=4.38.0
+      - einops>=0.7.0
+      - fvcore>=0.1.5
+      - simplejson>=3.19.0
+      - filterpy>=1.4.5
+      - torchtoolbox>=0.1.8.2
+      - tensorboard>=2.15.0
+      - loralib
+      - git+https://github.com/openai/CLIP.git
