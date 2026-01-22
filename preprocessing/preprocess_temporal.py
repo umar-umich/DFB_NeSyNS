@@ -4,9 +4,10 @@
 # description: Temporal-aware data pre-processing script for deepfake dataset with stabilized face crops.
 
 """
-Temporal preprocessing strategy:
-- Extract N segments (e.g., 3 for start/middle/end) from each video
-- Each segment contains M consecutive frames (e.g., 16 for VideoMAE)
+Temporal preprocessing strategy with stride:
+- Extract N segments (e.g., 8 for broader temporal coverage) from each video
+- Each segment contains M frames (e.g., 16 for VideoMAE) with stride S
+- Stride allows skipping frames: stride=1 (consecutive), stride=2 (skip 1), stride=3 (skip 2)
 - Detect face in multiple candidate frames per segment
 - Choose the transformation from the frame with the largest/best face
 - Apply that transformation to all frames in the segment for temporal stability
@@ -191,23 +192,26 @@ def video_manipulate(
     save_path: Path,
     num_segments: int, 
     frames_per_segment: int,
+    frame_stride: int,
     logger
 ) -> None:
     """
-    Processes a single video file with temporal stability.
+    Processes a single video file with temporal stability and stride.
     
     Strategy:
     1. Divide video into N segments
-    2. For each segment, detect faces in first, middle, last frames + 2 random frames
-    3. Use the transformation from the frame with the largest face
-    4. Apply to all frames in the segment for temporal consistency
+    2. For each segment, extract frames_per_segment frames with stride
+    3. Detect faces in candidate frames (first, middle, last + 2 random)
+    4. Use the transformation from the frame with the largest face
+    5. Apply to all frames in the segment for temporal consistency
     
     Args:
         movie_path (Path): Path to the video file to process.
         mask_path (Path): Path to the mask file (if available).
         save_path (Path): Path to save preprocessed outputs.
         num_segments (int): Number of temporal segments to extract.
-        frames_per_segment (int): Number of consecutive frames per segment.
+        frames_per_segment (int): Number of frames per segment.
+        frame_stride (int): Stride between frames (1=consecutive, 2=skip 1, etc).
         logger: Logger instance.
 
     Returns:
@@ -240,50 +244,63 @@ def video_manipulate(
     # Get the number of frames in the video
     frame_count = int(cap_org.get(cv2.CAP_PROP_FRAME_COUNT))
     
+    # Calculate frames needed per segment considering stride
+    frames_needed_per_segment = (frames_per_segment - 1) * frame_stride + 1
+    
     # Validate video length
-    min_required_frames = frames_per_segment * num_segments
-    if frame_count < min_required_frames:
+    min_required_frames = frames_needed_per_segment * num_segments
+    if frame_count < frames_needed_per_segment:
         logger.warning(f"Video {movie_path.stem} has only {frame_count} frames, "
-                      f"need at least {min_required_frames} frames for {num_segments} segments of {frames_per_segment} frames")
+                      f"need at least {frames_needed_per_segment} frames per segment "
+                      f"(stride={frame_stride})")
         # Adjust num_segments to fit available frames
-        actual_num_segments = max(1, frame_count // frames_per_segment)
+        actual_num_segments = max(1, frame_count // frames_needed_per_segment)
         if actual_num_segments < num_segments:
             logger.warning(f"Reducing to {actual_num_segments} segments for {movie_path.stem}")
             num_segments = actual_num_segments
     
     # Calculate evenly spaced segment start positions
     # Use max to ensure we don't go negative
-    max_start = max(0, frame_count - frames_per_segment)
+    max_start = max(0, frame_count - frames_needed_per_segment)
     segment_boundaries = np.linspace(0, max_start, num_segments, endpoint=True, dtype=int)
     
     logger.info(f"Processing {movie_path.stem}: {frame_count} frames -> "
-                f"{num_segments} segments × {frames_per_segment} frames = {num_segments * frames_per_segment} total")
-    logger.debug(f"Segment boundaries: {segment_boundaries}")
+                f"{num_segments} segments × {frames_per_segment} frames (stride={frame_stride}) = "
+                f"{num_segments * frames_per_segment} extracted frames")
+    logger.debug(f"Segment boundaries: {segment_boundaries}, "
+                f"frames needed per segment: {frames_needed_per_segment}")
     
     # Process each segment
     segments_processed = 0
     for seg_idx, seg_start in enumerate(segment_boundaries):
-        seg_end = min(seg_start + frames_per_segment, frame_count)
-        actual_frames_in_segment = seg_end - seg_start
+        seg_end = seg_start + frames_needed_per_segment
         
-        if actual_frames_in_segment < frames_per_segment:
-            logger.warning(f"Segment {seg_idx} only has {actual_frames_in_segment} frames (need {frames_per_segment}), skipping")
+        if seg_end > frame_count:
+            logger.warning(f"Segment {seg_idx} extends beyond video length, skipping")
             continue
         
-        logger.debug(f"Segment {seg_idx}: frames {seg_start}-{seg_end-1}")
+        logger.debug(f"Segment {seg_idx}: frames {seg_start}-{seg_end-1} (stride={frame_stride})")
+        
+        # Generate frame indices for this segment with stride
+        frame_indices = list(range(seg_start, seg_end, frame_stride))[:frames_per_segment]
+        
+        if len(frame_indices) < frames_per_segment:
+            logger.warning(f"Segment {seg_idx} only has {len(frame_indices)} frames "
+                          f"(need {frames_per_segment}), skipping")
+            continue
         
         # Find best anchor frame for face detection in this segment
         # Check: first, last, middle, and 2 additional frames
-        candidate_indices = [
-            seg_start,  # First frame
-            seg_end - 1,  # Last frame
-            seg_start + frames_per_segment // 2,  # Middle frame
-            seg_start + frames_per_segment // 4,  # Quarter frame
-            seg_start + 3 * frames_per_segment // 4  # Three-quarter frame
+        candidate_positions = [
+            0,  # First frame
+            len(frame_indices) - 1,  # Last frame
+            len(frame_indices) // 2,  # Middle frame
+            len(frame_indices) // 4,  # Quarter frame
+            3 * len(frame_indices) // 4  # Three-quarter frame
         ]
         
-        # Make sure all candidates are within bounds
-        candidate_indices = [idx for idx in candidate_indices if seg_start <= idx < seg_end]
+        candidate_indices = [frame_indices[pos] for pos in candidate_positions 
+                           if 0 <= pos < len(frame_indices)]
         
         best_transform = None
         best_face_size = 0
@@ -318,7 +335,7 @@ def video_manipulate(
         
         # Apply the best transformation to all frames in the segment
         frames_saved = 0
-        for frame_idx in range(seg_start, seg_end):
+        for output_idx, frame_idx in enumerate(frame_indices):
             cap_org.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap_org.read()
             
@@ -349,22 +366,22 @@ def video_manipulate(
             landmark = face_utils.shape_to_np(landmark)
             
             # Save outputs with segment structure
-            relative_idx = frame_idx - seg_start
+            # Use output_idx for sequential naming (0, 1, 2, ...)
             
             # Save cropped face
             save_path_ = save_path / 'frames' / movie_path.stem / f'segment_{seg_idx:02d}'
             save_path_.mkdir(parents=True, exist_ok=True)
-            image_path = save_path_ / f"{relative_idx:03d}.png"
+            image_path = save_path_ / f"{output_idx:03d}.png"
             cv2.imwrite(str(image_path), cropped_face)
 
             # Save landmarks
-            land_path = save_path / 'landmarks' / movie_path.stem / f'segment_{seg_idx:02d}' / f"{relative_idx:03d}.npy"
+            land_path = save_path / 'landmarks' / movie_path.stem / f'segment_{seg_idx:02d}' / f"{output_idx:03d}.npy"
             land_path.parent.mkdir(parents=True, exist_ok=True)
             np.save(str(land_path), landmark)
 
             # Save mask
             if mask_cropped is not None:
-                mask_save_path = save_path / 'masks' / movie_path.stem / f'segment_{seg_idx:02d}' / f"{relative_idx:03d}.png"
+                mask_save_path = save_path / 'masks' / movie_path.stem / f'segment_{seg_idx:02d}' / f"{output_idx:03d}.png"
                 mask_save_path.parent.mkdir(parents=True, exist_ok=True)
                 _, binary_mask = cv2.threshold(mask_cropped, 1, 255, cv2.THRESH_BINARY)
                 cv2.imwrite(str(mask_save_path), binary_mask)
@@ -382,9 +399,9 @@ def video_manipulate(
     logger.info(f"✓ {movie_path.stem}: Processed {segments_processed}/{num_segments} segments successfully")
 
 
-def preprocess(dataset_path, mask_path, output_path, num_segments, frames_per_segment, logger):
+def preprocess(dataset_path, mask_path, output_path, num_segments, frames_per_segment, frame_stride, logger):
     """
-    Main preprocessing function with temporal extraction.
+    Main preprocessing function with temporal extraction and stride.
     
     Args:
         dataset_path: Path to input videos
@@ -392,6 +409,7 @@ def preprocess(dataset_path, mask_path, output_path, num_segments, frames_per_se
         output_path: Path to save preprocessed outputs
         num_segments: Number of temporal segments
         frames_per_segment: Frames per segment
+        frame_stride: Stride between frames
         logger: Logger instance
     """
     # Define paths to videos in dataset
@@ -435,6 +453,7 @@ def preprocess(dataset_path, mask_path, output_path, num_segments, frames_per_se
                     output_path,
                     num_segments,
                     frames_per_segment,
+                    frame_stride,
                     logger
                 )
             )
@@ -475,25 +494,27 @@ if __name__ == '__main__':
     comp = config['preprocess']['comp']['default']
     num_segments = config['preprocess']['num_segments']['default']
     frames_per_segment = config['preprocess']['frames_per_segment']['default']
+    frame_stride = config['preprocess']['frame_stride']['default']
     
     # use dataset_name and dataset_root_path to get dataset_path
     dataset_path = Path(os.path.join(dataset_root_path, dataset_name))
     
     # Create output directory
-    output_base = Path(output_root_path) / f"{dataset_name}_temporal"
+    output_base = Path(output_root_path) / f"{dataset_name}_temporal_s{frame_stride}"
     output_base.mkdir(parents=True, exist_ok=True)
 
     # Create logger
     log_dir = Path('./logs')
     log_dir.mkdir(exist_ok=True)
-    log_path = log_dir / f'{dataset_name}_temporal.log'
+    log_path = log_dir / f'{dataset_name}_temporal_s{frame_stride}.log'
     logger = create_logger(str(log_path))
     
     logger.info(f"="*80)
     logger.info(f"Starting temporal preprocessing for {dataset_name}")
     logger.info(f"Input: {dataset_path}")
     logger.info(f"Output: {output_base}")
-    logger.info(f"Segments: {num_segments}, Frames per segment: {frames_per_segment}")
+    logger.info(f"Segments: {num_segments}, Frames per segment: {frames_per_segment}, Stride: {frame_stride}")
+    logger.info(f"Temporal span per segment: {(frames_per_segment - 1) * frame_stride + 1} frames")
     logger.info(f"="*80)
 
     # Define dataset path based on the input arguments
@@ -589,7 +610,7 @@ if __name__ == '__main__':
                     mask_path = mask_dataset_path
                     logger.info(f"Masks found at: {mask_path}")
             
-            preprocess(sub_dataset_path, mask_path, output_path, num_segments, frames_per_segment, logger)
+            preprocess(sub_dataset_path, mask_path, output_path, num_segments, frames_per_segment, frame_stride, logger)
     else:
         logger.error(f"Sub Dataset paths not defined")
         sys.exit()
