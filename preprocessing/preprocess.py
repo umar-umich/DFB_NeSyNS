@@ -209,7 +209,7 @@ def extract_aligned_face_dlib(face_detector, predictor, image, res=256, mask=Non
 def video_manipulate(
     movie_path: Path,
     mask_path: Path,
-    dataset_path: Path,
+    save_path: Path,
     mode: str,
     num_frames: int, 
     stride: int, 
@@ -219,7 +219,7 @@ def video_manipulate(
 
     Args:
         movie_path (str): Path to the video file to process.
-        dataset_path (str): Path to the dataset directory.
+        save_path (str): Path to save the preprocessed outputs.
         mask_path (str): Path to the mask directory.
         mode (str): Either 'fixed_num_frames' or 'fixed_stride'.
         num_frames (int): Number of frames to extract from the video.
@@ -279,6 +279,9 @@ def video_manipulate(
         elif mode == 'fixed_stride':
             # Get the frame rate of the video by dividing the number of frames by the duration (same interval between frames)
             frame_idxs = np.arange(0, frame_count_org, stride, dtype=int)
+            # Apply max frame limit if specified
+            if num_frames > 0 and len(frame_idxs) > num_frames:
+                frame_idxs = frame_idxs[:num_frames]
 
         # Iterate through the frames
         for cnt_frame in range(frame_count_org):
@@ -346,12 +349,12 @@ def video_manipulate(
 
     # Iterate through the videos in the dataset and extract faces
     try:
-        facecrop(movie_path, mask_path, dataset_path, mode, num_frames, stride, face_predictor, face_detector)
+        facecrop(movie_path, mask_path, save_path, mode, num_frames, stride, face_predictor, face_detector)
     except Exception as e:
         logger.error(f"Error processing video {movie_path}: {e}")
 
 
-def preprocess(dataset_path, mask_path, mode, num_frames, stride, logger):
+def preprocess(dataset_path, mask_path, output_path, mode, num_frames, stride, logger):
     # Define paths to videos in dataset
     movies_path_list = sorted([Path(p) for p in glob.glob(os.path.join(dataset_path, '**/*.mp4'), recursive=True)])
     if len(movies_path_list) == 0:
@@ -360,12 +363,13 @@ def preprocess(dataset_path, mask_path, mode, num_frames, stride, logger):
     logger.info(f"{len(movies_path_list)} videos found in {dataset_path}")
     
     # Define paths to masks in dataset
-    if mask_path is not None:
+    masks_path_list = []
+    if mask_path is not None and os.path.exists(mask_path):
         masks_path_list = sorted([Path(p) for p in glob.glob(os.path.join(mask_path, '**/*.mp4'), recursive=True)])
         if len(masks_path_list) == 0:
-            logger.error(f"No masks found in {mask_path}")
-            # sys.exit()
-        logger.info(f"{len(masks_path_list)} masks found in {mask_path}")    
+            logger.warning(f"No masks found in {mask_path}")
+        else:
+            logger.info(f"{len(masks_path_list)} masks found in {mask_path}")    
     
     # Start timer
     start_time = time.monotonic()
@@ -378,20 +382,18 @@ def preprocess(dataset_path, mask_path, mode, num_frames, stride, logger):
         futures = []
         for movie_path in movies_path_list:
             # Check if there is a mask for the video
-            if mask_path is not None:
-                if movie_path.stem not in [path.stem for path in masks_path_list]:
-                    logger.error(f"No mask for video {movie_path}")
-                # Define the mask path
-                mask_path = next((path for path in masks_path_list if path.stem == movie_path.stem), None)
-                if mask_path is None:
-                    logger.error(f"Mask path not found for video {movie_path}")
+            current_mask_path = None
+            if mask_path is not None and len(masks_path_list) > 0:
+                if movie_path.stem in [path.stem for path in masks_path_list]:
+                    current_mask_path = next((path for path in masks_path_list if path.stem == movie_path.stem), None)
+            
             # Create a future for each video and submit it for processing
             futures.append(
                 executor.submit(
                 video_manipulate,
                 movie_path,
-                mask_path,
-                dataset_path,
+                current_mask_path,
+                output_path,
                 mode,
                 num_frames,
                 stride,
@@ -424,6 +426,7 @@ if __name__ == '__main__':
     # Get the parameters
     dataset_name = config['preprocess']['dataset_name']['default']
     dataset_root_path = config['preprocess']['dataset_root_path']['default']
+    output_root_path = config['preprocess']['output_root_path']['default']
     comp = config['preprocess']['comp']['default']
     mode = config['preprocess']['mode']['default']
     stride = config['preprocess']['stride']['default']
@@ -431,6 +434,10 @@ if __name__ == '__main__':
     
     # use dataset_name and dataset_root_path to get dataset_path
     dataset_path = Path(os.path.join(dataset_root_path, dataset_name))
+    
+    # Create output directory
+    output_base = Path(output_root_path) / dataset_name
+    output_base.mkdir(parents=True, exist_ok=True)
 
     # Create logger
     log_path = f'./logs/{dataset_name}.log'
@@ -502,12 +509,17 @@ if __name__ == '__main__':
                 sys.exit()
         # preprocess each sub_dataset
         for sub_dataset_path in sub_dataset_paths:
+            # Create output subdirectory matching input structure
+            relative_path = sub_dataset_path.relative_to(dataset_path)
+            output_path = output_base / relative_path
+            output_path.mkdir(parents=True, exist_ok=True)
+            
             # only part of FaceForensics++ has mask
             if dataset_name == 'FaceForensics++' and sub_dataset_path.parent in mask_dataset_paths:
                 mask_dataset_path = os.path.join(sub_dataset_path.parent, "masks")
-                preprocess(sub_dataset_path, mask_dataset_path, mode, num_frames, stride, logger)
+                preprocess(sub_dataset_path, mask_dataset_path, output_path, mode, num_frames, stride, logger)
             else:
-                preprocess(sub_dataset_path, None, mode, num_frames, stride, logger)
+                preprocess(sub_dataset_path, None, output_path, mode, num_frames, stride, logger)
     else:
         logger.error(f"Sub Dataset path does not exist: {sub_dataset_paths}")
         sys.exit()
