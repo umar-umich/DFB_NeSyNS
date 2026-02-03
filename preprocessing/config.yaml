@@ -5,12 +5,12 @@ preprocess:
   
   dataset_root_path: # the root path to the original dataset
     type: str
-    default: '/home/umflint.edu/mufarooq/Umar_local_data'
+    default: '/data/Umar/Datasets'
     help: "Directory containing original video datasets"
   
   output_root_path: # the root path where preprocessed data will be saved
     type: str
-    default: '/home/umflint.edu/mufarooq/Umar_local_data/preprocessed'
+    default: '/data/Umar/Datasets/preprocessed'
     help: "Directory where all preprocessed frames will be stored (separate from original videos)"
   
   comp: # the compression level of videos, only in the dataset of FaceForensics++.
@@ -23,7 +23,7 @@ preprocess:
   
   stride: # when 'mode' is 'fixed_stride', 'stride' is the number of frames to skip between each frame extracted.
     type: int
-    default: 5
+    default: 4
   
   num_frames: # when 'mode' is 'fixed_num_frames', 'num_frames' is the number of frames to extract from each video.
     type: int

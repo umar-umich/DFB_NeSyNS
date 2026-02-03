@@ -272,37 +272,63 @@ def video_manipulate(
         # Get the number of frames in the video
         frame_count_org = int(cap_org.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # Get the mode
+        # Get the mode and generate more frame indices than needed (buffer for failed detections)
+        # We'll process from END to START to handle cases where face is visible later in video
         if mode == 'fixed_num_frames':
-            # Get the frame rate of the video by dividing the number of frames by the duration (same interval between frames)
-            frame_idxs = np.linspace(0, frame_count_org - 1, num_frames, endpoint=True, dtype=int)
+            # Generate 2x the needed frames as buffer
+            buffer_size = min(num_frames * 2, frame_count_org)
+            frame_idxs = np.linspace(0, frame_count_org - 1, buffer_size, endpoint=True, dtype=int)
+            desired_frames = num_frames
         elif mode == 'fixed_stride':
-            # Get the frame rate of the video by dividing the number of frames by the duration (same interval between frames)
+            # Get all possible frames with stride
             frame_idxs = np.arange(0, frame_count_org, stride, dtype=int)
-            # Apply max frame limit if specified
-            if num_frames > 0 and len(frame_idxs) > num_frames:
-                frame_idxs = frame_idxs[:num_frames]
+            # If num_frames is specified, use it as the desired count
+            if num_frames > 0:
+                desired_frames = num_frames
+                # Extend frame_idxs if needed to have enough candidates
+                if len(frame_idxs) < desired_frames:
+                    # Add more frames at the end with smaller stride
+                    extra_frames = []
+                    last_idx = frame_idxs[-1] if len(frame_idxs) > 0 else 0
+                    for i in range(last_idx + 1, frame_count_org):
+                        extra_frames.append(i)
+                        if len(frame_idxs) + len(extra_frames) >= desired_frames:
+                            break
+                    frame_idxs = np.concatenate([frame_idxs, extra_frames])
+            else:
+                desired_frames = len(frame_idxs)
 
-        # Iterate through the frames
-        for cnt_frame in range(frame_count_org):
+        # Reverse the frame indices to process from end to start
+        frame_idxs_reversed = frame_idxs[::-1]
+        
+        # Iterate through frames in reverse and extract until we have desired number
+        successfully_processed = 0
+        frame_idx_pointer = 0
+        extracted_frames = []  # Store successfully extracted frame data
+        
+        while successfully_processed < desired_frames and frame_idx_pointer < len(frame_idxs_reversed):
+            target_frame_idx = frame_idxs_reversed[frame_idx_pointer]
+            
+            # Set frame position and read
+            cap_org.set(cv2.CAP_PROP_POS_FRAMES, target_frame_idx)
             ret_org, frame_org = cap_org.read()
+            
             if mask_path is not None:
+                cap_mask.set(cv2.CAP_PROP_POS_FRAMES, target_frame_idx)
                 ret_mask, frame_mask = cap_mask.read()
             else:
                 frame_mask = None
-            height, width = frame_org.shape[:-1]
-
+            
             # Check if the frame was successfully read
             if not ret_org:
-                logger.warning(f"Failed to read frame {cnt_frame} of {org_path}")
-                break
+                logger.warning(f"Failed to read frame {target_frame_idx} of {org_path}")
+                frame_idx_pointer += 1
+                continue
             
             # Check if the mask was successfully read
             if mask_path is not None and not ret_mask:
-                logger.warning(f"Failed to read mask {cnt_frame} of {mask_path}")
-                break
-            # Check if the frame is one of the frames to extract
-            if cnt_frame not in frame_idxs:
+                logger.warning(f"Failed to read mask {target_frame_idx} of {mask_path}")
+                frame_idx_pointer += 1
                 continue
 
             # Use the function to extract the aligned and cropped face
@@ -313,34 +339,69 @@ def video_manipulate(
             
             # Check if a face was detected and cropped
             if cropped_face is None:
-                logger.warning(f"No faces in frame {cnt_frame} of {org_path}")
+                logger.warning(f"No faces in frame {target_frame_idx} of {org_path}")
+                frame_idx_pointer += 1
                 continue
             
             # Check if the landmarks were detected
             if landmarks is None:
-                logger.warning(f"No landmarks in frame {cnt_frame} of {org_path}")
+                logger.warning(f"No landmarks in frame {target_frame_idx} of {org_path}")
+                frame_idx_pointer += 1
                 continue
 
+            # Store the extracted data for later saving in correct order
+            extracted_frames.append({
+                'original_frame_idx': target_frame_idx,
+                'cropped_face': cropped_face,
+                'landmarks': landmarks,
+                'masks': masks if mask_path is not None else None
+            })
+            
+            successfully_processed += 1
+            frame_idx_pointer += 1
+
+        # Log if we couldn't get the desired number of frames
+        if successfully_processed < desired_frames:
+            logger.warning(f"Only extracted {successfully_processed}/{desired_frames} frames from {org_path}")
+            # Log failed video to text file
+            failed_log_path = save_path / 'failed_videos.txt'
+            with open(failed_log_path, 'a') as f:
+                f.write(f"{org_path.stem},{successfully_processed},{desired_frames}\n")
+            # Release resources and return without saving
+            cap_org.release()
+            if mask_path is not None:
+                cap_mask.release()
+            return
+
+        # Sort extracted frames by original frame index to maintain video sequence
+        extracted_frames.sort(key=lambda x: x['original_frame_idx'])
+        
+        # Now save all frames in the correct sequential order
+        for save_idx, frame_data in enumerate(extracted_frames):
+            cropped_face = frame_data['cropped_face']
+            landmarks = frame_data['landmarks']
+            masks = frame_data['masks']
+            
             # Save cropped face, landmarks, and visualization image
             save_path_ = save_path / 'frames' / org_path.stem
             save_path_.mkdir(parents=True, exist_ok=True)
 
-            # Save cropped face
-            image_path = save_path_ / f"{cnt_frame:03d}.png"
+            # Save cropped face using save_idx counter for sequential naming
+            image_path = save_path_ / f"{save_idx:03d}.png"
             if not image_path.is_file():
                 cv2.imwrite(str(image_path), cropped_face)
 
             # Save landmarks
-            land_path = save_path / 'landmarks' / org_path.stem / f"{cnt_frame:03d}.npy"
+            land_path = save_path / 'landmarks' / org_path.stem / f"{save_idx:03d}.npy"
             os.makedirs(os.path.dirname(land_path), exist_ok=True)
             np.save(str(land_path), landmarks)
 
             # Save mask
-            if mask_path is not None:
-                mask_path = save_path / 'masks' / org_path.stem / f"{cnt_frame:03d}.png"
-                os.makedirs(os.path.dirname(mask_path), exist_ok=True)
-                _, binary_mask = cv2.threshold(masks, 1, 255, cv2.THRESH_BINARY)  # obtain binary mask only
-                cv2.imwrite(str(mask_path), binary_mask)
+            if masks is not None:
+                mask_save_path = save_path / 'masks' / org_path.stem / f"{save_idx:03d}.png"
+                os.makedirs(os.path.dirname(mask_save_path), exist_ok=True)
+                _, binary_mask = cv2.threshold(masks, 1, 255, cv2.THRESH_BINARY)
+                cv2.imwrite(str(mask_save_path), binary_mask)
 
         # Release the video capture
         cap_org.release()
@@ -361,6 +422,13 @@ def preprocess(dataset_path, mask_path, output_path, mode, num_frames, stride, l
         logger.error(f"No videos found in {dataset_path}")
         sys.exit()
     logger.info(f"{len(movies_path_list)} videos found in {dataset_path}")
+    
+    # Initialize failed videos log file with header
+    failed_log_path = output_path / 'failed_videos.txt'
+    if failed_log_path.exists():
+        failed_log_path.unlink()  # Remove existing file
+    with open(failed_log_path, 'w') as f:
+        f.write("video_name,extracted_frames,desired_frames\n")
     
     # Define paths to masks in dataset
     masks_path_list = []
@@ -412,6 +480,18 @@ def preprocess(dataset_path, mask_path, output_path, mode, num_frames, stride, l
         end_time = time.monotonic()
         duration_minutes = (end_time - start_time) / 60
         logger.info(f"Total time taken: {duration_minutes:.2f} minutes")
+        
+        # Report failed videos count
+        failed_log_path = output_path / 'failed_videos.txt'
+        if failed_log_path.exists():
+            with open(failed_log_path, 'r') as f:
+                lines = f.readlines()
+                failed_count = len(lines) - 1  # Subtract header line
+                if failed_count > 0:
+                    logger.warning(f"{failed_count} videos failed to extract desired number of frames. Check {failed_log_path}")
+                else:
+                    logger.info("All videos processed successfully!")
+                    failed_log_path.unlink()  # Remove empty log file
 
 if __name__ == '__main__':
     # from config.yaml load parameters
