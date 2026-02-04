@@ -1,7 +1,7 @@
 preprocess:
   dataset_name: # the name of dataset
     choices: ['FaceForensics++','Celeb-DF-v1', 'Celeb-DF-v2', 'DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV']
-    default: 'Celeb-DF-v2'
+    default: 'FaceForensics++'
   
   dataset_root_path: # the root path to the original dataset
     type: str
@@ -32,16 +32,16 @@ preprocess:
 rearrange:
   dataset_name: # the name of dataset
     choices: ['FaceForensics++', 'DeepFakeDetection', 'Celeb-DF-v1', 'Celeb-DF-v2','DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV','FaceShifter']
-    default: 'FaceForensics++'
+    default: 'Celeb-DF-v2'
   
   dataset_root_path: # the root path to the preprocessed dataset
     type: str
-    default: '/home/umflint.edu/mufarooq/Umar_local_data/preprocessed'
+    default: '/data/Umar/Datasets/preprocessed'
     help: "Should point to the preprocessed output directory"
   
   output_file_path: # the json path to the dataset
     type: str
-    default: '/home/umflint.edu/mufarooq/Umar_local_data/dataset_json'
+    default: '/data/Umar/Datasets/preprocessed/dataset_json'
   
   comp: # the compression level of videos, only in the dataset of FaceForensics++.
     choices: ['raw', 'c23', 'c40']

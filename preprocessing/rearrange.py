@@ -244,6 +244,7 @@ def generate_dataset_file(dataset_name, dataset_root_path, output_file_path, com
             raise ValueError('Invalid dataset name: {}'.format(dataset_name))
 
         # if FaceForensics++, based on label and generate the json
+        os.makedirs(output_file_path, exist_ok=True)
         if dataset_name == 'FaceForensics++':
             for label, value in dataset_dict['FaceForensics++'].items():
                 if label != 'FF-real':

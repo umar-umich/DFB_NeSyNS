@@ -206,6 +206,8 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
                 label = self.config['label_dict'][video_info['label']]
                 frame_paths = video_info['frames']
                 # sorted video path to the lists
+                if not frame_paths or len(frame_paths) == 0: # Skip the files where required frames were not extracted successfully
+                    continue
                 if '\\' in frame_paths[0]:
                     frame_paths = sorted(frame_paths, key=lambda x: int(x.split('\\')[-1].split('.')[0]))
                 else:
@@ -295,8 +297,8 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         """
         size = self.config['resolution'] # if self.mode == "train" else self.config['resolution']
         if not self.lmdb:
-            if not file_path[0] == '.':
-                file_path =  f'./{self.config["rgb_dir"]}\\'+file_path
+            # if not file_path[0] == '.':
+            #     file_path =  f'./{self.config["rgb_dir"]}\\'+file_path
             assert os.path.exists(file_path), f"{file_path} does not exist"
             img = cv2.imread(file_path)
             if img is None:
