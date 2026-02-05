@@ -2,9 +2,9 @@
 log_dir: /data/Umar/Repos/DFB_NeSyNS/logs_debug/video_baseline
 
 # model setting
-pretrained: /data/Umar/Repos/DFB_NeSyNS/training/pretrained/xception-b5690688.pth   # path to a pre-trained model, if using one
+pretrained: /data/Umar/Repos/DFB_NeSyNS/training/pretrained/MCG-NJU_videomae-base-finetuned-ssv2   # path to a pre-trained model, if using one
 model_name: videomae   # model name
-backbone_name: null  # backbone name
+backbone_name: videomae  # backbone name
 
 #backbone setting
 backbone_config:

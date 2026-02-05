@@ -62,7 +62,9 @@ class VideoMAEDetector(AbstractDetector):
 
     def build_backbone(self, config):
         from transformers import VideoMAEModel
-        backbone = VideoMAEModel.from_pretrained("MCG-NJU/videomae-base")
+        # MCG-NJU/videomae-base-finetuned-ssv2
+        # MCG-NJU/videomae-large-finetuned-kinetics
+        backbone = VideoMAEModel.from_pretrained("MCG-NJU/videomae-base-finetuned-kinetics")
         return backbone
 
     

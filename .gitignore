@@ -7,3 +7,4 @@
 *.dat
 *.log
 *log*
+**pretrained**
