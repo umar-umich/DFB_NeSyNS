@@ -1,0 +1,265 @@
+# log dir 
+log_dir: /data/Umar/Repos/DFB_NeSyNS/logs_debug/nesydefake_hybrid
+
+# model setting
+pretrained:
+  videomae: /data/Umar/Repos/DFB_NeSyNS/training/pretrained/MCG-NJU_videomae-base-finetuned-kinetics
+  clip: openai/clip-vit-base-patch16  # Will be loaded from HuggingFace
+  
+model_name: nesydefake_hybrid
+backbone_name: multi_stream  # multi-stream backbone
+
+# Module 1: Foundation Model Features
+foundation_models:
+  temporal:
+    name: videomae
+    model_path: MCG-NJU/videomae-base-finetuned-kinetics
+    output_dim: 768
+    freeze_backbone: false  # Set to true for faster training initially
+    
+  spatial:
+    name: clip
+    model_path: openai/clip-vit-base-patch16
+    output_dim: 768
+    freeze_backbone: false
+    use_image_encoder: true
+    
+  frequency:
+    name: srm_resnet
+    srm_filters: 30  # Number of SRM filters
+    resnet_depth: 18  # ResNet-18 for frequency domain
+    output_dim: 512
+    freeze_srm: true  # Keep SRM filters fixed
+    
+# Fusion configuration
+fusion:
+  type: concat  # 'concat', 'attention', or 'weighted'
+  fused_dim: 2048  # 768 + 768 + 512
+  projection_dim: 1024  # Project to this dimension after fusion
+  dropout: 0.3
+
+# Module 2: Semantic Grounding (Expert Grounding - Explicit)
+semantic_grounding:
+  enabled: true  # Enable DeepFace-based semantic extraction
+  
+  # DeepFace configuration
+  detector_backend: retinaface  # Options: 'opencv', 'ssd', 'mtcnn', 'retinaface', 'mediapipe'
+  
+  # Which semantic attributes to extract
+  extract_age: true      # Age estimation (0-100, normalized)
+  extract_gender: true   # Gender classification (Man/Woman probabilities)
+  extract_emotion: true  # Emotion recognition (7 emotions: angry, disgust, fear, happy, sad, surprise, neutral)
+  extract_race: false    # Race classification (optional, may be controversial)
+  
+  # Feature fusion
+  fuse_with_features: true  # Combine explicit concepts with implicit features
+  
+  # Batch processing
+  batch_process: true  # Process multiple faces at once
+  enforce_detection: false  # If true, fail if no face detected; if false, use default values
+
+# Module 3: Causal Discovery + Reasoning
+causal_module:
+  enabled: true
+  
+  # Feature preparation
+  latent_variables:
+    z_spatial_dim: 64
+    z_temporal_dim: 64
+    z_frequency_dim: 32
+    total_latent_dim: 160  # 64 + 64 + 32
+    
+  semantic_concepts:
+    # Explicit semantic variables to discover
+    concepts: ['emotion', 'expression_intensity', 'lighting_consistency', 
+               'temporal_coherence', 'boundary_sharpness', 'color_consistency', 
+               'texture_authenticity']
+    concept_dim: 7
+    
+  # Causal discovery algorithm
+  discovery:
+    algorithm: structural_causal_circuits  # Options: 'pc', 'notears', 'structural_causal_circuits', 'hybrid'
+    max_parents: 3  # Maximum parents per node in DAG
+    sparsity_penalty: 0.01
+    
+  # Causal reasoning
+  reasoning:
+    intervention_queries: true  # Enable P(Y | do(X=x))
+    counterfactual_detection: true
+    consistency_loss_weight: 1.0
+    
+  # DAG learning parameters
+  dag_learning:
+    hidden_dim: 128
+    num_layers: 3
+    learning_rate: 0.001
+    dag_penalty_weight: 0.1  # Acyclicity constraint weight
+    
+# Module 4: Sparse Monosemantic Features (Optional, can be disabled)
+sparse_features:
+  enabled: true
+  sparse_autoencoder:
+    input_dim: 256  # From projection
+    expansion_factor: 4  # Expand to 4096 dimensions
+    sparsity_penalty: 0.05
+    l1_coefficient: 0.001
+    target_active_features: 50  # Only ~50 features active
+    
+  discovered_features:
+    # These will be learned during training
+    save_interpretations: true
+    top_k_features: 10  # Track top-10 most important features
+
+# Module 5: Final Classifier (Multi-task)
+classifier:
+  type: multi_task
+  input_dim: 1024  # From fusion or sparse features
+  
+  tasks:
+    - name: classification
+      type: binary
+      output_dim: 2
+      loss_weight: 1.0
+      
+    - name: uncertainty
+      type: regression
+      output_dim: 1  # Entropy-based uncertainty
+      loss_weight: 0.5
+      
+    - name: violation_score
+      type: regression
+      output_dim: 1  # Causal violation score
+      loss_weight: 0.3
+      
+  hidden_dims: [512, 256]
+  dropout: 0.4
+
+# Combined loss function
+loss_func:
+  classification: cross_entropy
+  probabilistic_circuits: expected_calibration_error  # For Module 2 (if enabled)
+  causal_consistency: violation_penalty
+  sparse_penalty: l1_norm
+  
+  weights:
+    classification: 1.0
+    uncertainty: 0.5
+    causal: 0.3
+    sparse: 0.1
+
+# dataset
+all_dataset: [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter, DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC, DeeperForensics-1.0, UADFV]
+train_dataset: [FaceForensics++]
+test_dataset: [FaceForensics++, Celeb-DF-v2]
+
+compression: c23
+train_batchSize: 4  # Reduced due to larger model
+test_batchSize: 4
+workers: 32
+frame_num: {'train': 64, 'test': 64}
+resolution: 224
+with_mask: false
+with_landmark: false
+video_mode: true
+clip_size: 16  # Temporal clip size for VideoMAE
+
+# Sampling strategy for multi-stream inputs
+sampling:
+  temporal_clips: 8  # Number of 16-frame clips to sample
+  spatial_frames: 32  # Number of individual frames for CLIP
+  frequency_frames: 32  # Number of frames for frequency analysis
+  sampling_strategy: uniform  # 'uniform', 'random', or 'keyframe'
+
+# data augmentation
+use_data_augmentation: true
+data_aug:
+  flip_prob: 0.5
+  rotate_prob: 0.5
+  rotate_limit: [-10, 10]
+  blur_prob: 0.5
+  blur_limit: [3, 7]
+  brightness_prob: 0.5
+  brightness_limit: [-0.1, 0.1]
+  contrast_limit: [-0.1, 0.1]
+  quality_lower: 40
+  quality_upper: 100
+
+# mean and std for normalization
+mean: [0.5, 0.5, 0.5]
+std: [0.5, 0.5, 0.5]
+
+# optimizer config
+optimizer:
+  type: adam
+  adam:
+    lr: 0.0001  # Lower learning rate for stability
+    beta1: 0.9
+    beta2: 0.999
+    eps: 0.00000001
+    weight_decay: 0.0005
+    amsgrad: false
+  
+  # Separate learning rates for different modules
+  module_lr:
+    foundation_models: 0.00005  # Lower for pretrained models
+    causal_module: 0.0001
+    fusion: 0.0002
+    classifier: 0.0002
+
+# training config
+lr_scheduler: cosine_warmup  # Warmup + cosine decay
+warmup_epochs: 2
+nEpochs: 20
+start_epoch: 0
+save_epoch: 1
+rec_iter: 100
+logdir: ./logs
+manualSeed: 1024
+save_ckpt: true
+save_feat: true
+
+# Gradient clipping for stability
+grad_clip: 1.0
+
+# Training phases (progressive training strategy)
+training_phases:
+  phase1:
+    epochs: [0, 5]
+    freeze_modules: ['foundation_models']
+    train_modules: ['fusion', 'classifier']
+    description: "Warm up fusion and classifier"
+    
+  phase2:
+    epochs: [5, 10]
+    freeze_modules: []
+    train_modules: ['all']
+    description: "Fine-tune all modules"
+    
+  phase3:
+    epochs: [10, 20]
+    freeze_modules: []
+    train_modules: ['all']
+    enable_causal: true
+    description: "Enable causal discovery and reasoning"
+
+# metric
+metric_scoring: auc
+additional_metrics: ['acc', 'eer', 'ap', 'uncertainty_calibration']
+
+# Interpretability
+interpretability:
+  save_attention_maps: true
+  save_causal_graphs: true
+  save_feature_activations: true
+  visualization_frequency: 500  # Every N iterations
+
+# cuda
+cuda: true
+cudnn: true
+mixed_precision: true  # Use automatic mixed precision for faster training
+
+# Checkpointing
+checkpoint:
+  save_best_only: false
+  monitor: val_auc
+  mode: max

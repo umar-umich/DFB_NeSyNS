@@ -1,5 +1,5 @@
 # --- Core Data Science ---
-numpy>=2.4.1
+numpy==1.26.4
 pandas>=2.3.3
 scipy>=1.13.0
 matplotlib>=3.9.0
@@ -17,7 +17,7 @@ imageio>=2.34.0
 imgaug>=0.4.0
 imutils>=0.5.4
 dlib>=19.24.2
-albumentations>=1.4.0
+albumentations>=1.1.0
 kornia>=0.7.0
 
 # --- Model Architectures ---

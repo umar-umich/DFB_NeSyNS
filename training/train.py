@@ -45,7 +45,7 @@ parser.add_argument("--test_dataset", nargs="+")
 parser.add_argument('--no-save_ckpt', dest='save_ckpt', action='store_false', default=True)
 parser.add_argument('--no-save_feat', dest='save_feat', action='store_false', default=True)
 parser.add_argument("--ddp", action='store_true', default=False)
-parser.add_argument('--local_rank', type=int, default=1)
+parser.add_argument('--local_rank', type=int, default=7)
 parser.add_argument('--task_target', type=str, default="", help='specify the target of current training task')
 args = parser.parse_args()
 torch.cuda.set_device(args.local_rank)
@@ -202,6 +202,35 @@ def choose_scheduler(config, optimizer):
             optimizer,
             T_max=config['lr_T_max'],
             eta_min=config['lr_eta_min'],
+        )
+        return scheduler
+    elif config['lr_scheduler'] == 'cosine_warmup':
+        # Cosine annealing with warmup
+        from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+        
+        warmup_epochs = config.get('warmup_epochs', 5)
+        total_epochs = config['nEpochs']
+        
+        # Linear warmup scheduler
+        warmup_scheduler = LinearLR(
+            optimizer,
+            start_factor=0.1,
+            end_factor=1.0,
+            total_iters=warmup_epochs
+        )
+        
+        # Cosine annealing scheduler
+        cosine_scheduler = CosineAnnealingLR(
+            optimizer,
+            T_max=total_epochs - warmup_epochs,
+            eta_min=config.get('lr_eta_min', 0)
+        )
+        
+        # Combine warmup and cosine
+        scheduler = SequentialLR(
+            optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[warmup_epochs]
         )
         return scheduler
     elif config['lr_scheduler'] == 'linear':
