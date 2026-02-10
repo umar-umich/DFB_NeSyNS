@@ -365,7 +365,7 @@ class SemanticGroundingModule(nn.Module):
             f"semantic_dim={self.semantic_dim}, output_dim={self.output_dim}"
         )
     
-    def forward(self, features: torch.Tensor, images: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, features: torch.Tensor, image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Extract and combine semantic concepts with features
         
@@ -379,11 +379,11 @@ class SemanticGroundingModule(nn.Module):
         """
         # Extract semantic concepts from images
         # Average across multiple frames
-        B, N, C, H, W = images.shape
-        semantic_per_frame = self.deepface_extractor(images)  # (B, N, semantic_dim)
+        B, C, H, W = image.shape
+        semantic_concepts = self.deepface_extractor(image)  # (B, N, semantic_dim)
         
         # Average across frames to get video-level concepts
-        semantic_concepts = semantic_per_frame.mean(dim=1)  # (B, semantic_dim)
+        # semantic_concepts = semantic_per_frame.mean(dim=1)  # (B, semantic_dim)
         
         if self.use_fusion:
             # Combine with implicit features

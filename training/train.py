@@ -34,6 +34,8 @@ from detectors import DETECTOR
 from dataset import *
 from metrics.utils import parse_metric_for_print
 from logger import create_logger, RankFilter
+from dataset.nesy_defake_dataset import NeSyDeFakeDataset
+
 
 
 parser = argparse.ArgumentParser(description='Process some paths.')
@@ -45,10 +47,10 @@ parser.add_argument("--test_dataset", nargs="+")
 parser.add_argument('--no-save_ckpt', dest='save_ckpt', action='store_false', default=True)
 parser.add_argument('--no-save_feat', dest='save_feat', action='store_false', default=True)
 parser.add_argument("--ddp", action='store_true', default=False)
-parser.add_argument('--local_rank', type=int, default=7)
+parser.add_argument('--local_rank', type=int, default=0)
 parser.add_argument('--task_target', type=str, default="", help='specify the target of current training task')
 args = parser.parse_args()
-torch.cuda.set_device(args.local_rank)
+# torch.cuda.set_device(args.local_rank)
 
 
 def init_seed(config):
@@ -61,6 +63,10 @@ def init_seed(config):
 
 
 def prepare_training_data(config):
+    # In prepare_training_data():
+    if config.get('dataset_type') == 'nesydefake' or config['model_name'] == 'nesydefake_hybrid':
+        return NeSyDeFakeDataset.prepare_data_loader(config, mode='train')    
+
     # Only use the blending dataset class in training
     if 'dataset_type' in config and config['dataset_type'] == 'blend':
         if config['model_name'] == 'facexray':
@@ -122,6 +128,28 @@ def prepare_training_data(config):
 
 
 def prepare_testing_data(config):
+
+    """
+    Prepare testing data loaders.
+    Automatically uses NeSyDeFakeDataset for nesydefake_hybrid model.
+    """
+    # Check if this is NeSyDeFake model - use custom dataset
+    if config.get('dataset_type') == 'nesydefake' or config['model_name'] == 'nesydefake_hybrid':
+        test_data_loaders = {}
+        for test_name in config['test_dataset']:
+            # Create a copy of config for this test dataset
+            test_config = config.copy()
+            test_config['test_dataset'] = test_name
+            
+            # For testing, use uniform sampling for consistency
+            if 'sampling' in test_config:
+                test_config['sampling']['sampling_strategy'] = 'uniform'
+            
+            # Create data loader
+            test_data_loaders[test_name] = NeSyDeFakeDataset.prepare_data_loader(test_config, mode='test')
+        
+        return test_data_loaders
+
     def get_test_data_loader(config, test_name):
         # update the config dictionary with the specific testing dataset
         config = config.copy()  # create a copy of config to avoid altering the original one
@@ -251,6 +279,7 @@ def choose_metric(config):
 
 
 def main():
+    local_rank = int(os.environ.get('LOCAL_RANK', 0))
     # parse options and load config
     with open(args.detector_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -259,7 +288,7 @@ def main():
     if 'label_dict' in config:
         config2['label_dict']=config['label_dict']
     config.update(config2)
-    config['local_rank']=args.local_rank
+    config['local_rank'] = local_rank
     if config['dry_run']:
         config['nEpochs'] = 0
         config['save_feat']=False
@@ -296,13 +325,23 @@ def main():
     # set cudnn benchmark if needed
     if config['cudnn']:
         cudnn.benchmark = True
+    # if config['ddp']:
+    #     # dist.init_process_group(backend='gloo')
+    #     dist.init_process_group(
+    #         backend='nccl',
+    #         timeout=timedelta(minutes=30)
+    #     )
+    #     logger.addFilter(RankFilter(0))
     if config['ddp']:
-        # dist.init_process_group(backend='gloo')
         dist.init_process_group(
             backend='nccl',
-            timeout=timedelta(minutes=30)
+            timeout=timedelta(hours=2)
         )
+        # Set device AFTER init_process_group
+        torch.cuda.set_device(local_rank)
         logger.addFilter(RankFilter(0))
+        dist.barrier()
+
     # prepare the training data loader
     train_data_loader = prepare_training_data(config)
 
@@ -313,6 +352,15 @@ def main():
     model_class = DETECTOR[config['model_name']]
     model = model_class(config)
 
+    # Add this for DDPf
+    if config['ddp']:
+        model = model.cuda(local_rank)
+        model = torch.nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=[local_rank],
+            output_device=local_rank,
+            find_unused_parameters=True  # Set False if all params are used
+        )
     # prepare the optimizer
     optimizer = choose_optimizer(model, config)
 

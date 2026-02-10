@@ -161,8 +161,9 @@ class CustomSampler(Sampler):
 
 
 class LSDADataset(DeepfakeAbstractBaseDataset):
+    on_3060 = None  # Initialize as None
 
-    on_3060 = "3060" in torch.cuda.get_device_name()
+    # on_3060 = "3060" in torch.cuda.get_device_name()
     transfer_dict = {
         'youtube':'FF-real',
         'Deepfakes':'FF-DF',
@@ -184,6 +185,14 @@ class LSDADataset(DeepfakeAbstractBaseDataset):
 
     def __init__(self, config=None, mode='train', with_dataset=['Deepfakes', 'Face2Face', 'FaceSwap', 'NeuralTextures']):
         super().__init__(config, mode)
+
+        if torch.cuda.is_available():
+            LSDADataset.on_3060 = "3060" in torch.cuda.get_device_name()
+            LSDADataset.data_root = r'F:\Datasets\rgb\FaceForensics++'
+        else:
+            LSDADataset.on_3060 = False
+            LSDADataset.data_root = r'./datasets/FaceForensics++'
+
         self.mode = mode
         self.res = config['resolution']
         self.fake_dict = fake_dict

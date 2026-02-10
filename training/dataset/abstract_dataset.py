@@ -68,6 +68,8 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         # Dataset dictionary
         self.image_list = []
         self.label_list = []
+
+        self._setup_normalization_transforms()
         
         # Set the dataset dictionary based on the mode
         if mode == 'train':
@@ -397,14 +399,72 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         """
         return T.ToTensor()(img)
 
-    def normalize(self, img):
+    def _setup_normalization_transforms(self):
         """
-        Normalize an image.
+        Create separate normalization transforms for each feature type.
         """
-        mean = self.config['mean']
-        std = self.config['std']
-        normalize = T.Normalize(mean=mean, std=std)
-        return normalize(img)
+        # Temporal (VideoMAE): ImageNet normalization
+        temporal_config = self.config.get('foundation_models', {}).get('temporal', {})
+        temporal_norm = temporal_config.get('normalization', {})
+        self.temporal_normalize = T.Normalize(
+            mean=temporal_norm.get('mean', [0.485, 0.456, 0.406]),
+            std=temporal_norm.get('std', [0.229, 0.224, 0.225])
+        )
+        
+        # Spatial (CLIP/DINOv2): Model-specific normalization
+        spatial_config = self.config.get('foundation_models', {}).get('spatial', {})
+        spatial_norm = spatial_config.get('normalization', {})
+        
+        # Determine spatial normalization based on model
+        model_name = spatial_config.get('name', 'clip')
+        if model_name in ['clip', 'eva_clip']:
+            # CLIP normalization
+            spatial_mean = spatial_norm.get('mean', [0.481, 0.458, 0.408])
+            spatial_std = spatial_norm.get('std', [0.269, 0.261, 0.276])
+        elif model_name in ['dinov2', 'convnext', 'swin']:
+            # ImageNet normalization
+            spatial_mean = spatial_norm.get('mean', [0.485, 0.456, 0.406])
+            spatial_std = spatial_norm.get('std', [0.229, 0.224, 0.225])
+        else:
+            # Default to CLIP
+            spatial_mean = [0.481, 0.458, 0.408]
+            spatial_std = [0.269, 0.261, 0.276]
+        
+        self.spatial_normalize = T.Normalize(mean=spatial_mean, std=spatial_std)
+        
+        # Frequency (SRM): Keep dataset normalization or use raw
+        frequency_config = self.config.get('foundation_models', {}).get('frequency', {})
+        frequency_norm = frequency_config.get('normalization', {})
+        
+        # Option 1: Use 0.5/0.5 normalization (keeps pixel range consistent)
+        # Option 2: Use Identity (raw [0,1] range after ToTensor)
+        if frequency_norm.get('keep_raw', False):
+            self.frequency_normalize = T.Lambda(lambda x: x)  # No normalization
+        else:
+            # Default 0.5/0.5 normalization
+            freq_mean = frequency_norm.get('mean', [0.5, 0.5, 0.5])
+            freq_std = frequency_norm.get('std', [0.5, 0.5, 0.5])
+            self.frequency_normalize = T.Normalize(mean=freq_mean, std=freq_std)
+    
+    def normalize_temporal(self, img):
+        """Normalize for temporal features (VideoMAE)"""
+        return self.temporal_normalize(img)
+    
+    def normalize_spatial(self, img):
+        """Normalize for spatial features (CLIP/DINOv2)"""
+        return self.spatial_normalize(img)
+    
+    def normalize_frequency(self, img):
+        """Normalize for frequency features (SRM)"""
+        return self.frequency_normalize(img)
+    # def normalize(self, img):
+    #     """
+    #     Normalize an image.
+    #     """
+    #     mean = self.config['mean']
+    #     std = self.config['std']
+    #     normalize = T.Normalize(mean=mean, std=std)
+    #     return normalize(img)
 
     def data_aug(self, img, landmark=None, mask=None, augmentation_seed=None):
         """

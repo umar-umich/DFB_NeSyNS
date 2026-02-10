@@ -1,36 +1,78 @@
 # log dir 
 log_dir: /data/Umar/Repos/DFB_NeSyNS/logs_debug/nesydefake_hybrid
-
-# model setting
-pretrained:
-  videomae: /data/Umar/Repos/DFB_NeSyNS/training/pretrained/MCG-NJU_videomae-base-finetuned-kinetics
-  clip: openai/clip-vit-base-patch16  # Will be loaded from HuggingFace
   
 model_name: nesydefake_hybrid
 backbone_name: multi_stream  # multi-stream backbone
+
+# Dataset configuration
+dataset_type: nesydefake  # Use custom dataset class
 
 # Module 1: Foundation Model Features
 foundation_models:
   temporal:
     name: videomae
-    model_path: MCG-NJU/videomae-base-finetuned-kinetics
+    model_path: MCG-NJU/videomae-base-finetuned-kinetics  # videomae-base-finetuned-kinetics
     output_dim: 768
-    freeze_backbone: false  # Set to true for faster training initially
+    freeze_backbone: true  # Set to true for faster training initially
+    normalization:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
     
+  # OPTION 1: DINOv2-Large (RECOMMENDED - Best for deepfakes)
+  # spatial:
+  #   name: dinov2
+  #   model_path: facebook/dinov2-large
+  #   output_dim: 1024
+  #   freeze_backbone: true  # Fine-tune for best performance
+  #   use_image_encoder: true
+  #   normalization:
+  #     mean: [0.485, 0.456, 0.406]  # ImageNet for DINOv2
+  #     std: [0.229, 0.224, 0.225]
+  
+  # OPTION 2: DINOv2-Giant (Most powerful, if you have 48GB GPUs)
+  # spatial:
+  #   name: dinov2
+  #   model_path: facebook/dinov2-giant
+  #   output_dim: 1536
+  #   freeze_backbone: true
+  #   use_image_encoder: true
+  #   normalization:
+  #     mean: [0.485, 0.456, 0.406]  # ImageNet for DINOv2
+  #     std: [0.229, 0.224, 0.225]
+
+  
+  # OPTION 3: EVA-CLIP (Strongest CLIP variant)
   spatial:
-    name: clip
-    model_path: openai/clip-vit-base-patch16
+    name: eva_clip
+    model_path: EVA02-CLIP-L-14-336   # EVA02-CLIP-E-14-plus
     output_dim: 768
-    freeze_backbone: false
-    use_image_encoder: true
-    
+    freeze_backbone: true
+    use_image_encoder: true     
+    normalization:
+      mean: [0.481, 0.458, 0.408]  # CLIP
+      std: [0.269, 0.261, 0.276]
+   
+
+  # OPTION 4: CLIP-Large-336 (Good balance)
+  # spatial:
+  #   name: clip
+  #   model_path: openai/clip-vit-large-patch14-336
+  #   output_dim: 1024
+  #   freeze_backbone: true
+  #   use_image_encoder: true
+  #   normalization:
+  #     mean: [0.481, 0.458, 0.408]  # CLIP
+  #     std: [0.269, 0.261, 0.276]
+
   frequency:
     name: srm_resnet
     srm_filters: 30  # Number of SRM filters
     resnet_depth: 18  # ResNet-18 for frequency domain
     output_dim: 512
     freeze_srm: true  # Keep SRM filters fixed
-    
+    normalization:
+      mean: [0.5, 0.5, 0.5]
+      std: [0.5, 0.5, 0.5]    
 # Fusion configuration
 fusion:
   type: concat  # 'concat', 'attention', or 'weighted'
@@ -40,7 +82,7 @@ fusion:
 
 # Module 2: Semantic Grounding (Expert Grounding - Explicit)
 semantic_grounding:
-  enabled: true  # Enable DeepFace-based semantic extraction
+  enabled: false  # Enable DeepFace-based semantic extraction
   
   # DeepFace configuration
   detector_backend: retinaface  # Options: 'opencv', 'ssd', 'mtcnn', 'retinaface', 'mediapipe'
@@ -60,7 +102,7 @@ semantic_grounding:
 
 # Module 3: Causal Discovery + Reasoning
 causal_module:
-  enabled: true
+  enabled: false
   
   # Feature preparation
   latent_variables:
@@ -97,7 +139,7 @@ causal_module:
     
 # Module 4: Sparse Monosemantic Features (Optional, can be disabled)
 sparse_features:
-  enabled: true
+  enabled: false
   sparse_autoencoder:
     input_dim: 256  # From projection
     expansion_factor: 4  # Expand to 4096 dimensions
@@ -153,22 +195,39 @@ train_dataset: [FaceForensics++]
 test_dataset: [FaceForensics++, Celeb-DF-v2]
 
 compression: c23
-train_batchSize: 4  # Reduced due to larger model
-test_batchSize: 4
-workers: 32
-frame_num: {'train': 64, 'test': 64}
+train_batchSize: 40  # Reduced due to larger model
+test_batchSize: 40
+workers: 16
+
+# ===== NEW: Multi-stream sampling configuration =====
+# Total frames per video
+frame_num: 
+  train: 64  # Extract 64 frames per video
+  test: 64
+
+# Clip configuration for temporal stream
+clip_size: 16  # Each clip has 16 frames
+num_clips_per_video: 32  # Sample 32 clips from 64 frames
+
+# Sampling strategy
+sampling:
+  # Strategy: 'sliding_window', 'uniform', or 'random'
+  # - sliding_window: Maximum coverage with overlap (recommended for training)
+  # - uniform: Evenly spaced clips (good for testing)
+  # - random: Random sampling (data augmentation)
+  sampling_strategy: sliding_window
+  
+  # Overlap ratio for sliding window (0.0 = no overlap, 0.5 = 50% overlap)
+  overlap_ratio: 0.5  # With clip_size=16, stride=8
+  
+  # Which frame to use from each clip for spatial/frequency features
+  # Options: 'middle', 'first', 'last', 'random'
+  spatial_frame_selection: middle  # Use middle frame of each clip
+
 resolution: 224
 with_mask: false
 with_landmark: false
 video_mode: true
-clip_size: 16  # Temporal clip size for VideoMAE
-
-# Sampling strategy for multi-stream inputs
-sampling:
-  temporal_clips: 8  # Number of 16-frame clips to sample
-  spatial_frames: 32  # Number of individual frames for CLIP
-  frequency_frames: 32  # Number of frames for frequency analysis
-  sampling_strategy: uniform  # 'uniform', 'random', or 'keyframe'
 
 # data augmentation
 use_data_augmentation: true

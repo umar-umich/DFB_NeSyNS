@@ -100,14 +100,14 @@ class Trainer(object):
 
 
     def speed_up(self):
-        self.model.to(device)
-        self.model.device = device
-        if self.config['ddp'] == True:
-            num_gpus = torch.cuda.device_count()
-            print(f'avai gpus: {num_gpus}')
-            # local_rank=[i for i in range(0,num_gpus)]
-            self.model = DDP(self.model, device_ids=[self.config['local_rank']],find_unused_parameters=True, output_device=self.config['local_rank'])
-            #self.optimizer =  nn.DataParallel(self.optimizer, device_ids=[int(os.environ['LOCAL_RANK'])])
+        # Don't wrap in DDP here - it's already wrapped in train.py
+        if not self.config['ddp']:
+            # Only move to device if not using DDP (DDP already handles this)
+            self.model.to(device)
+            self.model.device = device
+        else:
+            # For DDP, model is already on the correct device and wrapped
+            self.model.device = device        
 
     def setTrain(self):
         self.model.train()
@@ -312,7 +312,9 @@ class Trainer(object):
                         test_data_loaders,
                         step_cnt,
                     )
-                elif test_data_loaders is not None and (self.config['ddp'] and dist.get_rank() == 0):
+                elif test_data_loaders is not None and self.config['ddp']: # and dist.get_rank() == 0):
+                    if dist.get_rank() == 0:
+                        self.logger.info("===> Test start!")
                     self.logger.info("===> Test start!")
                     test_best_metric = self.test_epoch(
                         epoch,
@@ -320,6 +322,7 @@ class Trainer(object):
                         test_data_loaders,
                         step_cnt,
                     )
+                    dist.barrier()
                 else:
                     test_best_metric = None
 

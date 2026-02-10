@@ -1,6 +1,6 @@
 """
 NeSyDeFake: Neural-Symbolic Deepfake Detection with Causal Discovery
-Main Detector - Orchestrates all modules
+Updated Detector - Handles multi-stream data efficiently
 """
 
 import logging
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 @DETECTOR.register_module(module_name='nesydefake_hybrid')
 class NeSyDeFakeHybridDetector(AbstractDetector):
-    """NeSyDeFake Detector - properly integrated with DeepfakeBench"""
+    """NeSyDeFake Detector - Efficiently handles multi-stream inputs"""
     
     def __init__(self, config):
         super().__init__()
@@ -69,7 +69,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.loss_weights = config['loss_func']['weights']
         self.build_loss(config)
         
+        # Processing configuration
+        self.num_clips = config.get('num_clips_per_video', 32)
+        self.clip_size = config.get('clip_size', 16)
+        
         logger.info("NeSyDeFake Hybrid Detector initialized successfully")
+        logger.info(f"  - Processing {self.num_clips} clips per video")
+        logger.info(f"  - Clip size: {self.clip_size} frames")
     
     def build_backbone(self, config):
         """Initialize foundation model feature extractors"""
@@ -82,81 +88,78 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.cls_loss = nn.CrossEntropyLoss()
         self.reg_loss = nn.MSELoss()
         self.l1_loss = nn.L1Loss()
-    
+        
     def extract_temporal_features(self, video_clips):
         """
         Extract temporal features using VideoMAE
         
         Args:
-            video_clips: (B, T, C, H, W) - video clips
+            video_clips: (B, clip_size, C, H, W) - one clip per batch item
         Returns:
-            temporal_features: (B, D)
+            temporal_features: (B, D) - temporal features per clip
         """
-        return self.temporal_extractor(video_clips)
-    
-    def extract_spatial_features(self, frames):
+        B, clip_size, C, H, W = video_clips.shape
+        
+        # VideoMAE expects (B, T, C, H, W) format
+        # Extract features for all clips in the batch
+        temporal_features = self.temporal_extractor(video_clips)  # (B, D)
+        
+        return temporal_features
+
+    def extract_spatial_features(self, spatial_frames):
         """
         Extract spatial features using CLIP
         
         Args:
-            frames: (B, num_frames, C, H, W)
+            spatial_frames: (B, C, H, W) - one frame per clip (middle frame)
         Returns:
-            spatial_features: (B, D)
+            spatial_features: (B, D) - spatial features per frame
         """
-        B, num_frames = frames.shape[:2]
+        B, C, H, W = spatial_frames.shape
         
-        # Process each frame
-        frame_features = []
-        for i in range(num_frames):
-            frame = frames[:, i]
-            feat = self.spatial_extractor(frame)
-            frame_features.append(feat)
+        # CLIP image encoder expects (B, C, H, W)
+        spatial_features = self.spatial_extractor(spatial_frames)  # (B, D)
         
-        # Average across frames
-        spatial_features = torch.stack(frame_features, dim=1).mean(dim=1)
         return spatial_features
-    
-    def extract_frequency_features(self, frames):
+
+    def extract_frequency_features(self, frequency_frames):
         """
         Extract frequency features using SRM+ResNet
         
         Args:
-            frames: (B, num_frames, C, H, W)
+            frequency_frames: (B, C, H, W) - one frame per clip (same as spatial)
         Returns:
-            frequency_features: (B, D)
+            frequency_features: (B, D) - frequency features per frame
         """
-        B, num_frames = frames.shape[:2]
+        B, C, H, W = frequency_frames.shape
         
-        # Process each frame
-        frame_features = []
-        for i in range(num_frames):
-            frame = frames[:, i]
-            feat = self.frequency_extractor(frame)
-            frame_features.append(feat)
+        # SRM+ResNet expects (B, C, H, W)
+        frequency_features = self.frequency_extractor(frequency_frames)  # (B, D)
         
-        # Average across frames
-        frequency_features = torch.stack(frame_features, dim=1).mean(dim=1)
         return frequency_features
-    
+
     def features(self, data_dict: dict) -> tuple:
         """
         Extract and fuse multi-modal features
         
         Args:
-            data_dict: Dictionary containing 'image' (B, T, C, H, W)
+            data_dict: Dictionary containing:
+                - 'temporal_clip': (B, clip_size, C, H, W) - full clip for temporal
+                - 'image': (B, C, H, W) - middle frame for spatial/frequency
+                - 'label': (B,) - labels
         Returns:
-            fused_features: (B, D)
-            temporal_feat: (B, D1)
-            spatial_feat: (B, D2)
-            frequency_feat: (B, D3)
+            fused_features: (B, D) - fused multi-modal features
+            temporal_feat: (B, D1) - temporal features
+            spatial_feat: (B, D2) - spatial features
+            frequency_feat: (B, D3) - frequency features
         """
         # Extract features from each modality
-        temporal_feat = self.extract_temporal_features(data_dict['image'])
-        spatial_feat = self.extract_spatial_features(data_dict['image'])
-        frequency_feat = self.extract_frequency_features(data_dict['image'])
+        temporal_feat = self.extract_temporal_features(data_dict['temporal_clip'])  # (B, D_temporal)
+        spatial_feat = self.extract_spatial_features(data_dict['spatial_frame'])  # (B, D_spatial)
+        frequency_feat = self.extract_frequency_features(data_dict['frequency_frame'])  # (B, D_frequency)
         
         # Fuse multi-modal features
-        fused_features = self.fusion(temporal_feat, spatial_feat, frequency_feat)
+        fused_features = self.fusion(temporal_feat, spatial_feat, frequency_feat)  # (B, D_fused)
         
         return fused_features, temporal_feat, spatial_feat, frequency_feat
     
@@ -177,7 +180,9 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         
         Args:
             data_dict: Dictionary containing:
-                - 'image': (B, T, C, H, W) - video clips
+                - 'image': (B, num_clips, clip_size, C, H, W) - temporal clips
+                - 'spatial_frames': (B, num_clips, C, H, W) - spatial frames
+                - 'frequency_frames': (B, num_clips, C, H, W) - frequency frames
                 - 'label': (B,) - ground truth labels
             inference: whether in inference mode
         Returns:
@@ -191,9 +196,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         grounded_features = fused_features
         
         if self.use_semantic_grounding:
+            # Use the spatial frame directly (it's already the middle frame from each clip)
+            B, C, H, W = data_dict['raw_frame'].shape
+            representative_frames = data_dict['raw_frame']  # (B, C, H, W)
+                        
             grounded_features, semantic_concepts = self.semantic_grounding(
                 fused_features,
-                data_dict['image']
+                representative_frames
             )
         
         # Step 3: Causal Discovery (Optional)
@@ -247,7 +256,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         }
         
         return pred_dict
-    
+        
     def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
         """
         Compute all losses
@@ -259,12 +268,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             loss_dict: Dictionary of all losses
         """
         label = data_dict['label']
+        device = label.device
         
         # Classification loss
         cls_loss = self.cls_loss(pred_dict['cls'], label)
         
         # Uncertainty loss (if enabled)
-        uncertainty_loss = 0
+        uncertainty_loss = torch.tensor(0.0, device=device)
         if pred_dict.get('uncertainty') is not None:
             pred_label = pred_dict['cls'].argmax(dim=1)
             is_correct = (pred_label == label).float()
@@ -275,7 +285,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             )
         
         # Causal violation loss
-        causal_loss = 0
+        causal_loss = torch.tensor(0.0, device=device)
         if self.use_causal and pred_dict.get('violation_score') is not None:
             target_violation = label.float()
             causal_loss = self.reg_loss(pred_dict['violation_score'], target_violation)
@@ -286,9 +296,9 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 causal_loss += self.config['causal_module']['dag_learning']['dag_penalty_weight'] * dag_penalty
         
         # Sparse loss
-        sparse_loss = pred_dict.get('sparse_loss', 0)
-        if sparse_loss == 0:
-            sparse_loss = torch.tensor(0.0, device=cls_loss.device)
+        sparse_loss = pred_dict.get('sparse_loss')
+        if sparse_loss is None or not isinstance(sparse_loss, torch.Tensor):
+            sparse_loss = torch.tensor(0.0, device=device)
         
         # Total loss
         total_loss = (
@@ -301,8 +311,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         loss_dict = {
             'overall': total_loss,
             'classification': cls_loss,
-            'uncertainty': uncertainty_loss if isinstance(uncertainty_loss, torch.Tensor) else torch.tensor(uncertainty_loss),
-            'causal': causal_loss if isinstance(causal_loss, torch.Tensor) else torch.tensor(causal_loss),
+            'uncertainty': uncertainty_loss,
+            'causal': causal_loss,
             'sparse': sparse_loss
         }
         
