@@ -1,0 +1,133 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Config: Probabilistic Circuit Detector (pc_detector)
+#
+# Wraps any existing DeepfakeBench backbone with a Class-Conditional SPN head
+# that adds calibrated uncertainty scores alongside standard classification.
+#
+# Two-stage training:
+#   Stage 1 – fit PCs on frozen backbone features  (train_mode: pc_only)
+#   Stage 2 – train fusion MLP with PCs frozen     (train_mode: fusion)
+#   Full     – end-to-end joint training            (train_mode: full)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+log_dir: /data/home/zhiyuanyan/logs/pc_detector
+
+# ── Model identity ────────────────────────────────────────────────────────────
+model_name: pc_detector          # must match @DETECTOR.register_module name
+backbone_name: xception          # any backbone registered in DeepfakeBench
+
+# ── Backbone ──────────────────────────────────────────────────────────────────
+pretrained: ./training/pretrained/xception-b5690688.pth
+
+backbone_config:
+  mode: original
+  num_classes: 2
+  inc: 3
+  dropout: false
+
+# ── Probabilistic Circuit head ────────────────────────────────────────────────
+# feature_dim    : output dimension of the backbone's feature extractor.
+#                  Set explicitly to avoid the auto-probe overhead.
+#                  Common values: xception=2048, efficientnet-b4=1792,
+#                                 clip_vit_l14=768, resnet50=2048
+pc_config:
+  feature_dim: 2048             # backbone output dimension (auto-inferred if omitted)
+  width: 128                    # hidden sum-node width in each SPN
+  num_leaf_components: 16       # Gaussian components per leaf partition
+  feature_splits: 4             # number of feature partitions
+  fusion_hidden_dim: 256        # fusion MLP hidden size
+  fusion_dropout: 0.1           # dropout in fusion MLP
+
+# ── Training mode ─────────────────────────────────────────────────────────────
+# Choices:
+#   pc_only  – Stage 1: only train PC head; backbone + fusion frozen
+#   fusion   – Stage 2: only train fusion MLP; backbone + PC frozen
+#   full     – End-to-end: all components trainable simultaneously
+train_mode: fusion
+
+# PC NLL loss weight when train_mode is 'pc_only' or 'full'
+# total_loss = CE_loss + pc_loss_weight * (NLL_real + NLL_fake)
+pc_loss_weight: 0.1
+
+# ── Stage 1 PC fitting (used by the two-stage training script) ────────────────
+pc_fit:
+  num_epochs: 100               # epochs per class PC
+  lr: 0.001                     # Adam learning rate
+  batch_size: 256               # mini-batch size for PC fitting
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+all_dataset: [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
+              DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
+              DeeperForensics-1.0, UADFV]
+train_dataset: [FF-NT]
+test_dataset:  [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT]
+
+compression: c23
+train_batchSize: 32
+test_batchSize:  32
+workers: 8
+frame_num:
+  train: 32
+  test:  32
+resolution: 256
+with_mask: false
+with_landmark: false
+save_ckpt: true
+save_feat: true
+
+# ── Data augmentation ─────────────────────────────────────────────────────────
+use_data_augmentation: false
+data_aug:
+  flip_prob: 0.5
+  rotate_prob: 0.5
+  rotate_limit: [-10, 10]
+  blur_prob: 0.5
+  blur_limit: [3, 7]
+  brightness_prob: 0.5
+  brightness_limit: [-0.1, 0.1]
+  contrast_limit:   [-0.1, 0.1]
+  quality_lower: 40
+  quality_upper: 100
+
+# ── Normalisation ─────────────────────────────────────────────────────────────
+mean: [0.5, 0.5, 0.5]
+std:  [0.5, 0.5, 0.5]
+
+# ── Optimizer ─────────────────────────────────────────────────────────────────
+# During fusion stage only the fusion MLP parameters are active,
+# so the learning rate can be higher.
+optimizer:
+  type: adam
+  adam:
+    lr: 0.0002
+    beta1: 0.9
+    beta2: 0.999
+    eps: 0.00000001
+    weight_decay: 0.0005
+    amsgrad: false
+  sgd:
+    lr: 0.0002
+    momentum: 0.9
+    weight_decay: 0.0005
+
+# ── Training schedule ─────────────────────────────────────────────────────────
+lr_scheduler: null
+nEpochs: 10
+start_epoch: 0
+save_epoch: 1
+rec_iter: 100
+logdir: ./logs
+manualSeed: 1024
+
+# ── Loss function ─────────────────────────────────────────────────────────────
+# pc_only / full modes also add PC NLL losses; see pc_loss_weight above.
+loss_func:
+  cls_loss: cross_entropy        # primary classification loss
+
+# ── Metric ────────────────────────────────────────────────────────────────────
+metric_scoring: auc
+
+# ── Hardware ──────────────────────────────────────────────────────────────────
+cuda: true
+cudnn: true
