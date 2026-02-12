@@ -1,0 +1,17 @@
+# Model Settings
+model_name: "video/GenD_PE_L"
+face_detector: "video/det_10g.onnx"
+device: "cuda"
+
+# Detection Parameters
+thresh: 0.5
+stride: 10
+
+# Face Preprocessing
+detect_face: True
+face_conf: 0.4
+scale: 1.3
+target_size: [256, 256]
+
+# Input (Can be overridden via CLI)
+video: null

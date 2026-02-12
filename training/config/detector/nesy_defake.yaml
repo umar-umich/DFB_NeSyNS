@@ -70,7 +70,6 @@ foundation_models:
     
   spatial:
   # OPTION 1: DINOv2-Large (RECOMMENDED - Best for deepfakes)
-  # spatial:
   #   name: dinov2
   #   model_path: facebook/dinov2-large
   #   output_dim: 1024
@@ -81,7 +80,6 @@ foundation_models:
   #     std: [0.229, 0.224, 0.225]
   
   # OPTION 2: DINOv2-Giant (Most powerful, if you have 48GB GPUs)
-  # spatial:
   #   name: dinov2
   #   model_path: facebook/dinov2-giant
   #   output_dim: 1536
@@ -91,40 +89,26 @@ foundation_models:
   #     mean: [0.485, 0.456, 0.406]  # ImageNet for DINOv2
   #     std: [0.229, 0.224, 0.225]
 
-  
-  # OPTION 3: EVA-CLIP (Strongest CLIP variant)
-    name: eva_clip
-    model_path: EVA02-CLIP-L-14-336   # EVA02-CLIP-E-14-plus
-    output_dim: 768
-    freeze_backbone: true
-    use_image_encoder: true     
-
-    # name: forensic_adapter
-    # model_path: /data/Umar/Repos/DFB_NeSyNS/training/pretrained/f_adapter_ckpt_best.pth   # FA pretrained checkpoint
-    # # ── Must match FA's original training config exactly ──
-    # clip_model_name: ViT-L/14
-    # vit_name: 'vit_tiny_patch16_224'               # e.g. 'vit_base_patch16_224'
-    # num_quires: 128                            # Q forensic query tokens
-    # fusion_map: {1: 1, 2: 8, 3: 15}
-    # mlp_dim: 256
-    # mlp_out_dim: 128
-    # head_num: 16
+    # name: eva_clip
+    # model_path: EVA02-CLIP-L-14-336   # EVA02-CLIP-E-14-plus
     # output_dim: 768
-    # device: cuda
+    # freeze_backbone: true
+    # use_image_encoder: true     
+
+    name: gend
+    model_path: yermandy/GenD_PE_L   # or a local path
+    output_dim: 1024
+    freeze_backbone: true
     normalization:
       mean: [0.481, 0.458, 0.408]  # CLIP
       std: [0.269, 0.261, 0.276]
 
   # OPTION 4: CLIP-Large-336 (Good balance)
-  # spatial:
   #   name: clip
   #   model_path: openai/clip-vit-large-patch14-336
   #   output_dim: 1024
   #   freeze_backbone: true
   #   use_image_encoder: true
-  #   normalization:
-  #     mean: [0.481, 0.458, 0.408]  # CLIP
-  #     std: [0.269, 0.261, 0.276]
 
   frequency:
     name: srm_resnet

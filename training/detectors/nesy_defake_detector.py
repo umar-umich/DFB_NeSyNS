@@ -199,23 +199,11 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
     def extract_spatial_features(self, spatial_frames: torch.Tensor) -> torch.Tensor:
         """
-        Extract forensic-aware spatial features using the frozen ForensicAdapter.
-
-        Replaces the former vanilla SpatialFeatureExtractor call.  FA's
-        extract_spatial_features() runs the full Adapter+RecAttnClip pipeline
-        with the forensic attention biases that were trained on xray / boundary
-        / contrastive objectives, then mean-pools the num_quires forensic query
-        tokens to produce a single (N, 768) feature vector per frame.
-
         Args:
-            spatial_frames: (B, C, H, W) — middle frame of each clip,
-                            same tensor that was previously fed to vanilla CLIP.
+            spatial_frames: (B, C, H, W)
         Returns:
-            (B, 768) forensic-aware spatial feature vector.
+            (B, D_spatial)
         """
-        # _ensure_fa_frozen is cheap (just sets flags) and guards against
-        # accidental unfreezing by a global model.train() call upstream.
-        # self._ensure_fa_frozen()
         return self.spatial_extractor(spatial_frames)
 
     def extract_frequency_features(self, frequency_frames: torch.Tensor) -> torch.Tensor:
