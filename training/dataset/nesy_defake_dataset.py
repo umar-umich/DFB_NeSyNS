@@ -1,380 +1,254 @@
 """
 NeSyDeFake Dataset Class
-Handles efficient clip sampling for temporal, spatial, and frequency features
+
+Design philosophy:
+- Delegates all data collection (JSON parsing, frame path resolution, clip slicing,
+  shuffling) entirely to the abstract base class, exactly as every other detector does.
+- __getitem__ receives one pre-built clip (list of frame paths) and is responsible
+  only for loading pixels, augmenting, and returning the four feature streams.
+- Spatial stream   : single middle frame, CLIP/DINOv2 normalisation.
+                     Using one canonical frame avoids blurred/mixed-pose embeddings
+                     and keeps spatial & frequency streams temporally aligned.
+- Frequency stream : single middle frame, SRM normalisation.
+                     Artifacts are localised and transient — averaging dilutes signal.
+- Raw stream       : average of first + middle + last frames, [0, 1] no norm.
+                     Facial attributes are stable; averaging reduces per-frame noise.
 """
 
-import os
+import random
+# from copy import deepcopy
+from typing import List
+
 import numpy as np
 import torch
-from torch.utils.data import Dataset
-from PIL import Image
-import cv2
-import random
-from typing import Dict, List, Tuple
 
 from dataset.abstract_dataset import DeepfakeAbstractBaseDataset
 
 
 class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
     """
-    Custom dataset for NeSyDeFake framework with clip-based sampling.
-    
-    Key Design:
-    - Parent class collects video frames (ideally 64, but can be less)
-    - Each __getitem__ call returns ONE clip of 16 frames
-    - The dataset length is multiplied by num_clips_per_video to ensure good epoch coverage
-    - Temporal stream: Uses all 16 frames in the clip
-    - Spatial/Frequency streams: Uses 1 middle frame from the clip
+    Dataset for NeSyDeFake: temporal + spatial + frequency + raw feature streams.
+
+    Configuration keys consumed here (all others are handled by the base class):
+
+        clip_size            (int)  – frames per clip; MUST be set (base class requires it
+                                      when video_mode is True).  Default: 16.
+        foundation_models    (dict) – normalization config for each stream (base class
+                                      reads this in _setup_normalization_transforms).
+        use_data_augmentation (bool) – whether to apply albumentations pipeline.
+
+    The base class is responsible for:
+        • Parsing dataset JSON files
+        • Selecting / subsampling frames per video (frame_num)
+        • Slicing those frames into non-overlapping clips of length clip_size
+        • Building self.image_list  – list[list[str]]  (one inner list = one clip)
+        • Building self.label_list  – list[int]
+        • Shuffling
+        • Providing load_rgb, to_tensor, normalize_temporal/spatial/frequency,
+          data_aug, init_data_aug_method
     """
-    
-    def __init__(self, config, mode='train'):
-        # Clip configuration
-        self.clip_size = config.get('clip_size', 16)  # Frames per clip
-        self.num_clips_per_video = config.get('num_clips_per_video', 32)  # Clips to sample per video
-        
-        # Sampling strategy
-        self.sampling_strategy = config.get('sampling', {}).get('sampling_strategy', 'sliding_window')
-        self.overlap_ratio = config.get('sampling', {}).get('overlap_ratio', 0.5)
-        
-        # Frame selection for spatial/frequency
-        self.spatial_frame_idx = config.get('sampling', {}).get('spatial_frame_selection', 'middle')
-        
-        # Call parent init - this will collect video frame paths
+
+    # ------------------------------------------------------------------ #
+    #  Keyframe indices used for the raw (semantic grounding) stream       #
+    # ------------------------------------------------------------------ #
+    # Spatial and frequency streams both use the single middle frame.
+    # The raw stream averages first + middle + last to reduce per-frame
+    # noise (blinks, motion blur) for stable facial attribute signals.
+
+    def __init__(self, config=None, mode="train"):
+        # video_mode MUST be True so the base class builds clip-level image_list
+        config["video_mode"] = True
+
+        # clip_size drives the base class clip-slicing logic
+        if "clip_size" not in config:
+            config["clip_size"] = 8
+
+        # Call parent — this populates self.image_list / self.label_list
+        # Each entry in self.image_list is already a list[str] of length clip_size.
         super().__init__(config, mode)
-        
-        # Expand dataset by creating multiple clip indices per video
-        self._expand_dataset_with_clips()
-        
-        print(f"NeSyDeFake Dataset initialized:")
-        print(f"  - Mode: {mode}")
-        print(f"  - Base videos: {len(self.image_list)}")
-        print(f"  - Total samples (with clips): {len(self.clip_data)}")
-        print(f"  - Clip size: {self.clip_size}")
-        print(f"  - Target clips per video: {self.num_clips_per_video}")
-        print(f"  - Sampling strategy: {self.sampling_strategy}")
-    
-    def _expand_dataset_with_clips(self):
+
+        # Convenience references set by the base class
+        self.clip_size: int = config["clip_size"]
+        self.resolution: int = config["resolution"]
+
+        print(
+            f"\nNeSyDeFakeDataset ready  [{mode}]"
+            f"\n  clips  : {len(self.image_list)}"
+            f"\n  clip_size : {self.clip_size}"
+        )
+
+    # ------------------------------------------------------------------ #
+    #  Internal helpers                                                     #
+    # ------------------------------------------------------------------ #
+
+    def _load_frames(self, frame_paths: List[str]) -> List[np.ndarray]:
         """
-        Pre-compute clip indices for each video to create expanded dataset.
-        This allows each training sample to be one clip.
+        Load and return frames as HxWxC uint8 numpy arrays.
+        Pads with the last valid frame (or black) if any path fails.
         """
-        self.clip_data = []
-        
-        for video_idx in range(len(self.image_list)):
-            frame_paths = self.image_list[video_idx]
-            label = self.label_list[video_idx]
-            
-            # Ensure frame_paths is a list
-            if not isinstance(frame_paths, list):
-                frame_paths = [frame_paths]
-            
-            total_frames = len(frame_paths)
-            
-            # Generate clip indices for this video
-            clip_indices = self._get_clip_indices_for_video(total_frames)
-            
-            # Create a sample for each clip
-            for start_idx, end_idx in clip_indices:
-                self.clip_data.append({
-                    'video_idx': video_idx,
-                    'frame_paths': frame_paths,
-                    'clip_start': start_idx,
-                    'clip_end': end_idx,
-                    'label': label,
-                    'total_frames': total_frames
-                })
-    
-    def _get_clip_indices_for_video(self, total_frames: int) -> List[Tuple[int, int]]:
-        """
-        Generate clip start/end indices for a single video based on sampling strategy.
-        
-        Args:
-            total_frames: Total number of available frames in the video
-            
-        Returns:
-            List of (start_idx, end_idx) tuples for each clip
-        """
-        if self.sampling_strategy == 'sliding_window':
-            return self._sliding_window_sampling(total_frames)
-        elif self.sampling_strategy == 'uniform':
-            return self._uniform_sampling(total_frames)
-        elif self.sampling_strategy == 'random':
-            return self._random_sampling(total_frames)
-        else:
-            raise ValueError(f"Unknown sampling strategy: {self.sampling_strategy}")
-    
-    def _sliding_window_sampling(self, total_frames: int) -> List[Tuple[int, int]]:
-        """
-        Sliding window with overlap for maximum coverage.
-        Handles edge cases where video has fewer frames than expected.
-        """
-        clips = []
-        
-        # If video is too short, just use what we have
-        if total_frames < self.clip_size:
-            # Repeat frames to reach clip_size or just use available frames
-            clips.append((0, total_frames))
-            # Duplicate this clip to reach num_clips_per_video
-            while len(clips) < self.num_clips_per_video:
-                clips.append((0, total_frames))
-            return clips[:self.num_clips_per_video]
-        
-        # Normal case: sliding window
-        stride = max(1, int(self.clip_size * (1 - self.overlap_ratio)))
-        
-        start_idx = 0
-        while start_idx + self.clip_size <= total_frames:
-            end_idx = start_idx + self.clip_size
-            clips.append((start_idx, end_idx))
-            start_idx += stride
-            
-            # If we have enough clips, stop
-            if len(clips) >= self.num_clips_per_video:
-                break
-        
-        # If we don't have enough clips, add more from different positions
-        while len(clips) < self.num_clips_per_video:
-            if len(clips) == 0:
-                # Edge case: shouldn't happen, but add safety
-                clips.append((0, min(self.clip_size, total_frames)))
-            else:
-                # Add clips with random offsets
-                max_start = max(0, total_frames - self.clip_size)
-                random_start = random.randint(0, max_start)
-                random_end = random_start + self.clip_size
-                
-                # Check if this clip already exists (avoid exact duplicates)
-                if (random_start, random_end) not in clips:
-                    clips.append((random_start, random_end))
-                else:
-                    # If exact duplicate, just add it anyway (we need enough samples)
-                    clips.append((random_start, random_end))
-        
-        return clips[:self.num_clips_per_video]
-    
-    def _uniform_sampling(self, total_frames: int) -> List[Tuple[int, int]]:
-        """
-        Uniformly sample clips across the video.
-        """
-        clips = []
-        
-        if total_frames < self.clip_size:
-            # Video too short
-            for _ in range(self.num_clips_per_video):
-                clips.append((0, total_frames))
-            return clips
-        
-        # Calculate spacing between clip centers
-        if self.num_clips_per_video == 1:
-            centers = [total_frames // 2]
-        else:
-            # Ensure centers are within valid range
-            min_center = self.clip_size // 2
-            max_center = total_frames - self.clip_size // 2
-            
-            if max_center <= min_center:
-                # Not enough room for multiple clips
-                centers = [total_frames // 2] * self.num_clips_per_video
-            else:
-                centers = np.linspace(min_center, max_center, self.num_clips_per_video, dtype=int)
-        
-        for center in centers:
-            start_idx = max(0, center - self.clip_size // 2)
-            end_idx = min(total_frames, start_idx + self.clip_size)
-            
-            # Adjust if we're at the boundary
-            if end_idx - start_idx < self.clip_size:
-                start_idx = max(0, end_idx - self.clip_size)
-            
-            clips.append((start_idx, end_idx))
-        
-        return clips
-    
-    def _random_sampling(self, total_frames: int) -> List[Tuple[int, int]]:
-        """
-        Randomly sample clips (with replacement if needed).
-        """
-        clips = []
-        
-        if total_frames < self.clip_size:
-            # Video too short
-            for _ in range(self.num_clips_per_video):
-                clips.append((0, total_frames))
-            return clips
-        
-        max_start = total_frames - self.clip_size
-        
-        for _ in range(self.num_clips_per_video):
-            start_idx = random.randint(0, max_start)
-            end_idx = start_idx + self.clip_size
-            clips.append((start_idx, end_idx))
-        
-        return clips
-    
-    def __getitem__(self, index):
-        """
-        Get a single clip sample with properly normalized features.
-        
-        Returns:
-            dict with:
-                - 'temporal_clip': (clip_size, C, H, W) - VideoMAE normalized
-                - 'spatial_frame': (C, H, W) - CLIP/DINOv2 normalized  
-                - 'frequency_frame': (C, H, W) - SRM normalized
-                - 'raw_frame': (C, H, W) - Raw [0,1] for semantic grounding
-                - 'label': Binary label
-        """
-        # Get clip data
-        clip_info = self.clip_data[index]
-        frame_paths = clip_info['frame_paths']
-        clip_start = clip_info['clip_start']
-        clip_end = clip_info['clip_end']
-        label = clip_info['label']
-        
-        # Extract clip frames
-        clip_frame_paths = frame_paths[clip_start:clip_end]
-        
-        # Load frames (as numpy arrays)
-        frames = []
-        for frame_path in clip_frame_paths:
+        frames: List[np.ndarray] = []
+        for path in frame_paths:
             try:
-                image = self.load_rgb(frame_path)
-                frames.append(np.array(image))
-            except Exception as e:
-                print(f"Error loading frame {frame_path}: {e}")
+                img = self.load_rgb(path)          # PIL Image, already resized
+                frames.append(np.array(img))
+            except Exception as exc:
+                print(f"[NeSyDeFake] Failed to load {path}: {exc}")
                 if frames:
-                    frames.append(frames[-1])
+                    frames.append(frames[-1].copy())
                 else:
-                    frames.append(np.zeros((self.resolution, self.resolution, 3), dtype=np.uint8))
-        
-        # Pad if necessary
+                    frames.append(
+                        np.zeros((self.resolution, self.resolution, 3), dtype=np.uint8)
+                    )
+
+        # Should not happen if base class is correct, but pad defensively
         while len(frames) < self.clip_size:
-            if frames:
-                frames.append(frames[-1])
-            else:
-                frames.append(np.zeros((self.resolution, self.resolution, 3), dtype=np.uint8))
+            frames.append(frames[-1].copy() if frames else
+                          np.zeros((self.resolution, self.resolution, 3), dtype=np.uint8))
+
+        return frames[: self.clip_size]
+
+    # ------------------------------------------------------------------ #
+    #  __getitem__                                                          #
+    # ------------------------------------------------------------------ #
+
+    def __getitem__(self, index: int) -> dict:
+        frame_paths = self.image_list[index]
+        label = self.label_list[index]
+
+        # 1. Load Frames
+        frames = self._load_frames(frame_paths)
         
-        frames = frames[:self.clip_size]
-        
-        # Select middle frame
-        mid_idx = len(frames) // 2
-        spatial_frame = frames[mid_idx]
-        
-        # Apply data augmentation with consistent seed
-        augmentation_seed = random.randint(0, 2**32 - 1) if self.mode == 'train' else None
-        
-        # ========== Process Temporal Clip (VideoMAE normalization) ==========
-        temporal_frames = []
+        # 2. Determine Middle Index (Canonical Anchor)
+        middle_idx = (len(frames) - 1) // 2
+
+        # 3. Augment
+        # We augment the full clip to ensure geometric consistency across time
+        aug_seed = random.randint(0, 2 ** 32 - 1) if self.mode == "train" else None
+        augmented_frames = []
+
         for frame in frames:
-            if self.mode == 'train' and self.config['use_data_augmentation']:
-                frame_aug, _, _ = self.data_aug(frame, None, None, augmentation_seed)
+            if self.mode == "train" and self.config["use_data_augmentation"]:
+                # Albumentations handles the copy internally usually, or modifies in place 
+                # but since we are in a loop creating new 'aug_frame' variables, it's safe.
+                aug_frame, _, _ = self.data_aug(frame, None, None, aug_seed)
             else:
-                frame_aug = frame
-            
-            # Convert to tensor and normalize for VideoMAE
-            frame_tensor = self.to_tensor(frame_aug)  # [0, 1]
-            frame_tensor = self.normalize_temporal(frame_tensor)  # ImageNet norm
-            temporal_frames.append(frame_tensor)
+                # OPTIMIZATION: Removed deepcopy. 
+                # 'frame' is treated as read-only until to_tensor converts it.
+                aug_frame = frame 
+            augmented_frames.append(aug_frame)
+
+        # 4. Stream 1: Temporal (VideoMAE)
+        temporal_tensors = []
+        for frame in augmented_frames:
+            t = self.to_tensor(frame) 
+            t = self.normalize_temporal(t)
+            temporal_tensors.append(t)
         
-        temporal_clip = torch.stack(temporal_frames, dim=0)  # (clip_size, C, H, W)
-        
-        # ========== Process Spatial Frame (CLIP/DINOv2 normalization) ==========
-        if self.mode == 'train' and self.config['use_data_augmentation']:
-            spatial_frame_aug, _, _ = self.data_aug(spatial_frame, None, None, augmentation_seed)
-        else:
-            spatial_frame_aug = spatial_frame
-        
-        spatial_tensor = self.to_tensor(spatial_frame_aug)  # [0, 1]
-        spatial_tensor_normalized = self.normalize_spatial(spatial_tensor)  # CLIP/DINOv2 norm
-        
-        # ========== Process Frequency Frame (SRM normalization) ==========
-        frequency_tensor = self.to_tensor(spatial_frame_aug)  # [0, 1]
-        frequency_tensor_normalized = self.normalize_frequency(frequency_tensor)  # 0.5/0.5 or raw
-        
-        # ========== Keep Raw Frame for Semantic Grounding ==========
-        raw_tensor = self.to_tensor(spatial_frame_aug)  # [0, 1] range, no normalization
-        
-        # Extract video name
-        video_name = self._extract_video_name(clip_frame_paths[0], clip_info['video_idx'])
-        
+        # Shape: (T, C, H, W). Check if your model needs (C, T, H, W)!
+        temporal_clip = torch.stack(temporal_tensors, dim=0) 
+
+        # 5. Extract Middle Frame (The Anchor)
+        anchor_frame_tensor = self.to_tensor(augmented_frames[middle_idx])
+
+        # Stream 2: Spatial (CLIP/DINO) - Uses Anchor
+        spatial_frame = self.normalize_spatial(anchor_frame_tensor.clone())
+
+        # Stream 3: Frequency (SRM) - Uses Anchor
+        # We clone because normalize_frequency might modify the tensor
+        frequency_frame = self.normalize_frequency(anchor_frame_tensor.clone())
+
+        # Stream 4: Raw (Semantic) - Uses Anchor
+        # LOGIC FIX: Do not average pixels (prevents motion blur).
+        # We use the raw [0,1] tensor of the middle frame.
+        raw_frame = anchor_frame_tensor # Already [0,1], no normalization
+
+        # Video name (Optional, kept your logic)
+        video_name = self._extract_video_name(frame_paths[0], index)
+
         return {
-            'temporal_clip': temporal_clip,           # (clip_size, C, H, W) - VideoMAE norm
-            'spatial_frame': spatial_tensor_normalized,  # (C, H, W) - CLIP/DINOv2 norm
-            'frequency_frame': frequency_tensor_normalized,  # (C, H, W) - SRM norm
-            'raw_frame': raw_tensor,                  # (C, H, W) - [0,1] for semantic grounding
-            'label': label,
-            'video_name': video_name
+            "temporal_clip":    temporal_clip,
+            "spatial_frame":    spatial_frame,
+            "frequency_frame":  frequency_frame,
+            "raw_frame":        raw_frame,
+            "label":            label,
+            "video_name":       video_name,
         }
-    
-    def _extract_video_name(self, frame_path: str, video_idx: int) -> str:
-        """Extract video name from frame path."""
+
+    # ------------------------------------------------------------------ #
+    #  Helpers                                                              #
+    # ------------------------------------------------------------------ #
+
+    def _extract_video_name(self, frame_path: str, fallback_idx: int) -> str:
+        """Infer video name from the frame path (parent dir of 'frames' folder)."""
         try:
-            if '\\' in frame_path:
-                parts = frame_path.split('\\')
-            else:
-                parts = frame_path.split('/')
-            
-            # Find video name (parent directory of 'frames')
-            if 'frames' in parts:
-                frames_idx = parts.index('frames')
-                return parts[frames_idx - 1]
-            else:
-                return parts[-2] if len(parts) > 1 else f"video_{video_idx}"
-        except:
-            return f"video_{video_idx}"
-    
-    def collate_fn(self, batch):
-        """Custom collate function for batching."""
-        temporal_clips = torch.stack([item['temporal_clip'] for item in batch])  # (B, clip_size, C, H, W)
-        spatial_frames = torch.stack([item['spatial_frame'] for item in batch])  # (B, C, H, W)
-        frequency_frames = torch.stack([item['frequency_frame'] for item in batch])  # (B, C, H, W)
-        raw_frames = torch.stack([item['raw_frame'] for item in batch])  # (B, C, H, W)
-        labels = torch.tensor([item['label'] for item in batch], dtype=torch.long)
-        
-        return {
-            'temporal_clip': temporal_clips,      # For VideoMAE
-            'spatial_frame': spatial_frames,      # For CLIP/DINOv2
-            'frequency_frame': frequency_frames,  # For SRM
-            'raw_frame': raw_frames,              # For semantic grounding
-            'label': labels,
-            'landmark': None,
-            'mask': None,
-        }
-    
-    def __len__(self):
-        """Return the total number of clips (not videos)"""
-        return len(self.clip_data)
-    
+            sep = "\\" if "\\" in frame_path else "/"
+            parts = frame_path.split(sep)
+            if "frames" in parts:
+                return parts[parts.index("frames") - 1]
+            return parts[-2] if len(parts) > 1 else f"video_{fallback_idx}"
+        except Exception:
+            return f"video_{fallback_idx}"
+
+    # ------------------------------------------------------------------ #
+    #  collate_fn                                                           #
+    # ------------------------------------------------------------------ #
+
     @staticmethod
-    def prepare_data_loader(config, mode='train'):
+    def collate_fn(batch: list) -> dict:
+        """Collate a list of sample dicts into batched tensors."""
+        temporal_clips   = torch.stack([s["temporal_clip"]   for s in batch])  # (B, T, C, H, W)
+        spatial_frames   = torch.stack([s["spatial_frame"]   for s in batch])  # (B, C, H, W)
+        frequency_frames = torch.stack([s["frequency_frame"] for s in batch])  # (B, C, H, W)
+        raw_frames       = torch.stack([s["raw_frame"]       for s in batch])  # (B, C, H, W)
+        labels           = torch.tensor([s["label"] for s in batch], dtype=torch.long)
+
+        return {
+            "temporal_clip":   temporal_clips,
+            "spatial_frame":   spatial_frames,
+            "frequency_frame": frequency_frames,
+            "raw_frame":       raw_frames,
+            "label":           labels,
+            # Keep these keys so downstream code that inspects the dict stays happy
+            "landmark":        None,
+            "mask":            None,
+        }
+
+    # ------------------------------------------------------------------ #
+    #  __len__  (delegates to base class; overridden only for clarity)     #
+    # ------------------------------------------------------------------ #
+
+    def __len__(self) -> int:
+        return super().__len__()
+
+    # ------------------------------------------------------------------ #
+    #  DataLoader factory                                                   #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def prepare_data_loader(config: dict, mode: str = "train"):
         """
-        Static method to create data loader for NeSyDeFake.
+        Convenience factory.  Use this instead of constructing DataLoader manually.
         """
         from torch.utils.data import DataLoader
         from torch.utils.data.distributed import DistributedSampler
-        
-        # Create dataset
+
         dataset = NeSyDeFakeDataset(config, mode=mode)
-        
-        # Determine batch size based on mode
-        batch_size = config['train_batchSize'] if mode == 'train' else config['test_batchSize']
-        
-        # Create sampler if using DDP
-        sampler = None
-        shuffle = (mode == 'train')
-        
-        if config.get('ddp', False) and mode == 'train':
+
+        batch_size = config["train_batchSize"] if mode == "train" else config["test_batchSize"]
+        shuffle    = mode == "train"
+        sampler    = None
+
+        if config.get("ddp", False) and mode == "train":
             sampler = DistributedSampler(dataset)
-            shuffle = False  # Sampler handles shuffling
-        
-        # Create data loader
-        data_loader = DataLoader(
+            shuffle = False
+
+        return DataLoader(
             dataset=dataset,
             batch_size=batch_size,
             shuffle=shuffle,
-            num_workers=int(config['workers']),
-            collate_fn=dataset.collate_fn,
+            num_workers=int(config["workers"]),
+            collate_fn=NeSyDeFakeDataset.collate_fn,
             sampler=sampler,
-            pin_memory=True
+            pin_memory=True,
+            drop_last=(mode == "train"),   # avoids incomplete final batch during training
         )
-        
-        return data_loader

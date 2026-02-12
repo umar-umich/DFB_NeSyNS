@@ -9,15 +9,66 @@ dataset_type: nesydefake  # Use custom dataset class
 
 # Module 1: Foundation Model Features
 foundation_models:
+
   temporal:
-    name: videomae
-    model_path: MCG-NJU/videomae-base-finetuned-kinetics  # videomae-base-finetuned-kinetics
-    output_dim: 768
-    freeze_backbone: true  # Set to true for faster training initially
+  # ── Option A: VideoMAE ──────────────────────────────────────────
+  # Classic masked-autoencoder pre-training on Kinetics.
+  # Best for: appearance-based recognition, well-studied baseline.
+  # Expected frames: 16
+ 
+  #   name: videomae
+  #   model_path: MCG-NJU/videomae-base-finetuned-kinetics  # videomae-base-finetuned-kinetics
+  #   output_dim: 768
+  #   freeze_backbone: true  # Set to true for faster training initially
+  #   normalization:
+  #     mean: [0.485, 0.456, 0.406]
+  #     std: [0.229, 0.224, 0.225]
+
+  # model_name: videomae
+  # model_path: MCG-NJU/videomae-base-finetuned-kinetics
+  # output_dim: 768       # base: 768 | large: 1024
+  # freeze_backbone: true
+  # normalization:
+  #   mean: [0.485, 0.456, 0.406]   # ImageNet mean (standard for VideoMAE)
+  #   std:  [0.229, 0.224, 0.225]
+
+  # ── Option B: Perception Encoder (PE Video) ─────────────────────
+  # Meta's Perception Encoder, trained on massive audio-visual data.
+  # Best for: rich spatial-semantic video understanding.
+  # Expected frames: 8  (flexible, 8–16 recommended)
+  #
+  # model_name: perception_encoder
+  # model_path: facebook/pe-av-large
+  # output_dim: 1792
+  # freeze_backbone: true
+  # normalization:
+  #   # PE uses the same ImageNet stats as its ViT vision backbone
+  #   mean: [0.485, 0.456, 0.406]
+  #   std:  [0.229, 0.224, 0.225]
+
+  # ── Option C: V-JEPA 2 (RECOMMENDED) ───────────────────────────
+  # FAIR/Meta world model, pre-trained on >1M hours of video.
+  # SOTA on motion understanding and action anticipation.
+  # 3D-RoPE gives precise spatiotemporal position encoding —
+  # ideal for detecting unnatural facial motion in deepfakes.
+  # Expected frames: 8
+  #
+  # Checkpoint options:
+  #   facebook/vjepa2-vitl-fpc64-256  → output_dim: 1024  (VRAM-friendly)
+  #   facebook/vjepa2-vith-fpc64-256  → output_dim: 1280
+  #   facebook/vjepa2-vitg-fpc64-256  → output_dim: 1408  (strongest)
+  #   facebook/vjepa2-vitg-fpc64-384  → output_dim: 1408  (highest resolution)
+
+    name: vjepa2                          # or videomae / perception_encoder
+    model_path: facebook/vjepa2-vitl-fpc64-256  # ViT-L: output_dim 1024
+    output_dim: 1024
+    freeze_backbone: true
     normalization:
       mean: [0.485, 0.456, 0.406]
       std: [0.229, 0.224, 0.225]
+
     
+  spatial:
   # OPTION 1: DINOv2-Large (RECOMMENDED - Best for deepfakes)
   # spatial:
   #   name: dinov2
@@ -42,16 +93,27 @@ foundation_models:
 
   
   # OPTION 3: EVA-CLIP (Strongest CLIP variant)
-  spatial:
     name: eva_clip
     model_path: EVA02-CLIP-L-14-336   # EVA02-CLIP-E-14-plus
     output_dim: 768
     freeze_backbone: true
     use_image_encoder: true     
+
+    # name: forensic_adapter
+    # model_path: /data/Umar/Repos/DFB_NeSyNS/training/pretrained/f_adapter_ckpt_best.pth   # FA pretrained checkpoint
+    # # ── Must match FA's original training config exactly ──
+    # clip_model_name: ViT-L/14
+    # vit_name: 'vit_tiny_patch16_224'               # e.g. 'vit_base_patch16_224'
+    # num_quires: 128                            # Q forensic query tokens
+    # fusion_map: {1: 1, 2: 8, 3: 15}
+    # mlp_dim: 256
+    # mlp_out_dim: 128
+    # head_num: 16
+    # output_dim: 768
+    # device: cuda
     normalization:
       mean: [0.481, 0.458, 0.408]  # CLIP
       std: [0.269, 0.261, 0.276]
-   
 
   # OPTION 4: CLIP-Large-336 (Good balance)
   # spatial:
@@ -73,6 +135,8 @@ foundation_models:
     normalization:
       mean: [0.5, 0.5, 0.5]
       std: [0.5, 0.5, 0.5]    
+
+  
 # Fusion configuration
 fusion:
   type: concat  # 'concat', 'attention', or 'weighted'
@@ -206,7 +270,7 @@ frame_num:
   test: 64
 
 # Clip configuration for temporal stream
-clip_size: 16  # Each clip has 16 frames
+clip_size: 8  # Each clip has 16 frames
 num_clips_per_video: 32  # Sample 32 clips from 64 frames
 
 # Sampling strategy

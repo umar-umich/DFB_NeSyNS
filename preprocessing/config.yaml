@@ -1,7 +1,7 @@
 preprocess:
   dataset_name: # the name of dataset
     choices: ['FaceForensics++','Celeb-DF-v1', 'Celeb-DF-v2', 'DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV']
-    default: 'FaceForensics++'
+    default: 'Celeb-DF-v1'
   
   dataset_root_path: # the root path to the original dataset
     type: str
@@ -10,7 +10,7 @@ preprocess:
   
   output_root_path: # the root path where preprocessed data will be saved
     type: str
-    default: '/data/Umar/Datasets/preprocessed_fixed_n'
+    default: '/data/Umar/Datasets/preprocessed'
     help: "Directory where all preprocessed frames will be stored (separate from original videos)"
   
   comp: # the compression level of videos, only in the dataset of FaceForensics++.
@@ -19,7 +19,7 @@ preprocess:
   
   mode: # based on the numbers of frame or skip the specific stride of frames.
     choices: ['fixed_num_frames', 'fixed_stride']
-    default: 'fixed_num_frames'
+    default: 'fixed_stride'
   
   stride: # when 'mode' is 'fixed_stride', 'stride' is the number of frames to skip between each frame extracted.
     type: int
@@ -32,7 +32,7 @@ preprocess:
 rearrange:
   dataset_name: # the name of dataset
     choices: ['FaceForensics++', 'DeepFakeDetection', 'Celeb-DF-v1', 'Celeb-DF-v2','DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV','FaceShifter']
-    default: 'Celeb-DF-v2'
+    default: 'Celeb-DF-v1'
   
   dataset_root_path: # the root path to the preprocessed dataset
     type: str
