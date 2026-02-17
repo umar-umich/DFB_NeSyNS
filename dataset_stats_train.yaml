@@ -1,0 +1,158 @@
+basic:
+  actual_clips_per_video: 4.0
+  clip_size: 8
+  expected_clips_per_video: 1
+  num_clips: 14384
+  num_videos: 3596
+  resolution: 224
+batch:
+  batch_size: 32
+  first_batch_label_dist:
+    fake: 32
+    real: 0
+  first_batch_shapes:
+    frequency_frame: !!python/tuple
+    - 32
+    - 3
+    - 224
+    - 224
+    label: !!python/tuple
+    - 32
+    raw_frame: !!python/tuple
+    - 32
+    - 3
+    - 224
+    - 224
+    spatial_frame: !!python/tuple
+    - 32
+    - 3
+    - 224
+    - 224
+    temporal_clip: !!python/tuple
+    - 32
+    - 8
+    - 3
+    - 224
+    - 224
+  num_batches: 450
+  num_workers: 16
+  total_iterations_per_epoch: 450
+distribution:
+  label_distribution:
+    0: 216
+    1: 784
+  label_percentages:
+    0: 21.6
+    1: 78.4
+  num_sampled: 1000
+  unique_videos_sampled: 1
+memory:
+  estimated_dataset_size_gb: 88.72576904296875
+  frequency_per_batch_mb: 18.375
+  raw_per_batch_mb: 18.375
+  spatial_per_batch_mb: 18.375
+  temporal_per_batch_mb: 147.0
+  total_per_batch_gb: 0.1973876953125
+  total_per_batch_mb: 202.125
+sample:
+  samples:
+  - frequency_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    index: 0
+    label: 1
+    raw_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    spatial_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    temporal_shape: !!python/tuple
+    - 8
+    - 3
+    - 224
+    - 224
+    video_name: c23
+  - frequency_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    index: 3595
+    label: 1
+    raw_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    spatial_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    temporal_shape: !!python/tuple
+    - 8
+    - 3
+    - 224
+    - 224
+    video_name: c23
+  - frequency_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    index: 7191
+    label: 1
+    raw_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    spatial_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    temporal_shape: !!python/tuple
+    - 8
+    - 3
+    - 224
+    - 224
+    video_name: c23
+  - frequency_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    index: 10787
+    label: 1
+    raw_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    spatial_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    temporal_shape: !!python/tuple
+    - 8
+    - 3
+    - 224
+    - 224
+    video_name: c23
+  - frequency_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    index: 14383
+    label: 1
+    raw_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    spatial_shape: !!python/tuple
+    - 3
+    - 224
+    - 224
+    temporal_shape: !!python/tuple
+    - 8
+    - 3
+    - 224
+    - 224
+    video_name: c23

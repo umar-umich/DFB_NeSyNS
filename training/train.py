@@ -37,20 +37,21 @@ from logger import create_logger, RankFilter
 from dataset.nesy_defake_dataset import NeSyDeFakeDataset
 
 
-
 parser = argparse.ArgumentParser(description='Process some paths.')
 parser.add_argument('--detector_path', type=str,
                     default='/data/home/zhiyuanyan/DeepfakeBenchv2/training/config/detector/sbi.yaml',
                     help='path to detector YAML file')
 parser.add_argument("--train_dataset", nargs="+")
 parser.add_argument("--test_dataset", nargs="+")
-parser.add_argument('--no-save_ckpt', dest='save_ckpt', action='store_false', default=True)
-parser.add_argument('--no-save_feat', dest='save_feat', action='store_false', default=True)
+parser.add_argument('--no-save_ckpt', dest='save_ckpt',
+                    action='store_false', default=True)
+parser.add_argument('--no-save_feat', dest='save_feat',
+                    action='store_false', default=True)
 parser.add_argument("--ddp", action='store_true', default=False)
 parser.add_argument('--local_rank', type=int, default=0)
-parser.add_argument('--task_target', type=str, default="", help='specify the target of current training task')
+parser.add_argument('--task_target', type=str, default="",
+                    help='specify the target of current training task')
 args = parser.parse_args()
-# torch.cuda.set_device(args.local_rank)
 
 
 def init_seed(config):
@@ -63,11 +64,10 @@ def init_seed(config):
 
 
 def prepare_training_data(config):
-    # In prepare_training_data():
-    if config.get('dataset_type') == 'nesydefake' or config['model_name'] == 'nesydefake_hybrid':
-        return NeSyDeFakeDataset.prepare_data_loader(config, mode='train')    
+    if (config.get('dataset_type') == 'nesydefake'
+            or config['model_name'] == 'nesydefake_hybrid'):
+        return NeSyDeFakeDataset.prepare_data_loader(config, mode='train')
 
-    # Only use the blending dataset class in training
     if 'dataset_type' in config and config['dataset_type'] == 'blend':
         if config['model_name'] == 'facexray':
             train_set = FFBlendDataset(config)
@@ -79,10 +79,9 @@ def prepare_training_data(config):
             train_set = LSDADataset(config, mode='train')
         else:
             raise NotImplementedError(
-                'Only facexray, fwa, sbi, and lsda are currently supported for blending dataset'
-            )
+                'Only facexray, fwa, sbi, and lsda are supported for blending dataset')
     elif 'dataset_type' in config and config['dataset_type'] == 'pair':
-        train_set = pairDataset(config, mode='train')  # Only use the pair dataset class in training
+        train_set = pairDataset(config, mode='train')
     elif 'dataset_type' in config and config['dataset_type'] == 'iid':
         train_set = IIDDataset(config, mode='train')
     elif 'dataset_type' in config and config['dataset_type'] == 'I2G':
@@ -90,96 +89,107 @@ def prepare_training_data(config):
     elif 'dataset_type' in config and config['dataset_type'] == 'lrl':
         train_set = LRLDataset(config, mode='train')
     else:
-        train_set = DeepfakeAbstractBaseDataset(
-                    config=config,
-                    mode='train',
-                )
+        train_set = DeepfakeAbstractBaseDataset(config=config, mode='train')
+
     if config['model_name'] == 'lsda':
         from dataset.lsda_dataset import CustomSampler
-        custom_sampler = CustomSampler(num_groups=2*360, n_frame_per_vid=config['frame_num']['train'], batch_size=config['train_batchSize'], videos_per_group=5)
-        train_data_loader = \
-            torch.utils.data.DataLoader(
-                dataset=train_set,
-                batch_size=config['train_batchSize'],
-                num_workers=int(config['workers']),
-                sampler=custom_sampler, 
-                collate_fn=train_set.collate_fn,
-            )
+        custom_sampler = CustomSampler(
+            num_groups=2 * 360,
+            n_frame_per_vid=config['frame_num']['train'],
+            batch_size=config['train_batchSize'],
+            videos_per_group=5,
+        )
+        train_data_loader = torch.utils.data.DataLoader(
+            dataset=train_set,
+            batch_size=config['train_batchSize'],
+            num_workers=int(config['workers']),
+            sampler=custom_sampler,
+            collate_fn=train_set.collate_fn,
+        )
     elif config['ddp']:
         sampler = DistributedSampler(train_set)
-        train_data_loader = \
-            torch.utils.data.DataLoader(
-                dataset=train_set,
-                batch_size=config['train_batchSize'],
-                num_workers=int(config['workers']),
-                collate_fn=train_set.collate_fn,
-                sampler=sampler
-            )
+        train_data_loader = torch.utils.data.DataLoader(
+            dataset=train_set,
+            batch_size=config['train_batchSize'],
+            num_workers=int(config['workers']),
+            collate_fn=train_set.collate_fn,
+            sampler=sampler,
+        )
     else:
-        train_data_loader = \
-            torch.utils.data.DataLoader(
-                dataset=train_set,
-                batch_size=config['train_batchSize'],
-                shuffle=True,
-                num_workers=int(config['workers']),
-                collate_fn=train_set.collate_fn,
-                )
+        train_data_loader = torch.utils.data.DataLoader(
+            dataset=train_set,
+            batch_size=config['train_batchSize'],
+            shuffle=True,
+            num_workers=int(config['workers']),
+            collate_fn=train_set.collate_fn,
+        )
     return train_data_loader
 
 
 def prepare_testing_data(config):
-
-    """
-    Prepare testing data loaders.
-    Automatically uses NeSyDeFakeDataset for nesydefake_hybrid model.
-    """
-    # Check if this is NeSyDeFake model - use custom dataset
-    if config.get('dataset_type') == 'nesydefake' or config['model_name'] == 'nesydefake_hybrid':
+    if (config.get('dataset_type') == 'nesydefake'
+            or config['model_name'] == 'nesydefake_hybrid'):
         test_data_loaders = {}
         for test_name in config['test_dataset']:
-            # Create a copy of config for this test dataset
             test_config = config.copy()
             test_config['test_dataset'] = test_name
-            
-            # For testing, use uniform sampling for consistency
-            if 'sampling' in test_config:
-                test_config['sampling']['sampling_strategy'] = 'uniform'
-            
-            # Create data loader
-            test_data_loaders[test_name] = NeSyDeFakeDataset.prepare_data_loader(test_config, mode='test')
-        
+            test_set = NeSyDeFakeDataset(test_config, mode='test')
+
+            if config['ddp']:
+                # DistributedSampler so every rank gets a unique shard
+                sampler = DistributedSampler(
+                    test_set, shuffle=False, drop_last=False)
+                test_data_loader = torch.utils.data.DataLoader(
+                    dataset=test_set,
+                    batch_size=config['test_batchSize'],
+                    sampler=sampler,
+                    num_workers=config['workers'],
+                    collate_fn=test_set.collate_fn,
+                )
+            else:
+                test_data_loader = torch.utils.data.DataLoader(
+                    dataset=test_set,
+                    batch_size=config['test_batchSize'],
+                    shuffle=False,
+                    num_workers=config['workers'],
+                    collate_fn=test_set.collate_fn,
+                )
+            test_data_loaders[test_name] = test_data_loader
         return test_data_loaders
 
     def get_test_data_loader(config, test_name):
-        # update the config dictionary with the specific testing dataset
-        config = config.copy()  # create a copy of config to avoid altering the original one
-        config['test_dataset'] = test_name  # specify the current test dataset
+        config = config.copy()
+        config['test_dataset'] = test_name
         if not config.get('dataset_type', None) == 'lrl':
-            test_set = DeepfakeAbstractBaseDataset(
-                    config=config,
-                    mode='test',
+            test_set = DeepfakeAbstractBaseDataset(config=config, mode='test')
+        else:
+            test_set = LRLDataset(config=config, mode='test')
+
+        if config['ddp']:
+            sampler = DistributedSampler(
+                test_set, shuffle=False, drop_last=False)
+            test_data_loader = torch.utils.data.DataLoader(
+                dataset=test_set,
+                batch_size=config['test_batchSize'],
+                sampler=sampler,
+                num_workers=int(config['workers']),
+                collate_fn=test_set.collate_fn,
             )
         else:
-            test_set = LRLDataset(
-                config=config,
-                mode='test',
-            )
-
-        test_data_loader = \
-            torch.utils.data.DataLoader(
+            test_data_loader = torch.utils.data.DataLoader(
                 dataset=test_set,
                 batch_size=config['test_batchSize'],
                 shuffle=False,
                 num_workers=int(config['workers']),
                 collate_fn=test_set.collate_fn,
-                drop_last = (test_name=='DeepFakeDetection'),
+                drop_last=(test_name == 'DeepFakeDetection'),
             )
-
         return test_data_loader
 
     test_data_loaders = {}
     for one_test_name in config['test_dataset']:
-        test_data_loaders[one_test_name] = get_test_data_loader(config, one_test_name)
+        test_data_loaders[one_test_name] = get_test_data_loader(
+            config, one_test_name)
     return test_data_loaders
 
 
@@ -190,28 +200,28 @@ def choose_optimizer(model, config):
             params=model.parameters(),
             lr=config['optimizer'][opt_name]['lr'],
             momentum=config['optimizer'][opt_name]['momentum'],
-            weight_decay=config['optimizer'][opt_name]['weight_decay']
+            weight_decay=config['optimizer'][opt_name]['weight_decay'],
         )
-        return optimizer
     elif opt_name == 'adam':
         optimizer = optim.Adam(
             params=model.parameters(),
             lr=config['optimizer'][opt_name]['lr'],
             weight_decay=config['optimizer'][opt_name]['weight_decay'],
-            betas=(config['optimizer'][opt_name]['beta1'], config['optimizer'][opt_name]['beta2']),
+            betas=(config['optimizer'][opt_name]['beta1'],
+                   config['optimizer'][opt_name]['beta2']),
             eps=config['optimizer'][opt_name]['eps'],
             amsgrad=config['optimizer'][opt_name]['amsgrad'],
         )
-        return optimizer
     elif opt_name == 'sam':
         optimizer = SAM(
-            model.parameters(), 
-            optim.SGD, 
+            model.parameters(),
+            optim.SGD,
             lr=config['optimizer'][opt_name]['lr'],
             momentum=config['optimizer'][opt_name]['momentum'],
         )
     else:
-        raise NotImplementedError('Optimizer {} is not implemented'.format(config['optimizer']))
+        raise NotImplementedError(
+            'Optimizer {} is not implemented'.format(config['optimizer']))
     return optimizer
 
 
@@ -219,80 +229,78 @@ def choose_scheduler(config, optimizer):
     if config['lr_scheduler'] is None:
         return None
     elif config['lr_scheduler'] == 'step':
-        scheduler = optim.lr_scheduler.StepLR(
+        return optim.lr_scheduler.StepLR(
             optimizer,
             step_size=config['lr_step'],
             gamma=config['lr_gamma'],
         )
-        return scheduler
     elif config['lr_scheduler'] == 'cosine':
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        return optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
             T_max=config['lr_T_max'],
             eta_min=config['lr_eta_min'],
         )
-        return scheduler
     elif config['lr_scheduler'] == 'cosine_warmup':
-        # Cosine annealing with warmup
-        from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
-        
+        from torch.optim.lr_scheduler import (
+            CosineAnnealingLR, LinearLR, SequentialLR)
         warmup_epochs = config.get('warmup_epochs', 5)
         total_epochs = config['nEpochs']
-        
-        # Linear warmup scheduler
         warmup_scheduler = LinearLR(
-            optimizer,
-            start_factor=0.1,
-            end_factor=1.0,
-            total_iters=warmup_epochs
-        )
-        
-        # Cosine annealing scheduler
+            optimizer, start_factor=0.1, end_factor=1.0,
+            total_iters=warmup_epochs)
         cosine_scheduler = CosineAnnealingLR(
             optimizer,
             T_max=total_epochs - warmup_epochs,
-            eta_min=config.get('lr_eta_min', 0)
-        )
-        
-        # Combine warmup and cosine
-        scheduler = SequentialLR(
+            eta_min=config.get('lr_eta_min', 0))
+        return SequentialLR(
             optimizer,
             schedulers=[warmup_scheduler, cosine_scheduler],
-            milestones=[warmup_epochs]
-        )
-        return scheduler
+            milestones=[warmup_epochs])
     elif config['lr_scheduler'] == 'linear':
-        scheduler = LinearDecayLR(
-            optimizer,
-            config['nEpochs'],
-            int(config['nEpochs']/4),
-        )
+        return LinearDecayLR(
+            optimizer, config['nEpochs'], int(config['nEpochs'] / 4))
     else:
-        raise NotImplementedError('Scheduler {} is not implemented'.format(config['lr_scheduler']))
+        raise NotImplementedError(
+            'Scheduler {} is not implemented'.format(config['lr_scheduler']))
 
 
 def choose_metric(config):
     metric_scoring = config['metric_scoring']
     if metric_scoring not in ['eer', 'auc', 'acc', 'ap']:
-        raise NotImplementedError('metric {} is not implemented'.format(metric_scoring))
+        raise NotImplementedError(
+            'metric {} is not implemented'.format(metric_scoring))
     return metric_scoring
 
 
 def main():
     local_rank = int(os.environ.get('LOCAL_RANK', 0))
-    # parse options and load config
+
+    # ------------------------------------------------------------------ #
+    #  DDP initialisation FIRST, before any logging or data loading       #
+    # ------------------------------------------------------------------ #
     with open(args.detector_path, 'r') as f:
         config = yaml.safe_load(f)
     with open('./training/config/train_config.yaml', 'r') as f:
         config2 = yaml.safe_load(f)
     if 'label_dict' in config:
-        config2['label_dict']=config['label_dict']
+        config2['label_dict'] = config['label_dict']
     config.update(config2)
     config['local_rank'] = local_rank
+    config['ddp'] = args.ddp
+
+    if config['ddp']:
+        dist.init_process_group(
+            backend='nccl',
+            timeout=timedelta(hours=2),
+        )
+        torch.cuda.set_device(local_rank)
+
+    # ---- dry-run overrides ----
     if config['dry_run']:
         config['nEpochs'] = 0
-        config['save_feat']=False
-    # If arguments are provided, they will overwrite the yaml settings
+        config['save_feat'] = False
+
+    # ---- CLI overrides ----
     if args.train_dataset:
         config['train_dataset'] = args.train_dataset
     if args.test_dataset:
@@ -301,99 +309,94 @@ def main():
     config['save_feat'] = args.save_feat
     if config['lmdb']:
         config['dataset_json_folder'] = 'preprocessing/dataset_json_v3'
-    # create logger
-    timenow=datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-    task_str = f"_{config['task_target']}" if config.get('task_target', None) is not None else ""
-    logger_path =  os.path.join(
-                config['log_dir'],
-                config['model_name'] + task_str + '_' + timenow
-            )
-    os.makedirs(logger_path, exist_ok=True)
+
+    # ---- Logger: create on ALL ranks but filter output to rank 0 ----
+    timenow = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    task_str = (f"_{config['task_target']}"
+                if config.get('task_target', None) else "")
+    logger_path = os.path.join(
+        config['log_dir'],
+        config['model_name'] + task_str + '_' + timenow,
+    )
+    # Only rank 0 creates the directory and log file to avoid race conditions
+    if not config['ddp'] or dist.get_rank() == 0:
+        os.makedirs(logger_path, exist_ok=True)
+    if config['ddp']:
+        dist.barrier()   # ensure dir exists before non-0 ranks proceed
+
     logger = create_logger(os.path.join(logger_path, 'training.log'))
+    if config['ddp']:
+        logger.addFilter(RankFilter(0))
     logger.info('Save log to {}'.format(logger_path))
-    config['ddp']= args.ddp
-    # print configuration
+
     logger.info("--------------- Configuration ---------------")
     params_string = "Parameters: \n"
     for key, value in config.items():
-        params_string += "{}: {}".format(key, value) + "\n"
+        params_string += f"{key}: {value}\n"
     logger.info(params_string)
 
-    # init seed
+    # ---- reproducibility ----
     init_seed(config)
-
-    # set cudnn benchmark if needed
     if config['cudnn']:
         cudnn.benchmark = True
-    # if config['ddp']:
-    #     # dist.init_process_group(backend='gloo')
-    #     dist.init_process_group(
-    #         backend='nccl',
-    #         timeout=timedelta(minutes=30)
-    #     )
-    #     logger.addFilter(RankFilter(0))
-    if config['ddp']:
-        dist.init_process_group(
-            backend='nccl',
-            timeout=timedelta(hours=2)
-        )
-        # Set device AFTER init_process_group
-        torch.cuda.set_device(local_rank)
-        logger.addFilter(RankFilter(0))
-        dist.barrier()
 
-    # prepare the training data loader
+    # ---- data ----
     train_data_loader = prepare_training_data(config)
-
-    # prepare the testing data loader
     test_data_loaders = prepare_testing_data(config)
 
-    # prepare the model (detector)
+    # ---- model ----
     model_class = DETECTOR[config['model_name']]
     model = model_class(config)
 
-    # Add this for DDPf
     if config['ddp']:
         model = model.cuda(local_rank)
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[local_rank],
             output_device=local_rank,
-            find_unused_parameters=True  # Set False if all params are used
+            # Only set True if your model genuinely has unused params;
+            # it adds ~10% overhead per step otherwise.
+            # find_unused_parameters=False,
         )
-    # prepare the optimizer
+
+    # ---- optimizer / scheduler / metric ----
     optimizer = choose_optimizer(model, config)
-
-    # prepare the scheduler
     scheduler = choose_scheduler(config, optimizer)
-
-    # prepare the metric
     metric_scoring = choose_metric(config)
 
-    # prepare the trainer
-    trainer = Trainer(config, model, optimizer, scheduler, logger, metric_scoring, time_now=timenow)
+    # ---- trainer ----
+    trainer = Trainer(config, model, optimizer, scheduler, logger,
+                      metric_scoring, time_now=timenow)
 
-    # start training
+    # ---- training loop ----
+    best_metric = None
     for epoch in range(config['start_epoch'], config['nEpochs'] + 1):
+        # Let the sampler know the epoch for correct shuffling across ranks
+        if config['ddp'] and hasattr(train_data_loader.sampler, 'set_epoch'):
+            train_data_loader.sampler.set_epoch(epoch)
+
         trainer.model.epoch = epoch
         best_metric = trainer.train_epoch(
-                    epoch=epoch,
-                    train_data_loader=train_data_loader,
-                    test_data_loaders=test_data_loaders,
-                )
+            epoch=epoch,
+            train_data_loader=train_data_loader,
+            test_data_loaders=test_data_loaders,
+        )
         if best_metric is not None:
-            logger.info(f"===> Epoch[{epoch}] end with testing {metric_scoring}: {parse_metric_for_print(best_metric)}!")
-    logger.info("Stop Training on best Testing metric {}".format(parse_metric_for_print(best_metric))) 
-    # update
+            logger.info(
+                f"===> Epoch[{epoch}] end with testing "
+                f"{metric_scoring}: {parse_metric_for_print(best_metric)}!")
+
+    logger.info(
+        "Stop Training on best Testing metric {}".format(
+            parse_metric_for_print(best_metric)))
+
     if 'svdd' in config['model_name']:
         model.update_R(epoch)
     if scheduler is not None:
         scheduler.step()
 
-    # close the tensorboard writers
     for writer in trainer.writers.values():
         writer.close()
-
 
 
 if __name__ == '__main__':

@@ -7,6 +7,8 @@ backbone_name: multi_stream  # multi-stream backbone
 # Dataset configuration
 dataset_type: nesydefake  # Use custom dataset class
 
+active_branches: ['temporal']#, 'spatial', 'frequency']
+
 # Module 1: Foundation Model Features
 foundation_models:
 
@@ -111,11 +113,23 @@ foundation_models:
   #   use_image_encoder: true
 
   frequency:
-    name: srm_resnet
-    srm_filters: 30  # Number of SRM filters
-    resnet_depth: 18  # ResNet-18 for frequency domain
-    output_dim: 512
-    freeze_srm: true  # Keep SRM filters fixed
+    name:            spsl          # selects _build_spsl() / _forward_spsl()
+    output_dim:      512           # projection target (2048 → 768 via Linear+LN+GELU)
+    freeze_backbone: true          # freeze Xception weights after loading
+    pretrained:      ./training/pretrained/xception-b5690688.pth
+    backbone_name:   xception
+    backbone_config:
+      mode:        original        # use full Xception, not shallow variant
+      num_classes: 2               # real / fake
+      inc:         4               # conv1 built as 4-ch; pretrained RGB weights are averaged in
+      dropout:     false
+    loss_func:     cross_entropy   # required by SpslDetector.build_loss(); not used for inference
+
+    # name: srm_resnet
+    # srm_filters: 30  # Number of SRM filters
+    # resnet_depth: 18  # ResNet-18 for frequency domain
+    # output_dim: 512
+    # freeze_srm: true  # Keep SRM filters fixed
     normalization:
       mean: [0.5, 0.5, 0.5]
       std: [0.5, 0.5, 0.5]    
@@ -243,15 +257,15 @@ train_dataset: [FaceForensics++]
 test_dataset: [FaceForensics++, Celeb-DF-v2]
 
 compression: c23
-train_batchSize: 40  # Reduced due to larger model
-test_batchSize: 40
+train_batchSize: 32  # Reduced due to larger model
+test_batchSize: 32
 workers: 16
 
 # ===== NEW: Multi-stream sampling configuration =====
 # Total frames per video
 frame_num: 
-  train: 64  # Extract 64 frames per video
-  test: 64
+  train: 32  # Extract 64 frames per video
+  test: 32
 
 # Clip configuration for temporal stream
 clip_size: 8  # Each clip has 16 frames
@@ -278,7 +292,7 @@ with_landmark: false
 video_mode: true
 
 # data augmentation
-use_data_augmentation: true
+use_data_augmentation: false
 data_aug:
   flip_prob: 0.5
   rotate_prob: 0.5
@@ -316,7 +330,7 @@ optimizer:
 # training config
 lr_scheduler: cosine_warmup  # Warmup + cosine decay
 warmup_epochs: 2
-nEpochs: 20
+nEpochs: 50
 start_epoch: 0
 save_epoch: 1
 rec_iter: 100
@@ -343,7 +357,7 @@ training_phases:
     description: "Fine-tune all modules"
     
   phase3:
-    epochs: [10, 20]
+    epochs: [10, 50]
     freeze_modules: []
     train_modules: ['all']
     enable_causal: true
