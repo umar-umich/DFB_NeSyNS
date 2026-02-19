@@ -1,282 +1,356 @@
 """
-Spatial Feature Extractor - Multiple backbone options for deepfake detection
-Supports: CLIP variants, DINOv2, EVA-CLIP, GenD (CLIP/DINOv2/PerceptionEncoder via GenD wrapper)
+networks/nesy_defake/foundation_models/spatial_feature_extractor.py
+====================================================================
+Spatial Feature Extractor — GenD-style Training Regime
+
+WHAT CHANGED AND WHY
+---------------------
+Previous version problems:
+  1. _build_gend() loaded GenD's FINE-TUNED checkpoint (yermandy/GenD_PE_L),
+     then extracted its PerceptionEncoder. Those backbone weights were already
+     adapted by GenD's supervised training — stacking a new projection head on
+     top of an already-opinionated backbone means the new head fights the old
+     signal. Result: slow convergence, poor generalization.
+
+  2. The extractor had its own internal self.projection (Linear→LN→GELU) AND
+     the detector added another spatial_proj on top. Two stacked projection
+     heads, the inner one frozen. Redundant and noisy.
+
+  3. freeze_backbone=True froze EVERYTHING, so nothing learned.
+     freeze_backbone=False unfroze EVERYTHING, so the backbone drifted from
+     ImageNet/LAION pretraining — catastrophic for generalization.
+     Neither option matched the GenD training regime.
+
+GenD's actual training regime (what makes it generalize):
+  - Backbone (CLIP/DINO/PE): FROZEN except LayerNorms
+  - LayerNorms inside the backbone: TRAINABLE (adapts normalization statistics
+    to the deepfake domain without moving the feature manifold)
+  - Linear classification head: TRAINABLE
+  This is why GenD generalizes — the feature manifold stays on the pretrained
+  surface, only the normalization scale/shift adapts.
+
+What this file does instead:
+  - Loads RAW pretrained CLIP (openai/clip-vit-large-patch14) directly,
+    NOT through a fine-tuned GenD checkpoint
+  - Freezes all backbone parameters
+  - Selectively UNFREEZES all LayerNorm weight+bias inside the backbone
+  - Removes the internal self.projection — the detector's spatial_proj is
+    the only projection head, avoiding the double-projection problem
+  - Exposes get_trainable_params() for the optimizer to build correct
+    per-module param groups
+
+Supported backbone names (config key: name):
+  'clip'    — raw CLIP ViT (recommended, matches GenD's best-generalizing variant)
+  'dinov2'  — raw DINOv2 (alternative, excellent fine-grained features)
+  'gend'    — KEPT for compatibility, but now loads raw CLIP from the GenD
+              config's backbone field rather than the fine-tuned head weights
+              NOTE: if you set name=gend, set model_path to the raw CLIP HF id
+              e.g. openai/clip-vit-large-patch14, NOT a GenD checkpoint path.
+
+Config example (in foundation_models.spatial):
+    name:            clip                          # raw backbone, GenD-style training
+    model_path:      openai/clip-vit-large-patch14 # raw HuggingFace id
+    output_dim:      1024                          # backbone_dim — no internal projection
+    freeze_backbone: true                          # always true; LayerNorms still train
+    train_layernorms: true                         # GenD-style: only LNs train in backbone
+    normalization:
+      mean: [0.481, 0.458, 0.408]
+      std:  [0.269, 0.261, 0.276]
 """
+
+import logging
+from typing import Iterator, List, Tuple
 
 import torch
 import torch.nn as nn
-from transformers import (
-    CLIPVisionModel,
-    CLIPProcessor,
-    AutoImageProcessor,
-    Dinov2Model,
-)
+import torch.nn.functional as F
 
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _collect_layernorm_params(module: nn.Module) -> List[nn.Parameter]:
+    """
+    Walk the module tree and collect all parameters that belong to a
+    LayerNorm (or RMSNorm / GroupNorm) layer. These are the only backbone
+    parameters that will be trained under the GenD regime.
+    """
+    ln_types = (nn.LayerNorm, nn.GroupNorm, nn.RMSNorm
+                if hasattr(nn, 'RMSNorm') else nn.LayerNorm)
+    params = []
+    for mod in module.modules():
+        if isinstance(mod, ln_types):
+            for p in mod.parameters(recurse=False):
+                if p.requires_grad:
+                    params.append(p)
+    return params
+
+
+def _freeze_all_except_layernorms(module: nn.Module) -> Tuple[int, int]:
+    """
+    Freeze every parameter in `module` then selectively unfreeze
+    LayerNorm / GroupNorm / RMSNorm weight and bias.
+
+    Returns (total_params, trainable_params) for logging.
+    """
+    # Step 1: freeze everything
+    for p in module.parameters():
+        p.requires_grad = False
+
+    # Step 2: unfreeze LayerNorm-family layers only
+    ln_types = (nn.LayerNorm, nn.GroupNorm)
+    if hasattr(nn, 'RMSNorm'):
+        ln_types = ln_types + (nn.RMSNorm,)
+
+    unfrozen = 0
+    for mod in module.modules():
+        if isinstance(mod, ln_types):
+            for p in mod.parameters(recurse=False):
+                p.requires_grad = True
+                unfrozen += p.numel()
+
+    total = sum(p.numel() for p in module.parameters())
+    return total, unfrozen
+
+
+# ---------------------------------------------------------------------------
+# Main class
+# ---------------------------------------------------------------------------
 
 class SpatialFeatureExtractor(nn.Module):
     """
-    Multi-backbone spatial feature extractor.
+    Spatial feature extractor with GenD-style training regime.
 
-    Supported model names (config key: 'name'):
-      - 'dinov2'     : DINOv2 (best for fine-grained features, excellent generalization)
-      - 'clip'       : CLIP ViT variants (strong semantic understanding)
-      - 'eva_clip'   : EVA-CLIP (largest CLIP variant, excellent features)
-      - 'gend'       : GenD (uses GenD's pretrained feature_extractor — CLIP, DINOv2, or
-                       PerceptionEncoder depending on the checkpoint — strips the
-                       classification head and returns raw backbone features)
+    Key design decisions:
+      1. Loads a RAW pretrained backbone (CLIP, DINOv2) — not a downstream
+         fine-tuned checkpoint.
+      2. Freezes the backbone entirely then selectively unfreezes all
+         LayerNorms inside it (GenD's generalization secret).
+      3. Does NOT add an internal projection head. The detector's
+         spatial_proj is the only projection, eliminating the double-
+         projection problem from the previous version.
+      4. Exposes get_trainable_params() so the optimizer can apply the
+         correct (lower) learning rate to backbone LayerNorms vs the
+         (higher) learning rate to the detector's projection head.
 
-    GenD config example (config['foundation_models']['spatial']):
-        name:            gend
-        model_path:      /path/to/gend_checkpoint   # local dir or HF repo id
-        output_dim:      1024
-        freeze_backbone: true
-
-    The backbone variant (CLIP / DINO / PerceptionEncoder) is determined automatically
-    from the GenD checkpoint's config.backbone field, so no extra config key is needed.
+    Forward input:  (B, C, H, W) — pre-normalized frames
+    Forward output: (B, output_dim) — raw backbone CLS / pooler features
     """
 
-    def __init__(self, config):
+    def __init__(self, config: dict):
         super().__init__()
 
-        spatial_config = config['foundation_models']['spatial']
-        self.model_name = spatial_config.get('name', 'clip')
-        self.model_path = spatial_config['model_path']
-        self.output_dim = spatial_config['output_dim']
-        self.freeze_backbone = spatial_config.get('freeze_backbone', False)
+        spatial_cfg = config['foundation_models']['spatial']
+        self.model_name      = spatial_cfg.get('name', 'clip')
+        self.model_path      = spatial_cfg['model_path']
+        self.output_dim      = spatial_cfg['output_dim']
+        self.freeze_backbone = spatial_cfg.get('freeze_backbone', True)
+        self.train_layernorms = spatial_cfg.get('train_layernorms', True)
 
-        # Get required input size for this model
-        self.required_size = self._get_required_input_size()
-        self.default_input_size = 224
-
-        # Initialize the appropriate backbone
+        # ------------------------------------------------------------------
+        # Build backbone (raw pretrained weights only)
+        # ------------------------------------------------------------------
         self._build_backbone()
 
-        # Add resize layer if the model needs a different resolution than 224
-        if self.required_size != self.default_input_size:
-            print(f"  Adding resize: {self.default_input_size}×{self.default_input_size}"
-                  f" → {self.required_size}×{self.required_size}")
-            self.needs_resize = True
-        else:
-            print(f"  Input size matches: {self.required_size}×{self.required_size}")
-            self.needs_resize = False
-
-        # Projection layer: align backbone dim to desired output dim
+        # Sanity-check: output_dim should match backbone_dim.
+        # The detector's spatial_proj handles the mapping if they differ,
+        # but we warn loudly here because a mismatch usually means the
+        # YAML output_dim is wrong.
         if self.backbone_dim != self.output_dim:
-            self.projection = nn.Sequential(
-                nn.Linear(self.backbone_dim, self.output_dim),
-                nn.LayerNorm(self.output_dim),
-                nn.GELU()
+            logger.warning(
+                f"[SpatialExtractor] backbone_dim={self.backbone_dim} != "
+                f"output_dim={self.output_dim}. The detector's spatial_proj "
+                f"will map {self.backbone_dim}→{self.output_dim}. "
+                f"If this is intentional, ignore. Otherwise fix the YAML."
             )
-        else:
-            self.projection = nn.Identity()
 
+        # ------------------------------------------------------------------
+        # Apply GenD-style freezing
+        # ------------------------------------------------------------------
         if self.freeze_backbone:
-            self._freeze_backbone()
+            if self.train_layernorms:
+                total, unfrozen = _freeze_all_except_layernorms(self.backbone)
+                logger.info(
+                    f"[SpatialExtractor] GenD-style freeze: "
+                    f"{unfrozen:,} / {total:,} backbone params trainable "
+                    f"(LayerNorms only)"
+                )
+            else:
+                # Hard freeze — nothing in backbone trains (not recommended)
+                for p in self.backbone.parameters():
+                    p.requires_grad = False
+                logger.info(
+                    f"[SpatialExtractor] Hard freeze: all backbone params frozen. "
+                    f"Only detector projection head will train."
+                )
+        else:
+            # Full fine-tune — not recommended for generalization
+            logger.warning(
+                "[SpatialExtractor] freeze_backbone=False: full backbone fine-tune. "
+                "This will hurt cross-dataset generalization. "
+                "Consider freeze_backbone=true + train_layernorms=true instead."
+            )
 
-        print(f"Spatial Extractor: {self.model_name} ({self.model_path})")
-        print(f"  Input: {self.default_input_size}×{self.default_input_size}"
-              f" → Model: {self.required_size}×{self.required_size}")
-        print(f"  Backbone dim: {self.backbone_dim} -> Output dim: {self.output_dim}")
-        print(f"  Frozen: {self.freeze_backbone}")
+        # ------------------------------------------------------------------
+        # Resize layer (only added when model needs != 224)
+        # ------------------------------------------------------------------
+        self.required_size = self._get_required_input_size()
+        self.needs_resize   = (self.required_size != 224)
+        if self.needs_resize:
+            logger.info(
+                f"[SpatialExtractor] Will resize 224→{self.required_size} in forward()"
+            )
+
+        logger.info(
+            f"[SpatialExtractor] Ready — backbone={self.model_name}, "
+            f"path={self.model_path}, backbone_dim={self.backbone_dim}, "
+            f"output_dim={self.output_dim}, frozen={self.freeze_backbone}, "
+            f"layernorm_train={self.train_layernorms}"
+        )
 
     # ------------------------------------------------------------------
-    # Input size resolution
+    # Input size map
     # ------------------------------------------------------------------
 
-    def _get_required_input_size(self):
-        """Return the spatial resolution this model expects."""
+    def _get_required_input_size(self) -> int:
         size_map = {
-            # DINOv2
-            'facebook/dinov2-small': 224,
-            'facebook/dinov2-base': 224,
-            'facebook/dinov2-large': 224,
-            'facebook/dinov2-giant': 224,
-            'facebook/dinov2-small-518': 518,
-            'facebook/dinov2-base-518': 518,
-            'facebook/dinov2-large-518': 518,
-            'facebook/dinov2-giant-518': 518,
-
-            # CLIP
-            'openai/clip-vit-base-patch16': 224,
-            'openai/clip-vit-base-patch32': 224,
-            'openai/clip-vit-large-patch14': 224,
-            'openai/clip-vit-large-patch14-336': 336,
+            'openai/clip-vit-base-patch16':           224,
+            'openai/clip-vit-base-patch32':           224,
+            'openai/clip-vit-large-patch14':          224,
+            'openai/clip-vit-large-patch14-336':      336,
             'laion/CLIP-ViT-H-14-laion2B-s32B-b79K': 224,
-
-            # EVA-CLIP
-            'EVA02-CLIP-L-14-336': 336,
-            'EVA02-CLIP-E-14-plus': 224,
-
-            # GenD checkpoints — resolution follows the embedded backbone.
-            # PerceptionEncoder large-336 needs 336; all others default to 224.
-            # Add your checkpoint paths here if they differ from 224.
-            'yermandy/GenD_PE_L': 336,   # PerceptionEncoder large-336 variant
+            'facebook/dinov2-small':                  224,
+            'facebook/dinov2-base':                   224,
+            'facebook/dinov2-large':                  224,
+            'facebook/dinov2-giant':                  224,
         }
         return size_map.get(self.model_path, 224)
 
     # ------------------------------------------------------------------
-    # Backbone construction
+    # Backbone builders — raw pretrained weights ONLY
     # ------------------------------------------------------------------
 
     def _build_backbone(self):
-        if self.model_name == 'dinov2':
-            self._build_dinov2()
-        elif self.model_name == 'clip':
+        name = self.model_name
+        if name in ('clip', 'gend'):
+            # 'gend' now means: use the SAME raw CLIP that GenD uses internally,
+            # but loaded directly — not via a fine-tuned GenD checkpoint.
+            # This is the critical fix: GenD's power comes from the raw CLIP
+            # features + LayerNorm adaptation, not from its fine-tuned weights.
             self._build_clip()
-        elif self.model_name == 'eva_clip':
-            self._build_eva_clip()
-        elif self.model_name == 'gend':
-            self._build_gend()
+        elif name == 'dinov2':
+            self._build_dinov2()
         else:
-            raise ValueError(f"Unknown spatial model: {self.model_name}")
-
-    def _build_dinov2(self):
-        """DINOv2 — self-supervised, excellent fine-grained features."""
-        print("Loading DINOv2...")
-        self.backbone = Dinov2Model.from_pretrained(self.model_path)
-        dino_dims = {
-            'facebook/dinov2-small': 384,
-            'facebook/dinov2-base': 768,
-            'facebook/dinov2-large': 1024,
-            'facebook/dinov2-giant': 1536,
-        }
-        self.backbone_dim = dino_dims.get(self.model_path, 1024)
-        self.processor = AutoImageProcessor.from_pretrained(self.model_path)
-        self.use_processor = True
+            raise ValueError(
+                f"[SpatialExtractor] Unknown backbone name: '{name}'. "
+                f"Choose from: clip, dinov2, gend"
+            )
 
     def _build_clip(self):
-        """CLIP ViT variants — strong semantic understanding."""
-        print(f"Loading CLIP: {self.model_path}...")
+        """
+        Load raw CLIP vision encoder from HuggingFace.
+        Only the vision model is kept; text encoder and projection are discarded.
+        No fine-tuning history — pure pretrained ImageNet/LAION features.
+        """
+        from transformers import CLIPVisionModel
+
+        logger.info(f"[SpatialExtractor] Loading raw CLIP from: {self.model_path}")
         self.backbone = CLIPVisionModel.from_pretrained(self.model_path)
-        self.processor = CLIPProcessor.from_pretrained(self.model_path)
+
         clip_dims = {
-            'openai/clip-vit-base-patch32': 768,
-            'openai/clip-vit-large-patch14': 1024,
-            'openai/clip-vit-large-patch14-336': 1024,
-            'laion/CLIP-ViT-H-14-laion2B-s32B-b79K': 1024,
+            'openai/clip-vit-base-patch16':           768,
+            'openai/clip-vit-base-patch32':           768,
+            'openai/clip-vit-large-patch14':          1024,
+            'openai/clip-vit-large-patch14-336':      1024,
+            'laion/CLIP-ViT-H-14-laion2B-s32B-b79K': 1280,
         }
-        self.backbone_dim = clip_dims.get(self.model_path, 768)
-        self.use_processor = False
+        self.backbone_dim  = clip_dims.get(self.model_path, 1024)
+        self._forward_fn   = self._forward_clip
 
-    def _build_eva_clip(self):
-        """EVA-CLIP — largest CLIP variant. Requires: pip install open_clip_torch"""
-        print("Loading EVA-CLIP...")
-        try:
-            import open_clip
-            eva_models = {
-                'EVA02-CLIP-L-14-336': ('EVA02-L-14-336', 'merged2b_s6b_b61k'),
-                'EVA02-CLIP-E-14-plus': ('EVA02-E-14-plus', 'laion2b_s9b_b144k'),
-            }
-            if self.model_path not in eva_models:
-                raise ValueError(f"Unknown EVA-CLIP model: {self.model_path}")
-            model_name, pretrained = eva_models[self.model_path]
-            model, _, self.processor = open_clip.create_model_and_transforms(
-                model_name, pretrained=pretrained
-            )
-            self.backbone = model.visual
-            eva_dims = {
-                'EVA02-CLIP-L-14-336': 768,
-                'EVA02-CLIP-E-14-plus': 1024,
-            }
-            self.backbone_dim = eva_dims.get(self.model_path, 1024)
-            self.use_processor = True
-        except ImportError:
-            raise ImportError("EVA-CLIP requires: pip install open_clip_torch")
-
-    def _build_gend(self):
+    def _build_dinov2(self):
         """
-        GenD — loads a pretrained GenD checkpoint and extracts its feature_extractor
-        (one of CLIPEncoder, DINOEncoder, or PerceptionEncoder). The classification
-        head is discarded; only the backbone is kept for feature extraction.
-
-        The backbone variant is determined automatically by GenD from its checkpoint
-        config, so no additional config is required here.
-
-        Requires: pip install timm  (only if the checkpoint uses PerceptionEncoder)
+        Load raw DINOv2 from HuggingFace.
+        CLS token output — excellent for fine-grained spatial features.
         """
-        print(f"Loading GenD feature extractor from: {self.model_path}...")
-        try:
-            from networks.nesy_defake.foundation_models.GenD.model import GenD
-        except ImportError:
-            # Fall back to a relative import if the package is not installed
-            from GenD.model import GenD  # type: ignore
+        from transformers import Dinov2Model
 
-        gend_model = GenD.from_pretrained(self.model_path) # , local_files_only=True
+        logger.info(f"[SpatialExtractor] Loading raw DINOv2 from: {self.model_path}")
+        self.backbone = Dinov2Model.from_pretrained(self.model_path)
 
-        # Keep only the feature extractor — the linear classification head is
-        # not needed here; we want raw backbone features for downstream fusion.
-        self.backbone = gend_model.feature_extractor
-        self.backbone_dim = self.backbone.get_features_dim()
-
-        # GenD encoders expect pre-normalized tensors in forward(). Their
-        # preprocess() method is the PIL offline path and is not used here,
-        # since normalization is already handled upstream in the data pipeline.
-        self.use_processor = False
-
-        # Re-check required resolution from the embedded backbone name in case
-        # the checkpoint path wasn't in the size_map above.
-        backbone_name = gend_model.config.backbone.lower()
-        if '336' in backbone_name:
-            self.required_size = 336
-
-        print(f"  GenD backbone: {gend_model.config.backbone}")
-        print(f"  GenD backbone dim: {self.backbone_dim}")
+        dino_dims = {
+            'facebook/dinov2-small':  384,
+            'facebook/dinov2-base':   768,
+            'facebook/dinov2-large':  1024,
+            'facebook/dinov2-giant':  1536,
+        }
+        self.backbone_dim  = dino_dims.get(self.model_path, 1024)
+        self._forward_fn   = self._forward_dinov2
 
     # ------------------------------------------------------------------
-    # Freezing
+    # Trainable parameter helpers
     # ------------------------------------------------------------------
 
-    def _freeze_backbone(self):
-        for param in self.backbone.parameters():
-            param.requires_grad = False
-        print("  ✓ Backbone frozen")
+    def get_trainable_params(self) -> List[nn.Parameter]:
+        """
+        Return only the backbone parameters that should be trained
+        (LayerNorms if train_layernorms=True, all if freeze_backbone=False).
+
+        Used by the optimizer builder in train.py to create per-module
+        param groups with the correct (lower) learning rate for backbone LNs.
+
+        Note: The detector's spatial_proj parameters are NOT included here
+        because they live on the detector, not on this extractor. The
+        optimizer builder should add those separately at a higher LR.
+        """
+        if not self.freeze_backbone:
+            # Full fine-tune: return all backbone params
+            return [p for p in self.backbone.parameters() if p.requires_grad]
+        if self.train_layernorms:
+            # GenD regime: only LayerNorm params
+            return _collect_layernorm_params(self.backbone)
+        # Hard freeze: nothing trains in backbone
+        return []
+
+    def count_trainable_params(self) -> Tuple[int, int]:
+        """Returns (trainable, total) param counts for logging."""
+        trainable = sum(p.numel() for p in self.backbone.parameters() if p.requires_grad)
+        total     = sum(p.numel() for p in self.backbone.parameters())
+        return trainable, total
 
     # ------------------------------------------------------------------
-    # Forward
+    # Forward implementations
     # ------------------------------------------------------------------
+
+    def _forward_clip(self, x: torch.Tensor) -> torch.Tensor:
+        """CLIP pooler_output — the projected CLS embedding. Shape: (B, D)"""
+        outputs = self.backbone(pixel_values=x)
+        return outputs.pooler_output  # (B, backbone_dim)
+
+    def _forward_dinov2(self, x: torch.Tensor) -> torch.Tensor:
+        """DINOv2 CLS token from last hidden state. Shape: (B, D)"""
+        outputs = self.backbone(pixel_values=x)
+        return outputs.last_hidden_state[:, 0]  # (B, backbone_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: (B, C, H, W) — already normalized with the correct stats
+            x: (B, C, H, W) — pre-normalized, values in appropriate range
+                              for the chosen backbone
+
         Returns:
-            (B, output_dim)
+            (B, backbone_dim) — raw backbone features, NO internal projection.
+            The detector's spatial_proj handles dim mapping.
         """
+        # Resize if the backbone expects a different resolution
         if self.needs_resize:
-            x = nn.functional.interpolate(
+            x = F.interpolate(
                 x,
                 size=(self.required_size, self.required_size),
                 mode='bilinear',
                 align_corners=False,
             )
 
-        if self.model_name == 'dinov2':
-            features = self._forward_dinov2(x)
-        elif self.model_name == 'clip':
-            features = self._forward_clip(x)
-        elif self.model_name == 'eva_clip':
-            features = self._forward_eva_clip(x)
-        elif self.model_name == 'gend':
-            features = self._forward_gend(x)
-        else:
-            raise ValueError(f"Unknown spatial model: {self.model_name}")
-
-        return self.projection(features)
-
-    def _forward_dinov2(self, x: torch.Tensor) -> torch.Tensor:
-        outputs = self.backbone(pixel_values=x, output_hidden_states=True)
-        return outputs.last_hidden_state[:, 0]  # CLS token, (B, D)
-
-    def _forward_clip(self, x: torch.Tensor) -> torch.Tensor:
-        outputs = self.backbone(pixel_values=x, output_hidden_states=True)
-        return outputs.pooler_output  # (B, D)
-
-    def _forward_eva_clip(self, x: torch.Tensor) -> torch.Tensor:
-        return self.backbone(x)  # open_clip visual encoder, (B, D)
-
-    def _forward_gend(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        All three GenD encoder types (CLIPEncoder, DINOEncoder, PerceptionEncoder)
-        return (B, D) directly from their forward(), so this is a single unified call.
-        """
-        return self.backbone(x)  # (B, D)
+        return self._forward_fn(x)

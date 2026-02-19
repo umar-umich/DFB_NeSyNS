@@ -102,10 +102,11 @@ foundation_models:
       std:  [0.229, 0.224, 0.225]
 
   spatial:
-    name:            gend
-    model_path:      yermandy/GenD_PE_L
-    output_dim:      1024
-    freeze_backbone: true
+    name:            clip                             # raw backbone, GenD-style
+    model_path:      openai/clip-vit-large-patch14    # raw CLIP, NOT a GenD ckpt
+    output_dim:      1024                             # matches CLIP-L hidden size
+    freeze_backbone: true                             # always true
+    train_layernorms: true                            # KEY: GenD regime — only LNs train
     normalization:
       mean: [0.481, 0.458, 0.408]
       std:  [0.269, 0.261, 0.276]
@@ -253,18 +254,17 @@ loss_func:
 optimizer:
   type: adam
   adam:
-    lr:            0.0001
-    beta1:         0.9
-    beta2:         0.999
-    eps:           0.00000001
-    weight_decay:  0.0005
-    amsgrad:       false
+    lr: 0.0001           # base LR (used as fallback only)
+    beta1: 0.9
+    beta2: 0.999
+    eps: 0.00000001
+    weight_decay: 0.0005
+    amsgrad: false
   module_lr:
-    foundation_models: 0.00005
-    causal_module:     0.0001
-    fusion:            0.0002
-    classifier:        0.0002
-
+    backbone_layernorms: 0.00001   # very low — LNs should adapt slowly
+    projection_heads:    0.0001    # spatial_proj, temporal_proj, freq_proj
+    fusion:              0.0002
+    classifier:          0.0002
 # -----------------------------------------------------------------------------
 # Training schedule
 # -----------------------------------------------------------------------------

@@ -209,46 +209,192 @@ def prepare_testing_data(config):
 
 
 def choose_optimizer(model, config):
-    # TODO: config['optimizer']['module_lr'] defines per-module learning rates
-    # (foundation_models, causal_module, fusion, classifier) but this function
-    # currently uses flat model.parameters(). To enable differential LRs,
-    # replace with param groups:
-    #   optimizer = Adam([
-    #       {'params': model.fusion.parameters(),      'lr': module_lr['fusion']},
-    #       {'params': model.multitaskhead.parameters(),'lr': module_lr['classifier']},
-    #       {'params': model.temporal_extractor.parameters(), 'lr': module_lr['foundation_models']},
-    #       ... etc
-    #   ], lr=base_lr, ...)
-    # This will be implemented in a dedicated optimiser step.
-    opt_name = config['optimizer']['type']
-    if opt_name == 'sgd':
-        optimizer = optim.SGD(
-            params=model.parameters(),
-            lr=config['optimizer'][opt_name]['lr'],
-            momentum=config['optimizer'][opt_name]['momentum'],
-            weight_decay=config['optimizer'][opt_name]['weight_decay'],
-        )
-    elif opt_name == 'adam':
+    """
+    Build an Adam optimizer with per-module learning rate groups.
+
+    Param group strategy (GenD-style):
+      Group 1 — backbone_layernorms : very low LR (1e-5)
+                 Only LayerNorm params inside frozen backbones.
+                 These adapt normalization statistics without moving
+                 the feature manifold. GenD's generalization mechanism.
+
+      Group 2 — projection_heads    : standard LR (1e-4)
+                 temporal_proj, spatial_proj, frequency_proj.
+                 These are new modules — they need to learn from scratch.
+
+      Group 3 — fusion              : standard LR (2e-4)
+                 MultiModalFusion parameters.
+
+      Group 4 — classifier          : standard LR (2e-4)
+                 MultiTaskHead parameters.
+
+    All frozen backbone params (non-LN) are excluded from every group —
+    they have requires_grad=False so optimizer.step() skips them anyway,
+    but explicit exclusion keeps the param group sizes clean for logging.
+    """
+    import torch.optim as optim
+
+    opt_cfg   = config['optimizer']
+    opt_name  = opt_cfg['type']
+    adam_cfg  = opt_cfg['adam']
+    lr_cfg    = opt_cfg.get('module_lr', {})
+
+    # Pull the actual model out of DDP wrapper if needed
+    m = model.module if hasattr(model, 'module') else model
+
+    # ------------------------------------------------------------------
+    # Group 1: Backbone LayerNorm params (GenD regime)
+    # ------------------------------------------------------------------
+    backbone_ln_params = []
+    if hasattr(m, 'spatial_extractor'):
+        backbone_ln_params += m.spatial_extractor.get_trainable_params()
+    if hasattr(m, 'temporal_extractor') and hasattr(m.temporal_extractor, 'get_trainable_params'):
+        backbone_ln_params += m.temporal_extractor.get_trainable_params()
+    if hasattr(m, 'frequency_extractor') and hasattr(m.frequency_extractor, 'get_trainable_params'):
+        backbone_ln_params += m.frequency_extractor.get_trainable_params()
+
+    # Deduplicate (in case any param appears in multiple branches)
+    seen_ids = set()
+    deduplicated_ln = []
+    for p in backbone_ln_params:
+        if id(p) not in seen_ids and p.requires_grad:
+            seen_ids.add(id(p))
+            deduplicated_ln.append(p)
+
+    # ------------------------------------------------------------------
+    # Group 2: Projection heads (always trainable new modules)
+    # ------------------------------------------------------------------
+    proj_params = []
+    for attr in ('temporal_proj', 'spatial_proj', 'frequency_proj'):
+        if hasattr(m, attr):
+            proj_params += [p for p in getattr(m, attr).parameters()
+                            if p.requires_grad and id(p) not in seen_ids]
+            for p in getattr(m, attr).parameters():
+                seen_ids.add(id(p))
+
+    # ------------------------------------------------------------------
+    # Group 3: Fusion
+    # ------------------------------------------------------------------
+    fusion_params = [p for p in m.fusion.parameters()
+                     if p.requires_grad and id(p) not in seen_ids]
+    for p in m.fusion.parameters():
+        seen_ids.add(id(p))
+
+    # ------------------------------------------------------------------
+    # Group 4: Classifier (MultiTaskHead)
+    # ------------------------------------------------------------------
+    cls_params = [p for p in m.multitaskhead.parameters()
+                  if p.requires_grad and id(p) not in seen_ids]
+    for p in m.multitaskhead.parameters():
+        seen_ids.add(id(p))
+
+    # ------------------------------------------------------------------
+    # Optional groups for enabled modules
+    # ------------------------------------------------------------------
+    optional_params = []
+    for attr in ('causal_module', 'sparse_ae', 'semantic_grounding'):
+        if hasattr(m, attr):
+            ps = [p for p in getattr(m, attr).parameters()
+                  if p.requires_grad and id(p) not in seen_ids]
+            optional_params += ps
+            for p in getattr(m, attr).parameters():
+                seen_ids.add(id(p))
+
+    # ------------------------------------------------------------------
+    # Assemble param groups
+    # ------------------------------------------------------------------
+    base_lr = adam_cfg['lr']
+    param_groups = []
+
+    if deduplicated_ln:
+        param_groups.append({
+            'params': deduplicated_ln,
+            'lr':     lr_cfg.get('backbone_layernorms', 1e-5),
+            'name':   'backbone_layernorms',
+        })
+
+    if proj_params:
+        param_groups.append({
+            'params': proj_params,
+            'lr':     lr_cfg.get('projection_heads', base_lr),
+            'name':   'projection_heads',
+        })
+
+    if fusion_params:
+        param_groups.append({
+            'params': fusion_params,
+            'lr':     lr_cfg.get('fusion', base_lr * 2),
+            'name':   'fusion',
+        })
+
+    if cls_params:
+        param_groups.append({
+            'params': cls_params,
+            'lr':     lr_cfg.get('classifier', base_lr * 2),
+            'name':   'classifier',
+        })
+
+    if optional_params:
+        param_groups.append({
+            'params': optional_params,
+            'lr':     base_lr,
+            'name':   'optional_modules',
+        })
+
+    # Log what ended up in each group
+    import logging
+    log = logging.getLogger(__name__)
+    for g in param_groups:
+        count = sum(p.numel() for p in g['params'])
+        log.info(f"  Optimizer group '{g['name']}': {count:,} params @ lr={g['lr']}")
+
+    if opt_name == 'adam':
         optimizer = optim.Adam(
-            params=model.parameters(),
-            lr=config['optimizer'][opt_name]['lr'],
-            weight_decay=config['optimizer'][opt_name]['weight_decay'],
-            betas=(config['optimizer'][opt_name]['beta1'],
-                   config['optimizer'][opt_name]['beta2']),
-            eps=config['optimizer'][opt_name]['eps'],
-            amsgrad=config['optimizer'][opt_name]['amsgrad'],
-        )
-    elif opt_name == 'sam':
-        optimizer = SAM(
-            model.parameters(),
-            optim.SGD,
-            lr=config['optimizer'][opt_name]['lr'],
-            momentum=config['optimizer'][opt_name]['momentum'],
+            param_groups,
+            lr=base_lr,                       # fallback for groups without explicit lr
+            weight_decay=adam_cfg['weight_decay'],
+            betas=(adam_cfg['beta1'], adam_cfg['beta2']),
+            eps=adam_cfg['eps'],
+            amsgrad=adam_cfg['amsgrad'],
         )
     else:
         raise NotImplementedError(
-            'Optimizer {} is not implemented'.format(config['optimizer']))
+            f"Per-module param groups only implemented for adam. Got: {opt_name}. "
+            f"Add SGD/SAM support following the same pattern above."
+        )
+
     return optimizer
+
+# def choose_optimizer(model, config):
+#     opt_name = config['optimizer']['type']
+#     if opt_name == 'sgd':
+#         optimizer = optim.SGD(
+#             params=model.parameters(),
+#             lr=config['optimizer'][opt_name]['lr'],
+#             momentum=config['optimizer'][opt_name]['momentum'],
+#             weight_decay=config['optimizer'][opt_name]['weight_decay'],
+#         )
+#     elif opt_name == 'adam':
+#         optimizer = optim.Adam(
+#             params=model.parameters(),
+#             lr=config['optimizer'][opt_name]['lr'],
+#             weight_decay=config['optimizer'][opt_name]['weight_decay'],
+#             betas=(config['optimizer'][opt_name]['beta1'],
+#                    config['optimizer'][opt_name]['beta2']),
+#             eps=config['optimizer'][opt_name]['eps'],
+#             amsgrad=config['optimizer'][opt_name]['amsgrad'],
+#         )
+#     elif opt_name == 'sam':
+#         optimizer = SAM(
+#             model.parameters(),
+#             optim.SGD,
+#             lr=config['optimizer'][opt_name]['lr'],
+#             momentum=config['optimizer'][opt_name]['momentum'],
+#         )
+#     else:
+#         raise NotImplementedError(
+#             'Optimizer {} is not implemented'.format(config['optimizer']))
+#     return optimizer
 
 
 def choose_scheduler(config, optimizer):
