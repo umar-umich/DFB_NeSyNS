@@ -1,8 +1,8 @@
 # log dir 
-log_dir: /data/Umar/Repos/DFB_NeSyNS/logs_debug/video_baseline
+log_dir: /data/umar/Repos/DFB_NeSyNS/logs_debug/video_baseline
 
 # model setting
-pretrained: /data/Umar/Repos/DFB_NeSyNS/training/pretrained/xception-b5690688.pth   # path to a pre-trained model, if using one
+pretrained: /data/umar/Repos/DFB_NeSyNS/training/pretrained/xception-b5690688.pth   # path to a pre-trained model, if using one
 model_name: xception   # model name
 backbone_name: xception  # backbone name
 

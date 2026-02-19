@@ -51,6 +51,13 @@ parser.add_argument("--ddp", action='store_true', default=False)
 parser.add_argument('--local_rank', type=int, default=0)
 parser.add_argument('--task_target', type=str, default="",
                     help='specify the target of current training task')
+parser.add_argument(    
+    '--active_branches',
+    nargs='+',
+    default=None,
+    help='Override active_branches. E.g. --active_branches temporal spatial'
+    )
+
 args = parser.parse_args()
 
 
@@ -307,13 +314,33 @@ def main():
         config['test_dataset'] = args.test_dataset
     config['save_ckpt'] = args.save_ckpt
     config['save_feat'] = args.save_feat
+    if args.active_branches:
+        config['active_branches'] = args.active_branches
+        fm = config['foundation_models']
+        branch_dims = {
+            'temporal':  fm['temporal']['output_dim'],
+            'spatial':   fm['spatial']['output_dim'],
+            'frequency': fm['frequency']['output_dim'],
+        }
+        config['fusion']['fused_dim'] = sum(
+            branch_dims[b] for b in args.active_branches
+        )
     if config['lmdb']:
         config['dataset_json_folder'] = 'preprocessing/dataset_json_v3'
 
     # ---- Logger: create on ALL ranks but filter output to rank 0 ----
     timenow = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+
     task_str = (f"_{config['task_target']}"
-                if config.get('task_target', None) else "")
+            if config.get('task_target', None) else "")
+    branch_str = '_'.join(
+        b[0].upper() for b in sorted(config.get('active_branches',
+                                                ['temporal', 'spatial', 'frequency']))
+    )
+    task_str = f"{task_str}_branches_{branch_str}"
+
+    # task_str = (f"_{config['task_target']}"
+    #             if config.get('task_target', None) else "")
     logger_path = os.path.join(
         config['log_dir'],
         config['model_name'] + task_str + '_' + timenow,

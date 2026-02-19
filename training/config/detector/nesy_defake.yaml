@@ -1,5 +1,5 @@
 # log dir 
-log_dir: /data/Umar/Repos/DFB_NeSyNS/logs_debug/nesydefake_hybrid
+log_dir: /data/umar/Repos/DFB_NeSyNS/logs_debug/nesydefake_hybrid
   
 model_name: nesydefake_hybrid
 backbone_name: multi_stream  # multi-stream backbone
@@ -257,8 +257,8 @@ train_dataset: [FaceForensics++]
 test_dataset: [FaceForensics++, Celeb-DF-v2]
 
 compression: c23
-train_batchSize: 32  # Reduced due to larger model
-test_batchSize: 32
+train_batchSize: 128  # Reduced due to larger model
+test_batchSize: 128
 workers: 16
 
 # ===== NEW: Multi-stream sampling configuration =====
@@ -330,7 +330,7 @@ optimizer:
 # training config
 lr_scheduler: cosine_warmup  # Warmup + cosine decay
 warmup_epochs: 2
-nEpochs: 50
+nEpochs: 10
 start_epoch: 0
 save_epoch: 1
 rec_iter: 100
