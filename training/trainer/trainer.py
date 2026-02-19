@@ -2,6 +2,16 @@
 # email: zhiyuanyan@link.cuhk.edu.cn
 # date: 2023-03-30
 # description: trainer (OPTIMIZED FOR DDP - all GPUs used for testing)
+#
+# Step 4 changes:
+#   - train_step: added mixed_precision (autocast + GradScaler) support.
+#     Activated via config['mixed_precision']=true. Was in YAML but silently
+#     ignored before — now wired up correctly.
+#   - train_step: added gradient clipping via config['grad_clip'].
+#     Was in YAML (grad_clip: 1.0) but silently ignored before.
+#     Applied AFTER scaler.unscale_() so clipping operates on true gradients.
+#   - No other functional changes. All data_dict key access, DDP logic,
+#     metric gathering, and checkpoint saving are unchanged.
 
 import os
 import sys
@@ -25,6 +35,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn import DataParallel
 from torch.utils.tensorboard import SummaryWriter
+from torch.cuda.amp import autocast, GradScaler
 from metrics.base_metrics_class import Recorder
 from torch.optim.swa_utils import AveragedModel, SWALR
 from torch import distributed as dist
@@ -68,14 +79,12 @@ def all_gather_numpy(local_array: np.ndarray) -> np.ndarray:
     the concatenated result.  Works for 1-D and N-D arrays.
     """
     tensor = torch.from_numpy(local_array).cuda()
-    # Exchange sizes first so we can handle uneven splits
     local_size = torch.tensor([tensor.shape[0]], dtype=torch.long, device='cuda')
     all_sizes = [torch.zeros(1, dtype=torch.long, device='cuda')
                  for _ in range(get_world_size())]
     dist.all_gather(all_sizes, local_size)
     max_size = max(s.item() for s in all_sizes)
 
-    # Pad to max_size so all_gather works with equal-sized tensors
     if tensor.shape[0] < max_size:
         pad_shape = list(tensor.shape)
         pad_shape[0] = max_size - tensor.shape[0]
@@ -85,7 +94,6 @@ def all_gather_numpy(local_array: np.ndarray) -> np.ndarray:
     gathered = [torch.zeros_like(tensor) for _ in range(get_world_size())]
     dist.all_gather(gathered, tensor)
 
-    # Trim padding and concatenate
     result = np.concatenate([
         g.cpu().numpy()[:all_sizes[i].item()]
         for i, g in enumerate(gathered)
@@ -109,19 +117,45 @@ class Trainer(object):
             raise ValueError(
                 "config, model, optimizer, logger must be implemented")
 
-        self.config = config
-        self.model = model
-        self.optimizer = optimizer
-        self.scheduler = scheduler
-        self.swa_model = swa_model
-        self.writers = {}
-        self.logger = logger
+        self.config       = config
+        self.model        = model
+        self.optimizer    = optimizer
+        self.scheduler    = scheduler
+        self.swa_model    = swa_model
+        self.writers      = {}
+        self.logger       = logger
         self.metric_scoring = metric_scoring
         self.best_metrics_all_time = defaultdict(
             lambda: defaultdict(
                 lambda: float('-inf') if self.metric_scoring != 'eer' else float('inf')
             )
         )
+
+        # ── Mixed precision setup ─────────────────────────────────────────
+        # Activated when config['mixed_precision']=true.
+        # GradScaler is per-Trainer so it accumulates scale history correctly
+        # across epochs. SAM optimizer is excluded — SAM's two-step process
+        # is incompatible with GradScaler; fall back to full precision there.
+        self.use_amp = (
+            config.get('mixed_precision', False)
+            and config['optimizer']['type'] != 'sam'
+            and torch.cuda.is_available()
+        )
+        self.scaler = GradScaler(enabled=self.use_amp)
+        if self.use_amp:
+            logger.info("Mixed precision (AMP) enabled — using autocast + GradScaler")
+        else:
+            logger.info(
+                f"Mixed precision disabled "
+                f"(mixed_precision={config.get('mixed_precision', False)}, "
+                f"optimizer={config['optimizer']['type']})"
+            )
+
+        # ── Gradient clipping ─────────────────────────────────────────────
+        self.grad_clip = config.get('grad_clip', None)
+        if self.grad_clip:
+            logger.info(f"Gradient clipping enabled — max_norm={self.grad_clip}")
+
         self.speed_up()
 
         self.timenow = time_now
@@ -157,7 +191,6 @@ class Trainer(object):
         return self.writers[writer_key]
 
     def _tb_scalar(self, phase, dataset_key, metric_key, tag, value, step):
-        """Safe wrapper – silently skips if not rank 0."""
         writer = self.get_writer(phase, dataset_key, metric_key)
         if writer is not None:
             writer.add_scalar(tag, value, global_step=step)
@@ -191,14 +224,12 @@ class Trainer(object):
                 "=> no model found at '{}'".format(model_path))
 
     def save_ckpt(self, phase, dataset_key, ckpt_info=None):
-        """Only rank 0 writes to disk."""
         if not is_main_process():
             return
         save_dir = os.path.join(self.log_dir, phase, dataset_key)
         os.makedirs(save_dir, exist_ok=True)
         save_path = os.path.join(save_dir, "ckpt_best.pth")
         if self.config['ddp']:
-            # Unwrap DDP to save the underlying module weights
             torch.save(self.model.module.state_dict(), save_path)
         else:
             if 'svdd' in self.config['model_name']:
@@ -255,12 +286,32 @@ class Trainer(object):
     # ------------------------------------------------------------------
 
     def train_step(self, data_dict):
+        """
+        Single training step with optional mixed precision and gradient clipping.
+
+        Mixed precision (AMP):
+          - Wraps forward + loss in autocast() for fp16 compute.
+          - Uses GradScaler to handle fp16 gradient scaling safely.
+          - Disabled for SAM optimizer (incompatible with two-step process).
+          - Controlled by config['mixed_precision'] and self.use_amp.
+
+        Gradient clipping:
+          - Applied after scaler.unscale_() so clipping operates on true
+            (unscaled) gradients, not the fp16-scaled ones.
+          - Uses config['grad_clip'] as max_norm (L2 norm).
+          - Skipped if grad_clip is None or 0.
+
+        SAM optimizer:
+          - Two-step process unchanged from original.
+          - No AMP or grad_clip applied (SAM handles its own gradient logic).
+        """
         if self.config['optimizer']['type'] == 'sam':
+            # SAM: two-step process, no AMP (incompatible)
             for i in range(2):
                 predictions = self.model(data_dict)
                 losses = self.model.get_losses(data_dict, predictions)
                 if i == 0:
-                    pred_first = predictions
+                    pred_first  = predictions
                     losses_first = losses
                 self.optimizer.zero_grad()
                 losses['overall'].backward()
@@ -269,30 +320,44 @@ class Trainer(object):
                 else:
                     self.optimizer.second_step(zero_grad=True)
             return losses_first, pred_first
+
         else:
-            predictions = self.model(data_dict)
-            if isinstance(self.model, DDP):
-                losses = self.model.module.get_losses(data_dict, predictions)
-            else:
-                losses = self.model.get_losses(data_dict, predictions)
+            # Standard step with optional AMP + grad clipping
+            with autocast(enabled=self.use_amp):
+                predictions = self.model(data_dict)
+                if isinstance(self.model, DDP):
+                    losses = self.model.module.get_losses(data_dict, predictions)
+                else:
+                    losses = self.model.get_losses(data_dict, predictions)
+
             self.optimizer.zero_grad()
-            losses['overall'].backward()
-            self.optimizer.step()
+            # Scale loss and backward
+            self.scaler.scale(losses['overall']).backward()
+
+            # Unscale before clipping so we clip true gradients, not scaled ones
+            self.scaler.unscale_(self.optimizer)
+            if self.grad_clip:
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), max_norm=self.grad_clip)
+
+            # scaler.step() skips the update if gradients contain inf/nan
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+
             return losses, predictions
 
     def train_epoch(self, epoch, train_data_loader, test_data_loaders=None):
         self.logger.info("===> Epoch[{}] start!".format(epoch))
-        times_per_epoch = 1 #2 if epoch >= 1 else 1
-        test_step = len(train_data_loader) // times_per_epoch
-        step_cnt = epoch * len(train_data_loader)
+        times_per_epoch = 1
+        test_step  = len(train_data_loader) // times_per_epoch
+        step_cnt   = epoch * len(train_data_loader)
 
-        # Only rank 0 saves the data_dict
         if is_main_process():
             data_dict = train_data_loader.dataset.data_dict
             self.save_data_dict(
                 'train', data_dict, ','.join(self.config['train_dataset']))
 
-        train_recorder_loss = defaultdict(Recorder)
+        train_recorder_loss   = defaultdict(Recorder)
         train_recorder_metric = defaultdict(Recorder)
 
         for iteration, data_dict in tqdm(
@@ -323,7 +388,6 @@ class Trainer(object):
             for name, value in losses.items():
                 train_recorder_loss[name].update(value)
 
-            # Logging – rank 0 only
             if iteration % 300 == 0 and is_main_process():
                 if (self.config.get('SWA', False) and (
                         epoch > self.config.get('swa_start', 0)
@@ -359,17 +423,13 @@ class Trainer(object):
                 for recorder in train_recorder_metric.values():
                     recorder.clear()
 
-            # ----- testing -----
             if (step_cnt + 1) % test_step == 0 and test_data_loaders is not None:
-                # ALL ranks participate in testing (distributed inference)
                 self.logger.info("===> Test start!")
                 test_best_metric = self.test_epoch(
                     epoch, iteration, test_data_loaders, step_cnt)
-                # Barrier is inside test_epoch; nothing extra needed here.
 
             step_cnt += 1
 
-        # End-of-epoch barrier
         synchronize()
         return test_best_metric
 
@@ -390,11 +450,12 @@ class Trainer(object):
         """
         Each rank processes its own shard (via DistributedSampler).
         Returns local numpy arrays; caller gathers across ranks.
+        Inference also runs under autocast for consistency + speed.
         """
         test_recorder_loss = defaultdict(Recorder)
-        prediction_lists = []
-        feature_lists = []
-        label_lists = []
+        prediction_lists   = []
+        feature_lists      = []
+        label_lists        = []
 
         for i, data_dict in enumerate(data_loader):
             if 'label_spe' in data_dict:
@@ -406,7 +467,7 @@ class Trainer(object):
                     data_dict[key] = data_dict[key].cuda()
 
             predictions = self.inference(data_dict)
-            label_lists  += list(data_dict['label'].cpu().detach().numpy())
+            label_lists      += list(data_dict['label'].cpu().detach().numpy())
             prediction_lists += list(predictions['prob'].cpu().detach().numpy())
             feature_lists    += list(predictions['feat'].cpu().detach().numpy())
 
@@ -424,10 +485,6 @@ class Trainer(object):
                 np.array(feature_lists))
 
     def _gather_test_results(self, preds, labels, feats):
-        """
-        Gather local arrays from all ranks onto all ranks.
-        Only meaningful when DDP is active; otherwise returns inputs unchanged.
-        """
         if not self.config['ddp']:
             return preds, labels, feats
         preds_all  = all_gather_numpy(preds)
@@ -437,7 +494,6 @@ class Trainer(object):
 
     def save_best(self, epoch, iteration, step,
                   losses_one_dataset_recorder, key, metric_one_dataset):
-        """Only rank 0 should call this."""
         best_metric = self.best_metrics_all_time[key].get(
             self.metric_scoring,
             float('-inf') if self.metric_scoring != 'eer' else float('inf')
@@ -496,22 +552,18 @@ class Trainer(object):
         keys = list(test_data_loaders.keys())
 
         for key in keys:
-            # ---- rank 0 saves the data_dict ----
             if is_main_process():
                 data_dict_meta = test_data_loaders[key].dataset.data_dict
                 self.save_data_dict('test', data_dict_meta, key)
 
-            # ---- ALL ranks run inference on their shard ----
             self.logger.info(f"Testing on {key}...")
             (losses_local, preds_local,
              labels_local, feats_local) = self.test_one_dataset(
                 test_data_loaders[key])
 
-            # ---- Gather results from all ranks ----
             preds_all, labels_all, _ = self._gather_test_results(
                 preds_local, labels_local, feats_local)
 
-            # ---- Only rank 0 computes metrics and saves ----
             if is_main_process():
                 img_names = test_data_loaders[key].dataset.data_dict['image']
                 metric_one_dataset = get_test_metrics(
@@ -535,17 +587,14 @@ class Trainer(object):
                     self.save_best(epoch, iteration, step,
                                    losses_local, key, metric_one_dataset)
 
-            # Sync after each dataset so all ranks stay in lockstep
             synchronize()
 
-        # ---- Average metrics (rank 0 only) ----
         if is_main_process() and len(keys) > 0 and self.config.get('save_avg', False):
             for k in avg_metric:
                 if k != 'dataset_dict':
                     avg_metric[k] /= len(keys)
             self.save_best(epoch, iteration, step, None, 'avg', avg_metric)
 
-        # Final sync before returning to training
         synchronize()
 
         self.logger.info('===> Test Done!')
@@ -553,5 +602,7 @@ class Trainer(object):
 
     @torch.no_grad()
     def inference(self, data_dict):
-        predictions = self.model(data_dict, inference=True)
+        # Run inference under autocast for speed consistency with training
+        with autocast(enabled=self.use_amp):
+            predictions = self.model(data_dict, inference=True)
         return predictions

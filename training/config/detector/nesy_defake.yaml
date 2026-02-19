@@ -1,386 +1,325 @@
-# log dir 
+# =============================================================================
+# NeSyDeFake Hybrid Detector — Configuration
+# =============================================================================
+# Changelog (Step 2 cleanup):
+#   - Removed: clip_size=8 (was for old sub-clip splitting, now 32 = segment_size)
+#   - Removed: num_clips_per_video (meaningless after full-segment dataset rewrite)
+#   - Removed: sampling block (sliding_window / overlap logic no longer used)
+#   - Fixed:   sparse_features.input_dim 256→1024 to match projection_dim
+#   - Added:   balance_classes toggle (WeightedRandomSampler from Step 1)
+#   - Added:   video_mode: true explicitly at top level
+#   - Cleaned: temporal/spatial foundation_model comment blocks (options as 1-liners)
+#   - Note:    fused_dim below is a documentation hint only — build_backbone()
+#              patches it at runtime from active_branches × branch output_dims
+# =============================================================================
+
 log_dir: /data/umar/Repos/DFB_NeSyNS/logs_debug/nesydefake_hybrid
-  
+
 model_name: nesydefake_hybrid
-backbone_name: multi_stream  # multi-stream backbone
+backbone_name: multi_stream
 
-# Dataset configuration
-dataset_type: nesydefake  # Use custom dataset class
+# -----------------------------------------------------------------------------
+# Dataset
+# -----------------------------------------------------------------------------
+dataset_type: nesydefake
 
-active_branches: ['temporal']#, 'spatial', 'frequency']
+# Ablation control — override at CLI with: --active_branches temporal spatial
+# All foundation model configs below must stay even when a branch is inactive,
+# because ablation runs re-enable them without touching this file.
+active_branches: ['temporal']   # options: temporal | spatial | frequency
 
-# Module 1: Foundation Model Features
+train_dataset: [FaceForensics++]
+test_dataset:  [FaceForensics++, Celeb-DF-v2]
+all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
+                DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
+                DeeperForensics-1.0, UADFV]
+
+compression: c23
+
+# -----------------------------------------------------------------------------
+# Video / frame configuration
+# -----------------------------------------------------------------------------
+video_mode: true          # always true — we operate on full video segments
+frame_num:
+  train: 32               # full 32-frame segment per video (DeepfakeBench standard)
+  test:  32
+
+# clip_size must equal frame_num so the base class delivers one entry per video
+# with all frames — no internal sub-clip splitting.
+clip_size: 32
+
+resolution:    224
+with_mask:     false
+with_landmark: false
+
+# -----------------------------------------------------------------------------
+# Data loading & augmentation
+# -----------------------------------------------------------------------------
+train_batchSize: 32   # reduced from 128 — each sample is now (32, 3, 224, 224)×3 branches
+test_batchSize:  32
+workers:         8
+
+use_data_augmentation: false   # set true to enable online augmentation
+balance_classes:       false   # set true to enable WeightedRandomSampler
+
+data_aug:
+  flip_prob:        0.5
+  rotate_prob:      0.5
+  rotate_limit:     [-10, 10]
+  blur_prob:        0.5
+  blur_limit:       [3, 7]
+  brightness_prob:  0.5
+  brightness_limit: [-0.1, 0.1]
+  contrast_limit:   [-0.1, 0.1]
+  quality_lower:    40
+  quality_upper:    100
+
+# Global normalization fallback (per-branch norms are set in foundation_models)
+mean: [0.5, 0.5, 0.5]
+std:  [0.5, 0.5, 0.5]
+
+# -----------------------------------------------------------------------------
+# Foundation Models (all three must remain defined for ablation compatibility)
+# -----------------------------------------------------------------------------
+# Input to all branches: (B, T=32, C=3, H=224, W=224)
+# Each branch applies its own learnable Linear(raw_dim → projection_dim)
+# before fusion. The detector handles this — the dataset just delivers tensors.
+#
+# Commented options (one-liners for reference):
+#   temporal:  videomae (768) | perception_encoder (1792) | vjepa2-vitl (1024) ✓
+#   spatial:   dinov2-large (1024) | dinov2-giant (1536) | eva_clip (768) | gend (1024) ✓
+#   frequency: spsl/xception (512) ✓ | srm_resnet (512)
+
 foundation_models:
 
   temporal:
-  # ── Option A: VideoMAE ──────────────────────────────────────────
-  # Classic masked-autoencoder pre-training on Kinetics.
-  # Best for: appearance-based recognition, well-studied baseline.
-  # Expected frames: 16
- 
-  #   name: videomae
-  #   model_path: MCG-NJU/videomae-base-finetuned-kinetics  # videomae-base-finetuned-kinetics
-  #   output_dim: 768
-  #   freeze_backbone: true  # Set to true for faster training initially
-  #   normalization:
-  #     mean: [0.485, 0.456, 0.406]
-  #     std: [0.229, 0.224, 0.225]
-
-  # model_name: videomae
-  # model_path: MCG-NJU/videomae-base-finetuned-kinetics
-  # output_dim: 768       # base: 768 | large: 1024
-  # freeze_backbone: true
-  # normalization:
-  #   mean: [0.485, 0.456, 0.406]   # ImageNet mean (standard for VideoMAE)
-  #   std:  [0.229, 0.224, 0.225]
-
-  # ── Option B: Perception Encoder (PE Video) ─────────────────────
-  # Meta's Perception Encoder, trained on massive audio-visual data.
-  # Best for: rich spatial-semantic video understanding.
-  # Expected frames: 8  (flexible, 8–16 recommended)
-  #
-  # model_name: perception_encoder
-  # model_path: facebook/pe-av-large
-  # output_dim: 1792
-  # freeze_backbone: true
-  # normalization:
-  #   # PE uses the same ImageNet stats as its ViT vision backbone
-  #   mean: [0.485, 0.456, 0.406]
-  #   std:  [0.229, 0.224, 0.225]
-
-  # ── Option C: V-JEPA 2 (RECOMMENDED) ───────────────────────────
-  # FAIR/Meta world model, pre-trained on >1M hours of video.
-  # SOTA on motion understanding and action anticipation.
-  # 3D-RoPE gives precise spatiotemporal position encoding —
-  # ideal for detecting unnatural facial motion in deepfakes.
-  # Expected frames: 8
-  #
-  # Checkpoint options:
-  #   facebook/vjepa2-vitl-fpc64-256  → output_dim: 1024  (VRAM-friendly)
-  #   facebook/vjepa2-vith-fpc64-256  → output_dim: 1280
-  #   facebook/vjepa2-vitg-fpc64-256  → output_dim: 1408  (strongest)
-  #   facebook/vjepa2-vitg-fpc64-384  → output_dim: 1408  (highest resolution)
-
-    name: vjepa2                          # or videomae / perception_encoder
-    model_path: facebook/vjepa2-vitl-fpc64-256  # ViT-L: output_dim 1024
-    output_dim: 1024
+    name:            vjepa2
+    model_path:      facebook/vjepa2-vitl-fpc64-256
+    output_dim:      1024
     freeze_backbone: true
     normalization:
       mean: [0.485, 0.456, 0.406]
-      std: [0.229, 0.224, 0.225]
+      std:  [0.229, 0.224, 0.225]
 
-    
   spatial:
-  # OPTION 1: DINOv2-Large (RECOMMENDED - Best for deepfakes)
-  #   name: dinov2
-  #   model_path: facebook/dinov2-large
-  #   output_dim: 1024
-  #   freeze_backbone: true  # Fine-tune for best performance
-  #   use_image_encoder: true
-  #   normalization:
-  #     mean: [0.485, 0.456, 0.406]  # ImageNet for DINOv2
-  #     std: [0.229, 0.224, 0.225]
-  
-  # OPTION 2: DINOv2-Giant (Most powerful, if you have 48GB GPUs)
-  #   name: dinov2
-  #   model_path: facebook/dinov2-giant
-  #   output_dim: 1536
-  #   freeze_backbone: true
-  #   use_image_encoder: true
-  #   normalization:
-  #     mean: [0.485, 0.456, 0.406]  # ImageNet for DINOv2
-  #     std: [0.229, 0.224, 0.225]
-
-    # name: eva_clip
-    # model_path: EVA02-CLIP-L-14-336   # EVA02-CLIP-E-14-plus
-    # output_dim: 768
-    # freeze_backbone: true
-    # use_image_encoder: true     
-
-    name: gend
-    model_path: yermandy/GenD_PE_L   # or a local path
-    output_dim: 1024
+    name:            gend
+    model_path:      yermandy/GenD_PE_L
+    output_dim:      1024
     freeze_backbone: true
     normalization:
-      mean: [0.481, 0.458, 0.408]  # CLIP
-      std: [0.269, 0.261, 0.276]
-
-  # OPTION 4: CLIP-Large-336 (Good balance)
-  #   name: clip
-  #   model_path: openai/clip-vit-large-patch14-336
-  #   output_dim: 1024
-  #   freeze_backbone: true
-  #   use_image_encoder: true
+      mean: [0.481, 0.458, 0.408]
+      std:  [0.269, 0.261, 0.276]
 
   frequency:
-    name:            spsl          # selects _build_spsl() / _forward_spsl()
-    output_dim:      512           # projection target (2048 → 768 via Linear+LN+GELU)
-    freeze_backbone: true          # freeze Xception weights after loading
+    name:            spsl
+    output_dim:      512
+    freeze_backbone: true
     pretrained:      ./training/pretrained/xception-b5690688.pth
     backbone_name:   xception
     backbone_config:
-      mode:        original        # use full Xception, not shallow variant
-      num_classes: 2               # real / fake
-      inc:         4               # conv1 built as 4-ch; pretrained RGB weights are averaged in
+      mode:        original
+      num_classes: 2
+      inc:         4
       dropout:     false
-    loss_func:     cross_entropy   # required by SpslDetector.build_loss(); not used for inference
-
-    # name: srm_resnet
-    # srm_filters: 30  # Number of SRM filters
-    # resnet_depth: 18  # ResNet-18 for frequency domain
-    # output_dim: 512
-    # freeze_srm: true  # Keep SRM filters fixed
+    loss_func:       cross_entropy
     normalization:
       mean: [0.5, 0.5, 0.5]
-      std: [0.5, 0.5, 0.5]    
+      std:  [0.5, 0.5, 0.5]
 
-  
-# Fusion configuration
+# -----------------------------------------------------------------------------
+# Fusion
+# -----------------------------------------------------------------------------
+# fused_dim below is a DOCUMENTATION HINT only.
+# build_backbone() always patches it at runtime:
+#   fused_dim = sum(branch output_dims for active branches)
+# Current active example: temporal only → fused_dim = 1024 (patched at runtime)
+# All branches active:                  → fused_dim = 1024+1024+512 = 2560
 fusion:
-  type: concat  # 'concat', 'attention', or 'weighted'
-  fused_dim: 2048  # 768 + 768 + 512
-  projection_dim: 1024  # Project to this dimension after fusion
-  dropout: 0.3
+  type:           concat
+  fused_dim:      2560    # patched at runtime by build_backbone() — do not rely on this value
+  projection_dim: 1024    # all branch projections map to this dim before fusion
+  dropout:        0.3
 
-# Module 2: Semantic Grounding (Expert Grounding - Explicit)
+# -----------------------------------------------------------------------------
+# Module 2: Semantic Grounding
+# -----------------------------------------------------------------------------
 semantic_grounding:
-  enabled: false  # Enable DeepFace-based semantic extraction
-  
-  # DeepFace configuration
-  detector_backend: retinaface  # Options: 'opencv', 'ssd', 'mtcnn', 'retinaface', 'mediapipe'
-  
-  # Which semantic attributes to extract
-  extract_age: true      # Age estimation (0-100, normalized)
-  extract_gender: true   # Gender classification (Man/Woman probabilities)
-  extract_emotion: true  # Emotion recognition (7 emotions: angry, disgust, fear, happy, sad, surprise, neutral)
-  extract_race: false    # Race classification (optional, may be controversial)
-  
-  # Feature fusion
-  fuse_with_features: true  # Combine explicit concepts with implicit features
-  
-  # Batch processing
-  batch_process: true  # Process multiple faces at once
-  enforce_detection: false  # If true, fail if no face detected; if false, use default values
+  enabled: false
+  detector_backend:   retinaface
+  extract_age:        true
+  extract_gender:     true
+  extract_emotion:    true
+  extract_race:       false
+  fuse_with_features: true
+  batch_process:      true
+  enforce_detection:  false
 
-# Module 3: Causal Discovery + Reasoning
+# -----------------------------------------------------------------------------
+# Module 3: Causal Discovery
+# NOTE: training_phases.phase3 enables this — set enabled=true there
+#       or toggle here when ready to run causal experiments.
+# OPEN QUESTION (to resolve before enabling):
+#   Causal discovery operates on fused video-level features (post-fusion),
+#   not per-frame. This is the correct level — deepfake causality violations
+#   (lighting, temporal coherence) are video-level phenomena, not frame-level.
+# -----------------------------------------------------------------------------
 causal_module:
   enabled: false
-  
-  # Feature preparation
+
   latent_variables:
-    z_spatial_dim: 64
-    z_temporal_dim: 64
-    z_frequency_dim: 32
-    total_latent_dim: 160  # 64 + 64 + 32
-    
+    z_spatial_dim:    64
+    z_temporal_dim:   64
+    z_frequency_dim:  32
+    total_latent_dim: 160   # 64 + 64 + 32
+
   semantic_concepts:
-    # Explicit semantic variables to discover
-    concepts: ['emotion', 'expression_intensity', 'lighting_consistency', 
-               'temporal_coherence', 'boundary_sharpness', 'color_consistency', 
+    concepts: ['emotion', 'expression_intensity', 'lighting_consistency',
+               'temporal_coherence', 'boundary_sharpness', 'color_consistency',
                'texture_authenticity']
     concept_dim: 7
-    
-  # Causal discovery algorithm
+
   discovery:
-    algorithm: structural_causal_circuits  # Options: 'pc', 'notears', 'structural_causal_circuits', 'hybrid'
-    max_parents: 3  # Maximum parents per node in DAG
+    algorithm:       structural_causal_circuits
+    max_parents:     3
     sparsity_penalty: 0.01
-    
-  # Causal reasoning
+
   reasoning:
-    intervention_queries: true  # Enable P(Y | do(X=x))
-    counterfactual_detection: true
-    consistency_loss_weight: 1.0
-    
-  # DAG learning parameters
+    intervention_queries:      true
+    counterfactual_detection:  true
+    consistency_loss_weight:   1.0
+
   dag_learning:
-    hidden_dim: 128
-    num_layers: 3
-    learning_rate: 0.001
-    dag_penalty_weight: 0.1  # Acyclicity constraint weight
-    
-# Module 4: Sparse Monosemantic Features (Optional, can be disabled)
+    hidden_dim:          128
+    num_layers:          3
+    learning_rate:       0.001
+    dag_penalty_weight:  0.1
+
+# -----------------------------------------------------------------------------
+# Module 4: Sparse Monosemantic Features
+# -----------------------------------------------------------------------------
 sparse_features:
   enabled: false
   sparse_autoencoder:
-    input_dim: 256  # From projection
-    expansion_factor: 4  # Expand to 4096 dimensions
-    sparsity_penalty: 0.05
-    l1_coefficient: 0.001
-    target_active_features: 50  # Only ~50 features active
-    
+    input_dim:              1024   # must match fusion.projection_dim (was wrong: 256)
+    expansion_factor:       4
+    sparsity_penalty:       0.05
+    l1_coefficient:         0.001
+    target_active_features: 50
   discovered_features:
-    # These will be learned during training
     save_interpretations: true
-    top_k_features: 10  # Track top-10 most important features
+    top_k_features:       10
 
-# Module 5: Final Classifier (Multi-task)
+# -----------------------------------------------------------------------------
+# Module 5: Multi-task Classifier
+# -----------------------------------------------------------------------------
 classifier:
-  type: multi_task
-  input_dim: 1024  # From fusion or sparse features
-  
-  tasks:
-    - name: classification
-      type: binary
-      output_dim: 2
-      loss_weight: 1.0
-      
-    - name: uncertainty
-      type: regression
-      output_dim: 1  # Entropy-based uncertainty
-      loss_weight: 0.5
-      
-    - name: violation_score
-      type: regression
-      output_dim: 1  # Causal violation score
-      loss_weight: 0.3
-      
-  hidden_dims: [512, 256]
-  dropout: 0.4
+  type:       multi_task
+  input_dim:  1024   # matches fusion.projection_dim
 
-# Combined loss function
+  tasks:
+    - name:        classification
+      type:        binary
+      output_dim:  2
+      loss_weight: 1.0
+    - name:        uncertainty
+      type:        regression
+      output_dim:  1
+      loss_weight: 0.5
+    - name:        violation_score
+      type:        regression
+      output_dim:  1
+      loss_weight: 0.3
+
+  hidden_dims: [512, 256]
+  dropout:     0.4
+
+# -----------------------------------------------------------------------------
+# Loss function
+# -----------------------------------------------------------------------------
 loss_func:
-  classification: cross_entropy
-  probabilistic_circuits: expected_calibration_error  # For Module 2 (if enabled)
-  causal_consistency: violation_penalty
-  sparse_penalty: l1_norm
-  
+  classification:         cross_entropy
+  probabilistic_circuits: expected_calibration_error
+  causal_consistency:     violation_penalty
+  sparse_penalty:         l1_norm
   weights:
     classification: 1.0
-    uncertainty: 0.5
-    causal: 0.3
-    sparse: 0.1
+    uncertainty:    0.5
+    causal:         0.3
+    sparse:         0.1
 
-# dataset
-all_dataset: [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter, DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC, DeeperForensics-1.0, UADFV]
-train_dataset: [FaceForensics++]
-test_dataset: [FaceForensics++, Celeb-DF-v2]
-
-compression: c23
-train_batchSize: 128  # Reduced due to larger model
-test_batchSize: 128
-workers: 16
-
-# ===== NEW: Multi-stream sampling configuration =====
-# Total frames per video
-frame_num: 
-  train: 32  # Extract 64 frames per video
-  test: 32
-
-# Clip configuration for temporal stream
-clip_size: 8  # Each clip has 16 frames
-num_clips_per_video: 32  # Sample 32 clips from 64 frames
-
-# Sampling strategy
-sampling:
-  # Strategy: 'sliding_window', 'uniform', or 'random'
-  # - sliding_window: Maximum coverage with overlap (recommended for training)
-  # - uniform: Evenly spaced clips (good for testing)
-  # - random: Random sampling (data augmentation)
-  sampling_strategy: sliding_window
-  
-  # Overlap ratio for sliding window (0.0 = no overlap, 0.5 = 50% overlap)
-  overlap_ratio: 0.5  # With clip_size=16, stride=8
-  
-  # Which frame to use from each clip for spatial/frequency features
-  # Options: 'middle', 'first', 'last', 'random'
-  spatial_frame_selection: middle  # Use middle frame of each clip
-
-resolution: 224
-with_mask: false
-with_landmark: false
-video_mode: true
-
-# data augmentation
-use_data_augmentation: false
-data_aug:
-  flip_prob: 0.5
-  rotate_prob: 0.5
-  rotate_limit: [-10, 10]
-  blur_prob: 0.5
-  blur_limit: [3, 7]
-  brightness_prob: 0.5
-  brightness_limit: [-0.1, 0.1]
-  contrast_limit: [-0.1, 0.1]
-  quality_lower: 40
-  quality_upper: 100
-
-# mean and std for normalization
-mean: [0.5, 0.5, 0.5]
-std: [0.5, 0.5, 0.5]
-
-# optimizer config
+# -----------------------------------------------------------------------------
+# Optimizer
+# -----------------------------------------------------------------------------
 optimizer:
   type: adam
   adam:
-    lr: 0.0001  # Lower learning rate for stability
-    beta1: 0.9
-    beta2: 0.999
-    eps: 0.00000001
-    weight_decay: 0.0005
-    amsgrad: false
-  
-  # Separate learning rates for different modules
+    lr:            0.0001
+    beta1:         0.9
+    beta2:         0.999
+    eps:           0.00000001
+    weight_decay:  0.0005
+    amsgrad:       false
   module_lr:
-    foundation_models: 0.00005  # Lower for pretrained models
-    causal_module: 0.0001
-    fusion: 0.0002
-    classifier: 0.0002
+    foundation_models: 0.00005
+    causal_module:     0.0001
+    fusion:            0.0002
+    classifier:        0.0002
 
-# training config
-lr_scheduler: cosine_warmup  # Warmup + cosine decay
-warmup_epochs: 2
-nEpochs: 10
-start_epoch: 0
-save_epoch: 1
-rec_iter: 100
-logdir: ./logs
-manualSeed: 1024
-save_ckpt: true
-save_feat: true
+# -----------------------------------------------------------------------------
+# Training schedule
+# -----------------------------------------------------------------------------
+lr_scheduler:   cosine_warmup
+warmup_epochs:  2
+nEpochs:        10
+start_epoch:    0
+save_epoch:     1
+rec_iter:       100
+logdir:         ./logs
+manualSeed:     1024
+save_ckpt:      true
+save_feat:      true
+grad_clip:      1.0
 
-# Gradient clipping for stability
-grad_clip: 1.0
-
-# Training phases (progressive training strategy)
+# Training phases — progressive unfreezing strategy.
+# phase3 enables causal discovery; set causal_module.enabled=true when ready.
 training_phases:
   phase1:
-    epochs: [0, 5]
-    freeze_modules: ['foundation_models']
-    train_modules: ['fusion', 'classifier']
-    description: "Warm up fusion and classifier"
-    
+    epochs:        [0, 5]
+    freeze_modules: [foundation_models]
+    train_modules:  [fusion, classifier]
+    description:   "Warm up fusion and classifier with frozen backbones"
   phase2:
-    epochs: [5, 10]
+    epochs:        [5, 10]
     freeze_modules: []
-    train_modules: ['all']
-    description: "Fine-tune all modules"
-    
+    train_modules:  [all]
+    description:   "Fine-tune all active modules"
   phase3:
-    epochs: [10, 50]
+    epochs:        [10, 50]
     freeze_modules: []
-    train_modules: ['all']
-    enable_causal: true
-    description: "Enable causal discovery and reasoning"
+    train_modules:  [all]
+    enable_causal:  true
+    description:   "Enable causal discovery — set causal_module.enabled=true"
 
-# metric
-metric_scoring: auc
-additional_metrics: ['acc', 'eer', 'ap', 'uncertainty_calibration']
+# -----------------------------------------------------------------------------
+# Metrics & interpretability
+# -----------------------------------------------------------------------------
+metric_scoring:     auc
+additional_metrics: [acc, eer, ap, uncertainty_calibration]
 
-# Interpretability
 interpretability:
-  save_attention_maps: true
-  save_causal_graphs: true
+  save_attention_maps:      true
+  save_causal_graphs:       true
   save_feature_activations: true
-  visualization_frequency: 500  # Every N iterations
+  visualization_frequency:  500
 
-# cuda
-cuda: true
-cudnn: true
-mixed_precision: true  # Use automatic mixed precision for faster training
+# -----------------------------------------------------------------------------
+# Hardware
+# -----------------------------------------------------------------------------
+cuda:            true
+cudnn:           true
+mixed_precision: true
 
-# Checkpointing
 checkpoint:
   save_best_only: false
-  monitor: val_auc
-  mode: max
+  monitor:        val_auc
+  mode:           max

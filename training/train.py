@@ -2,6 +2,13 @@
 # email: zhiyuanyan@link.cuhk.edu.cn
 # date: 2023-03-30
 # description: training code.
+#
+# Step 4 changes:
+#   - CLI active_branches fused_dim patch: was sum(raw_branch_dims), now
+#     projection_dim × num_active_branches (aligned with Step 3 detector).
+#   - Added balance_classes startup log line.
+#   - Added TODO for per-module learning rates (module_lr in YAML is defined
+#     but choose_optimizer() uses flat model.parameters() — pre-existing gap).
 
 import os
 import argparse
@@ -51,12 +58,12 @@ parser.add_argument("--ddp", action='store_true', default=False)
 parser.add_argument('--local_rank', type=int, default=0)
 parser.add_argument('--task_target', type=str, default="",
                     help='specify the target of current training task')
-parser.add_argument(    
+parser.add_argument(
     '--active_branches',
     nargs='+',
     default=None,
     help='Override active_branches. E.g. --active_branches temporal spatial'
-    )
+)
 
 args = parser.parse_args()
 
@@ -71,6 +78,8 @@ def init_seed(config):
 
 
 def prepare_training_data(config):
+    # NeSyDeFake path — uses our custom dataset with full-segment loading,
+    # balance_classes sampler, and DDP sampler all handled internally.
     if (config.get('dataset_type') == 'nesydefake'
             or config['model_name'] == 'nesydefake_hybrid'):
         return NeSyDeFakeDataset.prepare_data_loader(config, mode='train')
@@ -143,7 +152,6 @@ def prepare_testing_data(config):
             test_set = NeSyDeFakeDataset(test_config, mode='test')
 
             if config['ddp']:
-                # DistributedSampler so every rank gets a unique shard
                 sampler = DistributedSampler(
                     test_set, shuffle=False, drop_last=False)
                 test_data_loader = torch.utils.data.DataLoader(
@@ -201,6 +209,17 @@ def prepare_testing_data(config):
 
 
 def choose_optimizer(model, config):
+    # TODO: config['optimizer']['module_lr'] defines per-module learning rates
+    # (foundation_models, causal_module, fusion, classifier) but this function
+    # currently uses flat model.parameters(). To enable differential LRs,
+    # replace with param groups:
+    #   optimizer = Adam([
+    #       {'params': model.fusion.parameters(),      'lr': module_lr['fusion']},
+    #       {'params': model.multitaskhead.parameters(),'lr': module_lr['classifier']},
+    #       {'params': model.temporal_extractor.parameters(), 'lr': module_lr['foundation_models']},
+    #       ... etc
+    #   ], lr=base_lr, ...)
+    # This will be implemented in a dedicated optimiser step.
     opt_name = config['optimizer']['type']
     if opt_name == 'sgd':
         optimizer = optim.SGD(
@@ -283,7 +302,7 @@ def main():
     local_rank = int(os.environ.get('LOCAL_RANK', 0))
 
     # ------------------------------------------------------------------ #
-    #  DDP initialisation FIRST, before any logging or data loading       #
+    #  Config loading                                                      #
     # ------------------------------------------------------------------ #
     with open(args.detector_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -295,6 +314,9 @@ def main():
     config['local_rank'] = local_rank
     config['ddp'] = args.ddp
 
+    # ------------------------------------------------------------------ #
+    #  DDP initialisation                                                  #
+    # ------------------------------------------------------------------ #
     if config['ddp']:
         dist.init_process_group(
             backend='nccl',
@@ -314,42 +336,41 @@ def main():
         config['test_dataset'] = args.test_dataset
     config['save_ckpt'] = args.save_ckpt
     config['save_feat'] = args.save_feat
+
+    # ---- active_branches CLI override ----
+    # Step 3 fix: fused_dim = projection_dim × num_active_branches.
+    # Previously used sum(raw_branch_dims) which was wrong after per-branch
+    # projection heads were added. build_backbone() also patches this at model
+    # init, but we set it here so config inspection before model construction
+    # (e.g. logger printout) shows the correct value.
     if args.active_branches:
         config['active_branches'] = args.active_branches
-        fm = config['foundation_models']
-        branch_dims = {
-            'temporal':  fm['temporal']['output_dim'],
-            'spatial':   fm['spatial']['output_dim'],
-            'frequency': fm['frequency']['output_dim'],
-        }
-        config['fusion']['fused_dim'] = sum(
-            branch_dims[b] for b in args.active_branches
-        )
+        proj_dim = config['fusion']['projection_dim']
+        config['fusion']['fused_dim'] = proj_dim * len(args.active_branches)
+
     if config['lmdb']:
         config['dataset_json_folder'] = 'preprocessing/dataset_json_v3'
 
-    # ---- Logger: create on ALL ranks but filter output to rank 0 ----
-    timenow = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-
+    # ------------------------------------------------------------------ #
+    #  Logger                                                              #
+    # ------------------------------------------------------------------ #
+    timenow  = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     task_str = (f"_{config['task_target']}"
-            if config.get('task_target', None) else "")
+                if config.get('task_target', None) else "")
     branch_str = '_'.join(
         b[0].upper() for b in sorted(config.get('active_branches',
-                                                ['temporal', 'spatial', 'frequency']))
+                                                 ['temporal', 'spatial', 'frequency']))
     )
     task_str = f"{task_str}_branches_{branch_str}"
 
-    # task_str = (f"_{config['task_target']}"
-    #             if config.get('task_target', None) else "")
     logger_path = os.path.join(
         config['log_dir'],
         config['model_name'] + task_str + '_' + timenow,
     )
-    # Only rank 0 creates the directory and log file to avoid race conditions
     if not config['ddp'] or dist.get_rank() == 0:
         os.makedirs(logger_path, exist_ok=True)
     if config['ddp']:
-        dist.barrier()   # ensure dir exists before non-0 ranks proceed
+        dist.barrier()
 
     logger = create_logger(os.path.join(logger_path, 'training.log'))
     if config['ddp']:
@@ -362,16 +383,34 @@ def main():
         params_string += f"{key}: {value}\n"
     logger.info(params_string)
 
-    # ---- reproducibility ----
+    # ---- Key runtime values for quick sanity check in logs ----
+    logger.info("--------------- Runtime Summary ---------------")
+    logger.info(f"  active_branches  : {config.get('active_branches')}")
+    logger.info(f"  frame_num        : {config['frame_num']}")
+    logger.info(f"  clip_size        : {config.get('clip_size')} (== frame_num, full segment)")
+    logger.info(f"  projection_dim   : {config['fusion']['projection_dim']}")
+    logger.info(f"  fused_dim        : {config['fusion']['fused_dim']} (patched at runtime by build_backbone)")
+    logger.info(f"  balance_classes  : {config.get('balance_classes', False)}")
+    logger.info(f"  use_data_aug     : {config.get('use_data_augmentation', False)}")
+    logger.info(f"  train_batchSize  : {config['train_batchSize']}")
+    logger.info(f"  mixed_precision  : {config.get('mixed_precision', False)}")
+
+    # ------------------------------------------------------------------ #
+    #  Reproducibility                                                     #
+    # ------------------------------------------------------------------ #
     init_seed(config)
     if config['cudnn']:
         cudnn.benchmark = True
 
-    # ---- data ----
+    # ------------------------------------------------------------------ #
+    #  Data                                                                #
+    # ------------------------------------------------------------------ #
     train_data_loader = prepare_training_data(config)
     test_data_loaders = prepare_testing_data(config)
 
-    # ---- model ----
+    # ------------------------------------------------------------------ #
+    #  Model                                                               #
+    # ------------------------------------------------------------------ #
     model_class = DETECTOR[config['model_name']]
     model = model_class(config)
 
@@ -381,24 +420,26 @@ def main():
             model,
             device_ids=[local_rank],
             output_device=local_rank,
-            # Only set True if your model genuinely has unused params;
-            # it adds ~10% overhead per step otherwise.
-            # find_unused_parameters=False,
         )
 
-    # ---- optimizer / scheduler / metric ----
-    optimizer = choose_optimizer(model, config)
-    scheduler = choose_scheduler(config, optimizer)
+    # ------------------------------------------------------------------ #
+    #  Optimizer / scheduler / metric                                      #
+    # ------------------------------------------------------------------ #
+    optimizer     = choose_optimizer(model, config)
+    scheduler     = choose_scheduler(config, optimizer)
     metric_scoring = choose_metric(config)
 
-    # ---- trainer ----
+    # ------------------------------------------------------------------ #
+    #  Trainer                                                             #
+    # ------------------------------------------------------------------ #
     trainer = Trainer(config, model, optimizer, scheduler, logger,
                       metric_scoring, time_now=timenow)
 
-    # ---- training loop ----
+    # ------------------------------------------------------------------ #
+    #  Training loop                                                       #
+    # ------------------------------------------------------------------ #
     best_metric = None
     for epoch in range(config['start_epoch'], config['nEpochs'] + 1):
-        # Let the sampler know the epoch for correct shuffling across ranks
         if config['ddp'] and hasattr(train_data_loader.sampler, 'set_epoch'):
             train_data_loader.sampler.set_epoch(epoch)
 
