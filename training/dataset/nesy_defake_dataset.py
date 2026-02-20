@@ -87,13 +87,23 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         # ── Sanity report ─────────────────────────────────────────────────
         real_count = sum(1 for l in self.label_list if l == 0)
         fake_count = sum(1 for l in self.label_list if l == 1)
+
+        aug_active = (
+            mode == 'train' and self.config.get('use_data_augmentation', False)
+        )
+        balance_active = (
+            mode == 'train' and self.config.get('balance_classes', False)
+        )
+
         print(
             f"\n{'='*60}"
             f"\nNeSyDeFakeDataset [{mode}]"
-            f"\n  Total segments : {len(self.image_list)}"
-            f"\n  Segment length : {self.segment_size} frames"
-            f"\n  Real / Fake    : {real_count} / {fake_count}"
-            f"\n  Resolution     : {self.resolution}×{self.resolution}"
+            f"\n  Total segments    : {len(self.image_list)}"
+            f"\n  Segment length    : {self.segment_size} frames"
+            f"\n  Real / Fake       : {real_count} / {fake_count}"
+            f"\n  Resolution        : {self.resolution}×{self.resolution}"
+            f"\n  Augmentation      : {'ON' if aug_active else 'OFF'}"
+            f"\n  Balanced sampling : {'ON' if balance_active else 'OFF'}"
             f"\n{'='*60}\n"
         )
 

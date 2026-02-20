@@ -58,14 +58,16 @@ mkdir -p "${LOG_DIR}"
 # ── Experiment definitions ────────────────────────────────────────────────────
 # Format: "TAG|branch1 branch2 ..."
 declare -a EXPERIMENTS=(
-    "S_F|spatial frequency"
+    "F|frequency"
 )
     # "T|temporal"
     # "S|spatial"
     # "F|frequency"
     # "T_S|temporal spatial"
     # "T_F|temporal frequency"
+    # "S_F|spatial frequency"
     # "T_S_F|temporal spatial frequency"
+
 
 # ── Helper: run one experiment ────────────────────────────────────────────────
 run_experiment() {
@@ -105,6 +107,7 @@ run_experiment() {
 
     elif [[ "$MODE" == "ddp" ]]; then
         # ── Multi-GPU DDP ─────────────────────────────────────────────────
+        TORCH_DISTRIBUTED_DEBUG=DETAIL 
         CUDA_VISIBLE_DEVICES="${GPUS}" \
         TF_USE_LEGACY_KERAS=1 \
         $TORCHRUN \

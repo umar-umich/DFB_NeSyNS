@@ -348,6 +348,59 @@ class Trainer(object):
 
     def train_epoch(self, epoch, train_data_loader, test_data_loaders=None):
         self.logger.info("===> Epoch[{}] start!".format(epoch))
+
+        # ── Phase transition (GenD-style progressive unfreezing) ──────────
+        # Must run BEFORE the iteration loop so the entire epoch trains with
+        # the correct frozen/unfrozen state and correct optimizer param groups.
+        #
+        # Phase 1 (epochs 0→phase2_start): backbone fully frozen, only
+        #   backbone LayerNorms + projection heads + fusion + classifier train.
+        # Phase 2 (epochs phase2_start→end): backbone LayerNorms explicitly
+        #   re-confirmed unfrozen (they already are from phase1, but calling
+        #   unfreeze_layernorms() is idempotent and re-logs for clarity).
+        #   Optimizer is rebuilt so any param that became requires_grad=True
+        #   between epochs is actually in a param group.
+        #
+        # We do NOT call unfreeze_full() — that would destroy pretrained
+        # representations. LayerNorm-only is the GenD generalization regime.
+        phases = self.config.get('training_phases', {})
+        phase2 = phases.get('phase2', {})
+        phase2_start = phase2.get('epochs', [None, None])[0]
+
+        if phase2_start is not None and epoch == phase2_start:
+            self.logger.info(
+                f"===> Phase 2 transition at epoch {epoch}: "
+                f"unfreezing backbone LayerNorms across all active branches."
+            )
+            # Unwrap DDP to access the actual model attributes
+            m = self.model.module if isinstance(self.model, DDP) else self.model
+
+            for attr in ('temporal_extractor', 'spatial_extractor', 'frequency_extractor'):
+                extractor = getattr(m, attr, None)
+                if extractor is None:
+                    continue
+                if hasattr(extractor, 'unfreeze_layernorms'):
+                    n_unfrozen = extractor.unfreeze_layernorms()
+                    self.logger.info(
+                        f"  {attr}: {n_unfrozen:,} LayerNorm params unfrozen"
+                    )
+                else:
+                    self.logger.warning(
+                        f"  {attr}: no unfreeze_layernorms() method — skipping. "
+                        f"Add it following the GenD-style extractor pattern."
+                    )
+
+            # Rebuild optimizer so newly unfrozen params are in a param group.
+            # Without this, their gradients are computed but silently discarded
+            # because Adam has no state for them yet.
+            from training.train import choose_optimizer, choose_scheduler
+            self.optimizer = choose_optimizer(self.model, self.config)
+            self.scheduler = choose_scheduler(self.config, self.optimizer)
+            self.logger.info(
+                "  Optimizer and scheduler rebuilt with updated param groups."
+            )
+
+        # ── Rest of train_epoch unchanged ─────────────────────────────────
         times_per_epoch = 1
         test_step  = len(train_data_loader) // times_per_epoch
         step_cnt   = epoch * len(train_data_loader)
@@ -493,7 +546,7 @@ class Trainer(object):
         return preds_all, labels_all, feats_all
 
     def save_best(self, epoch, iteration, step,
-                  losses_one_dataset_recorder, key, metric_one_dataset):
+                    losses_one_dataset_recorder, key, metric_one_dataset):
         best_metric = self.best_metrics_all_time[key].get(
             self.metric_scoring,
             float('-inf') if self.metric_scoring != 'eer' else float('inf')
@@ -503,12 +556,35 @@ class Trainer(object):
             if self.metric_scoring != 'eer'
             else (metric_one_dataset[self.metric_scoring] < best_metric)
         )
+
+        # ── Compute acc_real / acc_fake regardless of improvement ─────────
+        # (needed both for logging and for storing on improvement)
+        acc_real, acc_fake = None, None
+        if 'pred' in metric_one_dataset:
+            acc_real, acc_fake = self.get_respect_acc(
+                metric_one_dataset['pred'], metric_one_dataset['label'])
+
         if improved:
             self.best_metrics_all_time[key][self.metric_scoring] = \
                 metric_one_dataset[self.metric_scoring]
+
+            # ── Store acc, acc_real, acc_fake so parse_metric_for_print ──
+            # can display them in the epoch-end summary block.
+            # parse_metric_for_print iterates over best_metrics_all_time[key]
+            # and prints every k=v pair it finds, so simply storing them here
+            # is sufficient — no changes needed in parse_metric_for_print.
+            for m in ('acc', 'auc', 'eer', 'ap', 'video_auc'):
+                if m in metric_one_dataset:
+                    self.best_metrics_all_time[key][m] = metric_one_dataset[m]
+
+            if acc_real is not None:
+                self.best_metrics_all_time[key]['acc_real'] = acc_real
+                self.best_metrics_all_time[key]['acc_fake'] = acc_fake
+
             if key == 'avg':
                 self.best_metrics_all_time[key]['dataset_dict'] = \
                     metric_one_dataset['dataset_dict']
+
             if self.config['save_ckpt'] and key not in FFpp_pool:
                 self.save_ckpt('test', key, f"{epoch}+{iteration}")
             self.save_metrics('test', metric_one_dataset, key)
@@ -530,15 +606,15 @@ class Trainer(object):
                 continue
             metric_str += f"testing-metric, {k}: {v}    "
             self._tb_scalar('test', key, k, f'test_metrics/{k}', v, step)
-        if 'pred' in metric_one_dataset:
-            acc_real, acc_fake = self.get_respect_acc(
-                metric_one_dataset['pred'], metric_one_dataset['label'])
+
+        if acc_real is not None:
             metric_str += (f'testing-metric, acc_real:{acc_real}; '
-                           f'acc_fake:{acc_fake}')
+                        f'acc_fake:{acc_fake}')
             self._tb_scalar('test', key, 'acc',
                             'test_metrics/acc_real', acc_real, step)
             self._tb_scalar('test', key, 'acc',
                             'test_metrics/acc_fake', acc_fake, step)
+
         self.logger.info(metric_str)
 
     def test_epoch(self, epoch, iteration, test_data_loaders, step):

@@ -52,15 +52,27 @@ resolution:    224
 with_mask:     false
 with_landmark: false
 
+class_weights: [1.0, 1.0]     # [real_weight, fake_weight]
+                               # increase real_weight if acc_real stays near 0
+                               # theoretical FF++ value: [4.0, 1.0]
+
+# ── Fix 2: per-branch projection dropout ─────────────────────────────────
+projection_dropout:
+  temporal:  0.1
+  spatial:   0.2              # highest: overfits most
+  frequency: 0.1
+
+temporal_consistency_weight: 0.1    # scale relative to cls_loss (weight 1.0)
+temporal_consistency_margin: 0.1    # real consistency must exceed fake by this
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 32   # reduced from 128 — each sample is now (32, 3, 224, 224)×3 branches
-test_batchSize:  32
+train_batchSize: 8   # reduced from 128 — each sample is now (32, 3, 224, 224)×3 branches
+test_batchSize:  8
 workers:         8
 
-use_data_augmentation: false   # set true to enable online augmentation
-balance_classes:       false   # set true to enable WeightedRandomSampler
+use_data_augmentation: true   # set true to enable online augmentation
+balance_classes:       true   # set true to enable WeightedRandomSampler
 
 data_aug:
   flip_prob:        0.5
@@ -93,10 +105,11 @@ std:  [0.5, 0.5, 0.5]
 foundation_models:
 
   temporal:
-    name:            vjepa2
-    model_path:      facebook/vjepa2-vitl-fpc64-256
-    output_dim:      1024
-    freeze_backbone: true
+    name:             vjepa2
+    model_path:       facebook/vjepa2-vitl-fpc64-256
+    output_dim:       1024    # must match backbone hidden_dim — extractor will warn if wrong
+    freeze_backbone:  true
+    train_layernorms: true    # GenD regime — backbone LNs train at low LR
     normalization:
       mean: [0.485, 0.456, 0.406]
       std:  [0.229, 0.224, 0.225]
@@ -111,22 +124,32 @@ foundation_models:
       mean: [0.481, 0.458, 0.408]
       std:  [0.269, 0.261, 0.276]
 
-  frequency:
-    name:            spsl
-    output_dim:      512
-    freeze_backbone: true
-    pretrained:      ./training/pretrained/xception-b5690688.pth
-    backbone_name:   xception
-    backbone_config:
-      mode:        original
-      num_classes: 2
-      inc:         4
-      dropout:     false
-    loss_func:       cross_entropy
-    normalization:
-      mean: [0.5, 0.5, 0.5]
-      std:  [0.5, 0.5, 0.5]
+  # frequency:
+  #   name:            spsl
+  #   output_dim:      512
+  #   freeze_backbone: true
+  #   pretrained:      ./training/pretrained/xception-b5690688.pth
+  #   backbone_name:   xception
+  #   backbone_config:
+  #     mode:        original
+  #     num_classes: 2
+  #     inc:         4
+  #     dropout:     false
+  #   loss_func:       cross_entropy
+  #   normalization:
+  #     mean: [0.5, 0.5, 0.5]
+  #     std:  [0.5, 0.5, 0.5]
 
+  frequency:
+    name:             clip_phase
+    model_path:       openai/clip-vit-large-patch14
+    output_dim:       1024
+    freeze_backbone:  true
+    train_layernorms: true
+    use_dct_energy:   false
+    normalization:
+      mean: [0.481, 0.458, 0.408]                       # CLIP normalization
+      std:  [0.269, 0.261, 0.276]
 # -----------------------------------------------------------------------------
 # Fusion
 # -----------------------------------------------------------------------------
@@ -261,8 +284,10 @@ optimizer:
     weight_decay: 0.0005
     amsgrad: false
   module_lr:
-    backbone_layernorms: 0.00001   # very low — LNs should adapt slowly
-    projection_heads:    0.0001    # spatial_proj, temporal_proj, freq_proj
+    backbone_layernorms: 0.00001   # very low — LNs adapt slowly (GenD regime)
+    always_trainable:    0.0001    # fc_norm, freq_norm
+    phase_proj:          0.0003    # higher — learning phase→RGB from scratch
+    projection_heads:    0.0001    # temporal_proj, spatial_proj, frequency_proj
     fusion:              0.0002
     classifier:          0.0002
 # -----------------------------------------------------------------------------
@@ -270,7 +295,7 @@ optimizer:
 # -----------------------------------------------------------------------------
 lr_scheduler:   cosine_warmup
 warmup_epochs:  2
-nEpochs:        10
+nEpochs:        50
 start_epoch:    0
 save_epoch:     1
 rec_iter:       100
@@ -289,10 +314,10 @@ training_phases:
     train_modules:  [fusion, classifier]
     description:   "Warm up fusion and classifier with frozen backbones"
   phase2:
-    epochs:        [5, 10]
+    epochs: [5, 10]
     freeze_modules: []
-    train_modules:  [all]
-    description:   "Fine-tune all active modules"
+    train_modules:  [layernorms_and_heads]   #← call unfreeze_layernorms() only
+    description: "Unfreeze backbone LayerNorms for GenD-style adaptation"
   phase3:
     epochs:        [10, 50]
     freeze_modules: []

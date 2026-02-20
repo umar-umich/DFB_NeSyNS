@@ -11,6 +11,8 @@
 #     but choose_optimizer() uses flat model.parameters() — pre-existing gap).
 
 import os
+os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+
 import argparse
 from os.path import join
 import cv2
@@ -210,191 +212,188 @@ def prepare_testing_data(config):
 
 def choose_optimizer(model, config):
     """
-    Build an Adam optimizer with per-module learning rate groups.
+    Builds an Adam optimizer with per-module learning rate groups.
 
-    Param group strategy (GenD-style):
-      Group 1 — backbone_layernorms : very low LR (1e-5)
-                 Only LayerNorm params inside frozen backbones.
-                 These adapt normalization statistics without moving
-                 the feature manifold. GenD's generalization mechanism.
+    Param group strategy (GenD-style, all three branches):
+    ┌─────────────────────────┬────────────┬──────────────────────────────────────┐
+    │ Group                   │ LR         │ What's in it                         │
+    ├─────────────────────────┼────────────┼──────────────────────────────────────┤
+    │ backbone_layernorms     │ 1e-5       │ LayerNorm params inside frozen CLIP  │
+    │                         │            │ backbones (spatial, temporal, freq)  │
+    ├─────────────────────────┼────────────┼──────────────────────────────────────┤
+    │ always_trainable        │ 1e-4       │ fc_norm (temporal), freq_norm (freq) │
+    │                         │            │ These are new LN modules on the      │
+    │                         │            │ extractors — always train             │
+    ├─────────────────────────┼────────────┼──────────────────────────────────────┤
+    │ phase_proj              │ 3e-4       │ FrequencyExtractor.phase_proj only.  │
+    │                         │            │ Higher LR: learning a completely new │
+    │                         │            │ phase→RGB signal mapping from scratch│
+    ├─────────────────────────┼────────────┼──────────────────────────────────────┤
+    │ projection_heads        │ 1e-4       │ temporal_proj, spatial_proj,         │
+    │                         │            │ frequency_proj on the detector       │
+    ├─────────────────────────┼────────────┼──────────────────────────────────────┤
+    │ fusion                  │ 2e-4       │ MultiModalFusion parameters          │
+    ├─────────────────────────┼────────────┼──────────────────────────────────────┤
+    │ classifier              │ 2e-4       │ MultiTaskHead parameters             │
+    ├─────────────────────────┼────────────┼──────────────────────────────────────┤
+    │ optional_modules        │ 1e-4       │ causal_module, sparse_ae,            │
+    │                         │            │ semantic_grounding (when enabled)    │
+    └─────────────────────────┴────────────┴──────────────────────────────────────┘
 
-      Group 2 — projection_heads    : standard LR (1e-4)
-                 temporal_proj, spatial_proj, frequency_proj.
-                 These are new modules — they need to learn from scratch.
+    All frozen backbone params (non-LN) have requires_grad=False so Adam
+    skips them automatically — they don't appear in any group.
 
-      Group 3 — fusion              : standard LR (2e-4)
-                 MultiModalFusion parameters.
-
-      Group 4 — classifier          : standard LR (2e-4)
-                 MultiTaskHead parameters.
-
-    All frozen backbone params (non-LN) are excluded from every group —
-    they have requires_grad=False so optimizer.step() skips them anyway,
-    but explicit exclusion keeps the param group sizes clean for logging.
+    Called twice:
+      1. At training start (main() in train.py)
+      2. At phase2 transition (train_epoch() in trainer.py) after
+         unfreeze_layernorms() — rebuilt so newly unfrozen params get
+         optimizer state and are tracked correctly.
     """
     import torch.optim as optim
-
-    opt_cfg   = config['optimizer']
-    opt_name  = opt_cfg['type']
-    adam_cfg  = opt_cfg['adam']
-    lr_cfg    = opt_cfg.get('module_lr', {})
-
-    # Pull the actual model out of DDP wrapper if needed
-    m = model.module if hasattr(model, 'module') else model
-
-    # ------------------------------------------------------------------
-    # Group 1: Backbone LayerNorm params (GenD regime)
-    # ------------------------------------------------------------------
-    backbone_ln_params = []
-    if hasattr(m, 'spatial_extractor'):
-        backbone_ln_params += m.spatial_extractor.get_trainable_params()
-    if hasattr(m, 'temporal_extractor') and hasattr(m.temporal_extractor, 'get_trainable_params'):
-        backbone_ln_params += m.temporal_extractor.get_trainable_params()
-    if hasattr(m, 'frequency_extractor') and hasattr(m.frequency_extractor, 'get_trainable_params'):
-        backbone_ln_params += m.frequency_extractor.get_trainable_params()
-
-    # Deduplicate (in case any param appears in multiple branches)
-    seen_ids = set()
-    deduplicated_ln = []
-    for p in backbone_ln_params:
-        if id(p) not in seen_ids and p.requires_grad:
-            seen_ids.add(id(p))
-            deduplicated_ln.append(p)
-
-    # ------------------------------------------------------------------
-    # Group 2: Projection heads (always trainable new modules)
-    # ------------------------------------------------------------------
-    proj_params = []
-    for attr in ('temporal_proj', 'spatial_proj', 'frequency_proj'):
-        if hasattr(m, attr):
-            proj_params += [p for p in getattr(m, attr).parameters()
-                            if p.requires_grad and id(p) not in seen_ids]
-            for p in getattr(m, attr).parameters():
-                seen_ids.add(id(p))
-
-    # ------------------------------------------------------------------
-    # Group 3: Fusion
-    # ------------------------------------------------------------------
-    fusion_params = [p for p in m.fusion.parameters()
-                     if p.requires_grad and id(p) not in seen_ids]
-    for p in m.fusion.parameters():
-        seen_ids.add(id(p))
-
-    # ------------------------------------------------------------------
-    # Group 4: Classifier (MultiTaskHead)
-    # ------------------------------------------------------------------
-    cls_params = [p for p in m.multitaskhead.parameters()
-                  if p.requires_grad and id(p) not in seen_ids]
-    for p in m.multitaskhead.parameters():
-        seen_ids.add(id(p))
-
-    # ------------------------------------------------------------------
-    # Optional groups for enabled modules
-    # ------------------------------------------------------------------
-    optional_params = []
-    for attr in ('causal_module', 'sparse_ae', 'semantic_grounding'):
-        if hasattr(m, attr):
-            ps = [p for p in getattr(m, attr).parameters()
-                  if p.requires_grad and id(p) not in seen_ids]
-            optional_params += ps
-            for p in getattr(m, attr).parameters():
-                seen_ids.add(id(p))
-
-    # ------------------------------------------------------------------
-    # Assemble param groups
-    # ------------------------------------------------------------------
-    base_lr = adam_cfg['lr']
-    param_groups = []
-
-    if deduplicated_ln:
-        param_groups.append({
-            'params': deduplicated_ln,
-            'lr':     lr_cfg.get('backbone_layernorms', 1e-5),
-            'name':   'backbone_layernorms',
-        })
-
-    if proj_params:
-        param_groups.append({
-            'params': proj_params,
-            'lr':     lr_cfg.get('projection_heads', base_lr),
-            'name':   'projection_heads',
-        })
-
-    if fusion_params:
-        param_groups.append({
-            'params': fusion_params,
-            'lr':     lr_cfg.get('fusion', base_lr * 2),
-            'name':   'fusion',
-        })
-
-    if cls_params:
-        param_groups.append({
-            'params': cls_params,
-            'lr':     lr_cfg.get('classifier', base_lr * 2),
-            'name':   'classifier',
-        })
-
-    if optional_params:
-        param_groups.append({
-            'params': optional_params,
-            'lr':     base_lr,
-            'name':   'optional_modules',
-        })
-
-    # Log what ended up in each group
     import logging
     log = logging.getLogger(__name__)
-    for g in param_groups:
-        count = sum(p.numel() for p in g['params'])
-        log.info(f"  Optimizer group '{g['name']}': {count:,} params @ lr={g['lr']}")
 
-    if opt_name == 'adam':
-        optimizer = optim.Adam(
-            param_groups,
-            lr=base_lr,                       # fallback for groups without explicit lr
-            weight_decay=adam_cfg['weight_decay'],
-            betas=(adam_cfg['beta1'], adam_cfg['beta2']),
-            eps=adam_cfg['eps'],
-            amsgrad=adam_cfg['amsgrad'],
+    opt_cfg  = config['optimizer']
+    adam_cfg = opt_cfg['adam']
+    lr_cfg   = opt_cfg.get('module_lr', {})
+    base_lr  = adam_cfg['lr']
+
+    # Unwrap DDP to access model attributes directly
+    m = model.module if hasattr(model, 'module') else model
+
+    seen_ids = set()
+
+    def _add(params, group_list):
+        for p in params:
+            if p.requires_grad and id(p) not in seen_ids:
+                seen_ids.add(id(p))
+                group_list.append(p)
+
+    # ------------------------------------------------------------------
+    # Group 1: Backbone LayerNorm params — LOW LR (GenD regime)
+    # ------------------------------------------------------------------
+    g1 = []
+    for attr in ('spatial_extractor', 'temporal_extractor', 'frequency_extractor'):
+        extractor = getattr(m, attr, None)
+        if extractor is not None and hasattr(extractor, 'get_trainable_params'):
+            _add(extractor.get_trainable_params(), g1)
+
+    # ------------------------------------------------------------------
+    # Group 2: always_trainable extractor modules — STANDARD LR
+    #   temporal: fc_norm
+    #   frequency: freq_norm
+    #   (spatial has no equivalent — its backbone_dim == output_dim)
+    # NOTE: phase_proj is handled separately in Group 3 (higher LR)
+    # ------------------------------------------------------------------
+    g2 = []
+    for attr in ('temporal_extractor', 'spatial_extractor', 'frequency_extractor'):
+        extractor = getattr(m, attr, None)
+        if extractor is None or not hasattr(extractor, 'get_always_trainable_params'):
+            continue
+        for p in extractor.get_always_trainable_params():
+            # phase_proj params go to Group 3, not here
+            freq_ext = getattr(m, 'frequency_extractor', None)
+            if (freq_ext is not None
+                    and hasattr(freq_ext, 'phase_proj')
+                    and freq_ext.phase_proj is not None
+                    and any(id(p) == id(pp)
+                            for pp in freq_ext.phase_proj.parameters())):
+                continue   # skip phase_proj — handled in Group 3
+            if p.requires_grad and id(p) not in seen_ids:
+                seen_ids.add(id(p))
+                g2.append(p)
+
+    # ------------------------------------------------------------------
+    # Group 3: phase_proj — HIGHER LR
+    #   Learning phase→RGB mapping from scratch needs faster convergence
+    #   than projection heads that align already-meaningful features.
+    # ------------------------------------------------------------------
+    g3 = []
+    freq_ext = getattr(m, 'frequency_extractor', None)
+    if (freq_ext is not None
+            and hasattr(freq_ext, 'phase_proj')
+            and freq_ext.phase_proj is not None):
+        _add(list(freq_ext.phase_proj.parameters()), g3)
+
+    # ------------------------------------------------------------------
+    # Group 4: Detector projection heads — STANDARD LR
+    # ------------------------------------------------------------------
+    g4 = []
+    for attr in ('temporal_proj', 'spatial_proj', 'frequency_proj'):
+        mod = getattr(m, attr, None)
+        if mod is not None:
+            _add(list(mod.parameters()), g4)
+
+    # ------------------------------------------------------------------
+    # Group 5: Fusion — STANDARD-HIGH LR
+    # ------------------------------------------------------------------
+    g5 = []
+    if hasattr(m, 'fusion'):
+        _add(list(m.fusion.parameters()), g5)
+
+    # ------------------------------------------------------------------
+    # Group 6: Classifier (MultiTaskHead) — STANDARD-HIGH LR
+    # ------------------------------------------------------------------
+    g6 = []
+    if hasattr(m, 'multitaskhead'):
+        _add(list(m.multitaskhead.parameters()), g6)
+
+    # ------------------------------------------------------------------
+    # Group 7: Optional modules (causal, sparse, semantic) — STANDARD LR
+    # ------------------------------------------------------------------
+    g7 = []
+    for attr in ('causal_module', 'sparse_ae', 'semantic_grounding'):
+        mod = getattr(m, attr, None)
+        if mod is not None:
+            _add(list(mod.parameters()), g7)
+
+    # ------------------------------------------------------------------
+    # Assemble param groups — skip empty groups so Adam log stays clean
+    # ------------------------------------------------------------------
+    lr_backbone_ln  = lr_cfg.get('backbone_layernorms', 1e-5)
+    lr_always       = lr_cfg.get('always_trainable',    base_lr)
+    lr_phase_proj   = lr_cfg.get('phase_proj',          base_lr * 3)
+    lr_proj_heads   = lr_cfg.get('projection_heads',    base_lr)
+    lr_fusion       = lr_cfg.get('fusion',              base_lr * 2)
+    lr_classifier   = lr_cfg.get('classifier',          base_lr * 2)
+
+    group_specs = [
+        (g1, lr_backbone_ln, 'backbone_layernorms'),
+        (g2, lr_always,      'always_trainable'),
+        (g3, lr_phase_proj,  'phase_proj'),
+        (g4, lr_proj_heads,  'projection_heads'),
+        (g5, lr_fusion,      'fusion'),
+        (g6, lr_classifier,  'classifier'),
+        (g7, base_lr,        'optional_modules'),
+    ]
+
+    param_groups = []
+    for params, lr, name in group_specs:
+        if not params:
+            log.info(f"  Optimizer group '{name}': empty — skipped")
+            continue
+        count = sum(p.numel() for p in params)
+        log.info(f"  Optimizer group '{name}': {count:,} params @ lr={lr:.2e}")
+        param_groups.append({'params': params, 'lr': lr, 'name': name})
+
+    if not param_groups:
+        raise RuntimeError(
+            "choose_optimizer(): no trainable parameters found. "
+            "Check that freeze_backbone + train_layernorms are set correctly "
+            "and that at least one branch is active."
         )
-    else:
-        raise NotImplementedError(
-            f"Per-module param groups only implemented for adam. Got: {opt_name}. "
-            f"Add SGD/SAM support following the same pattern above."
-        )
+
+    optimizer = optim.Adam(
+        param_groups,
+        lr=base_lr,
+        weight_decay=adam_cfg['weight_decay'],
+        betas=(adam_cfg['beta1'], adam_cfg['beta2']),
+        eps=adam_cfg['eps'],
+        amsgrad=adam_cfg['amsgrad'],
+    )
 
     return optimizer
 
-# def choose_optimizer(model, config):
-#     opt_name = config['optimizer']['type']
-#     if opt_name == 'sgd':
-#         optimizer = optim.SGD(
-#             params=model.parameters(),
-#             lr=config['optimizer'][opt_name]['lr'],
-#             momentum=config['optimizer'][opt_name]['momentum'],
-#             weight_decay=config['optimizer'][opt_name]['weight_decay'],
-#         )
-#     elif opt_name == 'adam':
-#         optimizer = optim.Adam(
-#             params=model.parameters(),
-#             lr=config['optimizer'][opt_name]['lr'],
-#             weight_decay=config['optimizer'][opt_name]['weight_decay'],
-#             betas=(config['optimizer'][opt_name]['beta1'],
-#                    config['optimizer'][opt_name]['beta2']),
-#             eps=config['optimizer'][opt_name]['eps'],
-#             amsgrad=config['optimizer'][opt_name]['amsgrad'],
-#         )
-#     elif opt_name == 'sam':
-#         optimizer = SAM(
-#             model.parameters(),
-#             optim.SGD,
-#             lr=config['optimizer'][opt_name]['lr'],
-#             momentum=config['optimizer'][opt_name]['momentum'],
-#         )
-#     else:
-#         raise NotImplementedError(
-#             'Optimizer {} is not implemented'.format(config['optimizer']))
-#     return optimizer
 
 
 def choose_scheduler(config, optimizer):
@@ -566,6 +565,7 @@ def main():
             model,
             device_ids=[local_rank],
             output_device=local_rank,
+            static_graph=True  # more efficient than find_unused_parameters
         )
 
     # ------------------------------------------------------------------ #
