@@ -470,15 +470,19 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             + ddp_anchor
         )
 
-        return {
-            'overall':              total_loss,
-            'classification':       cls_loss,
-            'uncertainty':          uncertainty_loss,
-            'causal':               causal_loss,
-            'sparse':               sparse_loss,
-            'temporal_consistency': temporal_consistency_loss,
-        }
 
+        # Squeeze all loss terms to scalar shape [] for Recorder compatibility
+        def _scalar(t):
+            return t.squeeze() if isinstance(t, torch.Tensor) else t
+
+        return {
+            'overall':              _scalar(total_loss),
+            'classification':       _scalar(cls_loss),
+            'uncertainty':          _scalar(uncertainty_loss),
+            'causal':               _scalar(causal_loss),
+            'sparse':               _scalar(sparse_loss),
+            'temporal_consistency': _scalar(temporal_consistency_loss),
+        }
     # ------------------------------------------------------------------ #
     #  Metrics                                                             #
     # ------------------------------------------------------------------ #

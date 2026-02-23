@@ -46,7 +46,7 @@ frame_num:
 
 # clip_size must equal frame_num so the base class delivers one entry per video
 # with all frames — no internal sub-clip splitting.
-clip_size: 32
+clip_size: 8
 
 resolution:    224
 with_mask:     false
@@ -67,8 +67,8 @@ temporal_consistency_margin: 0.1    # real consistency must exceed fake by this
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 8   # reduced from 128 — each sample is now (32, 3, 224, 224)×3 branches
-test_batchSize:  8
+train_batchSize: 10   # reduced from 128 — each sample is now (32, 3, 224, 224)×3 branches
+test_batchSize:  10
 workers:         8
 
 use_data_augmentation: true   # set true to enable online augmentation
