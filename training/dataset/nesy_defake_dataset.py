@@ -76,7 +76,7 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         # clip_size == segment_size means base class builds ONE entry per
         # video with exactly segment_size frame paths — no internal splitting.
         config["video_mode"] = True
-        config["clip_size"]  = self.segment_size
+        # config["clip_size"]  = self.segment_size
 
         self.resolution = config["resolution"]
         self.mode       = mode
@@ -99,7 +99,8 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             f"\n{'='*60}"
             f"\nNeSyDeFakeDataset [{mode}]"
             f"\n  Total segments    : {len(self.image_list)}"
-            f"\n  Segment length    : {self.segment_size} frames"
+            f"\n  Frames loaded     : {self.segment_size} per video"
+            f"\n  Clip size         : {config['clip_size']} frames "
             f"\n  Real / Fake       : {real_count} / {fake_count}"
             f"\n  Resolution        : {self.resolution}×{self.resolution}"
             f"\n  Augmentation      : {'ON' if aug_active else 'OFF'}"
