@@ -46,7 +46,7 @@ frame_num:
 
 # clip_size must equal frame_num so the base class delivers one entry per video
 # with all frames — no internal sub-clip splitting.
-clip_size: 8
+clip_size: 32
 
 resolution:    224
 with_mask:     false
@@ -58,17 +58,17 @@ class_weights: [1.0, 1.0]     # [real_weight, fake_weight]
 
 # ── Fix 2: per-branch projection dropout ─────────────────────────────────
 projection_dropout:
-  temporal:  0.1
+  temporal:  0.2
   spatial:   0.2              # highest: overfits most
-  frequency: 0.1
+  frequency: 0.2
 
-temporal_consistency_weight: 0.1    # scale relative to cls_loss (weight 1.0)
-temporal_consistency_margin: 0.1    # real consistency must exceed fake by this
+temporal_consistency_weight: 0.0    # scale relative to cls_loss (weight 1.0)
+temporal_consistency_margin: 0.0    # real consistency must exceed fake by this
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 10   # reduced from 128 — each sample is now (32, 3, 224, 224)×3 branches
-test_batchSize:  10
+train_batchSize: 16   # reduced from 128 — each sample is now (32, 3, 224, 224)×3 branches
+test_batchSize:  16
 workers:         8
 
 use_data_augmentation: true   # set true to enable online augmentation
@@ -102,24 +102,44 @@ std:  [0.5, 0.5, 0.5]
 #   spatial:   dinov2-large (1024) | dinov2-giant (1536) | eva_clip (768) | gend (1024) ✓
 #   frequency: spsl/xception (512) ✓ | srm_resnet (512)
 
+shared_encoder: true   # set false to give each branch its own encoder copy
+
 foundation_models:
 
   temporal:
+    # name:             videomaev2                     # was: vjepa2
+    # model_path:       OpenGVLab/VideoMAEv2-giant     # was: facebook/vjepa2-vitl-fpc64-256
+    # output_dim:       1408                           # was: 1024  — ViT-G hidden dim
+    # freeze_backbone:  true
+    # train_layernorms: true
+    # normalization:
+    #   mean: [0.5, 0.5, 0.5]                         # VideoMAEv2 uses 0.5/0.5 norm
+    #   std:  [0.5, 0.5, 0.5]
+
     name:             vjepa2
-    model_path:       facebook/vjepa2-vitl-fpc64-256
-    output_dim:       1024    # must match backbone hidden_dim — extractor will warn if wrong
+    model_path:       facebook/vjepa2-vitg-fpc64-384
+    output_dim:       1408                # ViT-G hidden dim (same as VideoMAEv2-giant)
     freeze_backbone:  true
-    train_layernorms: true    # GenD regime — backbone LNs train at low LR
+    train_layernorms: true
     normalization:
-      mean: [0.485, 0.456, 0.406]
+      mean: [0.485, 0.456, 0.406]        # ImageNet norm — standard for V-JEPA2
       std:  [0.229, 0.224, 0.225]
+    # name:             vjepa2
+    # model_path:       facebook/vjepa2-vitl-fpc64-256
+    # output_dim:       1024    # must match backbone hidden_dim — extractor will warn if wrong
+    # freeze_backbone:  true
+    # train_layernorms: true    # GenD regime — backbone LNs train at low LR
+    # normalization:
+    #   mean: [0.485, 0.456, 0.406]
+    #   std:  [0.229, 0.224, 0.225]
 
   spatial:
     name:            clip                             # raw backbone, GenD-style
-    model_path:      openai/clip-vit-large-patch14    # raw CLIP, NOT a GenD ckpt
+    model_path:      openai/clip-vit-large-patch14-336    # raw CLIP, NOT a GenD ckpt
     output_dim:      1024                             # matches CLIP-L hidden size
     freeze_backbone: true                             # always true
     train_layernorms: true                            # KEY: GenD regime — only LNs train
+    clip_chunk_size: 4
     normalization:
       mean: [0.481, 0.458, 0.408]
       std:  [0.269, 0.261, 0.276]
@@ -141,15 +161,17 @@ foundation_models:
   #     std:  [0.5, 0.5, 0.5]
 
   frequency:
-    name:             clip_phase
-    model_path:       openai/clip-vit-large-patch14
+    name:             foundation_phase
+    model_path:       openai/clip-vit-large-patch14-336
     output_dim:       1024
+    force_size:  336
     freeze_backbone:  true
     train_layernorms: true
-    use_dct_energy:   false
+    use_dct_energy:   true
+    clip_chunk_size: 4
     normalization:
-      mean: [0.481, 0.458, 0.408]                       # CLIP normalization
-      std:  [0.269, 0.261, 0.276]
+      mean: [0.5, 0.5, 0.5]                  # face-crop normalization for freq branch
+      std:  [0.5, 0.5, 0.5]
 # -----------------------------------------------------------------------------
 # Fusion
 # -----------------------------------------------------------------------------
@@ -160,7 +182,7 @@ foundation_models:
 # All branches active:                  → fused_dim = 1024+1024+512 = 2560
 fusion:
   type:           concat
-  fused_dim:      2560    # patched at runtime by build_backbone() — do not rely on this value
+  fused_dim: 3072    # projection_dim(1024) × 3 branches — patched at runtime anyway
   projection_dim: 1024    # all branch projections map to this dim before fusion
   dropout:        0.3
 
