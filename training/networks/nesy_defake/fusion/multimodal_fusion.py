@@ -49,12 +49,13 @@ class MultiModalFusion(nn.Module):
 
         # fused_dim: use config value if all branches active (backwards
         # compatible), otherwise compute from active dims
-        if len(self.active_branches) == 3:
-            self.fused_dim = config['fusion']['fused_dim']
-        else:
-            # For ablation: fused_dim = sum of active branch output dims
-            # This matches what train.py / build_backbone() also computes.
-            self.fused_dim = sum(self.active_dims)
+        # if len(self.active_branches) == 3:
+        #     self.fused_dim = config['fusion']['fused_dim']
+        # else:
+        #     # For ablation: fused_dim = sum of active branch output dims
+        #     # This matches what train.py / build_backbone() also computes.
+        #     self.fused_dim = sum(self.active_dims)
+        self.fused_dim = self.projection_dim * len(self.active_branches)
 
         # ── Build fusion layers ───────────────────────────────────────────
         if self.fusion_type == 'concat':
@@ -80,7 +81,7 @@ class MultiModalFusion(nn.Module):
           concat(active feats) → fused_dim  →  projection_dim
         """
         # Input dim = sum of active branch output dims
-        concat_input_dim = sum(self.active_dims)
+        concat_input_dim = self.projection_dim * len(self.active_branches)
 
         self.fusion = nn.Sequential(
             nn.Linear(concat_input_dim, self.fused_dim),
