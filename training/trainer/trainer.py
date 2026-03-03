@@ -343,6 +343,11 @@ class Trainer(object):
             # scaler.step() skips the update if gradients contain inf/nan
             self.scaler.step(self.optimizer)
             self.scaler.update()
+            
+            m = self.model.module if isinstance(self.model, DDP) else self.model
+            if hasattr(m, 'sparse_ae') and m.sparse_ae is not None:
+                if hasattr(m, 'use_sparse') and m.use_sparse:
+                    m.sparse_ae.normalize_decoder_weights()
 
             return losses, predictions
 
@@ -499,7 +504,7 @@ class Trainer(object):
         acc_fake = np.count_nonzero(judge[fake_idx]) / len(fake_idx)
         return acc_real, acc_fake
 
-    def test_one_dataset(self, data_loader):
+    def test_one_dataset(self, data_loader, desc="Testing"):
         """
         Each rank processes its own shard (via DistributedSampler).
         Returns local numpy arrays; caller gathers across ranks.
@@ -510,14 +515,21 @@ class Trainer(object):
         feature_lists      = []
         label_lists        = []
 
-        for i, data_dict in enumerate(data_loader):
+        for i, data_dict in tqdm(
+            enumerate(data_loader),
+            total=len(data_loader),
+            desc=f"  {desc}",
+            disable=not is_main_process(),  # only rank 0 prints in DDP
+            leave=False,
+            ):
             if 'label_spe' in data_dict:
                 data_dict.pop('label_spe')
             data_dict['label'] = torch.where(
                 data_dict['label'] != 0, 1, 0)
             for key in data_dict.keys():
-                if data_dict[key] is not None:
-                    data_dict[key] = data_dict[key].cuda()
+                val = data_dict[key]
+                if val is not None and isinstance(val, torch.Tensor):
+                    data_dict[key] = val.cuda()
 
             predictions = self.inference(data_dict)
             label_lists      += list(data_dict['label'].cpu().detach().numpy())
@@ -635,7 +647,7 @@ class Trainer(object):
             self.logger.info(f"Testing on {key}...")
             (losses_local, preds_local,
              labels_local, feats_local) = self.test_one_dataset(
-                test_data_loaders[key])
+                test_data_loaders[key], desc=key)
 
             preds_all, labels_all, _ = self._gather_test_results(
                 preds_local, labels_local, feats_local)

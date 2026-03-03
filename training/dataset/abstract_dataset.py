@@ -127,7 +127,7 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
                 A.FancyPCA(),
                 A.HueSaturationValue()
             ], p=0.5),
-            A.ImageCompression(quality_lower=self.config['data_aug']['quality_lower'], quality_upper=self.config['data_aug']['quality_upper'], p=0.5)
+            A.ImageCompression(quality_lower=self.config['data_aug']['quality_lower'], quality_upper=self.config['data_aug']['quality_upper'], p=0.2)
         ], 
             keypoint_params=A.KeypointParams(format='xy') if self.config['with_landmark'] else None
         )

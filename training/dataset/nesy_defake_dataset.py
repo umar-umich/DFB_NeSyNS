@@ -268,17 +268,27 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
     #  Class-balance sampler                                               #
     # ------------------------------------------------------------------ #
 
-    def get_weighted_sampler(self) -> WeightedRandomSampler:
+    def get_weighted_sampler(self, target_real_fraction: float = 0.35) -> WeightedRandomSampler:
         """
-        Build a WeightedRandomSampler that over-samples the minority class.
+        target_real_fraction=0.5 → perfect 1:1 (over-corrects for large imbalances)
+        target_real_fraction=0.35 → softer correction, ~1:1.9 real:fake per batch
         """
         labels = np.array(self.label_list)
-        class_counts = np.bincount(labels)
-        class_weights = 1.0 / class_counts.astype(np.float64)
-        sample_weights = class_weights[labels]
+        n_real = (labels == 0).sum()
+        n_fake = (labels == 1).sum()
+
+        w_real = target_real_fraction / n_real
+        w_fake = (1.0 - target_real_fraction) / n_fake
+        sample_weights = np.where(labels == 0, w_real, w_fake)
+
+        print(f"[Sampler] target_real_fraction={target_real_fraction:.2f} | "
+            f"real seen ~{w_real/w_fake * n_fake/n_real:.1f}x more than natural rate | "
+            f"effective batch ratio real:fake ≈ "
+            f"{target_real_fraction:.2f}:{1-target_real_fraction:.2f}")
+
         return WeightedRandomSampler(
             weights=torch.from_numpy(sample_weights).float(),
-            num_samples=len(sample_weights),
+            num_samples=len(labels),
             replacement=True,
         )
 
@@ -307,8 +317,13 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
                 sampler = DistributedSampler(dataset, shuffle=True)
                 shuffle = False
             elif config.get("balance_classes", False):
-                sampler = dataset.get_weighted_sampler()
+                ratio = config.get("balance_target_ratio", 0.35)
+                sampler = dataset.get_weighted_sampler(target_real_fraction=ratio)
                 shuffle = False
+                print(f"[Sampler] WeightedRandomSampler active: "
+                     f"{len(sampler)} samples, "
+                     f"weight ratio real/fake = "
+                     f"{(1.0/23008)/(1.0/92064):.2f}x")
 
         return DataLoader(
             dataset=dataset,

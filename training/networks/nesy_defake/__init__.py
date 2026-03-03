@@ -28,7 +28,7 @@ from .causal import (
 # Classifiers
 from .classifiers import (
     MultiTaskHead,
-    SparseAutoencoder
+    DualBranchSparseAutoencoder
 )
 
 __all__ = [
@@ -47,5 +47,5 @@ __all__ = [
     'CausalDiscoveryModule',
     # Classifiers
     'MultiTaskHead',
-    'SparseAutoencoder'
+    'DualBranchSparseAutoencoder'
 ]

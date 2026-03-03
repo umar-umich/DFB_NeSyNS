@@ -1,15 +1,12 @@
 # =============================================================================
-# NeSyDeFake Hybrid Detector — Configuration (FRAME-LEVEL, Step 5)
+# NeSyDeFake Hybrid Detector — Configuration (FRAME-LEVEL + SAE, Step 5b)
 # =============================================================================
-# Changelog (Step 5 — frame-level rewrite):
-#   - video_mode: false — each sample is a single frame
-#   - Temporal branch REMOVED from active_branches and foundation_models
-#   - Removed: temporal_consistency_weight/margin (no temporal dimension)
-#   - Removed: clip_size (not needed in frame mode)
-#   - Added: load_semantic_features: true (73-d per-frame cached features)
-#   - Updated: fused_dim = 2 branches x 1024 = 2048
-#   - Updated: batch sizes increased (single frame vs 32-frame clip = ~32x less memory)
-#   - train.py choose_optimizer updated: no temporal_extractor/temporal_proj groups
+# Changelog (Step 5b — SAE integration):
+#   - sparse_features.enabled: true (SAE now active)
+#   - Added: dict_size, target_k, dead_feature_window, aux_loss_coeff, normalize_inputs
+#   - SAE operates on raw CLIP features (pre-projection, 1024-d)
+#   - SAE loss weight: 0.1 (tunable — start low so SAE doesn't dominate early)
+#   - Added SAE to optimizer (optional_modules group, base LR)
 # =============================================================================
 
 log_dir: /data/umar/Repos/DFB_NeSyNS/logs_debug/nesydefake_hybrid
@@ -21,8 +18,6 @@ backbone_name: multi_stream
 # Dataset
 # -----------------------------------------------------------------------------
 dataset_type: nesydefake
-
-# Only spatial and frequency — temporal removed
 active_branches: ['spatial', 'frequency']
 
 train_dataset: [FaceForensics++]
@@ -34,61 +29,54 @@ all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
 compression: c23
 
 # -----------------------------------------------------------------------------
-# Frame configuration (no video/temporal mode)
+# Frame configuration
 # -----------------------------------------------------------------------------
-video_mode: false         # frame-level — each sample is one frame
+video_mode: false
 frame_num:
-  train: 32               # how many frames to sample per video (each becomes its own sample)
+  train: 32
   test:  32
 
 resolution:    224
 with_mask:     false
 with_landmark: false
 
-# Semantic features from preprocessing (73-d per frame)
 load_semantic_features: true
 
-class_weights: [1.0, 1.0]     # [real_weight, fake_weight]
+class_weights: [1.0, 1.0]
 
-# ── Per-branch projection dropout ─────────────────────────────────────
 projection_dropout:
-  spatial:   0.2              # highest: overfits most
+  spatial:   0.2
   frequency: 0.1
 
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-# Batch sizes can be much larger now: 1 frame vs 32-frame clip
-train_batchSize: 128
-test_batchSize:  128
+train_batchSize: 64
+test_batchSize:  64
 workers:         8
 
 use_data_augmentation: true
 balance_classes:       true
+balance_target_ratio: 0.35   # tune: 0.5=full balance, 0.35=soft, 0.25=mild
 
-# It should be just 4 times not that much, to avoid real overfitting...
 data_aug:
-  flip_prob:        0.5
-  rotate_prob:      0.5
+  flip_prob:        0.5   # keep — class-neutral
+  rotate_prob:      0.3   # keep but reduce slightly
   rotate_limit:     [-10, 10]
-  blur_prob:        0.5
-  blur_limit:       [3, 7]
-  brightness_prob:  0.5
+  blur_prob:        0.1   # reduce from 0.5 — blur mimics fake compression artifacts
+  blur_limit:       [3, 5]  # reduce max kernel
+  brightness_prob:  0.5   # keep — class-neutral
   brightness_limit: [-0.1, 0.1]
   contrast_limit:   [-0.1, 0.1]
-  quality_lower:    40
+  quality_lower:    80    # raise floor significantly — low quality = fake artifact
   quality_upper:    100
 
-# Global normalization fallback
 mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]
 
 # -----------------------------------------------------------------------------
-# Foundation Models (spatial + frequency only)
+# Foundation Models
 # -----------------------------------------------------------------------------
-# Input to both branches: (B, C=3, H=224, W=224) — single frames
-# Each branch applies its own Linear(raw_dim -> projection_dim) before fusion.
-
 foundation_models:
 
   spatial:
@@ -117,12 +105,9 @@ foundation_models:
       std:  [0.269, 0.261, 0.276]
 
 # Fusion
-# -----------------------------------------------------------------------------
-# fused_dim = 2 active branches x 1024 projection_dim = 2048
-# build_backbone() patches this at runtime.
 fusion:
-  type:           attention          # 'attention' or 'concat'
-  fused_dim:      2048    # patched at runtime by build_backbone()
+  type:           attention 
+  fused_dim:      2048
   projection_dim: 1024
   dropout:        0.3
 
@@ -136,18 +121,18 @@ semantic_grounding:
 # Module 3: Causal Discovery
 # -----------------------------------------------------------------------------
 causal_module:
-  enabled: false          # enable after SAE training + semantic extraction complete
+  enabled: false          # enable after SAE converges (phase 3)
 
-  # Causal variable dimensions (frame-level):
-  #   Z_sae: 128 spatial SAE + 128 frequency SAE = 256
-  #   S_semantic: 73 per-frame attributes (no temporal summaries)
-  #   Total: 329 causal variables
+  # Z_sae: 4096 spatial + 4096 frequency = 8192 total SAE dict features
+  # But only ~128+128=256 are active per sample (sparse!)
+  # S_semantic: 73 per-frame attributes
+  # The causal graph learns over the ACTIVE feature subset
   latent_variables:
-    z_spatial_dim:    128
+    z_spatial_dim:    128    # target_k per branch
     z_frequency_dim:  128
-    total_sae_dim:    256
+    total_sae_dim:    256    # active features, not dict_size
 
-  semantic_dim: 73        # per-frame semantic features from preprocessing
+  semantic_dim: 73
 
   discovery:
     algorithm:        dagma_dce
@@ -161,16 +146,53 @@ causal_module:
     dag_penalty_weight:  0.1
 
 # -----------------------------------------------------------------------------
-# Module 4: Sparse Monosemantic Features
-# -----------------------------------------------------------------------------
+# Module 4: Sparse Monosemantic Features (SAE)
+# =============================================================================
+# Architecture: Per-branch BatchTopK SAE
+#   - Spatial CLIP (1024) -> dict_size=4096, target_k=128 active features
+#   - Frequency CLIP (1024) -> dict_size=4096, target_k=128 active features
+#
+# BatchTopK (Bussmann et al., 2024):
+#   - Selects top (k * batch_size) activations across the batch
+#   - Average ~128 active per sample, but adaptive per-sample
+#   - No L1 coefficient tuning needed (direct sparsity control)
+#
+# Training: Joint with detector (SAE loss added to total loss).
+#   - SAE loss = variance-normalized MSE + (1/32) * dead_feature_aux
+#   - Loss weight 0.1 initially — tune up if reconstruction degrades
+#
+# Decoder normalization: Unit-norm columns, enforced after each optimizer step.
+#   - Trainer calls model.sparse_ae.normalize_decoder_weights() post-step.
+# =============================================================================
 sparse_features:
-  enabled: false
+  enabled: true
+  per_branch: true
+
+  # Dictionary size: 4x expansion is standard (Anthropic, OpenAI, DeepMind)
+  # 1024 * 4 = 4096 features per branch
+  dict_size: 4096
+
+  # Target active features per sample per branch
+  # 128 = ~3% of dict_size (4096) — good sparsity for interpretability
+  target_k: 128
+
+  # Features inactive for this many batches get auxiliary loss to revive them
+  dead_feature_window: 5
+
+  # Auxiliary loss coefficient (1/32 is standard from OpenAI TopK paper)
+  aux_loss_coeff: 0.03125
+
+  # LayerNorm CLIP features before SAE (recommended: CLIP features have
+  # high variance across dimensions, LN makes SAE training more stable)
+  normalize_inputs: true
+
+  # Legacy config (kept for backward compat, overridden by above)
   sparse_autoencoder:
-    input_dim:              1024   # matches fusion.projection_dim
+    input_dim:              1024
     expansion_factor:       4
     sparsity_penalty:       0.05
     l1_coefficient:         0.001
-    target_active_features: 50
+    target_active_features: 128
   discovered_features:
     save_interpretations: true
     top_k_features:       10
@@ -180,7 +202,7 @@ sparse_features:
 # -----------------------------------------------------------------------------
 classifier:
   type:       multi_task
-  input_dim:  1024   # matches fusion.projection_dim
+  input_dim:  1024       # matches fusion.projection_dim (classifier sees fused features)
 
   tasks:
     - name:        classification
@@ -210,8 +232,8 @@ loss_func:
   weights:
     classification: 1.0
     uncertainty:    0.5
-    causal:         0.3
-    sparse:         0.1
+    causal:         0.0     # 0 until causal module is enabled
+    sparse:         0.1     # SAE loss weight — start conservative
 
 # -----------------------------------------------------------------------------
 # Optimizer
@@ -226,12 +248,14 @@ optimizer:
     weight_decay: 0.0005
     amsgrad: false
   module_lr:
-    backbone_layernorms: 0.00001    # GenD regime — LNs adapt slowly
-    always_trainable:    0.0001     # freq_norm etc.
-    phase_proj:          0.0003     # phase->RGB mapping from scratch
-    projection_heads:    0.0001     # spatial_proj, frequency_proj
+    backbone_layernorms: 0.00001
+    always_trainable:    0.0001
+    phase_proj:          0.0003
+    projection_heads:    0.0001
     fusion:              0.0002
     classifier:          0.0002
+    # SAE gets standard LR (in optional_modules group)
+    # Can increase to 0.0003 if SAE reconstruction is slow to converge
 
 # -----------------------------------------------------------------------------
 # Training schedule
@@ -248,13 +272,12 @@ save_ckpt:      true
 save_feat:      true
 grad_clip:      1.0
 
-# Training phases — no temporal, so phase2 just unfreezes spatial+frequency LNs
 training_phases:
   phase1:
     epochs:        [0, 5]
     freeze_modules: [foundation_models]
-    train_modules:  [fusion, classifier]
-    description:   "Warm up fusion and classifier with frozen backbones"
+    train_modules:  [fusion, classifier, sparse_ae]
+    description:   "Warm up fusion + classifier + SAE with frozen backbones"
   phase2:
     epochs: [5, 10]
     freeze_modules: []
@@ -265,7 +288,7 @@ training_phases:
     freeze_modules: []
     train_modules:  [all]
     enable_causal:  true
-    description:   "Enable causal discovery — set causal_module.enabled=true"
+    description:   "Enable causal discovery (set causal_module.enabled=true)"
 
 # -----------------------------------------------------------------------------
 # Metrics & interpretability
@@ -277,6 +300,7 @@ interpretability:
   save_attention_maps:      true
   save_causal_graphs:       true
   save_feature_activations: true
+  save_sae_features:        true     # log top-activating images per SAE feature
   visualization_frequency:  500
 
 # -----------------------------------------------------------------------------
