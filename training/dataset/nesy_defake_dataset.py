@@ -1,53 +1,44 @@
 """
 dataset/nesy_defake_dataset.py
 ==============================
-NeSyDeFake Dataset — FULL-SEGMENT VERSION (Step 1 Revision)
+NeSyDeFake Dataset — FRAME-LEVEL VERSION (Step 5 Revision)
 
-Design principles (aligned with colleague suggestions):
-  1. Full 32-frame segment per video — no sub-clip splitting.
-     This gives the temporal branch the full temporal window to capture
-     long-range motion and consistency artifacts.
-  2. All three branches (temporal, spatial, frequency) receive the SAME
-     32 frames. Different normalizations are applied per branch.
-     This ensures both branches represent the same data from different views,
-     which is the stated design goal.
-  3. Learnable per-branch projection heads (Linear layers) are responsible
-     for mapping each branch's raw feature dim to a common projection_dim.
-     That logic lives in the detector/fusion module — NOT here.
-  4. Ablation code is fully preserved. active_branches in the config
-     controls which streams the detector uses; the dataset always produces
-     all three streams so ablations don't require dataset changes.
-  5. Data augmentation is applied consistently across all 32 frames in a
-     clip using a shared seed, so all branches see the same augmentation.
+Major change from previous version:
+  - Temporal branch REMOVED. video_mode = False.
+  - Each sample is a SINGLE FRAME, not a 32-frame clip.
+  - Dataset returns (C, H, W) tensors per branch, not (T, C, H, W).
+  - Semantic attributes loaded from cached .npz files (73-d per frame).
+  - Memory footprint per sample drops ~32x (1 frame vs 32).
+
+Design principles:
+  1. Single frame per sample — no temporal dimension.
+     The base class with video_mode=False delivers individual frame paths.
+  2. Two active branches (spatial, frequency) receive the SAME frame
+     with branch-specific normalizations.
+  3. Semantic attributes (73-d) are loaded from preprocessed .npz files
+     for the causal discovery module. Zero-vector fallback if not yet extracted.
+  4. Ablation-friendly: active_branches in config controls which streams
+     the detector uses; the dataset always produces both streams.
 
 Data flow per sample:
-  Raw 32 frames (HxWxC uint8)
+  Single frame (HxWxC uint8)
       │
-      ├─ augment (shared seed, train only)
+      ├─ augment (train only)
       │
-      ├─→ temporal_clip  : (T=32, C, H, W)  — VJEPA2 / VideoMAE normalization
-      ├─→ spatial_frames : (T=32, C, H, W)  — CLIP / DINOv2 normalization
-      ├─→ freq_frames    : (T=32, C, H, W)  — frequency normalization (0.5/0.5)
-      └─→ raw_frames     : (T=32, C, H, W)  — [0, 1] no normalization (for SemanticGrounding)
+      ├─→ spatial_frames : (C, H, W)  — CLIP normalization
+      ├─→ freq_frames    : (C, H, W)  — raw [0,1] for FAD-CLIP
+      ├─→ raw_frames     : (C, H, W)  — [0, 1] no normalization
+      └─→ semantic_attrs : (73,)      — cached per-frame attributes
 
 Collated batch shapes:
-  temporal_clip  : (B, T, C, H, W)
-  spatial_frames : (B, T, C, H, W)
-  freq_frames    : (B, T, C, H, W)
-  raw_frames     : (B, T, C, H, W)
+  spatial_frames : (B, C, H, W)
+  freq_frames    : (B, C, H, W)
+  raw_frames     : (B, C, H, W)
+  semantic_attrs : (B, 73)
   label          : (B,)
-
-Changes from previous version:
-  - Removed _build_clip_dataset() — no more sub-clip splitting.
-  - Removed target_clip_size / clip_list / clip_labels split logic.
-  - All branches now receive (T, C, H, W) tensors instead of (C, H, W).
-  - Base class is called with video_mode=True, clip_size=frame_num (32).
-    The base class collect_img_and_label_for_one_dataset() logic then
-    delivers one list of 32 frame paths per video entry, which we use
-    directly — no further splitting.
-  - WeightedRandomSampler support added for class balancing.
 """
 
+import os
 import random
 from typing import List, Optional
 
@@ -58,30 +49,41 @@ from torch.utils.data.distributed import DistributedSampler
 
 from dataset.abstract_dataset import DeepfakeAbstractBaseDataset
 
+# Number of per-frame semantic features from preprocessing
+SEMANTIC_DIM = 73
+
 
 class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
     """
     Dataset for NeSyDeFake: produces synchronized multi-branch tensors
-    for all 32 frames of a video segment.
+    for individual frames (no temporal/video mode).
 
-    All three streams (temporal, spatial, frequency) receive the full
-    32-frame segment with branch-specific normalizations applied.
+    Both spatial and frequency branches receive the same frame with
+    branch-specific normalizations applied.
     """
 
     def __init__(self, config: dict, mode: str = "train"):
-        # ── How many frames per segment ───────────────────────────────────
-        self.segment_size = config["frame_num"][mode]   # typically 32
-
-        # ── Tell base class: video mode ON, load full segment as one clip ─
-        # clip_size == segment_size means base class builds ONE entry per
-        # video with exactly segment_size frame paths — no internal splitting.
-        config["video_mode"] = True
-        # config["clip_size"]  = self.segment_size
-
         self.resolution = config["resolution"]
-        self.mode       = mode
+        self.mode = mode
 
-        # ── Parent handles JSON parsing, LMDB setup, image_list/label_list ─
+        # ── Force frame-level mode ────────────────────────────────────────
+        config["video_mode"] = False
+        # frame_num still controls how many frames per video are sampled
+        # by the base class, but each frame becomes its own sample.
+
+        # ── Semantic features path ────────────────────────────────────────
+        # Expected structure: {preprocessed_root}/{dataset}/{sub_dataset}/
+        #                     semantic_features/{video_name}.npz
+        self.semantic_features_root = config.get(
+            'semantic_features_root',
+            os.path.join(
+                config.get('preprocess', {}).get('output_root_path',
+                           config.get('dataset_root_path', '')),
+            )
+        )
+        self.use_semantic = config.get('load_semantic_features', True)
+
+        # ── Parent handles JSON parsing, image_list/label_list ────────────
         super().__init__(config, mode)
 
         # ── Sanity report ─────────────────────────────────────────────────
@@ -97,95 +99,71 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
         print(
             f"\n{'='*60}"
-            f"\nNeSyDeFakeDataset [{mode}]"
-            f"\n  Total segments    : {len(self.image_list)}"
-            f"\n  Frames loaded     : {self.segment_size} per video"
-            f"\n  Clip size         : {config['clip_size']} frames "
+            f"\nNeSyDeFakeDataset [{mode}] — FRAME-LEVEL"
+            f"\n  Total frames      : {len(self.image_list)}"
             f"\n  Real / Fake       : {real_count} / {fake_count}"
-            f"\n  Resolution        : {self.resolution}×{self.resolution}"
+            f"\n  Resolution        : {self.resolution}x{self.resolution}"
             f"\n  Augmentation      : {'ON' if aug_active else 'OFF'}"
             f"\n  Balanced sampling : {'ON' if balance_active else 'OFF'}"
+            f"\n  Semantic features : {'ON' if self.use_semantic else 'OFF'}"
+            f"\n  Active branches   : spatial, frequency (no temporal)"
             f"\n{'='*60}\n"
         )
 
     # ------------------------------------------------------------------ #
-    #  Internal helpers                                                    #
+    #  Semantic feature loading                                            #
     # ------------------------------------------------------------------ #
 
-    def _load_frames(self, frame_paths: List[str]) -> List[np.ndarray]:
+    def _load_semantic_for_frame(self, frame_path: str, frame_idx: int) -> np.ndarray:
         """
-        Load and resize all frames in a segment.
-        Falls back to duplicating the last good frame on load errors.
-        Pads with black frames only if the segment is completely empty.
+        Load per-frame semantic attributes from the cached .npz file.
+
+        The .npz is stored at:
+          {preprocessed_root}/.../semantic_features/{video_name}.npz
+        and contains 'per_frame' array of shape (T, 73).
+
+        We index into it with the frame number extracted from the filename.
+
+        Returns (73,) float32 array. Zero-vector on any failure.
         """
-        frames: List[np.ndarray] = []
+        if not self.use_semantic:
+            return np.zeros(SEMANTIC_DIM, dtype=np.float32)
 
-        for path in frame_paths:
-            try:
-                img = self.load_rgb(path)          # returns PIL Image (already resized)
-                frames.append(np.array(img))
-            except Exception as exc:
-                print(f"[NeSyDeFake] Failed to load {path}: {exc}")
-                if frames:
-                    frames.append(frames[-1].copy())
-                else:
-                    frames.append(
-                        np.zeros((self.resolution, self.resolution, 3), dtype=np.uint8)
-                    )
-
-        # Defensive pad — should rarely trigger if base class works correctly
-        while len(frames) < self.segment_size:
-            frames.append(
-                frames[-1].copy() if frames
-                else np.zeros((self.resolution, self.resolution, 3), dtype=np.uint8)
-            )
-
-        return frames[:self.segment_size]
-
-    def _augment_frames(
-        self,
-        frames: List[np.ndarray],
-        seed: Optional[int],
-    ) -> List[np.ndarray]:
-        """
-        Apply the same spatial augmentation to every frame in the segment
-        using a shared seed so all branches stay pixel-aligned.
-        """
-        if seed is None or not self.config.get("use_data_augmentation", False):
-            return frames
-
-        augmented = []
-        for frame in frames:
-            aug_frame, _, _ = self.data_aug(frame, None, None, seed)
-            augmented.append(aug_frame)
-        return augmented
-
-    def _frames_to_tensor(
-        self,
-        frames: List[np.ndarray],
-        normalize_fn,
-    ) -> torch.Tensor:
-        """
-        Convert a list of HxWxC uint8 numpy arrays to a (T, C, H, W) tensor
-        and apply the given per-frame normalization function.
-        """
-        tensors = []
-        for frame in frames:
-            t = self.to_tensor(frame)       # → (C, H, W), float32 in [0, 1]
-            t = normalize_fn(t)
-            tensors.append(t)
-        return torch.stack(tensors, dim=0)  # → (T, C, H, W)
-
-    @staticmethod
-    def _extract_video_name(frame_path: str, fallback_idx: int) -> str:
         try:
-            sep = "\\" if "\\" in frame_path else "/"
+            # Parse video name and frame number from path
+            # Path format: .../frames/{video_name}/{frame_num}.png
+            sep = "/" if "/" in frame_path else "\\"
             parts = frame_path.split(sep)
-            if "frames" in parts:
-                return parts[parts.index("frames") - 1]
-            return parts[-2] if len(parts) > 1 else f"video_{fallback_idx}"
+
+            # Find 'frames' directory to locate video name
+            if 'frames' in parts:
+                frames_idx = parts.index('frames')
+                video_name = parts[frames_idx + 1]
+                # Build semantic features path by replacing 'frames/{video}' with
+                # 'semantic_features/{video}.npz'
+                npz_parts = parts[:frames_idx] + ['semantic_features', f'{video_name}.npz']
+                npz_path = sep.join(npz_parts)
+            else:
+                return np.zeros(SEMANTIC_DIM, dtype=np.float32)
+
+            # Extract frame number from filename (e.g., '007.png' -> 7)
+            frame_filename = parts[-1]
+            frame_num = int(os.path.splitext(frame_filename)[0])
+
+            if not os.path.exists(npz_path):
+                return np.zeros(SEMANTIC_DIM, dtype=np.float32)
+
+            data = np.load(npz_path, allow_pickle=True)
+            per_frame = data['per_frame']  # (T, 73)
+
+            if frame_num < per_frame.shape[0]:
+                return per_frame[frame_num].astype(np.float32)
+            else:
+                # Frame index out of range — return zeros
+                return np.zeros(SEMANTIC_DIM, dtype=np.float32)
+
         except Exception:
-            return f"video_{fallback_idx}"
+            return np.zeros(SEMANTIC_DIM, dtype=np.float32)
 
     # ------------------------------------------------------------------ #
     #  Core dataset interface                                              #
@@ -193,54 +171,57 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
     def __getitem__(self, index: int) -> dict:
         """
-        Return one full-segment sample with all four synchronized streams.
+        Return one frame sample with spatial, frequency, and raw tensors,
+        plus cached semantic attributes.
 
         Returns
         -------
         dict
-            temporal_clip  : (T, C, H, W)  — temporal branch input
-            spatial_frames : (T, C, H, W)  — spatial branch input
-            freq_frames    : (T, C, H, W)  — frequency branch input
-            raw_frames     : (T, C, H, W)  — [0,1] for SemanticGrounding
+            spatial_frames : (C, H, W)  — spatial branch input (CLIP norm)
+            freq_frames    : (C, H, W)  — frequency branch input (raw [0,1])
+            raw_frames     : (C, H, W)  — [0,1] for visualization / grounding
+            semantic_attrs : (73,)      — cached per-frame semantic features
             label          : int
-            video_name     : str
+            name           : str        — frame path for video-level metric aggregation
         """
-        frame_paths: List[str] = self.image_list[index]
-        label: int             = self.label_list[index]
+        frame_path = self.image_list[index]
+        label: int = self.label_list[index]
 
-        # Ensure list (base class should always give us a list in video_mode)
-        if not isinstance(frame_paths, list):
-            frame_paths = [frame_paths]
+        # Handle case where base class returns a list (shouldn't in frame mode)
+        if isinstance(frame_path, list):
+            frame_path = frame_path[0]
 
-        # 1. Load raw uint8 frames
-        frames = self._load_frames(frame_paths)
+        # 1. Load raw uint8 frame
+        try:
+            image = self.load_rgb(frame_path)
+        except Exception as e:
+            print(f"[NeSyDeFake] Failed to load {frame_path}: {e}")
+            # Fallback to first sample
+            return self.__getitem__(0)
+        image = np.array(image)
 
-        # 2. Consistent augmentation across all frames (train only)
-        aug_seed = (
-            random.randint(0, 2**32 - 1)
-            if self.mode == "train" and self.config.get("use_data_augmentation", False)
-            else None
-        )
-        frames = self._augment_frames(frames, aug_seed)
+        # 2. Data augmentation (train only)
+        if self.mode == 'train' and self.config.get('use_data_augmentation', False):
+            image, _, _ = self.data_aug(image, None, None)
 
-        # 3. Build per-branch tensors from the SAME augmented frames
-        #    Each branch receives (T, C, H, W) — same content, different norm.
-        temporal_clip  = self._frames_to_tensor(frames, self.normalize_temporal)
-        spatial_frames = self._frames_to_tensor(frames, self.normalize_spatial)
-        freq_frames    = self._frames_to_tensor(frames, self.normalize_frequency)
+        # 3. Convert to tensor [0, 1]
+        img_tensor = self.to_tensor(image)  # (C, H, W) float32
 
-        # raw_frames: [0, 1] range, no normalization (used by SemanticGrounding)
-        raw_frames = self._frames_to_tensor(frames, lambda x: x)
+        # 4. Branch-specific normalizations
+        spatial_frames = self.normalize_spatial(img_tensor)
+        freq_frames = self.normalize_frequency(img_tensor)
+        raw_frames = img_tensor  # already [0, 1]
 
-        video_name = self._extract_video_name(frame_paths[0], index)
+        # 5. Load cached semantic attributes
+        semantic_attrs = self._load_semantic_for_frame(frame_path, index)
 
         return {
-            "temporal_clip":  temporal_clip,   # (T, C, H, W)
-            "spatial_frames": spatial_frames,  # (T, C, H, W)
-            "freq_frames":    freq_frames,      # (T, C, H, W)
-            "raw_frames":     raw_frames,       # (T, C, H, W)
+            "spatial_frames": spatial_frames,    # (C, H, W)
+            "freq_frames":    freq_frames,       # (C, H, W)
+            "raw_frames":     raw_frames,        # (C, H, W)
+            "semantic_attrs": torch.from_numpy(semantic_attrs),  # (73,)
             "label":          label,
-            "video_name":     video_name,
+            "name":           frame_path,        # for video-level aggregation
         }
 
     def __len__(self) -> int:
@@ -257,28 +238,30 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         Stack a list of per-sample dicts into batched tensors.
 
         Output shapes:
-            temporal_clip  : (B, T, C, H, W)
-            spatial_frames : (B, T, C, H, W)
-            freq_frames    : (B, T, C, H, W)
-            raw_frames     : (B, T, C, H, W)
+            spatial_frames : (B, C, H, W)
+            freq_frames    : (B, C, H, W)
+            raw_frames     : (B, C, H, W)
+            semantic_attrs : (B, 73)
             label          : (B,)
         """
-        temporal_clips  = torch.stack([s["temporal_clip"]  for s in batch])
-        spatial_frames  = torch.stack([s["spatial_frames"] for s in batch])
-        freq_frames     = torch.stack([s["freq_frames"]    for s in batch])
-        raw_frames      = torch.stack([s["raw_frames"]     for s in batch])
-        labels          = torch.tensor([s["label"]         for s in batch],
+        spatial_frames = torch.stack([s["spatial_frames"] for s in batch])
+        freq_frames    = torch.stack([s["freq_frames"]    for s in batch])
+        raw_frames     = torch.stack([s["raw_frames"]     for s in batch])
+        semantic_attrs = torch.stack([s["semantic_attrs"]  for s in batch])
+        labels         = torch.tensor([s["label"] for s in batch],
                                        dtype=torch.long)
+        names          = [s["name"] for s in batch]
 
         return {
-            "temporal_clip":  temporal_clips,   # (B, T, C, H, W)
-            "spatial_frames": spatial_frames,   # (B, T, C, H, W)
-            "freq_frames":    freq_frames,       # (B, T, C, H, W)
-            "raw_frames":     raw_frames,        # (B, T, C, H, W)
-            "label":          labels,            # (B,)
-            # Keep these keys as None for compatibility with base trainer
-            "landmark": None,
-            "mask":     None,
+            "spatial_frames": spatial_frames,   # (B, C, H, W)
+            "freq_frames":    freq_frames,      # (B, C, H, W)
+            "raw_frames":     raw_frames,       # (B, C, H, W)
+            "semantic_attrs": semantic_attrs,   # (B, 73)
+            "label":          labels,           # (B,)
+            "name":           names,            # list of str
+            # Compatibility keys
+            "landmark":       None,
+            "mask":           None,
         }
 
     # ------------------------------------------------------------------ #
@@ -287,23 +270,16 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
     def get_weighted_sampler(self) -> WeightedRandomSampler:
         """
-        Build a WeightedRandomSampler that over-samples the minority class
-        so each training epoch sees a balanced class distribution.
-
-        Returns
-        -------
-        WeightedRandomSampler
+        Build a WeightedRandomSampler that over-samples the minority class.
         """
         labels = np.array(self.label_list)
         class_counts = np.bincount(labels)
-        # Weight per class = 1 / count so rare classes get higher weight
         class_weights = 1.0 / class_counts.astype(np.float64)
-        # Assign per-sample weight
         sample_weights = class_weights[labels]
         return WeightedRandomSampler(
-            weights     = torch.from_numpy(sample_weights).float(),
-            num_samples = len(sample_weights),
-            replacement = True,
+            weights=torch.from_numpy(sample_weights).float(),
+            num_samples=len(sample_weights),
+            replacement=True,
         )
 
     # ------------------------------------------------------------------ #
@@ -319,17 +295,6 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
           1. DistributedSampler   — if config['ddp'] is True
           2. WeightedRandomSampler — if config['balance_classes'] is True
           3. shuffle=True          — default
-
-        Parameters
-        ----------
-        config : dict
-            Full training configuration.
-        mode : str
-            'train' or 'test'.
-
-        Returns
-        -------
-        DataLoader
         """
         dataset    = NeSyDeFakeDataset(config, mode=mode)
         batch_size = (config["train_batchSize"] if mode == "train"
@@ -343,15 +308,15 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
                 shuffle = False
             elif config.get("balance_classes", False):
                 sampler = dataset.get_weighted_sampler()
-                shuffle = False  # sampler handles ordering
+                shuffle = False
 
         return DataLoader(
-            dataset     = dataset,
-            batch_size  = batch_size,
-            shuffle     = shuffle,
-            sampler     = sampler,
-            num_workers = int(config["workers"]),
-            collate_fn  = NeSyDeFakeDataset.collate_fn,
-            pin_memory  = True,
-            drop_last   = (mode == "train"),
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            sampler=sampler,
+            num_workers=int(config["workers"]),
+            collate_fn=NeSyDeFakeDataset.collate_fn,
+            pin_memory=True,
+            drop_last=(mode == "train"),
         )

@@ -32,13 +32,12 @@ class MultiModalFusion(nn.Module):
         # ── Per-branch dims (always read all three from config) ────────────
         fm = config['foundation_models']
         self._all_branch_dims = {
-            'temporal':  fm['temporal']['output_dim'],
             'spatial':   fm['spatial']['output_dim'],
             'frequency': fm['frequency']['output_dim'],
         }
 
         # ── Active branch set ─────────────────────────────────────────────
-        all_branches = ('temporal', 'spatial', 'frequency')
+        all_branches = ('spatial', 'frequency')
         self.active_branches = list(config.get('active_branches', all_branches))
 
         # Dims for active branches only (in fixed order)
@@ -100,7 +99,7 @@ class MultiModalFusion(nn.Module):
         """
         if len(self.active_branches) == 3:
             t, s, f = (self._all_branch_dims[b]
-                       for b in ('temporal', 'spatial', 'frequency'))
+                       for b in ('spatial', 'frequency'))
             self.fusion = CrossModalAttention(t, s, f, self.projection_dim)
             self._attn_fallback = False
         else:
@@ -118,7 +117,7 @@ class MultiModalFusion(nn.Module):
         Original: project each active branch to projection_dim,
         then compute a learnable weighted SUM.
         """
-        branch_order = ('temporal', 'spatial', 'frequency')
+        branch_order = ('spatial', 'frequency')
 
         # One linear projection per ACTIVE branch
         self.branch_projs = nn.ModuleDict()
@@ -137,13 +136,11 @@ class MultiModalFusion(nn.Module):
 
     def forward(
         self,
-        temporal_feat:  torch.Tensor | None,
         spatial_feat:   torch.Tensor | None,
         frequency_feat: torch.Tensor | None,
     ) -> torch.Tensor:
         """
         Args:
-            temporal_feat:  (B, D_temporal)  — pass None if branch inactive
             spatial_feat:   (B, D_spatial)   — pass None if branch inactive
             frequency_feat: (B, D_frequency) — pass None if branch inactive
         Returns:
@@ -151,13 +148,12 @@ class MultiModalFusion(nn.Module):
         """
         # Map branch name → tensor (None for inactive)
         feat_map = {
-            'temporal':  temporal_feat,
             'spatial':   spatial_feat,
             'frequency': frequency_feat,
         }
 
         # Collect active tensors in canonical order
-        branch_order = ('temporal', 'spatial', 'frequency')
+        branch_order = ('spatial', 'frequency')
         active_feats = [feat_map[b] for b in branch_order
                         if b in self.active_branches]
 
@@ -175,7 +171,7 @@ class MultiModalFusion(nn.Module):
         elif self.fusion_type == 'attention':
             if not self._attn_fallback:
                 # Full three-branch CrossModalAttention (original path)
-                return self.fusion(temporal_feat, spatial_feat, frequency_feat)
+                return self.fusion(spatial_feat, frequency_feat)
             else:
                 # Partial-branch fallback: concat → linear
                 combined = torch.cat(active_feats, dim=1)

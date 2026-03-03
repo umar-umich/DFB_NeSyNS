@@ -375,7 +375,7 @@ class Trainer(object):
             # Unwrap DDP to access the actual model attributes
             m = self.model.module if isinstance(self.model, DDP) else self.model
 
-            for attr in ('temporal_extractor', 'spatial_extractor', 'frequency_extractor'):
+            for attr in ('spatial_extractor', 'frequency_extractor'):
                 extractor = getattr(m, attr, None)
                 if extractor is None:
                     continue

@@ -1,29 +1,21 @@
 """
 detectors/nesy_defake_hybrid_detector.py
 =========================================
-REGULARIZATION FIXES APPLIED (this revision):
+FRAME-LEVEL REVISION (Step 5):
 
-  Fix 1 — Class-weighted CrossEntropyLoss
-           Addresses acc_real ≈ 0 across all three branches.
-           FF++ is ~80% fake so unweighted CE has a degenerate local optimum
-           of "predict fake always". Class weights break this early.
-           Config: class_weights: [2.0, 1.0]  # [real, fake]
+  Major changes from video-level version:
+    - Temporal branch REMOVED entirely (extractor, projection, consistency loss)
+    - Input is now (B, C, H, W) per branch, not (B, T, C, H, W)
+    - No more _pool_and_project — extractors receive flat batches directly
+    - Semantic attributes (73-d) passed through data_dict for causal module
+    - active_branches now only supports 'spatial' and 'frequency'
 
-  Fix 2 — Dropout in projection heads
-           Spatial was overfitting hard (train loss → 0.002 while test loss → 0.9).
-           Per-branch dropout: spatial=0.2, temporal=0.1, frequency=0.1
-           Config: projection_dropout: {spatial: 0.2, temporal: 0.1, frequency: 0.1}
-
-  Fix 3 — Temporal consistency loss
-           Pushes temporal branch to learn motion coherence, not just
-           "does this look like a face". Real videos should have more
-           consistent frame-level features than fake videos.
-           Config: temporal_consistency_weight: 0.1
-                   temporal_consistency_margin: 0.1
-
-  Fix 4 — class weight device move in get_losses()
-           CrossEntropyLoss.weight is created on CPU. Without explicit
-           .to(device), it crashes on first forward pass on GPU.
+  Preserved from previous version:
+    - Class-weighted CrossEntropyLoss (Fix 1)
+    - Projection head dropout (Fix 2)
+    - DDP zero-grad anchors for frozen modules
+    - Per-module loss weighting
+    - Causal module, sparse autoencoder, semantic grounding (when enabled)
 """
 
 import logging
@@ -36,20 +28,19 @@ from .base_detector import AbstractDetector
 from detectors import DETECTOR
 
 from networks.nesy_defake.foundation_models import (
-    TemporalFeatureExtractor,
     FrequencyFeatureExtractor,
     SpatialFeatureExtractor,
 )
 from networks.nesy_defake.fusion import MultiModalFusion
 from networks.nesy_defake.causal import CausalDiscoveryModule
 from networks.nesy_defake.classifiers import MultiTaskHead, SparseAutoencoder
-from utils.semantic_grounding import SemanticGroundingModule
 
 logger = logging.getLogger(__name__)
-ALL_BRANCHES = ('temporal', 'spatial', 'frequency')
+ALL_BRANCHES = ('spatial', 'frequency')
 
 
 def _zero_grad_anchor(module: nn.Module, device: torch.device) -> torch.Tensor:
+    """DDP anchor: ensures all params participate in backward even if unused."""
     anchor = torch.zeros(1, device=device, dtype=torch.float32)
     for p in module.parameters():
         if p.requires_grad:
@@ -59,15 +50,7 @@ def _zero_grad_anchor(module: nn.Module, device: torch.device) -> torch.Tensor:
 
 def _make_projection(in_dim: int, out_dim: int, dropout: float = 0.0) -> nn.Sequential:
     """
-    Learnable branch projection head: Linear → LayerNorm → GELU → Dropout.
-
-    Dropout is placed post-activation so it gates final projected features
-    rather than disrupting LayerNorm statistics. 0.0 = no dropout (default).
-
-    Per-branch recommendations based on observed overfitting:
-        spatial   : 0.2  (overfits fastest — most iterations, highest-capacity backbone)
-        temporal  : 0.1  (moderate)
-        frequency : 0.1  (moderate)
+    Learnable branch projection head: Linear -> LayerNorm -> GELU -> Dropout.
     """
     layers: list = [
         nn.Linear(in_dim, out_dim),
@@ -89,28 +72,22 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.build_backbone(config)
         self.fusion = MultiModalFusion(config)
 
-        self.use_semantic_grounding = config.get(
-            'semantic_grounding', {}).get('enabled', False)
-        if self.use_semantic_grounding:
-            self.semantic_grounding = SemanticGroundingModule(
-                config, feature_dim=config['fusion']['projection_dim'])
-            self.grounded_feature_dim = self.semantic_grounding.output_dim
-        else:
-            self.grounded_feature_dim = config['fusion']['projection_dim']
-
+        # ── Causal Module ─────────────────────────────────────────────────
         self.use_causal = config['causal_module']['enabled']
         if self.use_causal:
             self.causal_module = CausalDiscoveryModule(config)
 
+        # ── Sparse Autoencoder ────────────────────────────────────────────
         self.use_sparse = config['sparse_features']['enabled']
         if self.use_sparse:
             self.sparse_ae = SparseAutoencoder(config)
 
+        # ── Classifier ────────────────────────────────────────────────────
         self.multitaskhead = MultiTaskHead(config)
-        self.loss_weights  = config['loss_func']['weights']
+        self.loss_weights = config['loss_func']['weights']
         self.build_loss(config)
 
-        logger.info("NeSyDeFake Hybrid Detector initialised")
+        logger.info("NeSyDeFake Hybrid Detector initialised (FRAME-LEVEL)")
         logger.info(f"  Active branches : {sorted(self.active_branches)}")
         logger.info(f"  Fused dim       : {config['fusion']['fused_dim']}")
         logger.info(f"  Projection dim  : {config['fusion']['projection_dim']}")
@@ -120,30 +97,27 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
     # ------------------------------------------------------------------ #
 
     def build_backbone(self, config: dict) -> None:
-        self.temporal_extractor  = TemporalFeatureExtractor(config)
         self.spatial_extractor   = SpatialFeatureExtractor(config)
         self.frequency_extractor = FrequencyFeatureExtractor(config)
 
         active = set(config.get('active_branches', list(ALL_BRANCHES)))
+        # Filter out temporal if someone left it in config
+        active = active & set(ALL_BRANCHES)
         self.active_branches = active
 
         fm       = config['foundation_models']
         proj_dim = config['fusion']['projection_dim']
 
         branch_dims = {
-            'temporal':  self.temporal_extractor.output_dim,   # read from extractor
-            'spatial':   fm['spatial']['output_dim'],          # CLIP-L: 1024
-            'frequency': self.frequency_extractor.output_dim,  # read from extractor
+            'spatial':   fm['spatial']['output_dim'],
+            'frequency': self.frequency_extractor.output_dim,
         }
 
         # Per-branch dropout from config
         dropout_cfg = config.get('projection_dropout', {})
-        self.temporal_proj  = _make_projection(
-            branch_dims['temporal'],  proj_dim,
-            dropout=dropout_cfg.get('temporal',  0.1))
-        self.spatial_proj   = _make_projection(
-            branch_dims['spatial'],   proj_dim,
-            dropout=dropout_cfg.get('spatial',   0.2))
+        self.spatial_proj = _make_projection(
+            branch_dims['spatial'], proj_dim,
+            dropout=dropout_cfg.get('spatial', 0.2))
         self.frequency_proj = _make_projection(
             branch_dims['frequency'], proj_dim,
             dropout=dropout_cfg.get('frequency', 0.1))
@@ -152,20 +126,22 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         config['fusion']['fused_dim'] = fused_dim
 
         logger.info(
-            f"  Branch dims     : temporal={branch_dims['temporal']}, "
-            f"spatial={branch_dims['spatial']}, frequency={branch_dims['frequency']}"
+            f"  Branch dims     : "
+            f"spatial={branch_dims['spatial']}, "
+            f"frequency={branch_dims['frequency']}"
         )
-        logger.info(f"  Projection dim  : {proj_dim} (all branches)")
+        logger.info(f"  Projection dim  : {proj_dim}")
         logger.info(
-            f"  Proj dropout    : temporal={dropout_cfg.get('temporal', 0.1)}, "
+            f"  Proj dropout    : "
             f"spatial={dropout_cfg.get('spatial', 0.2)}, "
             f"frequency={dropout_cfg.get('frequency', 0.1)}"
         )
         logger.info(
             f"  Fused dim       : {fused_dim} "
-            f"(active: {sorted(active)}, {len(active)} × {proj_dim})"
+            f"(active: {sorted(active)}, {len(active)} x {proj_dim})"
         )
 
+        # Freeze inactive branches
         for name in ALL_BRANCHES:
             if name not in active:
                 self._freeze_module(
@@ -177,16 +153,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         logger.info(f"  Frozen branch   : {name}")
 
     def build_loss(self, config: dict) -> None:
-        """
-        CrossEntropyLoss with optional class weights (Fix 1).
-
-        Config key: class_weights: [real_weight, fake_weight]
-        Recommended starting point: [2.0, 1.0]
-        Theoretical value for FF++ (~80% fake): [4.0, 1.0]
-
-        Start with [2.0, 1.0]. If acc_real is still near 0 after 5 epochs,
-        increase to [3.0, 1.0] or [4.0, 1.0].
-        """
+        """CrossEntropyLoss with optional class weights."""
         cw = config.get('class_weights', None)
         if cw is not None:
             weight = torch.tensor(cw, dtype=torch.float32)
@@ -200,66 +167,36 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.l1_loss  = nn.L1Loss()
 
     # ------------------------------------------------------------------ #
-    #  Feature extraction                                                  #
+    #  Feature extraction — frame-level (no temporal dimension)            #
     # ------------------------------------------------------------------ #
 
-    def _pool_and_project(
-        self,
-        frames: torch.Tensor,
-        extractor: nn.Module,
-        proj_head: nn.Module,
-    ) -> torch.Tensor:
-        B, T, C, H, W = frames.shape
-        flat   = frames.view(B * T, C, H, W)
-        feats  = extractor(flat)
-        feats  = feats.view(B, T, -1)
-        pooled = feats.mean(dim=1)
-        return proj_head(pooled)
-
-    def extract_temporal_features(
-        self,
-        video_clip: torch.Tensor,
-        return_frame_features: bool = False,
-    ) -> torch.Tensor:
-        """
-        Run temporal extractor. If return_frame_features=True, also returns
-        per-frame/token features for the temporal consistency loss.
-        """
-        if return_frame_features:
-            raw, frame_feats = self.temporal_extractor(
-                video_clip, return_frame_features=True)
-        else:
-            raw = self.temporal_extractor(video_clip)
-            frame_feats = None
-
-        projected = self.temporal_proj(raw)
-        if return_frame_features:
-            return projected, frame_feats
-        return projected
-
     def extract_spatial_features(self, spatial_frames: torch.Tensor) -> torch.Tensor:
-        return self._pool_and_project(
-            spatial_frames, self.spatial_extractor, self.spatial_proj)
+        """
+        Args:
+            spatial_frames: (B, C, H, W)
+        Returns:
+            (B, projection_dim)
+        """
+        feats = self.spatial_extractor(spatial_frames)   # (B, spatial_dim)
+        return self.spatial_proj(feats)                  # (B, proj_dim)
 
     def extract_frequency_features(self, freq_frames: torch.Tensor) -> torch.Tensor:
-        return self._pool_and_project(
-            freq_frames, self.frequency_extractor, self.frequency_proj)
+        """
+        Args:
+            freq_frames: (B, C, H, W)
+        Returns:
+            (B, projection_dim)
+        """
+        feats = self.frequency_extractor(freq_frames)    # (B, freq_dim)
+        return self.frequency_proj(feats)                # (B, proj_dim)
 
     def features(self, data_dict: dict) -> tuple:
-        temporal_feat        = None
-        temporal_frame_feats = None
+        """
+        Extract and fuse features from active branches.
 
-        if 'temporal' in self.active_branches:
-            use_consistency = (
-                self.config.get('temporal_consistency_weight', 0.0) > 0
-            )
-            if use_consistency:
-                temporal_feat, temporal_frame_feats = self.extract_temporal_features(
-                    data_dict['temporal_clip'], return_frame_features=True)
-            else:
-                temporal_feat = self.extract_temporal_features(
-                    data_dict['temporal_clip'])
-
+        Returns:
+            (fused_features, spatial_feat, frequency_feat)
+        """
         spatial_feat = (
             self.extract_spatial_features(data_dict['spatial_frames'])
             if 'spatial' in self.active_branches else None
@@ -269,63 +206,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             if 'frequency' in self.active_branches else None
         )
 
-        fused_features = self.fusion(temporal_feat, spatial_feat, frequency_feat)
-        return (fused_features, temporal_feat, spatial_feat, frequency_feat,
-                temporal_frame_feats)
+        # Fusion expects (temporal=None, spatial, frequency)
+        fused_features = self.fusion(spatial_feat, frequency_feat)
+        return fused_features, spatial_feat, frequency_feat
 
     def classifier(self, features: torch.Tensor) -> dict:
         return self.multitaskhead(features)
-
-    # ------------------------------------------------------------------ #
-    #  Temporal consistency loss (Fix 3)                                  #
-    # ------------------------------------------------------------------ #
-
-    def _temporal_consistency_loss(
-        self,
-        frame_features: torch.Tensor,   # (B, N, D)
-        labels: torch.Tensor,            # (B,)
-    ) -> torch.Tensor:
-        """
-        Margin contrastive loss on pairwise cosine similarity of frame features.
-
-        Real videos should have high temporal consistency (features are similar
-        across frames — stable identity, smooth motion).
-        Fake videos should have lower consistency (per-frame generation artifacts,
-        temporal discontinuities, identity drift between frames).
-
-        Loss = max(0, margin − (mean_real_consistency − mean_fake_consistency))
-
-        This is zero when real consistency exceeds fake consistency by at least
-        `margin`, and positive otherwise. It never pushes fake consistency up
-        or real consistency down — it only enforces the gap.
-        """
-        device = frame_features.device
-
-        norm_feats = F.normalize(frame_features, p=2, dim=-1)   # (B, N, D)
-        sim_matrix = torch.bmm(
-            norm_feats, norm_feats.transpose(1, 2))             # (B, N, N)
-
-        B, N, _ = sim_matrix.shape
-        # Off-diagonal mask — exclude self-similarity
-        off_diag = ~torch.eye(N, dtype=torch.bool, device=device).unsqueeze(0)
-        consistency = (
-            sim_matrix[off_diag.expand(B, N, N)]
-            .view(B, N * (N - 1))
-            .mean(dim=1)
-        )   # (B,)
-
-        real_mask = (labels == 0)
-        fake_mask = (labels == 1)
-
-        if real_mask.sum() == 0 or fake_mask.sum() == 0:
-            return torch.zeros(1, device=device)
-
-        real_consistency = consistency[real_mask].mean()
-        fake_consistency = consistency[fake_mask].mean()
-
-        margin = self.config.get('temporal_consistency_margin', 0.1)
-        return torch.clamp(
-            margin - (real_consistency - fake_consistency), min=0.0)
 
     # ------------------------------------------------------------------ #
     #  Forward pass                                                        #
@@ -334,59 +220,53 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
     def forward(self, data_dict: dict, inference: bool = False) -> dict:
         device = data_dict['label'].device
 
-        (fused_features, temporal_feat, spatial_feat,
-         frequency_feat, temporal_frame_feats) = self.features(data_dict)
+        # ── Feature extraction ────────────────────────────────────────────
+        fused_features, spatial_feat, frequency_feat = self.features(data_dict)
 
-        semantic_concepts = None
-        grounded_features = fused_features
-        if self.use_semantic_grounding:
-            T   = data_dict['raw_frames'].shape[1]
-            mid = T // 2
-            raw_frame_anchor = data_dict['raw_frames'][:, mid]
-            grounded_features, semantic_concepts = self.semantic_grounding(
-                fused_features, raw_frame_anchor)
-
+        # ── Causal module ─────────────────────────────────────────────────
         violation_score = None
         causal_dag      = None
         causal_concepts = None
+        classifier_input = fused_features
+
         if self.use_causal:
+            # Pass semantic attributes from dataset for causal discovery
+            semantic_attrs = data_dict.get('semantic_attrs', None)
             if not inference:
                 violation_score, causal_dag, causal_concepts = self.causal_module(
-                    grounded_features,
-                    explicit_concepts=semantic_concepts,
+                    fused_features,
+                    semantic_attrs=semantic_attrs,
                     return_graph=True,
                 )
             else:
                 violation_score = self.causal_module(
-                    grounded_features, explicit_concepts=semantic_concepts)
+                    fused_features,
+                    semantic_attrs=semantic_attrs,
+                )
 
+        # ── Sparse autoencoder ────────────────────────────────────────────
         sparse_loss = None
         if self.use_sparse:
-            sparse_features, sparse_loss = self.sparse_ae(grounded_features)
+            sparse_features, sparse_loss = self.sparse_ae(classifier_input)
             classifier_input = sparse_features
-        else:
-            classifier_input = grounded_features
 
+        # ── Classification ────────────────────────────────────────────────
         task_outputs = self.classifier(classifier_input)
         cls_logits   = task_outputs['classification']
         prob         = torch.softmax(cls_logits, dim=1)[:, 1]
 
         pred_dict = {
-            'cls':                    cls_logits,
-            'prob':                   prob,
-            'feat':                   fused_features,
-            'grounded_feat':          grounded_features,
-            'temporal_feat':          temporal_feat,
-            'spatial_feat':           spatial_feat,
-            'frequency_feat':         frequency_feat,
-            'temporal_frame_features': temporal_frame_feats,
-            'semantic_concepts':      semantic_concepts,
-            'causal_concepts':        causal_concepts,
-            'uncertainty':            task_outputs.get('uncertainty'),
-            'violation_score':        task_outputs.get('violation_score'),
-            'task_outputs':           task_outputs,
-            'sparse_loss':            sparse_loss,
-            'causal_dag':             causal_dag,
+            'cls':               cls_logits,
+            'prob':              prob,
+            'feat':              fused_features,
+            'spatial_feat':      spatial_feat,
+            'frequency_feat':    frequency_feat,
+            'causal_concepts':   causal_concepts,
+            'uncertainty':       task_outputs.get('uncertainty'),
+            'violation_score':   task_outputs.get('violation_score'),
+            'task_outputs':      task_outputs,
+            'sparse_loss':       sparse_loss,
+            'causal_dag':        causal_dag,
         }
         return pred_dict
 
@@ -398,9 +278,9 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         label  = data_dict['label']
         device = label.device
 
-        # Fix 4: move class weights to GPU on first call (they are created on CPU)
+        # Move class weights to correct device/dtype on first call
         if (hasattr(self.cls_loss, 'weight')
-            and self.cls_loss.weight is not None):
+                and self.cls_loss.weight is not None):
             target_dtype = pred_dict['cls'].dtype
             if (self.cls_loss.weight.device != device
                     or self.cls_loss.weight.dtype != target_dtype):
@@ -409,7 +289,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         cls_loss = self.cls_loss(pred_dict['cls'], label)
 
-        # Uncertainty loss
+        # ── Uncertainty loss ──────────────────────────────────────────────
         uncertainty_loss = torch.zeros(1, device=device)
         if pred_dict.get('uncertainty') is not None:
             pred_label = pred_dict['cls'].argmax(dim=1)
@@ -417,7 +297,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             uncertainty_loss = self.reg_loss(
                 pred_dict['uncertainty'].squeeze(), 1 - is_correct)
 
-        # Causal loss
+        # ── Causal loss ───────────────────────────────────────────────────
         causal_loss = torch.zeros(1, device=device)
         if self.use_causal and pred_dict.get('violation_score') is not None:
             causal_loss = self.reg_loss(
@@ -429,24 +309,14 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     * dag_penalty
                 )
 
-        # Sparse loss
+        # ── Sparse loss ───────────────────────────────────────────────────
         sparse_loss = pred_dict.get('sparse_loss')
         if sparse_loss is None or not isinstance(sparse_loss, torch.Tensor):
             sparse_loss = torch.zeros(1, device=device)
 
-        # Fix 3: Temporal consistency loss
-        temporal_consistency_loss = torch.zeros(1, device=device)
-        tc_weight = self.config.get('temporal_consistency_weight', 0.0)
-        if (tc_weight > 0
-                and 'temporal' in self.active_branches
-                and pred_dict.get('temporal_frame_features') is not None):
-            temporal_consistency_loss = self._temporal_consistency_loss(
-                pred_dict['temporal_frame_features'], label)
-
-        # DDP anchor
+        # ── DDP anchor for frozen/unused modules ──────────────────────────
         ddp_anchor = torch.zeros(1, device=device)
         branch_pairs = {
-            'temporal':  (self.temporal_extractor,  self.temporal_proj),
             'spatial':   (self.spatial_extractor,   self.spatial_proj),
             'frequency': (self.frequency_extractor, self.frequency_proj),
         }
@@ -455,34 +325,31 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(extractor, device)
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(proj, device)
 
-        for attr in ('causal_module', 'sparse_ae', 'semantic_grounding',
-                     'multitaskhead'):
+        for attr in ('causal_module', 'sparse_ae', 'multitaskhead'):
             mod = getattr(self, attr, None)
             if mod is not None:
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(mod, device)
 
+        # ── Total loss ────────────────────────────────────────────────────
         total_loss = (
-            self.loss_weights['classification']                     * cls_loss
-            + self.loss_weights.get('uncertainty',        0.0)     * uncertainty_loss
-            + self.loss_weights.get('causal',             0.0)     * causal_loss
-            + self.loss_weights.get('sparse',             0.0)     * sparse_loss
-            + tc_weight                                             * temporal_consistency_loss
+            self.loss_weights['classification']                 * cls_loss
+            + self.loss_weights.get('uncertainty',    0.0)     * uncertainty_loss
+            + self.loss_weights.get('causal',         0.0)     * causal_loss
+            + self.loss_weights.get('sparse',         0.0)     * sparse_loss
             + ddp_anchor
         )
 
-
-        # Squeeze all loss terms to scalar shape [] for Recorder compatibility
         def _scalar(t):
             return t.squeeze() if isinstance(t, torch.Tensor) else t
 
         return {
-            'overall':              _scalar(total_loss),
-            'classification':       _scalar(cls_loss),
-            'uncertainty':          _scalar(uncertainty_loss),
-            'causal':               _scalar(causal_loss),
-            'sparse':               _scalar(sparse_loss),
-            'temporal_consistency': _scalar(temporal_consistency_loss),
+            'overall':        _scalar(total_loss),
+            'classification': _scalar(cls_loss),
+            'uncertainty':    _scalar(uncertainty_loss),
+            'causal':         _scalar(causal_loss),
+            'sparse':         _scalar(sparse_loss),
         }
+
     # ------------------------------------------------------------------ #
     #  Metrics                                                             #
     # ------------------------------------------------------------------ #

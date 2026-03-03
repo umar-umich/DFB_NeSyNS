@@ -366,7 +366,7 @@ class FADFrontEnd(nn.Module):
             # Step 6: Normalize for CLIP backbone
             out = self._normalize_for_clip(enhanced)
 
-        return out.to(orig_dtype)
+        return out #.to(orig_dtype)
 
 
 class BandAttention(nn.Module):
@@ -753,27 +753,42 @@ class FrequencyFeatureExtractor(nn.Module):
         x    = (x - mean) / (std + eps)
         return x.clamp(-3.0, 3.0)
 
-    def _forward_fad_clip(self, x: torch.Tensor) -> torch.Tensor:
+    def _forward_fad_clip(self, x):
         """
         FAD front-end → CLIP → freq_norm.
-
-        Input is resized to match FAD's DCT matrix size (= CLIP's input size)
-        BEFORE the DCT, since DCT matrix dimensions must match spatial dims.
+        
+        CRITICAL: The entire path runs in float32 (autocast disabled).
+        
+        Why: The DCT matmul produces coefficients ~15 at DC. During backward,
+        grad(DCT) * DCT_coefficients overflows fp16 range (max 65504) when
+        accumulated over 224 spatial positions. This manifests as NaN in
+        MulBackward0 at random iterations (typically 500-1000 into training
+        when gradients from CLIP grow large enough).
+        
+        Performance impact: ~10-15% slower than fp16 for this branch only.
+        The spatial branch still runs in fp16 via autocast.
         """
-        _, _, H, W = x.shape
-        if H != self.required_size or W != self.required_size:
-            x = F.interpolate(
-                x,
-                size=(self.required_size, self.required_size),
-                mode='bilinear',
-                align_corners=False,
-            )
-
-        clip_input = self.fad_front_end(x)                      # (B, 3, H, W)
-        outputs    = self.backbone(pixel_values=clip_input)
-        raw        = outputs.pooler_output                       # (B, hidden_dim)
-        return self.freq_norm(raw)
-
+        # Disable autocast for the ENTIRE frequency path (forward + backward)
+        with torch.cuda.amp.autocast(enabled=False):
+            x = x.float()  # ensure float32 input
+            
+            _, _, H, W = x.shape
+            if H != self.required_size or W != self.required_size:
+                x = F.interpolate(
+                    x,
+                    size=(self.required_size, self.required_size),
+                    mode='bilinear',
+                    align_corners=False,
+                )
+            
+            clip_input = self.fad_front_end(x)           # (B, 3, H, W) float32
+            # clip_input is now float32 (FADFrontEnd no longer casts back)
+            
+            outputs = self.backbone(pixel_values=clip_input)  # CLIP in float32
+            raw = outputs.pooler_output                        # (B, 1024) float32
+            
+            return self.freq_norm(raw)  # float32 output — autocast handles downstream
+    
     def _forward_clip_phase(self, x: torch.Tensor) -> torch.Tensor:
         """Legacy CLIP + phase map path."""
         with torch.cuda.amp.autocast(enabled=False):
