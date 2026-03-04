@@ -3,27 +3,27 @@ networks/nesy_defake/foundation_models/frequency_feature_extractor.py
 =====================================================================
 Frequency Feature Extractor — F3Net FAD + Adaptive Frequency Enhancement + CLIP
 
-WHAT CHANGED AND WHY (v5.2 — Hybrid Precision with Gradient Bridge)
----------------------------------------------------------------------
-v5.1 split FAD (FP32) from CLIP (FP16) but crashed with MulBackward0 NaN.
+WHAT CHANGED AND WHY (v5.3 — BF16 for CLIP backbone)
+------------------------------------------------------
+v5.0–v5.2 tried various FP16 strategies for CLIP; all failed:
+  v5.1: FAD FP32 + CLIP FP16 → MulBackward0 NaN (DCT backward overflow)
+  v5.2: Added gradient bridge → ConvolutionBackward0 NaN (CLIP internal)
 
-Root cause: autocast(enabled=False) only controls FORWARD dtype. During
-backward, CLIP produces FP16 gradients that flow back into FAD's DCT
-matmul. The DCT backward does grad @ DCT_matrix, accumulating 224 terms.
-The incoming FP16 gradients (GradScaler-amplified) × 224 accumulation
-overflows FP16 max (65504) → NaN in MulBackward0.
+Root cause: FP16 max is 65504. With FAD-enhanced inputs (higher activation
+variance) and GradScaler amplification, gradient accumulation in ANY CLIP
+layer can overflow FP16 during backward. This is unfixable with bridges or
+clamps — the overflow happens inside CLIP's own ops.
 
-v5.2 adds _FP32GradBridge at the FAD→CLIP boundary:
-  Forward:  FP32 → FP16 cast (for fast CLIP forward)
-  Backward: FP16 → FP32 cast + clamp(±1000) (safe DCT backward)
+v5.3 fix: Use BF16 instead of FP16 for CLIP backbone.
+  - BF16 has FP32's exponent range (max ~3.4e38) → overflow impossible
+  - Same tensor core throughput as FP16 on Hopper/Ada GPUs (H200, H100, A100)
+  - Lower mantissa precision (7 bits vs 10) is irrelevant for training
+  - Falls back to FP32 on GPUs without BF16 support (V100)
 
-Four precision zones:
-  Stage 1 — FADFrontEnd: FP32 (~5% FLOPs, DCT safety)
-  Stage 2 — _FP32GradBridge: FP32→FP16 forward, FP16→FP32 backward
-  Stage 3 — CLIP backbone: FP16 (~95% FLOPs, fast)
-  Stage 4 — SafeLayerNorm: FP32 + gradient clamp ±100
-
-Net result: ~95% of FP16 speed, NaN-safe in both forward and backward.
+Three precision zones:
+  Stage 1 — FADFrontEnd: FP32 (DCT matrix precision)
+  Stage 2 — CLIP backbone: BF16 (fast, overflow-safe)
+  Stage 3 — SafeLayerNorm: FP32 + gradient clamp ±100
 """
 
 import logging
@@ -807,31 +807,45 @@ class FrequencyFeatureExtractor(nn.Module):
         """
         FAD front-end → CLIP → SafeLayerNorm.
         
-        v5.2 HYBRID PRECISION with gradient bridge.
+        v5.3 — BF16 for CLIP, FP32 for FAD.
         
-        Three precision zones with explicit gradient dtype control:
+        WHY FP16 CANNOT WORK FOR THIS BRANCH (lessons from v5.0–v5.2):
         
+          v5.0: Entire branch FP32 → safe but slow (CLIP in FP32 = ~2× VRAM).
+          v5.1: FAD FP32, CLIP FP16 → NaN in MulBackward0.
+                CLIP's FP16 backward grads flow into FAD's DCT matmul,
+                224-term accumulation overflows FP16 max (65504).
+          v5.2: Added _FP32GradBridge at FAD→CLIP boundary → NaN in 
+                ConvolutionBackward0. The overflow happens INSIDE CLIP's
+                own FP16 backward (patch embedding), before reaching our
+                bridge. FAD emphasis amplifies high-freq content → higher
+                activation variance in CLIP → Conv2d backward accumulation
+                (14×14×3=588 terms) overflows FP16.
+        
+          Conclusion: FP16 is fundamentally unsafe for CLIP's backward when
+          the input has been frequency-enhanced. The overflow can occur in
+          ANY layer's backward, not just at the boundary.
+        
+        THE FIX — BF16:
+          BF16 has the same exponent range as FP32 (max ~3.4e38 vs FP16's
+          65504), so gradient accumulation CANNOT overflow. BF16 has lower
+          mantissa precision (7 bits vs FP16's 10 bits), but this doesn't
+          matter for training — the noise is well within optimizer tolerance.
+          
+          On H200 (Hopper architecture), BF16 has the same throughput as
+          FP16: both use the same tensor cores. So there's zero speed
+          penalty vs FP16.
+        
+        Architecture:
           Stage 1 — FADFrontEnd: FP32 (autocast disabled)
-            DCT matmul accumulates 224 terms × DC coeff ~15.
-            Must be FP32 in both forward AND backward.
+            DCT matmul needs FP32 precision for the matrix coefficients.
+          Stage 2 — CLIP backbone: BF16 (explicit autocast dtype=bf16)
+            Same speed as FP16 on H200, but overflow-safe.
+          Stage 3 — SafeLayerNorm: FP32 (gradient clamping ±100)
+            Extra safety for the output LayerNorm.
         
-          Stage 2 — FP32→FP16 gradient bridge (_FP32GradBridge)
-            Forward: casts FAD output from FP32 → FP16 for CLIP.
-            Backward: casts CLIP's FP16 gradients → FP32 + clamp(±1000)
-                      before they enter FAD's DCT backward.
-            This is the key fix: without it, FP16 gradients from CLIP
-            flow into the DCT matmul backward and the 224-term accumulation
-            overflows FP16 range → MulBackward0 NaN.
-        
-          Stage 3 — CLIP backbone: FP16 (autocast)
-            ~95% of branch FLOPs. Normal image input after CLIP normalization.
-            CLIP is designed for mixed-precision; FP16 is safe here.
-        
-          Stage 4 — SafeLayerNorm: FP32 (gradient clamping ±100)
-            Prevents GradScaler-amplified gradients from overflowing
-            the LayerNorm backward (grad / std explosion).
-        
-        Performance: ~95% of FP16 speed (only FAD's ~5% FLOPs in FP32).
+        Performance: Same as FP16 on Hopper/Ada GPUs (H100, H200, A100, L40).
+        On older GPUs without native BF16 (V100), falls back to FP32 for CLIP.
         """
         # ── Stage 1: FAD front-end in FP32 ────────────────────────────────
         with torch.cuda.amp.autocast(enabled=False):
@@ -848,16 +862,23 @@ class FrequencyFeatureExtractor(nn.Module):
 
             clip_input = self.fad_front_end(x)  # (B, 3, H, W) FP32
 
-        # ── Stage 2: Gradient bridge FP32→FP16 ────────────────────────────
-        # Forward: cast to FP16 for CLIP (fast forward pass)
-        # Backward: cast CLIP's FP16 grads → FP32 + clamp before entering FAD
-        clip_input = _FP32GradBridge.apply(clip_input)  # (B, 3, H, W) FP16
+        # ── Stage 2: CLIP backbone in BF16 ────────────────────────────────
+        # BF16 has FP32's exponent range → no overflow possible.
+        # Same tensor core throughput as FP16 on Hopper/Ada GPUs.
+        # Fallback: if GPU doesn't support BF16, use FP32 (safe but slower).
+        use_bf16 = torch.cuda.is_bf16_supported()
+        if use_bf16:
+            with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                outputs = self.backbone(pixel_values=clip_input)
+                raw = outputs.pooler_output  # (B, 1024) BF16
+        else:
+            # V100 or older: no BF16 support, fall back to FP32
+            with torch.cuda.amp.autocast(enabled=False):
+                clip_input = clip_input.float()
+                outputs = self.backbone(pixel_values=clip_input)
+                raw = outputs.pooler_output  # (B, 1024) FP32
 
-        # ── Stage 3: CLIP backbone in FP16 (trainer's autocast active) ────
-        outputs = self.backbone(pixel_values=clip_input)
-        raw = outputs.pooler_output  # (B, 1024) FP16
-
-        # ── Stage 4: SafeLayerNorm in FP32 ────────────────────────────────
+        # ── Stage 3: SafeLayerNorm in FP32 ────────────────────────────────
         with torch.cuda.amp.autocast(enabled=False):
             return self.freq_norm(raw.float())
 

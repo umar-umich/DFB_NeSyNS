@@ -335,12 +335,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         label = data_dict['label']
         pred = pred_dict['cls']
         auc, eer, acc, ap = calculate_metrics_for_train(
-            label.detach(), pred.detach())
+            label.detach().float(), pred.detach().float())
         metrics = {'acc': acc, 'auc': auc, 'eer': eer, 'ap': ap}
 
         if pred_dict.get('uncertainty') is not None:
             metrics['mean_uncertainty'] = float(
-                pred_dict['uncertainty'].detach().cpu().numpy().mean())
+                pred_dict['uncertainty'].detach().float().cpu().numpy().mean())
 
         # SAE diagnostics
         sae_info = pred_dict.get('sae_info', {})
