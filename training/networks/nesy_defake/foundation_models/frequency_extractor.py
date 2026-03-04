@@ -3,75 +3,27 @@ networks/nesy_defake/foundation_models/frequency_feature_extractor.py
 =====================================================================
 Frequency Feature Extractor — F3Net FAD + Adaptive Frequency Enhancement + CLIP
 
-WHAT CHANGED AND WHY (v4 — Adaptive Frequency Enhancement)
-------------------------------------------------------------
-Previous version (v3, fad_clip single/multi) problems:
+WHAT CHANGED AND WHY (v5.2 — Hybrid Precision with Gradient Bridge)
+---------------------------------------------------------------------
+v5.1 split FAD (FP32) from CLIP (FP16) but crashed with MulBackward0 NaN.
 
-  v3 computed DCT → high-band filter → iDCT and fed ONLY the high-frequency
-  band to CLIP. Two fatal issues:
+Root cause: autocast(enabled=False) only controls FORWARD dtype. During
+backward, CLIP produces FP16 gradients that flow back into FAD's DCT
+matmul. The DCT backward does grad @ DCT_matrix, accumulating 224 terms.
+The incoming FP16 gradients (GradScaler-amplified) × 224 accumulation
+overflows FP16 max (65504) → NaN in MulBackward0.
 
-  1. The high band alone is a RESIDUAL signal — it's the original image minus
-     low+mid frequency content. For face-swap, the discriminative signal is
-     the DIFFERENCE in high-frequency content between the forged face region
-     and the background. A single high-band image gives CLIP no context for
-     where the face boundary is. Result: FF++ AUC=0.68, CDF AUC=0.63.
+v5.2 adds _FP32GradBridge at the FAD→CLIP boundary:
+  Forward:  FP32 → FP16 cast (for fast CLIP forward)
+  Backward: FP16 → FP32 cast + clamp(±1000) (safe DCT backward)
 
-  2. The input is already ImageNet-normalized (mean≈0, std≈1), so DCT
-     coefficients are much smaller than F3Net expected (raw [0,255] pixels).
-     The high-band filter (i+j > 112) captures almost no energy from
-     normalized input → iDCT output is near-zero → per-sample normalization
-     amplifies noise → CLIP sees noise, not frequency artifacts.
+Four precision zones:
+  Stage 1 — FADFrontEnd: FP32 (~5% FLOPs, DCT safety)
+  Stage 2 — _FP32GradBridge: FP32→FP16 forward, FP16→FP32 backward
+  Stage 3 — CLIP backbone: FP16 (~95% FLOPs, fast)
+  Stage 4 — SafeLayerNorm: FP32 + gradient clamp ±100
 
-The fix — Adaptive Frequency Enhancement:
-
-  Instead of REPLACING the image with a frequency band, we ENHANCE the
-  original image with learnable frequency emphasis. The key insight:
-
-    output = original + α * high_freq_residual
-
-  where high_freq_residual = image - DCT_lowpass(image), computed by
-  filtering OUT the low frequencies and keeping what remains.
-
-  This way CLIP still sees a recognizable face (pretraining works) but
-  with frequency artifacts AMPLIFIED (detection works). The learnable
-  emphasis weight α starts small (0.1) and grows as training discovers
-  which high-frequency patterns matter.
-
-  We keep F3Net's learnable bandpass filters to define what "high frequency"
-  means — the network learns the optimal cutoff for the specific forgery type.
-
-  Additionally, we provide a multi-band mode where separate emphasis weights
-  for low/mid/high bands allow the network to selectively amplify different
-  frequency ranges.
-
-Architecture:
-
-  Input (B, 3, H, W) — pre-normalized frames
-    → FADFrontEnd:
-        DCT → learnable bandpass filters → iDCT → frequency bands
-        single mode: output = original + α * high_band        (α learnable)
-        multi mode:  output = original + Σ αᵢ * bandᵢ         (αᵢ learnable)
-    → (B, 3, H, W) — enhanced image, still looks like a face
-    → CLIP vision encoder [frozen except LayerNorms]
-    → freq_norm [always trainable]
-    → (B, hidden_dim)
-
-Config (foundation_models.frequency):
-    name:              fad_clip
-    model_path:        openai/clip-vit-large-patch14
-    output_dim:        1024
-    freeze_backbone:   true
-    train_layernorms:  true
-    fad_mode:          single                 # 'single' or 'multi'
-    fad_learnable:     true                   # learnable bandpass filters
-    freq_emphasis_init: 0.1                   # initial emphasis weight α
-    normalization:
-      keep_raw:        true                   # dataset delivers [0,1] pixels
-    clip_normalization:                       # applied inside model after FAD
-      mean: [0.481, 0.458, 0.408]
-      std:  [0.269, 0.261, 0.276]
-
-    # Backward compatible: clip_phase, spsl, srm_resnet
+Net result: ~95% of FP16 speed, NaN-safe in both forward and backward.
 """
 
 import logging
@@ -83,6 +35,98 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# NEW: Safe LayerNorm that clips backward gradients
+# ---------------------------------------------------------------------------
+
+class SafeLayerNorm(nn.Module):
+    """
+    LayerNorm wrapper that clips incoming gradients during backward.
+    
+    Identical to nn.LayerNorm in forward. During backward, a hook on the
+    input tensor clamps gradient magnitudes to `max_grad_value`. This
+    prevents the division-by-small-std in NativeLayerNormBackward0 from
+    producing NaN/Inf when the GradScaler has amplified upstream gradients.
+    
+    Why not just use gradient clipping at the optimizer level?
+    Because optimizer-level clipping happens AFTER the backward pass completes.
+    The NaN occurs DURING backward — the gradient is already NaN before the
+    optimizer ever sees it. We need to intervene at the point of explosion.
+    """
+    
+    def __init__(self, normalized_shape, eps=1e-5, max_grad_value=100.0):
+        super().__init__()
+        self.norm = nn.LayerNorm(normalized_shape, eps=eps)
+        self.max_grad_value = max_grad_value
+    
+    @property
+    def weight(self):
+        return self.norm.weight
+    
+    @property
+    def bias(self):
+        return self.norm.bias
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.requires_grad and self.training:
+            x = _GradClampFunction.apply(x, self.max_grad_value)
+        return self.norm(x)
+
+
+class _GradClampFunction(torch.autograd.Function):
+    """
+    Identity in forward, clamps gradient magnitude in backward.
+    
+    This is the surgical fix: it sits just before the LayerNorm and ensures
+    no gradient entering the LayerNorm backward exceeds max_value in absolute
+    magnitude. The LayerNorm backward then divides by std without overflow.
+    """
+    
+    @staticmethod
+    def forward(ctx, x, max_value):
+        ctx.max_value = max_value
+        return x.clone()
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        # Clamp gradient magnitude — prevents NaN in LayerNorm backward
+        grad_clamped = grad_output.clamp(-ctx.max_value, ctx.max_value)
+        return grad_clamped, None
+
+
+class _FP32GradBridge(torch.autograd.Function):
+    """
+    Casts tensor to FP16 in forward, casts gradient back to FP32 + clamps in backward.
+    
+    This sits at the FAD → CLIP boundary:
+      Forward:  FP32 tensor from FAD → cast to FP16 → feed to CLIP (fast)
+      Backward: FP16 gradient from CLIP → cast to FP32 + clamp → flow into FAD (safe)
+    
+    Why this is needed (v5.2 fix):
+      The v5.1 hybrid approach ran FAD in FP32 and CLIP in FP16, but during
+      backward, CLIP produces FP16 gradients that flow into FAD's DCT matmul.
+      The DCT backward does: grad @ DCT_matrix, accumulating 224 terms.
+      Even though FAD's forward was FP32, the INCOMING gradient from CLIP is
+      FP16-magnitude (GradScaler-amplified), and the accumulation over 224
+      elements overflows → NaN in MulBackward0 (the DCT matmul backward).
+      
+      This bridge ensures gradients entering FAD are:
+        1. Cast to FP32 (so the accumulation doesn't overflow)
+        2. Clamped to ±1000 (safety net for extreme GradScaler amplification)
+    """
+    
+    @staticmethod
+    def forward(ctx, x):
+        # Cast FP32 → FP16 for CLIP's forward pass
+        return x.half()
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        # Cast FP16 gradient → FP32 and clamp before it enters FAD backward
+        grad_fp32 = grad_output.float()
+        return grad_fp32.clamp(-1000.0, 1000.0)
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +410,7 @@ class FADFrontEnd(nn.Module):
             # Step 6: Normalize for CLIP backbone
             out = self._normalize_for_clip(enhanced)
 
-        return out #.to(orig_dtype)
+        return out  # .to(orig_dtype)
 
 
 class BandAttention(nn.Module):
@@ -512,7 +556,13 @@ class FrequencyFeatureExtractor(nn.Module):
         self.use_dct_energy   = freq_cfg.get('use_dct_energy', False)
 
         self._build_backbone(config)
-        self.freq_norm = nn.LayerNorm(self.hidden_dim)
+        
+        # v5 FIX: Use SafeLayerNorm instead of plain LayerNorm.
+        # SafeLayerNorm clamps incoming gradients BEFORE the LayerNorm backward,
+        # preventing the grad/std division from overflowing.
+        # max_grad_value=100.0 is conservative — normal gradients are O(1),
+        # the dangerous ones from GradScaler amplification are O(10000+).
+        self.freq_norm = SafeLayerNorm(self.hidden_dim, max_grad_value=100.0)
 
         if self.hidden_dim != self.output_dim:
             logger.warning(
@@ -555,7 +605,7 @@ class FrequencyFeatureExtractor(nn.Module):
 
     def _build_fad_clip(self, config: dict) -> None:
         """
-        NEW: F3Net FAD front-end + CLIP vision encoder.
+        F3Net FAD front-end + CLIP vision encoder.
 
         FAD decomposes image into frequency bands via DCT → learnable
         bandpass → iDCT. Output stays in image space so CLIP can use
@@ -755,23 +805,38 @@ class FrequencyFeatureExtractor(nn.Module):
 
     def _forward_fad_clip(self, x):
         """
-        FAD front-end → CLIP → freq_norm.
+        FAD front-end → CLIP → SafeLayerNorm.
         
-        CRITICAL: The entire path runs in float32 (autocast disabled).
+        v5.2 HYBRID PRECISION with gradient bridge.
         
-        Why: The DCT matmul produces coefficients ~15 at DC. During backward,
-        grad(DCT) * DCT_coefficients overflows fp16 range (max 65504) when
-        accumulated over 224 spatial positions. This manifests as NaN in
-        MulBackward0 at random iterations (typically 500-1000 into training
-        when gradients from CLIP grow large enough).
+        Three precision zones with explicit gradient dtype control:
         
-        Performance impact: ~10-15% slower than fp16 for this branch only.
-        The spatial branch still runs in fp16 via autocast.
+          Stage 1 — FADFrontEnd: FP32 (autocast disabled)
+            DCT matmul accumulates 224 terms × DC coeff ~15.
+            Must be FP32 in both forward AND backward.
+        
+          Stage 2 — FP32→FP16 gradient bridge (_FP32GradBridge)
+            Forward: casts FAD output from FP32 → FP16 for CLIP.
+            Backward: casts CLIP's FP16 gradients → FP32 + clamp(±1000)
+                      before they enter FAD's DCT backward.
+            This is the key fix: without it, FP16 gradients from CLIP
+            flow into the DCT matmul backward and the 224-term accumulation
+            overflows FP16 range → MulBackward0 NaN.
+        
+          Stage 3 — CLIP backbone: FP16 (autocast)
+            ~95% of branch FLOPs. Normal image input after CLIP normalization.
+            CLIP is designed for mixed-precision; FP16 is safe here.
+        
+          Stage 4 — SafeLayerNorm: FP32 (gradient clamping ±100)
+            Prevents GradScaler-amplified gradients from overflowing
+            the LayerNorm backward (grad / std explosion).
+        
+        Performance: ~95% of FP16 speed (only FAD's ~5% FLOPs in FP32).
         """
-        # Disable autocast for the ENTIRE frequency path (forward + backward)
+        # ── Stage 1: FAD front-end in FP32 ────────────────────────────────
         with torch.cuda.amp.autocast(enabled=False):
-            x = x.float()  # ensure float32 input
-            
+            x = x.float()
+
             _, _, H, W = x.shape
             if H != self.required_size or W != self.required_size:
                 x = F.interpolate(
@@ -780,15 +845,22 @@ class FrequencyFeatureExtractor(nn.Module):
                     mode='bilinear',
                     align_corners=False,
                 )
-            
-            clip_input = self.fad_front_end(x)           # (B, 3, H, W) float32
-            # clip_input is now float32 (FADFrontEnd no longer casts back)
-            
-            outputs = self.backbone(pixel_values=clip_input)  # CLIP in float32
-            raw = outputs.pooler_output                        # (B, 1024) float32
-            
-            return self.freq_norm(raw)  # float32 output — autocast handles downstream
-    
+
+            clip_input = self.fad_front_end(x)  # (B, 3, H, W) FP32
+
+        # ── Stage 2: Gradient bridge FP32→FP16 ────────────────────────────
+        # Forward: cast to FP16 for CLIP (fast forward pass)
+        # Backward: cast CLIP's FP16 grads → FP32 + clamp before entering FAD
+        clip_input = _FP32GradBridge.apply(clip_input)  # (B, 3, H, W) FP16
+
+        # ── Stage 3: CLIP backbone in FP16 (trainer's autocast active) ────
+        outputs = self.backbone(pixel_values=clip_input)
+        raw = outputs.pooler_output  # (B, 1024) FP16
+
+        # ── Stage 4: SafeLayerNorm in FP32 ────────────────────────────────
+        with torch.cuda.amp.autocast(enabled=False):
+            return self.freq_norm(raw.float())
+
     def _forward_clip_phase(self, x: torch.Tensor) -> torch.Tensor:
         """Legacy CLIP + phase map path."""
         with torch.cuda.amp.autocast(enabled=False):
