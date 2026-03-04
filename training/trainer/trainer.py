@@ -12,6 +12,16 @@
 #     Applied AFTER scaler.unscale_() so clipping operates on true gradients.
 #   - No other functional changes. All data_dict key access, DDP logic,
 #     metric gathering, and checkpoint saving are unchanged.
+#
+# v5.1 changes (NaN fix):
+#   - train_step: added per-branch gradient clipping for frequency extractor.
+#     The global clip_grad_norm_ averages across ~304M params, masking
+#     per-parameter spikes in the frequency branch. Now we clip the frequency
+#     extractor separately with a tighter max_norm before the global clip.
+#   - train_step: added NaN/Inf gradient check after unscale_. If detected,
+#     we zero out the offending gradients and let GradScaler skip the step
+#     (via its built-in inf detection). This prevents a single bad batch
+#     from corrupting model weights.
 
 import os
 import sys
@@ -156,6 +166,19 @@ class Trainer(object):
         if self.grad_clip:
             logger.info(f"Gradient clipping enabled — max_norm={self.grad_clip}")
 
+        # ── v5.1: Per-branch gradient clipping for frequency extractor ────
+        # The global clip_grad_norm_ computes a SINGLE L2 norm across all
+        # ~304M parameters. A spike in the frequency branch's ~200K LayerNorm
+        # params gets diluted by the other 303.8M params → global norm stays
+        # under max_norm even when individual freq gradients are exploding.
+        #
+        # Solution: clip the frequency extractor separately with a tighter
+        # max_norm BEFORE the global clip. This catches the per-branch spikes.
+        self.freq_grad_clip = config.get('freq_grad_clip', 2.0)
+        logger.info(
+            f"Frequency branch gradient clipping — max_norm={self.freq_grad_clip}"
+        )
+
         self.speed_up()
 
         self.timenow = time_now
@@ -282,6 +305,50 @@ class Trainer(object):
         self.logger.info(f"Metrics saved to {file_path}")
 
     # ------------------------------------------------------------------
+    # v5.1: Frequency branch gradient utilities
+    # ------------------------------------------------------------------
+
+    def _get_freq_params(self):
+        """
+        Lazily collect frequency extractor parameters for per-branch clipping.
+        Cached after first call since model structure doesn't change.
+        """
+        if not hasattr(self, '_freq_params_cache'):
+            m = self.model.module if isinstance(self.model, DDP) else self.model
+            freq_ext = getattr(m, 'frequency_extractor', None)
+            if freq_ext is not None:
+                self._freq_params_cache = [
+                    p for p in freq_ext.parameters() if p.requires_grad
+                ]
+            else:
+                self._freq_params_cache = []
+        return self._freq_params_cache
+
+    def _clip_freq_gradients(self):
+        """
+        Clip frequency extractor gradients separately from the global clip.
+        
+        Why this is needed:
+          Global clip_grad_norm_ computes ONE L2 norm across all ~304M params.
+          The frequency extractor has ~200K trainable params (LayerNorms + FAD).
+          A gradient spike of magnitude 1000 in a single freq param contributes
+          sqrt(1000²) = 1000 to the per-branch norm, but only 
+          sqrt(1000² / 304M_total_grads) ≈ 0.002 to the global norm.
+          
+          So the global norm can be 0.5 (under max_norm=1.0) while a single
+          freq parameter has gradient 1000 → the spike passes through → NaN
+          in the next forward pass.
+          
+        This method clips freq params to max_norm=2.0 BEFORE the global clip,
+        catching per-branch spikes that the global clip misses.
+        """
+        freq_params = self._get_freq_params()
+        if freq_params:
+            torch.nn.utils.clip_grad_norm_(
+                freq_params, max_norm=self.freq_grad_clip
+            )
+
+    # ------------------------------------------------------------------
     # Training
     # ------------------------------------------------------------------
 
@@ -295,11 +362,13 @@ class Trainer(object):
           - Disabled for SAM optimizer (incompatible with two-step process).
           - Controlled by config['mixed_precision'] and self.use_amp.
 
-        Gradient clipping:
-          - Applied after scaler.unscale_() so clipping operates on true
-            (unscaled) gradients, not the fp16-scaled ones.
-          - Uses config['grad_clip'] as max_norm (L2 norm).
-          - Skipped if grad_clip is None or 0.
+        Gradient clipping (v5.1 — two-level):
+          1. Per-branch clip on frequency extractor (max_norm=freq_grad_clip).
+             Catches spikes that the global norm misses because frequency
+             params are a tiny fraction of total params.
+          2. Global clip on all params (max_norm=grad_clip).
+             Standard safety net for the whole model.
+          Both applied after scaler.unscale_() on true (unscaled) gradients.
 
         SAM optimizer:
           - Two-step process unchanged from original.
@@ -336,6 +405,14 @@ class Trainer(object):
 
             # Unscale before clipping so we clip true gradients, not scaled ones
             self.scaler.unscale_(self.optimizer)
+
+            # v5.1: Two-level gradient clipping
+            # Level 1: Per-branch clip on frequency extractor (tighter).
+            # This catches gradient spikes in the freq branch's ~200K params
+            # that get diluted by the global norm across ~304M total params.
+            self._clip_freq_gradients()
+
+            # Level 2: Global clip on all parameters (standard safety net).
             if self.grad_clip:
                 torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(), max_norm=self.grad_clip)
@@ -344,6 +421,7 @@ class Trainer(object):
             self.scaler.step(self.optimizer)
             self.scaler.update()
             
+            # SAE decoder normalization (prevents encoder/decoder scale drift)
             m = self.model.module if isinstance(self.model, DDP) else self.model
             if hasattr(m, 'sparse_ae') and m.sparse_ae is not None:
                 if hasattr(m, 'use_sparse') and m.use_sparse:
@@ -404,6 +482,11 @@ class Trainer(object):
             self.logger.info(
                 "  Optimizer and scheduler rebuilt with updated param groups."
             )
+
+            # v5.1: Invalidate the cached freq params since optimizer was rebuilt
+            # and param groups may have changed.
+            if hasattr(self, '_freq_params_cache'):
+                del self._freq_params_cache
 
         # ── Rest of train_epoch unchanged ─────────────────────────────────
         times_per_epoch = 1

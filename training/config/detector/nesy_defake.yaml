@@ -51,8 +51,8 @@ projection_dropout:
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 64
-test_batchSize:  64
+train_batchSize: 128
+test_batchSize:  128
 workers:         8
 
 use_data_augmentation: true
@@ -233,7 +233,7 @@ loss_func:
     classification: 1.0
     uncertainty:    0.5
     causal:         0.0     # 0 until causal module is enabled
-    sparse:         0.1     # SAE loss weight — start conservative
+    sparse:         0.2     # SAE loss weight — start conservative
 
 # -----------------------------------------------------------------------------
 # Optimizer
@@ -271,6 +271,7 @@ manualSeed:     1024
 save_ckpt:      true
 save_feat:      true
 grad_clip:      1.0
+freq_grad_clip: 2.0
 
 training_phases:
   phase1:
