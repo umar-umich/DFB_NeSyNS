@@ -142,19 +142,41 @@ class Trainer(object):
         )
 
         # ── Mixed precision setup ─────────────────────────────────────────
-        # Activated when config['mixed_precision']=true.
-        # GradScaler is per-Trainer so it accumulates scale history correctly
-        # across epochs. SAM optimizer is excluded — SAM's two-step process
-        # is incompatible with GradScaler; fall back to full precision there.
+        # BF16 preferred on Hopper/Ada GPUs (H200, H100, A100, L40):
+        #   - Same tensor core throughput as FP16
+        #   - FP32 exponent range → no gradient overflow → no NaN
+        #   - GradScaler becomes effectively a no-op (no overflows to scale)
+        # Falls back to FP16 if BF16 not supported (V100), with GradScaler
+        # actively managing loss scaling to prevent FP16 overflow.
         self.use_amp = (
             config.get('mixed_precision', False)
             and config['optimizer']['type'] != 'sam'
             and torch.cuda.is_available()
         )
-        self.scaler = GradScaler(enabled=self.use_amp)
-        if self.use_amp:
-            logger.info("Mixed precision (AMP) enabled — using autocast + GradScaler")
+        
+        # Determine AMP dtype: prefer BF16 if available
+        if self.use_amp and torch.cuda.is_bf16_supported():
+            self.amp_dtype = torch.bfloat16
+            # GradScaler is unnecessary with BF16 (no overflow possible),
+            # but we keep it disabled rather than removing it — the rest of
+            # the training loop calls scaler.scale/step/update, and a
+            # disabled GradScaler passes everything through unchanged.
+            self.scaler = GradScaler(enabled=False)
+            logger.info(
+                "Mixed precision (AMP) enabled — BF16 mode. "
+                "GradScaler disabled (BF16 has FP32 exponent range, "
+                "no overflow possible). ~2.5× speedup on Hopper tensor cores."
+            )
+        elif self.use_amp:
+            self.amp_dtype = torch.float16
+            self.scaler = GradScaler(enabled=True)
+            logger.info(
+                "Mixed precision (AMP) enabled — FP16 mode with GradScaler. "
+                "Consider upgrading to a GPU with BF16 support for NaN safety."
+            )
         else:
+            self.amp_dtype = torch.float32
+            self.scaler = GradScaler(enabled=False)
             logger.info(
                 f"Mixed precision disabled "
                 f"(mixed_precision={config.get('mixed_precision', False)}, "
@@ -357,12 +379,13 @@ class Trainer(object):
         Single training step with optional mixed precision and gradient clipping.
 
         Mixed precision (AMP):
-          - Wraps forward + loss in autocast() for fp16 compute.
-          - Uses GradScaler to handle fp16 gradient scaling safely.
+          - BF16 mode (Hopper/Ada GPUs): autocast(dtype=bfloat16).
+            Same speed as FP16 but with FP32 exponent range → no overflow.
+            GradScaler disabled (unnecessary — BF16 cannot overflow).
+          - FP16 fallback (V100): autocast(dtype=float16) + GradScaler.
           - Disabled for SAM optimizer (incompatible with two-step process).
-          - Controlled by config['mixed_precision'] and self.use_amp.
 
-        Gradient clipping (v5.1 — two-level):
+        Gradient clipping (two-level):
           1. Per-branch clip on frequency extractor (max_norm=freq_grad_clip).
              Catches spikes that the global norm misses because frequency
              params are a tiny fraction of total params.
@@ -392,7 +415,7 @@ class Trainer(object):
 
         else:
             # Standard step with optional AMP + grad clipping
-            with autocast(enabled=self.use_amp):
+            with autocast(enabled=self.use_amp, dtype=self.amp_dtype):
                 predictions = self.model(data_dict)
                 if isinstance(self.model, DDP):
                     losses = self.model.module.get_losses(data_dict, predictions)
@@ -774,6 +797,6 @@ class Trainer(object):
     @torch.no_grad()
     def inference(self, data_dict):
         # Run inference under autocast for speed consistency with training
-        with autocast(enabled=self.use_amp):
+        with autocast(enabled=self.use_amp, dtype=self.amp_dtype):
             predictions = self.model(data_dict, inference=True)
         return predictions

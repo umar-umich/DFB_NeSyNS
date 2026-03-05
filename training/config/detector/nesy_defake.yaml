@@ -51,9 +51,9 @@ projection_dropout:
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 128
-test_batchSize:  128
-workers:         8
+train_batchSize: 256
+test_batchSize:  256
+workers:         12
 
 use_data_augmentation: true
 balance_classes:       true
@@ -112,12 +112,6 @@ fusion:
   dropout:        0.3
 
 # -----------------------------------------------------------------------------
-# Module 2: Semantic Grounding (replaced by cached semantic features)
-# -----------------------------------------------------------------------------
-semantic_grounding:
-  enabled: false
-
-# -----------------------------------------------------------------------------
 # Module 3: Causal Discovery
 # -----------------------------------------------------------------------------
 causal_module:
@@ -165,8 +159,8 @@ causal_module:
 #   - Trainer calls model.sparse_ae.normalize_decoder_weights() post-step.
 # =============================================================================
 sparse_features:
-  enabled: true
-  per_branch: true
+  enabled: false
+  per_branch: false
 
   # Dictionary size: 4x expansion is standard (Anthropic, OpenAI, DeepMind)
   # 1024 * 4 = 4096 features per branch
@@ -174,13 +168,13 @@ sparse_features:
 
   # Target active features per sample per branch
   # 128 = ~3% of dict_size (4096) — good sparsity for interpretability
-  target_k: 128
+  target_k: 64
 
   # Features inactive for this many batches get auxiliary loss to revive them
-  dead_feature_window: 5
+  dead_feature_window: 200
 
   # Auxiliary loss coefficient (1/32 is standard from OpenAI TopK paper)
-  aux_loss_coeff: 0.03125
+  aux_loss_coeff: 0.2 #0.03125
 
   # LayerNorm CLIP features before SAE (recommended: CLIP features have
   # high variance across dimensions, LN makes SAE training more stable)
@@ -275,17 +269,17 @@ freq_grad_clip: 2.0
 
 training_phases:
   phase1:
-    epochs:        [0, 5]
+    epochs:        [0, 2]
     freeze_modules: [foundation_models]
     train_modules:  [fusion, classifier, sparse_ae]
     description:   "Warm up fusion + classifier + SAE with frozen backbones"
   phase2:
-    epochs: [5, 10]
+    epochs: [2, 8]
     freeze_modules: []
     train_modules:  [layernorms_and_heads]
     description: "Unfreeze backbone LayerNorms for GenD-style adaptation"
   phase3:
-    epochs:        [10, 50]
+    epochs:        [8, 30]
     freeze_modules: []
     train_modules:  [all]
     enable_causal:  true
@@ -312,6 +306,6 @@ cudnn:           true
 mixed_precision: true
 
 checkpoint:
-  save_best_only: false
+  save_best_only: true
   monitor:        val_auc
   mode:           max

@@ -119,6 +119,9 @@ class BranchSparseAutoencoder(nn.Module):
         return z @ self.W_dec + self.b_dec
 
     def forward(self, x):
+        # Clamp input to prevent BF16 overflow feeding into encoder
+        x = torch.clamp(x, -100.0, 100.0)
+        
         z = self.encode(x)
         x_hat = self.decode(z)
 
@@ -139,7 +142,8 @@ class BranchSparseAutoencoder(nn.Module):
             n_dead = dead_mask.sum().item()
 
             if n_dead > 0 and self.aux_loss_coeff > 0:
-                dead_pre = (residual.detach() - self.b_dec) @ self.W_enc[:, dead_mask] + self.b_enc[dead_mask]
+                # FIX: don't detach residual — let gradients flow
+                dead_pre = (residual - self.b_dec) @ self.W_enc[:, dead_mask] + self.b_enc[dead_mask]
                 dead_z = F.relu(dead_pre)
                 k_dead = min(self.target_k, n_dead)
                 if k_dead > 0 and dead_z.numel() > 0:
@@ -147,7 +151,8 @@ class BranchSparseAutoencoder(nn.Module):
                     dead_sparse = torch.zeros_like(dead_z)
                     dead_sparse.scatter_(1, topk_i, topk_v)
                     dead_recon = dead_sparse @ self.W_dec[dead_mask]
-                    aux_loss = (residual.detach() - dead_recon).pow(2).mean()
+                    # Normalize aux loss to same scale as recon_loss
+                    aux_loss = (residual - dead_recon).pow(2).mean() / x_var.clamp(min=1e-6)
 
         total_loss = norm_recon + self.aux_loss_coeff * aux_loss
 
@@ -215,13 +220,15 @@ class DualBranchSparseAutoencoder(nn.Module):
         z_spatial = z_freq = None
 
         if self.has_spatial and spatial_feat is not None:
-            x = F.layer_norm(spatial_feat, (spatial_feat.shape[-1],)) if self.normalize_inputs else spatial_feat
+            x = (F.layer_norm(spatial_feat.float(), (spatial_feat.shape[-1],))
+                .to(spatial_feat.dtype) if self.normalize_inputs else spatial_feat)
             z_spatial, s_loss, s_info = self.spatial_sae(x)
             total_loss = total_loss + s_loss
             info["spatial"] = s_info
 
         if self.has_frequency and frequency_feat is not None:
-            x = F.layer_norm(frequency_feat, (frequency_feat.shape[-1],)) if self.normalize_inputs else frequency_feat
+            x = (F.layer_norm(frequency_feat.float(), (frequency_feat.shape[-1],))
+                .to(frequency_feat.dtype) if self.normalize_inputs else frequency_feat)
             z_freq, f_loss, f_info = self.frequency_sae(x)
             total_loss = total_loss + f_loss
             info["frequency"] = f_info

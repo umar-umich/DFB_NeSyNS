@@ -314,6 +314,18 @@ class SpatialFeatureExtractor(nn.Module):
         # Hard freeze: nothing trains in backbone
         return []
 
+
+    def unfreeze_layernorms(self) -> int:
+        """
+        Phase 2 hook: unfreeze all LayerNorm params in the backbone.
+        Called by the trainer at the phase transition epoch.
+        Returns the number of newly unfrozen parameters.
+        """
+        _, unfrozen = _freeze_all_except_layernorms(self.backbone)
+        self.train_layernorms = True
+        logger.info(f"[SpatialExtractor] Phase 2: unfroze {unfrozen:,} LN params")
+        return unfrozen
+        
     def count_trainable_params(self) -> Tuple[int, int]:
         """Returns (trainable, total) param counts for logging."""
         trainable = sum(p.numel() for p in self.backbone.parameters() if p.requires_grad)

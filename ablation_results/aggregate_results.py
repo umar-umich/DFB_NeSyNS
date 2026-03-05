@@ -207,7 +207,7 @@ def write_csv(rows, out_path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--log_dir", default="./ablation_results/logs")
+    parser.add_argument("--log_dir", default="./ablation_results/logs_6")
     parser.add_argument("--out", default="")
     args = parser.parse_args()
 

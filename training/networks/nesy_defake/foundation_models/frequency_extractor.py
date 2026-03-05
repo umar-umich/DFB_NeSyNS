@@ -740,6 +740,7 @@ class FrequencyFeatureExtractor(nn.Module):
     def unfreeze_layernorms(self) -> int:
         """Phase 2 transition — unfreeze backbone LayerNorms only."""
         _, unfrozen = _freeze_all_except_layernorms(self.backbone)
+        self.train_layernorms = True
         logger.info(f"[FreqExtractor] Phase 2: unfroze {unfrozen:,} LN params")
         return unfrozen
 
