@@ -70,15 +70,27 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.fusion = MultiModalFusion(config)
 
         # ── Module 4: Sparse Autoencoder ──────────────────────────────────
+        # Always built (DDP requires all params present at init).
+        # use_sparse controls whether it's actually used in forward().
         self.use_sparse = config['sparse_features']['enabled']
-        if self.use_sparse:
-            self.sparse_ae = DualBranchSparseAutoencoder(config)
-            logger.info(f"  SAE output dim  : {self.sparse_ae.output_dim}")
+        self.sparse_ae = DualBranchSparseAutoencoder(config)
+        logger.info(f"  SAE output dim  : {self.sparse_ae.output_dim}")
 
         # ── Module 3: Causal Discovery ────────────────────────────────────
+        # Always built (DDP consistency); use_causal flipped by enable_causal()
+        # at phase3_start via trainer. Module is frozen-out via loss weight=0.
         self.use_causal = config['causal_module']['enabled']
-        if self.use_causal:
-            self.causal_module = CausalDiscoveryModule(config)
+        self.causal_module = CausalDiscoveryModule(config)
+
+        # ── Violation → classifier gated fusion ───────────────────────────
+        # Projects 329-d node residual vector into proj_dim space and adds to
+        # fused_features before classifier (additive: no input_dim change).
+        causal_cfg = config['causal_module']
+        violation_dim = (causal_cfg['latent_variables']['total_sae_dim']
+                         + causal_cfg['semantic_dim'])
+        proj_dim = config['fusion']['projection_dim']
+        self.violation_proj = nn.Linear(violation_dim, proj_dim, bias=False)
+        nn.init.zeros_(self.violation_proj.weight)  # start neutral; trains in phase3
 
         # ── Module 5: Classifier ──────────────────────────────────────────
         self.multitaskhead = MultiTaskHead(config)
@@ -131,6 +143,16 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         for p in module.parameters():
             p.requires_grad = False
         logger.info(f"  Frozen branch   : {name}")
+
+    def enable_causal(self) -> None:
+        """Called by trainer at phase3_start to activate causal discovery."""
+        self.use_causal = True
+        logger.info("Causal module enabled (phase 3)")
+
+    def enable_sparse(self) -> None:
+        """Called by trainer if SAE needs to be enabled at a phase transition."""
+        self.use_sparse = True
+        logger.info("SAE enabled")
 
     def build_loss(self, config: dict) -> None:
         cw = config.get('class_weights', None)
@@ -206,29 +228,35 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         # ── Step 4: Causal module (uses SAE features + semantic attrs) ────
         violation_score = None
+        node_residuals = None
         causal_dag = None
 
         if self.use_causal:
-            # Build Z_sae from SAE outputs
             z_sae = self.sparse_ae.get_z_sae(z_spatial, z_freq) if self.use_sparse else None
             semantic_attrs = data_dict.get('semantic_attrs', None)
+            label = data_dict.get('label', None) if not inference else None
 
-            if not inference:
-                violation_score, causal_dag, _ = self.causal_module(
-                    fused_features,
-                    z_sae=z_sae,
-                    semantic_attrs=semantic_attrs,
-                    return_graph=True,
-                )
-            else:
-                violation_score = self.causal_module(
-                    fused_features,
-                    z_sae=z_sae,
-                    semantic_attrs=semantic_attrs,
-                )
+            # Causal module takes only z_sae and semantic_attrs — the two
+            # semantically grounded inputs that form causal variables.
+            # fused_features is NOT passed: it conflates spatial/frequency
+            # projections that are already summarised by z_sae, and passing
+            # the fused representation would introduce redundancy and pollute
+            # the causal graph with classification-head artifacts.
+            violation_score, node_residuals, causal_dag = self.causal_module(
+                z_sae=z_sae,
+                semantic_attrs=semantic_attrs,
+                label=label,
+                return_graph=True,
+            )
 
-        # ── Step 5: Classification ────────────────────────────────────────
+        # ── Step 5: Gated violation fusion + Classification ───────────────
+        # Project the 329-d node-residual vector into proj_dim and ADD to
+        # fused_features. classifier.input_dim stays 1024 (additive, not cat).
+        # violation_proj is zero-init so phase1/2 classifier is unaffected.
         classifier_input = fused_features
+        if self.use_causal and node_residuals is not None:
+            classifier_input = fused_features + self.violation_proj(node_residuals)
+
         task_outputs = self.classifier(classifier_input)
         cls_logits = task_outputs['classification']
         prob = torch.softmax(cls_logits, dim=1)[:, 1]
@@ -243,6 +271,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             'z_freq': z_freq,
             'uncertainty': task_outputs.get('uncertainty'),
             'violation_score': violation_score,
+            'node_residuals': node_residuals,
             'task_outputs': task_outputs,
             'sae_loss': sae_loss,
             'sae_info': sae_info,
@@ -276,16 +305,42 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             uncertainty_loss = self.reg_loss(
                 pred_dict['uncertainty'].squeeze(), 1 - is_correct)
 
-        # Causal loss
-        causal_loss = torch.zeros(1, device=device)
-        if self.use_causal and pred_dict.get('violation_score') is not None:
-            causal_loss = self.reg_loss(
-                pred_dict['violation_score'], label.float())
+        # Causal losses (only active when use_causal=True)
+        causal_loss = torch.zeros(1, device=device)      # structural + DAG penalty
+        contrastive_loss = torch.zeros(1, device=device)  # margin contrastive on violations
+        if self.use_causal:
+            node_residuals = pred_dict.get('node_residuals')
+            violation_score = pred_dict.get('violation_score')
+
+            # L_structural: SCM reconstruction quality on REAL frames only
+            # (structural equations fit to real-face biomechanics)
+            if node_residuals is not None:
+                real_mask = (label == 0)
+                if real_mask.any():
+                    causal_loss = node_residuals[real_mask].pow(2).mean()
+
+            # DAG acyclicity penalty (added to structural loss)
             if pred_dict.get('causal_dag') is not None:
                 dag_penalty = self.causal_module.causal_learner.compute_dag_penalty()
                 causal_loss = causal_loss + (
                     self.config['causal_module']['dag_learning']['dag_penalty_weight']
                     * dag_penalty)
+
+            # L_contrastive: push fake violations UP, real violations DOWN
+            if violation_score is not None:
+                real_mask = (label == 0)
+                fake_mask = (label == 1)
+                if real_mask.any() and fake_mask.any():
+                    margin = 1.0
+                    real_v = violation_score[real_mask].mean()
+                    fake_v = violation_score[fake_mask].mean()
+                    contrastive_loss = F.relu(margin - (fake_v - real_v))
+                elif real_mask.any():
+                    # Only reals in batch: minimise their violation scores
+                    contrastive_loss = violation_score[real_mask].mean().clamp(min=0)
+                elif fake_mask.any():
+                    # Only fakes in batch: maximise their violation scores
+                    contrastive_loss = F.relu(1.0 - violation_score[fake_mask].mean())
 
         # SAE loss (reconstruction + auxiliary)
         sae_loss = pred_dict.get('sae_loss', torch.zeros(1, device=device))
@@ -303,7 +358,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(extractor, device)
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(proj, device)
 
-        for attr in ('causal_module', 'sparse_ae', 'multitaskhead'):
+        for attr in ('causal_module', 'sparse_ae', 'multitaskhead', 'violation_proj'):
             mod = getattr(self, attr, None)
             if mod is not None:
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(mod, device)
@@ -312,6 +367,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             self.loss_weights['classification'] * cls_loss
             + self.loss_weights.get('uncertainty', 0.0) * uncertainty_loss
             + self.loss_weights.get('causal', 0.0) * causal_loss
+            + self.loss_weights.get('contrastive', 0.0) * contrastive_loss
             + self.loss_weights.get('sparse', 0.0) * sae_loss
             + ddp_anchor
         )
@@ -324,6 +380,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             'classification': _scalar(cls_loss),
             'uncertainty': _scalar(uncertainty_loss),
             'causal': _scalar(causal_loss),
+            'contrastive': _scalar(contrastive_loss),
             'sparse': _scalar(sae_loss),
         }
 

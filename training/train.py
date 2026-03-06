@@ -260,9 +260,9 @@ def choose_optimizer(model, config):
     if hasattr(m, 'multitaskhead'):
         _add(list(m.multitaskhead.parameters()), g6)
 
-    # Group 7: Optional modules
+    # Group 7: Optional modules (always built at init for phase-transition activation)
     g7 = []
-    for attr in ('causal_module', 'sparse_ae'):
+    for attr in ('causal_module', 'sparse_ae', 'violation_proj'):
         mod = getattr(m, attr, None)
         if mod is not None:
             _add(list(mod.parameters()), g7)

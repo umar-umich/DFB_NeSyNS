@@ -612,53 +612,75 @@ class CausalDiscoveryModule(nn.Module):
 
     def forward(
         self,
-        fused_features: torch.Tensor,
         z_sae: Optional[torch.Tensor] = None,
         semantic_attrs: Optional[torch.Tensor] = None,
+        label: Optional[torch.Tensor] = None,
         return_graph: bool = False,
     ):
         """
         Args:
-            fused_features: (B, proj_dim) — not directly used by SCM,
-                but kept for interface compatibility and potential future use
-            z_sae: (B, total_sae_dict_dim) sparse SAE features
+            z_sae: (B, total_sae_dict_dim) sparse SAE features from
+                DualBranchSparseAutoencoder. These are the compressed
+                monosemantic representations — the only upstream signal
+                that belongs in the causal graph alongside semantics.
             semantic_attrs: (B, 73) per-frame semantic attributes
-            return_graph: if True, also return A_dce and None (placeholder)
+            label: (B,) integer labels (0=real, 1=fake). Retained for
+                interface compatibility (e.g. causal warmup logging).
+                A_dce is now computed over ALL frames regardless of label
+                to produce a graph robust to unseen manipulation types and
+                to avoid false positives from overfitting to real-only topology.
+            return_graph: if True, also return node_residuals and A_dce
 
         Returns (if return_graph=False):
             violation_score: (B,) per-sample violation scores
 
         Returns (if return_graph=True):
             violation_score: (B,) per-sample violation scores
+            node_residuals: (B, d) per-node SCM reconstruction residuals
+                (available for gated fusion into classifier)
             A_dce: (d, d) current adjacency matrix
-            None: placeholder for future causal concepts
         """
         # Build causal input [z_active, s_semantic]
         x = self._build_causal_input(z_sae, semantic_attrs)
 
-        # Enable gradients for Jacobian computation
+        # Detach from upstream graph; re-enable grad for Jacobian computation
         x = x.detach().requires_grad_(True)
 
         if self.training:
-            # Full forward: SCM reconstruction + DCE adjacency
-            x_hat, A_dce = self.causal_learner(x)
+            # SCM reconstruction for ALL frames (needed for violation score)
+            x_hat = self.causal_learner.scm(x)  # (B, d)
+            node_residuals = x - x_hat           # (B, d)
 
-            # Violation score from reconstruction errors
+            # A_dce computed over ALL frames (real + fake).
+            # Rationale: computing Jacobian statistics from both distributions
+            # ensures the estimated causal graph captures the full manifold
+            # seen during training. A graph fit only on real frames risks
+            # over-specialising to clean facial biomechanics and producing
+            # false positives for OOD manipulation methods whose causal
+            # signatures differ from training fakes but still diverge from
+            # the real-only graph. Using all frames gives a more balanced
+            # reference topology; the L_structural loss (real frames only,
+            # in get_losses) still enforces that SCM predictions are accurate
+            # for real faces, maintaining detection sensitivity.
+            A_dce = self.causal_learner.compute_adjacency_dce(x)
+
+            # Violation score for all frames (uses current A_dce for weighting)
             violation_score = self.violation_scorer(x, x_hat, A_dce)
 
             if return_graph:
-                return violation_score, A_dce, None
+                return violation_score, node_residuals, A_dce
             return violation_score
 
         else:
             # Inference: use EMA adjacency, skip Jacobian computation
             x_hat = self.causal_learner.scm(x)
+            node_residuals = x - x_hat
             violation_score = self.violation_scorer(
                 x, x_hat, self.causal_learner._A_dce_ema
             )
 
             if return_graph:
-                return violation_score, self.causal_learner._A_dce_ema, None
+                return violation_score, node_residuals, self.causal_learner._A_dce_ema
             return violation_score
 
     def get_causal_graph(self) -> torch.Tensor:
