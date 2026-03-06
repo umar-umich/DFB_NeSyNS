@@ -9,18 +9,25 @@ spatial_frames  → SpatialExtractor (CLIP-L/14)  → raw_spatial (1024-d)
                                                   ├─→ spatial_proj (1024→proj_dim) ─┐
                                                   └─→ SAE.spatial → z_spatial        │
                                                                                       ├─→ MultiModalFusion → fused (1024-d)
-freq_frames     → FreqExtractor (FAD-CLIP-L/14) → raw_freq (1024-d)                  │         │
-                                                  ├─→ freq_proj (1024→proj_dim) ──────┘         │
-                                                  └─→ SAE.freq → z_freq                         │
-                                                                                                 │
-semantic_attrs (73-d, cached .npz) ─────────────────────────────────────────────────────┐        │
-z_sae = concat(z_spatial, z_freq) (8192-d sparse) ──────────────────────────────────────┴────────┴→ CausalModule
+freq_frames     → FreqExtractor (FAD-CLIP-L/14) → raw_freq (1024-d)                  │              │
+                                                  ├─→ freq_proj (1024→proj_dim) ──────┘              │
+                                                  └─→ SAE.freq → z_freq                              │
                                                                                                       │
-                                                                                          violation_proj(node_residuals: 329-d → 1024-d)
-                                                                                                      │ (additive)
-                                                                                          classifier_input = fused + violation_proj(residuals)
-                                                                                                      ↓
-                                                                                          MultiTaskHead → cls (2), uncertainty (1)
+semantic_attrs (73-d) ──────────────────────────────────────────────────────────────────┐             │
+z_sae = concat(z_spatial, z_freq) (8192-d) ─────────────────────────────────────────────┴────────────┴→ CausalModule
+                                                                                                           │
+                                                                          ┌────────────────────────────────┤
+                                                                          │                                │
+                                                              SCM_real → residuals_real (329-d)    SCM_fake → residuals_fake (329-d)
+                                                              A_real (real biomechanics)            A_fake (generator artifacts)
+                                                              v_real = violation score              v_fake = conformance score
+                                                                          │                                │
+                                                          violation_proj_real (329→1024)    violation_proj_fake (329→1024)
+                                                                          └────────────┬───────────────────┘
+                                                                                       │ additive
+                                                                         classifier_input = fused + Δ_real + Δ_fake
+                                                                                       ↓
+                                                                         MultiTaskHead → cls (2), uncertainty (1)
 ```
 
 ---
@@ -176,26 +183,36 @@ sparse_features:
 
 ---
 
-### M3: Causal Discovery (DAGMA-DCE)
+### M3: Causal Discovery (Dual-Graph DAGMA-DCE)
 
 **Class:** `CausalDiscoveryModule`
 **File:** `training/networks/nesy_defake/causal/causal_discovery.py`
 
 #### Purpose and Motivation
 
-Learns a directed acyclic graph (DAG) connecting 256 active SAE features and 73 facial semantic attributes. The DAG encodes how neural features causally drive observable facial behaviours in **real** faces (e.g., "smileLeft activation → cheekSquintLeft magnitude"). Deepfakes violate these constraints because generators model appearance correlations but not facial biomechanics.
+Two complementary DAGMA-DCE graphs operating on the same 329-d causal variable space (256 active SAE features + 73 facial semantic attributes):
 
-**Why DAGMA-DCE** (Waxman et al., OJSP 2024) over standard DAGMA (Bello et al., NeurIPS 2022):
-Standard DAGMA infers causal strength from MLP first-layer weights, but Waxman et al. proved these weights are **not interpretable** as causal effects — they can be arbitrarily rescaled by subsequent layers with no change in function. DAGMA-DCE instead defines edge weights as the **Differential Causal Effect (DCE)**:
+**Graph_real (A_real)** — real-face biomechanical DAG:
+- SCM_real trained on real frames only; A_real EMA updated from real frames only
+- Captures genuine facial biomechanics: `smileLeft → cheekSquintLeft → eyeNarrow`
+- `v_real` = how much a sample **violates** this structure → high for fakes, low for reals
 
+**Graph_fake (A_fake)** — generator artifact DAG:
+- SCM_fake trained on fake frames only; A_fake EMA updated from fake frames only
+- Captures systematic generator patterns: artificial correlations between frequency artifacts and semantic attributes that never co-occur in real faces
+- `v_fake` = how much a sample **conforms** to this structure → high for fakes, low for reals
+
+Both scores push in the same direction through orthogonal mechanisms, forming a bidirectional detection signal stronger than either alone.
+
+**Graph divergence (interpretability):**
 ```
-A_ij = sqrt( E_x[ (∂f_j / ∂x_i)² ] )
+A_real − A_fake > 0  →  edges generators BREAK   (biomechanical constraints violated)
+A_fake − A_real > 0  →  edges generators CREATE  (artificial artifact correlations)
 ```
+`get_graph_divergence()` returns `broken_by_fakes` and `created_by_fakes` for analysis.
 
-the root-mean-square of the Jacobian ∂f_j/∂x_i over the data distribution. This is:
-- **Model-agnostic** — works with any differentiable SCM, not tied to first-layer weights
-- **Interpretable** — A_ij is the actual average causal strength of x_i on x_j
-- **Principled for thresholding** — edges below a DCE threshold are genuinely non-causal
+**Why DAGMA-DCE** (Waxman et al., OJSP 2024) over standard DAGMA:
+Edge weights = RMS Jacobian `∂f_j/∂x_i` over the data distribution. Interpretable as actual causal strength (not arbitrary network weights). Model-agnostic and principled for thresholding.
 
 #### Module Architecture
 
@@ -209,16 +226,19 @@ z_sae (B, 8192) sparse ──→ SparseFeatureSelector (Linear 8192→256, no bi
                              z_norm (B,256)│   s_norm (B,73)│
                                            └────────────────┘
                                                     │ cat
-                                               x (B, 329)  ← causal variables
-                                                    │
-                                          DAGMADCELearner
-                                           ├─→ x_hat = SCM(x)           (B, 329)
-                                           ├─→ node_residuals = x − x_hat (B, 329)
-                                           └─→ A_dce (329, 329)
-                                                    │
-                                          ViolationScorer(x, x_hat, A_dce)
-                                                    │
-                                          violation_score (B,)
+                                               x (B, 329)   ← shared causal input
+                                             ┌──────┴──────┐
+                                        SCM_real        SCM_fake
+                                             │                │
+                                      x_hat_real (B,329) x_hat_fake (B,329)
+                                      residuals_real     residuals_fake
+                                             │                │
+                                      A_real (real only) A_fake (fake only)  ← label-routed Jacobians
+                                             │                │
+                                  ViolationScorer_real  ConformanceScorer_fake
+                                             │                │
+                                          v_real (B,)      v_fake (B,)
+                                       [high=fake]       [high=fake]
 ```
 
 #### SparseFeatureSelector
@@ -364,22 +384,24 @@ violation_score = violation_scorer(x, x_hat, _A_dce_ema)  # use EMA graph
 
 The `x.detach()` at the start of forward is intentional: gradients for the SCM and Jacobian computation should not propagate back into the SAE or CLIP backbone through the causal path. Each module's gradients flow through its own branch.
 
-#### Integration with Detector (violation_proj)
+#### Integration with Detector (dual violation_proj)
 
 ```python
 # In NeSyDeFakeHybridDetector.__init__():
-violation_dim = 256 + 73  # = 329
-proj_dim = 1024            # = fusion.projection_dim
-violation_proj = Linear(329, 1024, bias=False)
-nn.init.zeros_(violation_proj.weight)             # neutral in Phase 1/2
+violation_proj_real = Linear(329, 1024, bias=False)   # zero-init
+violation_proj_fake = Linear(329, 1024, bias=False)   # zero-init
 
 # In forward():
-classifier_input = fused_features                 # (B, 1024)
-if use_causal and node_residuals is not None:
-    classifier_input = fused_features + violation_proj(node_residuals)
+# violation_proj_real: large residuals_real (broken real structure) → fake signal
+# violation_proj_fake: small residuals_fake (conforms to fake artifacts) → fake signal
+classifier_input = fused_features
+if use_causal:
+    classifier_input = (fused_features
+                        + violation_proj_real(residuals_real)
+                        + violation_proj_fake(residuals_fake))
 ```
 
-Zero-init ensures the causal signal has exactly zero effect on the classifier at the start of Phase 3. The projection learns to route informative node residuals into the classification space over the course of Phase 3 training.
+Both projections are zero-initialised → neutral through Phase 1/2. In Phase 3 they learn complementary routes: `violation_proj_real` amplifies large real-graph residuals (fake indicator), `violation_proj_fake` amplifies conformance to fake-graph patterns (also a fake indicator).
 
 #### Node Name Mapping
 
@@ -399,14 +421,15 @@ s_21:s_73   → MediaPipe: ARKit blendshapes (52)
 
 #### Parameter Count Breakdown
 
-| Submodule | Parameters |
-|-----------|-----------|
-| `SparseFeatureSelector` (Linear 8192×256) | 2,097,152 |
-| `BatchedSCM` trunk (Linear 329×128 + Linear 128×128) | ~59,392 |
-| `BatchedSCM` heads (Linear 128×329) | 42,112 |
-| `ViolationScorer` (Linear 329×64 + Linear 64×1) | 21,121 |
-| `LayerNorm` (z_norm + s_norm) | 658 |
-| **Total CausalDiscoveryModule** | **~2.22M** |
+| Submodule | Parameters | Notes |
+|-----------|-----------|-------|
+| `SparseFeatureSelector` (Linear 8192×256) | 2,097,152 | shared by both graphs |
+| `LayerNorm` (z_norm + s_norm) | 658 | shared |
+| `BatchedSCM_real` trunk + heads | ~101,504 | real graph only |
+| `ViolationScorer_real` | 21,121 | real graph only |
+| `BatchedSCM_fake` trunk + heads | ~101,504 | fake graph only |
+| `ConformanceScorer_fake` | 21,121 | fake graph only |
+| **Total CausalDiscoveryModule** | **~2.34M** | ~2.22M single-graph + ~120K for fake SCM/scorer |
 
 | SAE submodule (per branch) | Parameters |
 |----------------------------|-----------|
@@ -452,29 +475,28 @@ Input: 1024-d (`fusion.projection_dim`). Tasks: classification (2-way CE), uncer
 ## Loss Function
 
 ```
-L_total = w_cls * L_cls
-        + w_unc * L_uncertainty
-        + w_causal * L_structural      ← real frames only, MSE of node residuals
-        + w_causal * L_dag             ← DAGMA acyclicity penalty on A_dce_ema
-        + w_contrastive * L_contrastive
-        + w_sparse * L_sae
+L_total = w_cls          * L_cls
+        + w_unc          * L_uncertainty
+        + w_causal       * (L_structural_real + L_dag_real)    ← real frames / A_real
+        + w_causal_fake  * (L_structural_fake + L_dag_fake)    ← fake frames / A_fake
+        + w_contrastive  * L_contrastive_real                  ← v_real separation
+        + w_contrastive_fake * L_contrastive_fake              ← v_fake separation
+        + w_sparse       * L_sae
 ```
 
 | Term | Formula | Active |
 |------|---------|--------|
 | `L_cls` | CrossEntropy(logits, label) | all phases |
 | `L_uncertainty` | MSE(uncertainty, 1 − correct) | all phases |
-| `L_structural` | mean((x − x̂)²) on real frames only | Phase 3 |
-| `L_dag` | `dag_penalty_weight × h(A_dce_ema)` | Phase 3 |
-| `L_contrastive` | `ReLU(margin − (mean_fake_v − mean_real_v))`, margin=1.0 | Phase 3 |
+| `L_structural_real` | mean(residuals_real[real]²) — SCM_real fits real biomechanics | Phase 3 |
+| `L_dag_real` | `dag_w × h(A_real_ema)` | Phase 3 |
+| `L_structural_fake` | mean(residuals_fake[fake]²) — SCM_fake fits generator artifacts | Phase 3 |
+| `L_dag_fake` | `0.5 × dag_w × h(A_fake_ema)` (half weight: fake graph less universal) | Phase 3 |
+| `L_contrastive_real` | `ReLU(1 − (v_real[fake].mean() − v_real[real].mean()))` | Phase 3 |
+| `L_contrastive_fake` | `ReLU(1 − (v_fake[fake].mean() − v_fake[real].mean()))` | Phase 3 |
 | `L_sae` | `norm_recon + aux_loss_coeff * dead_feature_aux` (per branch, summed) | Phase 1–3 |
 
-**L_contrastive detail:** When both real and fake samples are in the batch:
-```
-L_contrastive = ReLU(1.0 - (mean_violation_fake - mean_violation_real))
-```
-When only reals present: `L_contrastive = mean(violation_real).clamp(min=0)` (minimise false alarms).
-When only fakes present: `L_contrastive = ReLU(1.0 - mean(violation_fake))` (maximise detections).
+Both contrastive losses handle single-class batches: reals-only minimises the score, fakes-only maximises it.
 
 **Loss weights:**
 
@@ -483,8 +505,12 @@ When only fakes present: `L_contrastive = ReLU(1.0 - mean(violation_fake))` (max
 | `classification` | 1.0 | 1.0 | 1.0 |
 | `uncertainty` | 0.5 | 0.5 | 0.5 |
 | `sparse` | 0.1 | 0.1 | 0.1 |
-| `causal` | 0.0 | 0.0 | 0.3 (set by trainer) |
-| `contrastive` | 0.0 | 0.0 | 0.3 (set by trainer) |
+| `causal` | 0.0 | 0.0 | 0.3 (set by trainer, real graph) |
+| `causal_fake` | 0.0 | 0.0 | 0.15 (= causal × 0.5 default) |
+| `contrastive` | 0.0 | 0.0 | 0.3 (set by trainer, real graph) |
+| `contrastive_fake` | 0.0 | 0.0 | 0.15 (= contrastive × 0.5 default) |
+
+`causal_fake` and `contrastive_fake` default to half of their real-graph counterparts. The fake graph is trained on a finite set of methods and may not generalise to unseen generators; the half-weight prevents overfitting to training-fake-specific artifacts. These can be set explicitly in `loss_func.weights` to override.
 
 ---
 
@@ -615,12 +641,37 @@ foundation_models:
 ## Causal Variable Dimensions
 
 ```
-z_sae (sparse, full dict):  8192-d  (4096 spatial + 4096 freq)
-z_active (dense, selector): 256-d   (SparseFeatureSelector linear projection)
-s_semantic:                  73-d
-causal input x:             329-d   (z_active + s_semantic)
-node_residuals:             329-d   (x − SCM(x), all frames)
-A_dce:                    329×329   (DCE adjacency matrix, EMA-smoothed)
-violation_score:              (B,)  (scalar per sample, from ViolationScorer)
-violation_proj output:      1024-d  (329→1024 linear, added to fused_features)
+z_sae (sparse, full dict):    8192-d  (4096 spatial + 4096 freq)
+z_active (dense, selector):   256-d   (SparseFeatureSelector linear projection)
+s_semantic:                    73-d
+causal input x:               329-d   (z_active + s_semantic, shared by both graphs)
+
+residuals_real:               329-d   (x − SCM_real(x), all frames)
+residuals_fake:               329-d   (x − SCM_fake(x), all frames)
+A_real:                     329×329   (real-face DCE adjacency, EMA from real frames)
+A_fake:                     329×329   (fake-face DCE adjacency, EMA from fake frames)
+
+v_real:                         (B,)  (violation score on real graph,  high=fake)
+v_fake:                         (B,)  (conformance score on fake graph, high=fake)
+
+violation_proj_real output:   1024-d  (329→1024 linear, zero-init, additive to fused)
+violation_proj_fake output:   1024-d  (329→1024 linear, zero-init, additive to fused)
+
+graph divergence:
+  broken_by_fakes:           329×329  (A_real − A_fake).clamp(0) — edges generators break
+  created_by_fakes:          329×329  (A_fake − A_real).clamp(0) — edges generators create
 ```
+
+---
+
+## Trainer Note: Dual Warmup at Phase 3
+
+At `phase3_start` the trainer's `_run_causal_warmup` currently warms up only the real graph (real frames only). With dual graphs, a second fake-warmup pass is needed before Phase 3 training:
+
+```python
+# Pseudocode — trainer.py _run_causal_warmup should do both:
+_causal_warmup(train_loader, n_batches=200, label_filter=0)   # real frames → A_real EMA
+_causal_warmup(train_loader, n_batches=200, label_filter=1)   # fake frames → A_fake EMA
+```
+
+Without fake warmup, A_fake starts from zeros and the conformance scorer receives no informative signal at the start of Phase 3. The fake graph will converge during training, but initialising it from real fake data (before any classification gradient biases it) produces faster and more stable fake-artifact discovery.

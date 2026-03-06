@@ -40,7 +40,7 @@ resolution:    224
 with_mask:     false
 with_landmark: false
 
-load_semantic_features: true
+load_semantic_features: false   # Replaced by on-the-fly CLIP facial attributes
 
 class_weights: [1.0, 1.0]
 
@@ -118,24 +118,23 @@ fusion:
   dropout:        0.3
 
 # -----------------------------------------------------------------------------
+# On-the-fly CLIP Facial Attributes (FaceLaVa/FaceBench-inspired)
+# -----------------------------------------------------------------------------
+semantic_attributes:
+  enabled: true
+  categories: all           # 'all' or list: [face_structure, eyes, skin, ...]
+  temperature: 0.07         # CLIP cosine similarity temperature
+
+# -----------------------------------------------------------------------------
 # Module 3: Causal Discovery
 # -----------------------------------------------------------------------------
 causal_module:
-  # The module is ALWAYS built at init (for DDP consistency and phase-transition
-  # activation). Use_causal is initialised from this flag but the trainer flips
-  # it to True at phase3_start via model.enable_causal().
-  enabled: false
+  # End-to-end: causal module trains from epoch 0 with loss weight warm-up.
+  # Gradients flow back through causal module to SAE and backbone.
+  enabled: true
 
-  # The causal graph (A_dce) is generated in two stages:
-  #   Stage A — Causal warmup (at phase3_start, BEFORE phase 3 training begins):
-  #     The trainer runs causal_warmup_batches iterations over REAL faces only,
-  #     using frozen backbone+SAE, to pre-populate the EMA A_dce buffer with a
-  #     biologically meaningful graph before any fake data influences it.
-  #   Stage B — Online EMA update during Phase 3 training:
-  #     Each forward pass computes A_dce via the Jacobian of the SCM and
-  #     updates the EMA buffer. Only real-face samples update A_dce (controlled
-  #     by passing labels to the causal module).
-  causal_warmup_batches: 200   # real-face-only batches to pre-warm A_dce at phase3 start
+  # Causal warmup at epoch 0: pre-populates EMA buffers before main training.
+  causal_warmup_batches: 100   # reduced: end-to-end training compensates
 
   # Z_sae: full dict vectors from both SAE branches
   #   dict_size=4096 per branch → z_sae is 8192-d sparse (target_k=128 active per branch)
@@ -146,7 +145,7 @@ causal_module:
     z_frequency_dim:  128
     total_sae_dim:    256    # compressed dense output of SparseFeatureSelector (8192 → 256)
 
-  semantic_dim: 73
+  semantic_dim: 68           # auto-overridden by CLIPFacialAttributeExtractor if enabled
 
   discovery:
     algorithm:        dagma_dce
@@ -246,9 +245,38 @@ loss_func:
   weights:
     classification: 1.0
     uncertainty:    0.5
-    causal:         0.0     # 0 until causal module is enabled (set to 0.3 at phase3_start)
-    sparse:         0.1     # SAE loss weight — conservative to avoid dominating early
-    contrastive:    0.0     # 0 until causal module is enabled (set to 0.3 at phase3_start)
+    causal:         0.01    # start small, ramped up by loss_warmup schedule
+    sparse:         0.01    # start small, ramped up by loss_warmup schedule
+    contrastive:    0.01    # start small, ramped up by loss_warmup schedule
+
+# Loss weight warm-up: linear ramp so all modules learn jointly from epoch 0
+# without any single loss dominating early training.
+loss_warmup:
+  causal:
+    start_epoch: 0
+    end_epoch: 10
+    start_weight: 0.01
+    end_weight: 0.3
+  contrastive:
+    start_epoch: 0
+    end_epoch: 10
+    start_weight: 0.01
+    end_weight: 0.3
+  causal_fake:
+    start_epoch: 0
+    end_epoch: 10
+    start_weight: 0.005
+    end_weight: 0.15
+  contrastive_fake:
+    start_epoch: 0
+    end_epoch: 10
+    start_weight: 0.005
+    end_weight: 0.15
+  sparse:
+    start_epoch: 0
+    end_epoch: 5
+    start_weight: 0.01
+    end_weight: 0.1
 
 # -----------------------------------------------------------------------------
 # Optimizer
@@ -290,54 +318,28 @@ freq_grad_clip: 2.0
 
 training_phases:
   # ─────────────────────────────────────────────────────────────────────────
-  # Phase 1 — Foundation model warm-up (hard freeze)
-  #   Spatial:   CLIP backbone fully frozen (all params incl LayerNorms).
-  #              spatial_proj + fusion + classifier + SAE train at normal LR.
-  #   Frequency: CLIP backbone fully frozen (train_layernorms=false → hard).
-  #              FAD front-end (DCT filters, emphasis α) always trains.
-  #   Goal: projection heads, fusion, and SAE learn stable features on top of
-  #         completely static pretrained representations.  After Phase 1 the
-  #         two branches should already discriminate fakes reasonably well.
+  # Phase 1 — Warm-up with hard-frozen backbone (short)
+  #   All modules train jointly from epoch 0 (including causal + SAE).
+  #   Backbone frozen (incl LayerNorms) so projections/fusion/causal/SAE
+  #   stabilize on static pretrained features first.
+  #   Loss warm-up: causal/contrastive/sparse weights ramp from 0.01.
   # ─────────────────────────────────────────────────────────────────────────
   phase1:
-    epochs:         [0, 10]
+    epochs:         [0, 5]
     freeze_modules: [foundation_models]
-    train_modules:  [fad_frontend, projection_heads, fusion, classifier, sparse_ae]
-    description:    "Hard freeze backbones (incl LNs). Train proj/fusion/cls/SAE. FAD always trains."
+    train_modules:  [fad_frontend, projection_heads, fusion, classifier, sparse_ae, causal_module, clip_attributes]
+    description:    "Hard freeze backbone. All other modules train jointly. Loss warmup active."
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Phase 2 — GenD-style LayerNorm adaptation
-  #   Trainer calls extractor.unfreeze_layernorms() for both branches and
-  #   rebuilds the optimizer so LN params enter the backbone_layernorms group
-  #   at lr=1e-5 (much lower than projection heads).
-  #   The FAD front-end and projection/fusion/classifier continue at their LRs.
-  #   Goal: backbone normalisation statistics adapt to the deepfake domain
-  #         without shifting the feature manifold (GenD's generalisation trick).
+  # Phase 2 — Full end-to-end with GenD-style LN adaptation
+  #   Unfreeze backbone LayerNorms. All modules continue joint training.
+  #   Loss weights reach full values by epoch 10.
   # ─────────────────────────────────────────────────────────────────────────
   phase2:
-    epochs:         [10, 20]
-    freeze_modules: []
-    train_modules:  [layernorms, fad_frontend, projection_heads, fusion, classifier, sparse_ae]
-    description:    "Unfreeze backbone LNs (GenD: 1e-5 LR). SAE continues. FAD adapts further."
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Phase 3 — Causal discovery activation
-  #   At phase3_start the trainer:
-  #     1. Calls model.enable_causal() (flips use_causal=True).
-  #     2. Runs causal_warmup_batches iterations over REAL faces only so the
-  #        A_dce EMA starts from a biologically valid graph (not noise).
-  #     3. Sets loss_func.weights.causal = 0.3 and rebuilds the optimizer.
-  #   During Phase 3 the causal module updates A_dce via EMA each batch.
-  #   Only real-face samples update the graph (fakes are used for violation
-  #   scoring only, not for graph learning).
-  # ─────────────────────────────────────────────────────────────────────────
-  phase3:
-    epochs:         [20, 50]
+    epochs:         [5, 50]
     freeze_modules: []
     train_modules:  [all]
-    enable_causal:  true
-    causal_loss_weight: 0.3   # trainer sets this in loss_func.weights.causal
-    description:    "Enable causal discovery. Real-face warmup pre-populates A_dce. Violation loss added."
+    description:    "Unfreeze backbone LNs. Full end-to-end training. Loss warmup completes by epoch 10."
 
 # -----------------------------------------------------------------------------
 # Metrics & interpretability
@@ -360,6 +362,13 @@ cudnn:           true
 mixed_precision: true
 
 checkpoint:
-  save_best_only: true
+  save_best_only: false         # Save periodic checkpoints for analysis
+  save_interval: 5              # Save every 5 epochs
   monitor:        val_auc
   mode:           max
+
+# Early stopping: stop if no improvement for patience epochs
+early_stopping:
+  enabled: true
+  patience: 15                  # epochs without avg AUC improvement
+  min_delta: 0.001              # minimum improvement to reset patience

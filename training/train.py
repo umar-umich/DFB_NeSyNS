@@ -444,6 +444,18 @@ def main():
                       metric_scoring, time_now=timenow)
 
     best_metric = None
+    # Early stopping state
+    es_cfg = config.get('early_stopping', {})
+    es_enabled = es_cfg.get('enabled', False)
+    es_patience = es_cfg.get('patience', 15)
+    es_min_delta = es_cfg.get('min_delta', 0.001)
+    es_best_score = float('-inf')
+    es_wait = 0
+
+    # Periodic checkpoint saving
+    ckpt_cfg = config.get('checkpoint', {})
+    save_interval = ckpt_cfg.get('save_interval', 5)
+
     for epoch in range(config['start_epoch'], config['nEpochs'] + 1):
         if config['ddp'] and hasattr(train_data_loader.sampler, 'set_epoch'):
             train_data_loader.sampler.set_epoch(epoch)
@@ -457,6 +469,27 @@ def main():
             logger.info(
                 f"===> Epoch[{epoch}] end with testing "
                 f"{metric_scoring}: {parse_metric_for_print(best_metric)}!")
+
+            # Periodic checkpoint saving (for analysis)
+            if (save_interval > 0 and epoch % save_interval == 0
+                    and config.get('save_ckpt', True)):
+                trainer.save_ckpt('test', f'epoch_{epoch}', f'{epoch}')
+                logger.info(f"  Periodic checkpoint saved at epoch {epoch}")
+
+            # Early stopping check on avg AUC
+            if es_enabled and 'avg' in best_metric:
+                current_score = best_metric['avg'].get(metric_scoring, 0)
+                if current_score > es_best_score + es_min_delta:
+                    es_best_score = current_score
+                    es_wait = 0
+                else:
+                    es_wait += 1
+                    logger.info(
+                        f"  Early stopping: no improvement for {es_wait}/{es_patience} epochs "
+                        f"(best={es_best_score:.6f}, current={current_score:.6f})")
+                    if es_wait >= es_patience:
+                        logger.info(f"  Early stopping triggered at epoch {epoch}")
+                        break
 
     logger.info("Stop Training on best Testing metric {}".format(
         parse_metric_for_print(best_metric)))

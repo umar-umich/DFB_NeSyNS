@@ -456,28 +456,38 @@ class Trainer(object):
     # Causal warmup
     # ------------------------------------------------------------------
 
-    def _run_causal_warmup(self, dataloader, n_batches: int):
+    def _run_causal_warmup(self, dataloader, n_batches: int, label_filter: int = 0):
         """
-        Pre-populate the causal module's A_dce EMA buffer using real-face
-        batches BEFORE phase 3 training starts.
+        Pre-populate one causal graph's EMA buffer before phase 3 training.
 
-        Why: A_dce initialises to zeros.  If we start phase 3 training
-        immediately, the first violation scores are meaningless noise
-        because the graph hasn't learned any real-face structure yet.
-        Running real-only forward passes here biologically initialises
-        the graph before any fake frames influence it.
+        Called twice at phase3_start:
+          label_filter=0 → warms up A_real (real-face biomechanical graph)
+          label_filter=1 → warms up A_fake (generator artifact graph)
+
+        Why two warmups:
+          Both EMA buffers initialise to zeros. Starting phase 3 training
+          without pre-populating them means the first violation/conformance
+          scores are meaningless, and the contrastive loss may backfire
+          (pushing the wrong direction before any graph structure exists).
+
+          Real warmup: biologically initialises A_real from genuine facial
+          biomechanics before any fake data influences the graph.
+          Fake warmup: initialises A_fake from generator artifact patterns
+          before any classification gradient biases the fake SCM.
 
         Strategy:
-          - Freeze all params EXCEPT causal_module (no learning, just EMA)
-          - For each batch: keep only real frames (label==0)
-          - Run backbone + SAE under no_grad (frozen)
-          - Run causal_module forward with grad enabled (for Jacobian)
-          - EMA updates happen inside compute_adjacency_dce as side-effect
-          - Restore frozen/trainable states after warmup
+          - Freeze all params EXCEPT causal_module
+          - Filter each batch to only the target distribution (real or fake)
+          - Run backbone + SAE under no_grad
+          - Run causal_module with grad (for Jacobian); EMA updates as side-effect
+          - Restore trainable states after warmup
         """
+        filter_name = 'real' if label_filter == 0 else 'fake'
+        graph_name  = 'A_real' if label_filter == 0 else 'A_fake'
+
         m = self.model.module if isinstance(self.model, DDP) else self.model
 
-        # Freeze all params except causal_module
+        # Freeze everything except causal_module
         frozen_params = set()
         for name, param in m.named_parameters():
             if 'causal_module' not in name and param.requires_grad:
@@ -490,7 +500,6 @@ class Trainer(object):
         for data_dict in dataloader:
             if n_done >= n_batches:
                 break
-
             if 'label' not in data_dict:
                 continue
 
@@ -500,48 +509,50 @@ class Trainer(object):
                     data_dict[key] = val.cuda()
 
             label = data_dict['label']
-            real_mask = (label == 0)
-            if not real_mask.any():
-                continue  # skip all-fake batches
+            target_mask = (label == label_filter)
+            if not target_mask.any():
+                continue   # skip batches with none of the target class
 
-            # Filter to real frames only
-            real_dict = {}
-            for k, v in data_dict.items():
-                if isinstance(v, torch.Tensor):
-                    real_dict[k] = v[real_mask]
-                else:
-                    real_dict[k] = v
+            # Filter batch to target distribution
+            target_dict = {
+                k: (v[target_mask] if isinstance(v, torch.Tensor) else v)
+                for k, v in data_dict.items()
+            }
 
-            # Backbone + SAE forward (no grad — frozen)
+            # Backbone + SAE (no grad — these are frozen)
             with torch.no_grad():
-                raw_feats = m.extract_raw_features(real_dict)
-                fused_feats = m.project_and_fuse(raw_feats)
-
+                raw_feats  = m.extract_raw_features(target_dict)
                 z_spatial, z_freq = None, None
-                sae_loss_dummy = None
                 if m.use_sparse:
-                    z_spatial, z_freq, sae_loss_dummy, _ = m.sparse_ae(
+                    z_spatial, z_freq, _, _ = m.sparse_ae(
                         spatial_feat=raw_feats.get('spatial_raw'),
                         frequency_feat=raw_feats.get('frequency_raw'),
                     )
                 z_sae = (m.sparse_ae.get_z_sae(z_spatial, z_freq)
                          if m.use_sparse else None)
 
-            # Causal module needs grad for Jacobian → run outside no_grad
-            semantic_attrs = real_dict.get('semantic_attrs', None)
+            # Causal module needs grad for Jacobian → run outside no_grad.
+            # Compute semantic attrs on-the-fly if CLIP attributes are enabled.
+            if getattr(m, 'use_clip_attributes', False) and m.clip_attr_extractor is not None:
+                with torch.no_grad():
+                    semantic_attrs = m.clip_attr_extractor(raw_feats.get('spatial_raw'))
+                semantic_attrs = semantic_attrs.detach()
+            else:
+                semantic_attrs = target_dict.get('semantic_attrs', None)
+                if semantic_attrs is not None:
+                    semantic_attrs = semantic_attrs.detach()
+
             m.causal_module(
-                fused_feats.detach(),
-                z_sae=z_sae.detach() if z_sae is not None else None,
-                semantic_attrs=(semantic_attrs.detach()
-                                if semantic_attrs is not None else None),
-                # No label needed here: ALL frames are real (already filtered)
-                return_graph=True,
+                z_sae=(z_sae.detach() if z_sae is not None else None),
+                semantic_attrs=semantic_attrs,
+                label=target_dict['label'],
+                return_graph=False,
             )
 
             n_done += 1
             if n_done % 50 == 0 and is_main_process():
                 self.logger.info(
-                    f"  Causal warmup: {n_done}/{n_batches} real-face batches"
+                    f"  Causal warmup ({filter_name}): {n_done}/{n_batches} batches"
                 )
 
         # Restore trainable states
@@ -549,16 +560,27 @@ class Trainer(object):
             if name in frozen_params:
                 param.requires_grad = True
 
-        ema_init = (m.causal_module.causal_learner._ema_initialized
-                    if hasattr(m, 'causal_module') else False)
-        if is_main_process():
+        # Report EMA state for the target graph
+        if is_main_process() and hasattr(m, 'causal_module'):
+            learner = (m.causal_module.causal_learner_real if label_filter == 0
+                       else m.causal_module.causal_learner_fake)
             self.logger.info(
-                f"  Causal warmup complete: {n_done} batches processed. "
-                f"A_dce EMA initialized: {ema_init}"
+                f"  Causal warmup ({filter_name}) complete: {n_done} batches. "
+                f"{graph_name} EMA initialized: {learner._ema_initialized}"
             )
 
     def train_epoch(self, epoch, train_data_loader, test_data_loaders=None):
         self.logger.info("===> Epoch[{}] start!".format(epoch))
+
+        # ── Loss warmup: update loss weights based on epoch ────────────────
+        m = self.model.module if isinstance(self.model, DDP) else self.model
+        if hasattr(m, 'update_loss_warmup'):
+            m.update_loss_warmup(epoch, self.config.get('nEpochs', 50))
+            if epoch <= 10 and is_main_process():
+                self.logger.info(
+                    f"  Loss warmup weights: "
+                    + ", ".join(f"{k}={v:.4f}" for k, v in m.loss_weights.items())
+                )
 
         # ── Phase transition (GenD-style progressive unfreezing) ──────────
         # Must run BEFORE the iteration loop so the entire epoch trains with
@@ -616,62 +638,75 @@ class Trainer(object):
             if hasattr(self, '_freq_params_cache'):
                 del self._freq_params_cache
 
-        # ── Phase 3 transition: enable causal discovery ───────────────────
-        # At phase3_start the trainer:
-        #   1. Calls model.enable_causal() → sets use_causal=True
-        #   2. Runs causal warmup (real-face-only batches) to pre-populate
-        #      A_dce EMA before any fake data influences the graph.
-        #   3. Sets causal + contrastive loss weights and rebuilds optimizer.
+        # ── Causal warmup at epoch 0 ──────────────────────────────────────
+        # Pre-populate both EMA buffers before main training begins.
+        # In end-to-end mode, causal is enabled from epoch 0 — warmup runs once.
+        # Legacy phase3 transition is also supported for backward compatibility.
         phase3 = phases.get('phase3', {})
         phase3_start = phase3.get('epochs', [None, None])[0]
 
+        m_causal = self.model.module if isinstance(self.model, DDP) else self.model
+        run_causal_warmup = False
+
         if phase3_start is not None and epoch == phase3_start:
+            # Legacy: phase3 transition
             self.logger.info(
                 f"===> Phase 3 transition at epoch {epoch}: "
-                f"enabling causal discovery module."
+                f"enabling dual-graph causal discovery module."
             )
-            m = self.model.module if isinstance(self.model, DDP) else self.model
-
-            # 1. Enable causal module
-            if hasattr(m, 'enable_causal'):
-                m.enable_causal()
+            if hasattr(m_causal, 'enable_causal'):
+                m_causal.enable_causal()
             else:
-                self.logger.warning(
-                    "  model has no enable_causal() method — setting use_causal directly."
-                )
-                m.use_causal = True
+                m_causal.use_causal = True
 
-            # 2. Set loss weights for phase 3
-            causal_loss_weight = phase3.get('causal_loss_weight', 0.3)
-            self.config['loss_func']['weights']['causal'] = causal_loss_weight
-            self.config['loss_func']['weights']['contrastive'] = causal_loss_weight
-            if hasattr(m, 'loss_weights'):
-                m.loss_weights['causal'] = causal_loss_weight
-                m.loss_weights['contrastive'] = causal_loss_weight
+            causal_w = phase3.get('causal_loss_weight', 0.3)
+            causal_fake_w = phase3.get('causal_fake_loss_weight', causal_w * 0.5)
+            for key, val in [
+                ('causal', causal_w), ('contrastive', causal_w),
+                ('causal_fake', causal_fake_w), ('contrastive_fake', causal_fake_w),
+            ]:
+                self.config['loss_func']['weights'][key] = val
+                if hasattr(m_causal, 'loss_weights'):
+                    m_causal.loss_weights[key] = val
+
+            run_causal_warmup = True
+
+        elif epoch == 0 and getattr(m_causal, 'use_causal', False):
+            # End-to-end: causal enabled from config, warmup at epoch 0
             self.logger.info(
-                f"  causal loss weight: {causal_loss_weight}, "
-                f"contrastive loss weight: {causal_loss_weight}"
+                "===> Causal warmup at epoch 0 (end-to-end mode)"
             )
+            run_causal_warmup = True
 
-            # 3. Causal warmup: pre-populate A_dce EMA with real-face batches
+        if run_causal_warmup:
             causal_warmup_batches = (
                 self.config.get('causal_module', {})
-                .get('causal_warmup_batches', 200)
+                .get('causal_warmup_batches', 100)
             )
             if causal_warmup_batches > 0:
                 self.logger.info(
-                    f"  Running causal warmup: {causal_warmup_batches} "
-                    f"real-face batches to pre-populate A_dce EMA..."
+                    f"  Causal warmup — real graph: "
+                    f"{causal_warmup_batches} real-face batches..."
                 )
-                self._run_causal_warmup(train_data_loader, n_batches=causal_warmup_batches)
+                self._run_causal_warmup(
+                    train_data_loader,
+                    n_batches=causal_warmup_batches,
+                    label_filter=0,
+                )
+                self.logger.info(
+                    f"  Causal warmup — fake graph: "
+                    f"{causal_warmup_batches} fake-face batches..."
+                )
+                self._run_causal_warmup(
+                    train_data_loader,
+                    n_batches=causal_warmup_batches,
+                    label_filter=1,
+                )
 
-            # 4. Rebuild optimizer so causal_module params enter Adam state
             from training.train import choose_optimizer, choose_scheduler
             self.optimizer = choose_optimizer(self.model, self.config)
             self.scheduler = choose_scheduler(self.config, self.optimizer)
-            self.logger.info(
-                "  Optimizer and scheduler rebuilt for phase 3."
-            )
+            self.logger.info("  Optimizer and scheduler rebuilt after causal warmup.")
 
             if hasattr(self, '_freq_params_cache'):
                 del self._freq_params_cache
@@ -786,7 +821,7 @@ class Trainer(object):
         feature_lists      = []
         label_lists        = []
 
-        for i, data_dict in tqdm(
+        for _, data_dict in tqdm(
             enumerate(data_loader),
             total=len(data_loader),
             desc=f"  {desc}",
