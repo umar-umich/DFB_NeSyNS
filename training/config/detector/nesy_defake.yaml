@@ -118,12 +118,30 @@ fusion:
   dropout:        0.3
 
 # -----------------------------------------------------------------------------
-# On-the-fly CLIP Facial Attributes (FaceLaVa/FaceBench-inspired)
+# Facial Semantic Attributes (dedicated face analysis model)
+# -----------------------------------------------------------------------------
+# Extracted by an INDEPENDENT pre-trained face model (not derived from
+# spatial CLIP features). Provides genuinely new semantic information
+# to the causal discovery module.
+#
+# Backends:
+#   'face_llava':  Face-LLaVA (WACV 2026), face-specific MLLM with
+#                  Face-Region Guided Cross-Attention. Richest features.
+#                  https://github.com/ihp-lab/Face-LLaVA
+#   'farl':        FaRL ViT-B/16 (CVPR 2022), pre-trained on 20M faces.
+#                  Download: https://github.com/FacePerceiver/FaRL
+#   'celeba_vit':  ViT fine-tuned on CelebA-40 attributes (40 interpretable).
+#   'precomputed': Pre-cached attributes from disk.
 # -----------------------------------------------------------------------------
 semantic_attributes:
   enabled: true
-  categories: all           # 'all' or list: [face_structure, eyes, skin, ...]
-  temperature: 0.07         # CLIP cosine similarity temperature
+  backend: face_llava
+  model_path: /data/umar/weights/FaceLLaVA   # HuggingFace checkpoint dir
+  output_dim: 128            # semantic dimension fed to causal module
+  feature_mode: visual       # 'visual' (fast, ~1.5GB) or 'lm_hidden' (rich, ~16GB)
+  fp16: true                 # use float16 for the frozen backbone
+  micro_batch_size: 64       # process images in chunks to control peak memory
+  # precomputed_dim: 73      # only for 'precomputed' backend
 
 # -----------------------------------------------------------------------------
 # Module 3: Causal Discovery
@@ -145,7 +163,7 @@ causal_module:
     z_frequency_dim:  128
     total_sae_dim:    256    # compressed dense output of SparseFeatureSelector (8192 → 256)
 
-  semantic_dim: 68           # auto-overridden by CLIPFacialAttributeExtractor if enabled
+  semantic_dim: 128          # auto-overridden by FacialSemanticExtractor.output_dim
 
   discovery:
     algorithm:        dagma_dce
@@ -327,7 +345,7 @@ training_phases:
   phase1:
     epochs:         [0, 5]
     freeze_modules: [foundation_models]
-    train_modules:  [fad_frontend, projection_heads, fusion, classifier, sparse_ae, causal_module, clip_attributes]
+    train_modules:  [fad_frontend, projection_heads, fusion, classifier, sparse_ae, causal_module, semantic_extractor]
     description:    "Hard freeze backbone. All other modules train jointly. Loss warmup active."
 
   # ─────────────────────────────────────────────────────────────────────────

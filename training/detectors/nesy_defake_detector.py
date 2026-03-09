@@ -5,12 +5,14 @@ END-TO-END DUAL-GRAPH CAUSAL DISCOVERY
 
 Data flow:
   spatial_frames ──→ SpatialExtractor ──→ raw_spatial (1024-d) ──┬→ spatial_proj → fused → classifier
-                                                                  ├→ SAE.spatial → z_spatial ─┐
-                                                                  └→ CLIPFacialAttrs → sem (68-d)
+                                                                  └→ SAE.spatial → z_spatial ─┐
   freq_frames ────→ FreqExtractor ────→ raw_freq (1024-d) ──────┬→ freq_proj → fused → classifier
                                                                   └→ SAE.freq → z_freq ──────┤
-                                                                                              ├→ Z_sae (concat, 8192-d)
-                                                                  semantic_attrs (68-d) ──────┤
+  raw_frames ─────→ FacialSemanticExtractor (FaRL/CelebA/precomputed)                         │
+                      [frozen backbone] → [trainable proj]                                    │
+                      → semantic_attrs (output_dim-d) ────────────┤                           │
+                                                                  ├→ Z_sae (concat, 8192-d)   │
+                                                                  semantic_attrs ──────────────┤
                                                                                               ↓
                                                             CausalModule (all epochs)
                                                               ├── SCM_real → residuals_real
@@ -46,7 +48,7 @@ from networks.nesy_defake.fusion import MultiModalFusion
 from networks.nesy_defake.causal import CausalDiscoveryModule
 from networks.nesy_defake.classifiers import MultiTaskHead
 from networks.nesy_defake.classifiers.sparse_autoencoder import DualBranchSparseAutoencoder
-from networks.nesy_defake.semantic import CLIPFacialAttributeExtractor
+from networks.nesy_defake.semantic import FacialSemanticExtractor
 
 logger = logging.getLogger(__name__)
 ALL_BRANCHES = ('spatial', 'frequency')
@@ -77,20 +79,21 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.build_backbone(config)
         self.fusion = MultiModalFusion(config)
 
-        # ── Module: CLIP Facial Attribute Extractor ───────────────────────
-        # On-the-fly semantic features computed from spatial CLIP features.
-        # Replaces precomputed DeepFace features with rich, differentiable,
-        # augmentation-consistent attributes.
+        # ── Module: Facial Semantic Attribute Extractor ───────────────────
+        # Dedicated face analysis model (FaRL / CelebA-ViT / precomputed).
+        # Processes raw face images through an independent pre-trained model,
+        # providing genuinely new semantic information to the causal module.
         sem_cfg = config.get('semantic_attributes', {})
-        self.use_clip_attributes = sem_cfg.get('enabled', False)
-        if self.use_clip_attributes:
-            self.clip_attr_extractor = CLIPFacialAttributeExtractor(config)
-            # Override semantic_dim in causal config to match
-            actual_dim = self.clip_attr_extractor.output_dim
+        self.use_semantic_attrs = sem_cfg.get('enabled', False)
+        if self.use_semantic_attrs:
+            self.semantic_extractor = FacialSemanticExtractor(config)
+            # Override semantic_dim in causal config to match output
+            actual_dim = self.semantic_extractor.output_dim
             config['causal_module']['semantic_dim'] = actual_dim
-            logger.info(f"  CLIP attrs dim  : {actual_dim}")
+            logger.info(f"  Semantic dim    : {actual_dim} "
+                        f"(backend={sem_cfg.get('backend', 'farl')})")
         else:
-            self.clip_attr_extractor = None
+            self.semantic_extractor = None
 
         # ── Module 4: Sparse Autoencoder ──────────────────────────────────
         self.use_sparse = config['sparse_features']['enabled']
@@ -131,7 +134,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         logger.info(f"  Projection dim  : {proj_dim}")
         logger.info(f"  SAE enabled     : {self.use_sparse}")
         logger.info(f"  Causal enabled  : {self.use_causal}")
-        logger.info(f"  CLIP attributes : {self.use_clip_attributes}")
+        logger.info(f"  Semantic attrs  : {self.use_semantic_attrs}")
 
     # ------------------------------------------------------------------ #
     #  Construction helpers                                                #
@@ -267,8 +270,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             )
 
         # ── Step 4: Dual-graph causal module ─────────────────────────────
-        # Computes on-the-fly CLIP facial attributes (if enabled) instead of
-        # precomputed DeepFace features, then runs causal discovery.
+        # Extracts semantic attributes via dedicated face model (FaRL/CelebA/
+        # precomputed), then runs dual-graph causal discovery.
         v_real = None
         v_fake = None
         residuals_real = None
@@ -278,9 +281,14 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         if self.use_causal:
             z_sae = self.sparse_ae.get_z_sae(z_spatial, z_freq) if self.use_sparse else None
 
-            # Compute semantic attributes on-the-fly from spatial features
-            if self.use_clip_attributes and raw_feats.get('spatial_raw') is not None:
-                semantic_attrs = self.clip_attr_extractor(raw_feats['spatial_raw'])
+            # Compute semantic attributes from dedicated face analysis model
+            if self.use_semantic_attrs and self.semantic_extractor is not None:
+                if self.semantic_extractor.is_precomputed:
+                    semantic_attrs = self.semantic_extractor(
+                        precomputed_attrs=data_dict.get('semantic_attrs'))
+                else:
+                    semantic_attrs = self.semantic_extractor(
+                        raw_images=data_dict.get('raw_frames'))
             else:
                 semantic_attrs = data_dict.get('semantic_attrs', None)
 
@@ -438,7 +446,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         for attr in ('causal_module', 'sparse_ae', 'multitaskhead',
                      'violation_proj_real', 'violation_proj_fake',
-                     'clip_attr_extractor'):
+                     'semantic_extractor'):
             mod = getattr(self, attr, None)
             if mod is not None:
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(mod, device)

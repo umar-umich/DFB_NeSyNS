@@ -675,3 +675,47 @@ _causal_warmup(train_loader, n_batches=200, label_filter=1)   # fake frames → 
 ```
 
 Without fake warmup, A_fake starts from zeros and the conformance scorer receives no informative signal at the start of Phase 3. The fake graph will converge during training, but initialising it from real fake data (before any classification gradient biases it) produces faster and more stable fake-artifact discovery.
+
+
+
+Face-LLaVA backend added
+
+  How it works — two feature extraction modes:
+
+  ┌──────────────────┬───────────────────────────────────────────────────────────┬─────────┬─────────────────────────┐
+  │       Mode       │                         What runs                         │  VRAM   │ Speed (batch 256, H200) │
+  ├──────────────────┼───────────────────────────────────────────────────────────┼─────────┼─────────────────────────┤
+  │ visual (default) │ Vision tower + projector only. LLM is deleted from memory │ ~1.5 GB │ ~1-2 sec                │
+  ├──────────────────┼───────────────────────────────────────────────────────────┼─────────┼─────────────────────────┤
+  │ lm_hidden        │ Full model including 7B LLM                               │ ~16 GB  │ ~5-10 sec               │
+  └──────────────────┴───────────────────────────────────────────────────────────┴─────────┴─────────────────────────┘
+
+  Both modes are frozen inference with torch.no_grad(). The only trainable part is the projection head (128K params).
+
+  visual mode extracts the visual tokens after the multi-modal projector (which includes Face-Region Guided Cross-Attention) and mean-pools them.
+  This gives you face-aware features in the LLM's embedding space (~4096-d) without actually running the LLM. The LLM is deleted from GPU memory
+  after init.
+
+  lm_hidden mode feeds visual tokens through the full 7B LLM and extracts the last hidden states. Richer but slower. With 148GB H200 you have plenty
+  of room.
+
+  The micro_batch_size: 64 config processes images in chunks to avoid OOM on the vision tower forward pass.
+
+  What you need to dol
+
+  # 1. Clone Face-LLaVA
+  git clone https://github.com/ihp-lab/Face-LLaVA /data/umar/Repos/Face-LLaVA
+
+  # 2. Download the checkpoint (follow their README)
+  #    Place it at: /data/umar/weights/FaceLLaVA/
+  #    The directory should contain: config.json, model weights, tokenizer, etc.
+
+  # 3. If Face-LLaVA has custom model classes, install it:
+  cd /data/umar/Repos/Face-LLaVA && pip install -e .
+
+  The loading code tries three strategies in order: LlavaNextForConditionalGeneration → LlavaForConditionalGeneration → AutoModelForCausalLM with
+  trust_remote_code=True. One of these should work depending on how Face-LLaVA packages their model.
+
+
+
+  Idea: Somehow generate the causal graph for real faces and purify it with the overlappig fake causal paths...!? 

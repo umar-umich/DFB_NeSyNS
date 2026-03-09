@@ -532,10 +532,15 @@ class Trainer(object):
                          if m.use_sparse else None)
 
             # Causal module needs grad for Jacobian → run outside no_grad.
-            # Compute semantic attrs on-the-fly if CLIP attributes are enabled.
-            if getattr(m, 'use_clip_attributes', False) and m.clip_attr_extractor is not None:
+            # Compute semantic attrs from dedicated face model if enabled.
+            if getattr(m, 'use_semantic_attrs', False) and m.semantic_extractor is not None:
                 with torch.no_grad():
-                    semantic_attrs = m.clip_attr_extractor(raw_feats.get('spatial_raw'))
+                    if m.semantic_extractor.is_precomputed:
+                        semantic_attrs = m.semantic_extractor(
+                            precomputed_attrs=target_dict.get('semantic_attrs'))
+                    else:
+                        semantic_attrs = m.semantic_extractor(
+                            raw_images=target_dict.get('raw_frames'))
                 semantic_attrs = semantic_attrs.detach()
             else:
                 semantic_attrs = target_dict.get('semantic_attrs', None)

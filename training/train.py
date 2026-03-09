@@ -262,7 +262,9 @@ def choose_optimizer(model, config):
 
     # Group 7: Optional modules (always built at init for phase-transition activation)
     g7 = []
-    for attr in ('causal_module', 'sparse_ae', 'violation_proj'):
+    for attr in ('causal_module', 'sparse_ae', 'violation_proj',
+                 'violation_proj_real', 'violation_proj_fake',
+                 'semantic_extractor'):
         mod = getattr(m, attr, None)
         if mod is not None:
             _add(list(mod.parameters()), g7)

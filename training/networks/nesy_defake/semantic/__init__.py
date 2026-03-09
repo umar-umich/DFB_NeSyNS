@@ -2,6 +2,6 @@
 Semantic feature extractors for NeSyDeFake.
 """
 
-from .clip_facial_attributes import CLIPFacialAttributeExtractor
+from .facial_semantic_extractor import FacialSemanticExtractor
 
-__all__ = ['CLIPFacialAttributeExtractor']
+__all__ = ['FacialSemanticExtractor']
