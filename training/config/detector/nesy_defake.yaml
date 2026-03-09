@@ -125,9 +125,10 @@ fusion:
 # to the causal discovery module.
 #
 # Backends:
-#   'face_llava':  Face-LLaVA (WACV 2026), face-specific MLLM with
-#                  Face-Region Guided Cross-Attention. Richest features.
-#                  https://github.com/ihp-lab/Face-LLaVA
+#   'face_llava':  FaceBench Face-LLaVA-v1.5-13B (CVPR 2025).
+#                  211 facial attributes across 5 views. Only loads
+#                  vision tower (CLIP-ViT-L@336) + mm_projector (~1.2GB).
+#                  HuggingFace: wxqlab/face-llava-v1.5-13b
 #   'farl':        FaRL ViT-B/16 (CVPR 2022), pre-trained on 20M faces.
 #                  Download: https://github.com/FacePerceiver/FaRL
 #   'celeba_vit':  ViT fine-tuned on CelebA-40 attributes (40 interpretable).
@@ -136,9 +137,8 @@ fusion:
 semantic_attributes:
   enabled: true
   backend: face_llava
-  model_path: /data/umar/weights/FaceLLaVA   # HuggingFace checkpoint dir
-  output_dim: 128            # semantic dimension fed to causal module
-  feature_mode: visual       # 'visual' (fast, ~1.5GB) or 'lm_hidden' (rich, ~16GB)
+  model_path: /data/umar/Repos/FaceBench   # wxqlab/face-llava-v1.5-13b checkpoint
+  # output_dim is auto-set to 5120 (raw FaceBench features, no projection)
   fp16: true                 # use float16 for the frozen backbone
   micro_batch_size: 64       # process images in chunks to control peak memory
   # precomputed_dim: 73      # only for 'precomputed' backend
@@ -163,7 +163,7 @@ causal_module:
     z_frequency_dim:  128
     total_sae_dim:    256    # compressed dense output of SparseFeatureSelector (8192 → 256)
 
-  semantic_dim: 128          # auto-overridden by FacialSemanticExtractor.output_dim
+  semantic_dim: 5120         # auto-overridden by FacialSemanticExtractor.output_dim (5120 for FaceBench)
 
   discovery:
     algorithm:        dagma_dce

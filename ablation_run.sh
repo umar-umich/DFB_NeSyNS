@@ -29,7 +29,7 @@ set -euo pipefail
 # ── Configurable paths ────────────────────────────────────────────────────────
 DETECTOR_PATH="./training/config/detector/nesy_defake.yaml"
 RESULTS_DIR="./ablation_results"
-LOG_DIR="${RESULTS_DIR}/logs_3"
+LOG_DIR="${RESULTS_DIR}/logs_4"
 PYTHON="python"          # or "python3"
 TORCHRUN="torchrun"
 

@@ -18,15 +18,22 @@ and frequency branches do not capture.
 
 SUPPORTED BACKENDS
 ------------------
-1. Face-LLaVA (recommended for high-VRAM GPUs):
-   Face-specific MLLM (WACV 2026) with Face-Region Guided Cross-Attention.
-   Built on Video-LLaVA/LLaVA-Next (7B). We extract visual features from
-   the vision tower + multi-modal projector WITHOUT running the LLM, giving
-   rich face-aware features at ~1.5GB VRAM cost.
-   https://github.com/ihp-lab/Face-LLaVA
+1. FaceBench Face-LLaVA (recommended):
+   Face-LLaVA-v1.5-13B fine-tuned on FaceBench (Wang et al., CVPR 2025).
+   Covers 211 facial attributes across 5 views: Appearance (hair, skin,
+   eyes, face shape, age, race, emotion), Accessories, Surrounding,
+   Psychology (action units), Identity.
+
+   We load ONLY the vision tower (CLIP-ViT-L/14@336px) and the mm_projector
+   (MLP) from the checkpoint — the 13B LLM is NEVER loaded, saving ~25GB.
+   The mm_projector was jointly trained during FaceBench instruction tuning
+   and has learned to emphasise face-relevant visual features.
+
+   Total VRAM: ~1.2GB FP16 (vision tower 304M params + projector 10M).
+   HuggingFace: wxqlab/face-llava-v1.5-13b
 
 2. FaRL:
-   Microsoft's Face Representation Learning (CVPR 2022).
+   Microsoft's Face Representation Learning (Zheng et al., CVPR 2022).
    ViT-B/16 pre-trained on 20M face images with face-specific contrastive
    and masked image modeling objectives.
    Download: https://github.com/FacePerceiver/FaRL
@@ -42,17 +49,25 @@ SUPPORTED BACKENDS
    Pre-extracted attributes loaded from disk by the dataloader.
    Use with any offline face analysis pipeline.
 
-ARCHITECTURE
-------------
-  raw_images (B,3,224,224)
+ARCHITECTURE (FaceBench backend)
+--------------------------------
+  raw_images (B, 3, H, W)       [0, 1] range
        |
-  [face backbone]  ← FROZEN (pre-trained face model, independent of CLIP)
+  [resize to 336x336]
        |
-  features (B, backbone_dim)
+  [CLIP normalization]
        |
-  [projection head]  ← TRAINABLE (maps to causal module's semantic space)
+  [vision tower]  <- FROZEN (CLIP-ViT-L/14 from FaceBench checkpoint)
        |
-  attributes (B, output_dim)
+  hidden_states[-2][:, 1:, :]   (576 patch tokens, 1024-d)
+       |
+  [mm_projector]  <- FROZEN (mlp2x_gelu, fine-tuned on FaceBench)
+       |                        211 facial attrs across 5 views
+  mean_pool -> semantic features (B, 5120)   <- OUTPUT, used as-is
+       |
+  [causal module / classifier]  <- TRAINABLE (downstream modules learn
+       |                           from frozen semantic features)
+  detection output
 """
 
 import logging
@@ -124,279 +139,264 @@ class FacialSemanticExtractor(nn.Module):
         )
 
     # ------------------------------------------------------------------ #
-    #  Backend: Face-LLaVA                                                 #
+    #  Backend: FaceBench Face-LLaVA                                       #
     # ------------------------------------------------------------------ #
 
     def _build_face_llava(self, model_path: str, cfg: dict):
         """
-        Face-LLaVA (Chowdhury et al., WACV 2026).
+        FaceBench Face-LLaVA (Wang et al., CVPR 2025).
 
-        Face-specific MLLM with Face-Region Guided Cross-Attention that
-        integrates face geometry with local visual features. Built on
-        Video-LLaVA / LLaVA-Next (7B LLM + ViT-L vision encoder).
+        Loads ONLY the vision tower (CLIP-ViT-L/14@336px) and mm_projector
+        (mlp2x_gelu MLP) directly from the safetensors checkpoint. The 13B
+        LLM is NEVER loaded — we extract its weights surgically.
 
-        Feature extraction modes (config key: feature_mode):
-          'visual':  Vision tower + multi-modal projector only (~1.5 GB).
-                     Extracts face-aware visual tokens projected into LLM
-                     embedding space, then mean-pools. FAST — no LLM needed.
-          'lm_hidden': Full forward through LLM, extracts last hidden states
-                       at visual token positions (~16 GB FP16). RICHEST —
-                       LLM contextualizes visual features. Needs >=24 GB.
+        The mm_projector was jointly fine-tuned during FaceBench instruction
+        tuning on 23,841 VQA pairs covering 211 facial attributes across:
+          - Appearance: hair, skin, eyes, face shape, age, emotion, race, ...
+          - Accessories: glasses, hat, earrings, necklace, ...
+          - Surrounding: background, lighting, ...
+          - Psychology: facial action units, expressions, ...
+          - Identity: gender, cultural features, ...
 
-        The model is loaded in FP16 (or BF16) and fully frozen.
+        Feature flow:
+          image -> resize(336) -> CLIP-normalize -> CLIP-ViT-L/14
+          -> hidden_states[-2][:, 1:, :]   (patch tokens, skip CLS)
+          -> mm_projector (Linear 1024->5120, GELU, Linear 5120->5120)
+          -> mean_pool -> (B, 5120) -> trainable projection -> (B, output_dim)
 
-        Setup:
-          git clone https://github.com/ihp-lab/Face-LLaVA
-          # Download checkpoint into ./checkpoints/FaceLLaVA
-          # Set model_path in config to the checkpoint directory
+        VRAM: ~1.2GB FP16 (vision tower + projector only).
         """
-        self._feature_mode = cfg.get('feature_mode', 'visual')
+        import json
+
         self._llava_batch_size = cfg.get('micro_batch_size', 64)
         dtype = torch.float16 if cfg.get('fp16', True) else torch.bfloat16
 
-        if not model_path:
+        if not model_path or not Path(model_path).exists():
             raise ValueError(
-                "Face-LLaVA backend requires 'model_path' in config.\n"
-                "Clone: https://github.com/ihp-lab/Face-LLaVA\n"
-                "Download checkpoint into checkpoints/FaceLLaVA\n"
+                "face_llava backend requires 'model_path' pointing to the "
+                "FaceBench Face-LLaVA checkpoint directory.\n"
+                "Download: huggingface.co/wxqlab/face-llava-v1.5-13b\n"
                 "Set semantic_attributes.model_path to that directory.")
 
-        logger.info(
-            f"[Face-LLaVA] Loading from: {model_path} "
-            f"(mode={self._feature_mode}, dtype={dtype})")
+        model_path = Path(model_path)
+        logger.info(f"[FaceBench] Loading vision tower + mm_projector from: "
+                    f"{model_path}")
 
-        # Try loading as a standard HuggingFace LLaVA-family model first,
-        # then fall back to Video-LLaVA / LLaVA-Next variants.
-        model, image_processor = self._load_llava_model(model_path, dtype)
+        # --- Read model config to get architecture details ----------------
+        config_path = model_path / 'config.json'
+        with open(config_path) as f:
+            model_config = json.load(f)
 
-        # Store components we need for feature extraction
-        self.vision_tower = model.get_vision_tower()
-        if self.vision_tower is None:
-            # Some LLaVA variants store it differently
-            self.vision_tower = getattr(model, 'vision_tower',
-                                        getattr(model.model, 'vision_tower',
-                                                None))
+        vision_tower_name = model_config.get(
+            'mm_vision_tower', 'openai/clip-vit-large-patch14-336')
+        mm_hidden_size = model_config.get('mm_hidden_size', 1024)
+        hidden_size = model_config.get('hidden_size', 5120)
+        self._vision_select_layer = model_config.get(
+            'mm_vision_select_layer', -2)
+        self._vision_select_feature = model_config.get(
+            'mm_vision_select_feature', 'patch')
 
-        self.mm_projector = getattr(
-            model, 'multi_modal_projector',
-            getattr(model.model, 'mm_projector',
-                    getattr(model, 'mm_projector', None)))
+        # --- Load CLIP vision tower (HuggingFace CLIPVisionModel) ---------
+        from transformers import CLIPVisionModel, CLIPImageProcessor
 
-        if self._feature_mode == 'lm_hidden':
-            # Keep the full language model for hidden state extraction
-            self.language_model = getattr(model, 'language_model',
-                                          getattr(model, 'model', None))
-            self._backbone_dim = model.config.text_config.hidden_size
-        else:
-            # Visual-only mode: discard the LLM to save memory
-            self.language_model = None
-            # Projector output dim = LLM hidden size
-            if hasattr(model.config, 'text_config'):
-                self._backbone_dim = model.config.text_config.hidden_size
+        logger.info(f"[FaceBench] Loading vision tower: {vision_tower_name}")
+        self.vision_tower = CLIPVisionModel.from_pretrained(
+            vision_tower_name, dtype=dtype)
+        self.vision_tower.eval()
+
+        # --- Build mm_projector (mlp2x_gelu architecture) -----------------
+        self.mm_projector = nn.Sequential(
+            nn.Linear(mm_hidden_size, hidden_size),
+            nn.GELU(),
+            nn.Linear(hidden_size, hidden_size),
+        )
+
+        # --- Load fine-tuned weights from checkpoint ----------------------
+        self._load_facebench_weights(model_path, model_config, dtype)
+
+        # --- Image processor for normalization ----------------------------
+        try:
+            image_processor = CLIPImageProcessor.from_pretrained(
+                vision_tower_name)
+            img_mean = list(image_processor.image_mean)
+            img_std = list(image_processor.image_std)
+            crop_size = image_processor.crop_size
+            if isinstance(crop_size, dict):
+                self._image_size = crop_size.get('height', 336)
             else:
-                # Detect from projector output
-                self._backbone_dim = self._detect_projector_dim(model)
-
-            # Free LLM memory
-            if hasattr(model, 'language_model'):
-                del model.language_model
-            elif hasattr(model, 'model') and hasattr(model.model, 'layers'):
-                del model.model.layers
-
-        # Store image processor normalization
-        if image_processor is not None:
-            img_mean = getattr(image_processor, 'image_mean',
-                               [0.48145466, 0.4578275, 0.40821073])
-            img_std = getattr(image_processor, 'image_std',
-                              [0.26862954, 0.26130258, 0.27577711])
-            self._image_size = getattr(image_processor, 'size', {})
-            if isinstance(self._image_size, dict):
-                self._image_size = self._image_size.get(
-                    'shortest_edge', self._image_size.get('height', 224))
-        else:
+                self._image_size = crop_size or 336
+        except Exception:
             img_mean = [0.48145466, 0.4578275, 0.40821073]
             img_std = [0.26862954, 0.26130258, 0.27577711]
-            self._image_size = 224
+            self._image_size = 336
 
         self.register_buffer(
             'norm_mean', torch.tensor(img_mean).view(1, 3, 1, 1))
         self.register_buffer(
             'norm_std', torch.tensor(img_std).view(1, 3, 1, 1))
 
-        # Freeze everything
-        for p in self.parameters():
+        self._backbone_dim = hidden_size  # 5120 for 13B
+
+        # --- Freeze vision tower + mm_projector ---------------------------
+        for p in self.vision_tower.parameters():
+            p.requires_grad = False
+        for p in self.mm_projector.parameters():
             p.requires_grad = False
 
-        # Trainable projection: backbone features → causal semantic space
-        self.projection = nn.Sequential(
-            nn.Linear(self._backbone_dim, self._output_dim * 2),
-            nn.LayerNorm(self._output_dim * 2),
-            nn.GELU(),
-            nn.Linear(self._output_dim * 2, self._output_dim),
-        )
-        # projection is trainable (unfrozen by default after nn.Sequential init)
+        # Cast mm_projector to same dtype as vision tower
+        self.mm_projector = self.mm_projector.to(dtype)
 
-        self._attr_names = [f'face_llava_{i}'
+        # --- No trainable projection: FaceBench features used as-is -------
+        # The mm_projector already produces face-attribute-aware 5120-d
+        # features. Downstream modules (causal, classifier) learn from these.
+        self._output_dim = self._backbone_dim  # override config output_dim
+        self.projection = nn.Identity()
+
+        self._attr_names = [f'facebench_{i}'
                             for i in range(self._output_dim)]
 
         logger.info(
-            f"[Face-LLaVA] Loaded. mode={self._feature_mode}, "
-            f"backbone_dim={self._backbone_dim} → output_dim={self._output_dim}, "
-            f"image_size={self._image_size}")
+            f"[FaceBench] Loaded. vision_tower={vision_tower_name}, "
+            f"output_dim={self._output_dim} (raw FaceBench features, no projection), "
+            f"image_size={self._image_size}, "
+            f"select_layer={self._vision_select_layer}, "
+            f"select_feature={self._vision_select_feature}")
 
-        # Clean up the full model reference
-        del model
-        torch.cuda.empty_cache()
+    def _load_facebench_weights(self, model_path: Path, model_config: dict,
+                                dtype):
+        """
+        Load vision tower + mm_projector weights from safetensors checkpoint.
 
-    def _load_llava_model(self, model_path: str, dtype):
-        """Load a LLaVA-family model. Tries multiple loading strategies."""
-        image_processor = None
+        Weight key mapping (from FaceBench checkpoint):
+          model.vision_tower.vision_tower.vision_model.* -> self.vision_tower.*
+          model.mm_projector.{0,2}.{weight,bias}         -> self.mm_projector.*
+        """
+        from safetensors import safe_open
 
-        # Strategy 1: Standard HuggingFace transformers LLaVA
-        try:
-            from transformers import (
-                LlavaNextForConditionalGeneration,
-                AutoProcessor,
-            )
-            logger.info("[Face-LLaVA] Trying LlavaNextForConditionalGeneration...")
-            model = LlavaNextForConditionalGeneration.from_pretrained(
-                model_path, torch_dtype=dtype, device_map='cpu',
-                low_cpu_mem_usage=True)
-            proc = AutoProcessor.from_pretrained(model_path)
-            image_processor = proc.image_processor
-            model.eval()
-            return model, image_processor
-        except Exception as e:
-            logger.info(f"[Face-LLaVA] LlavaNext failed: {e}")
+        # Find which shard contains vision tower + projector weights
+        index_path = model_path / 'model.safetensors.index.json'
+        if index_path.exists():
+            import json
+            with open(index_path) as f:
+                index = json.load(f)
+            weight_map = index['weight_map']
 
-        # Strategy 2: Base LlavaForConditionalGeneration
-        try:
-            from transformers import (
-                LlavaForConditionalGeneration,
-                AutoProcessor,
-            )
-            logger.info("[Face-LLaVA] Trying LlavaForConditionalGeneration...")
-            model = LlavaForConditionalGeneration.from_pretrained(
-                model_path, torch_dtype=dtype, device_map='cpu',
-                low_cpu_mem_usage=True)
-            proc = AutoProcessor.from_pretrained(model_path)
-            image_processor = proc.image_processor
-            model.eval()
-            return model, image_processor
-        except Exception as e:
-            logger.info(f"[Face-LLaVA] LlavaBase failed: {e}")
+            # Collect unique shard files needed for vision + projector keys
+            needed_shards = set()
+            for key, shard in weight_map.items():
+                if ('vision_tower' in key or 'mm_projector' in key):
+                    needed_shards.add(shard)
+        else:
+            # Single safetensors file
+            needed_shards = set()
+            for p in model_path.glob('*.safetensors'):
+                needed_shards.add(p.name)
 
-        # Strategy 3: AutoModel (handles custom model types)
-        try:
-            from transformers import AutoModelForCausalLM, AutoProcessor
-            logger.info("[Face-LLaVA] Trying AutoModelForCausalLM...")
-            model = AutoModelForCausalLM.from_pretrained(
-                model_path, torch_dtype=dtype, device_map='cpu',
-                trust_remote_code=True, low_cpu_mem_usage=True)
-            try:
-                proc = AutoProcessor.from_pretrained(model_path)
-                image_processor = getattr(proc, 'image_processor', None)
-            except Exception:
-                pass
-            model.eval()
-            return model, image_processor
-        except Exception as e:
-            logger.info(f"[Face-LLaVA] AutoModel failed: {e}")
+        logger.info(f"[FaceBench] Loading weights from shards: {needed_shards}")
 
-        raise RuntimeError(
-            f"Could not load Face-LLaVA model from '{model_path}'.\n"
-            f"Ensure the checkpoint directory contains a valid HuggingFace "
-            f"model (config.json, model weights, etc.).\n"
-            f"If Face-LLaVA uses a custom codebase, install it first:\n"
-            f"  pip install -e /path/to/Face-LLaVA")
+        # Collect all vision tower + projector tensors
+        vt_state = {}
+        proj_state = {}
 
-    def _detect_projector_dim(self, model) -> int:
-        """Detect the multi-modal projector output dimension."""
-        if self.mm_projector is not None:
-            # Walk the projector to find the last Linear layer's out_features
-            last_linear = None
-            for module in self.mm_projector.modules():
-                if isinstance(module, nn.Linear):
-                    last_linear = module
-            if last_linear is not None:
-                return last_linear.out_features
-        # Fallback: common LLaVA-7B hidden size
-        logger.warning("[Face-LLaVA] Could not detect projector dim, "
-                       "defaulting to 4096")
-        return 4096
+        for shard_name in needed_shards:
+            shard_path = model_path / shard_name
+            with safe_open(str(shard_path), framework='pt',
+                           device='cpu') as f:
+                for key in f.keys():
+                    tensor = f.get_tensor(key).to(dtype)
+                    if key.startswith(
+                            'model.vision_tower.vision_tower.'):
+                        # Strip prefix to match CLIPVisionModel state dict
+                        clean_key = key[len(
+                            'model.vision_tower.vision_tower.'):]
+                        vt_state[clean_key] = tensor
+                    elif key.startswith('model.mm_projector.'):
+                        clean_key = key[len('model.mm_projector.'):]
+                        proj_state[clean_key] = tensor
+
+        # Load vision tower weights (may override HF pretrained if
+        # FaceBench fine-tuned the vision tower too)
+        if vt_state:
+            missing, unexpected = self.vision_tower.load_state_dict(
+                vt_state, strict=False)
+            if missing:
+                logger.warning(
+                    f"[FaceBench] Vision tower missing keys "
+                    f"({len(missing)}): {missing[:3]}...")
+            logger.info(f"[FaceBench] Loaded {len(vt_state)} vision tower "
+                        f"weight tensors")
+        else:
+            logger.warning("[FaceBench] No vision tower weights found in "
+                           "checkpoint; using HF pretrained weights")
+
+        # Load mm_projector weights
+        if proj_state:
+            missing, unexpected = self.mm_projector.load_state_dict(
+                proj_state, strict=True)
+            logger.info(f"[FaceBench] Loaded {len(proj_state)} mm_projector "
+                        f"weight tensors")
+        else:
+            raise RuntimeError(
+                "No mm_projector weights found in checkpoint. "
+                "Ensure model_path points to a valid LLaVA checkpoint.")
 
     def _extract_face_llava_features(self, images: torch.Tensor) -> torch.Tensor:
         """
-        Extract face-aware visual features from Face-LLaVA.
+        Extract face-aware visual features from FaceBench Face-LLaVA.
 
-        For 'visual' mode: vision_tower → mm_projector → mean_pool
-        For 'lm_hidden' mode: full forward → last hidden at visual positions
+        Flow: resize(336) -> CLIP-normalize -> CLIP-ViT-L/14
+              -> hidden_states[select_layer][:, 1:, :]  (patch tokens)
+              -> mm_projector -> mean_pool -> (B, 5120)
         """
         import torch.nn.functional as F_func
 
-        device = images.device
         B = images.shape[0]
 
-        # Resize if the vision tower expects a different resolution
-        if self._image_size and self._image_size != images.shape[-1]:
+        # Resize to vision tower resolution (336x336)
+        if images.shape[-1] != self._image_size or \
+                images.shape[-2] != self._image_size:
             images = F_func.interpolate(
                 images, size=(self._image_size, self._image_size),
                 mode='bilinear', align_corners=False)
 
-        # Normalize
+        # Normalize with CLIP stats
         images = (images - self.norm_mean) / self.norm_std
 
-        # Process in micro-batches to control memory
+        # Process in micro-batches to control peak VRAM
         all_features = []
         mbs = self._llava_batch_size
+        dtype = next(self.vision_tower.parameters()).dtype
 
         for i in range(0, B, mbs):
-            batch = images[i:i + mbs]
+            batch = images[i:i + mbs].to(dtype)
 
-            # Vision tower forward
-            if hasattr(self.vision_tower, 'forward'):
-                vision_out = self.vision_tower(batch)
+            # Vision tower forward with hidden states
+            vt_out = self.vision_tower(
+                pixel_values=batch,
+                output_hidden_states=True,
+                return_dict=True,
+            )
+
+            # Select the right hidden layer (LLaVA uses second-to-last)
+            hidden_states = vt_out.hidden_states[self._vision_select_layer]
+
+            # Select feature type: 'patch' = skip CLS token at position 0
+            if self._vision_select_feature == 'patch':
+                visual_tokens = hidden_states[:, 1:, :]
             else:
-                # Some LLaVA variants wrap the tower
-                vision_out = self.vision_tower.image_processor_forward(batch)
+                visual_tokens = hidden_states
+            # visual_tokens: (mb, num_patches, 1024)
 
-            # Handle different output formats
-            if hasattr(vision_out, 'last_hidden_state'):
-                visual_tokens = vision_out.last_hidden_state
-            elif isinstance(vision_out, (tuple, list)):
-                visual_tokens = vision_out[0]
-            else:
-                visual_tokens = vision_out
-            # visual_tokens: (mb, num_patches, hidden_dim)
+            # Project through mm_projector (fine-tuned on FaceBench)
+            projected = self.mm_projector(visual_tokens)
+            # projected: (mb, num_patches, 5120)
 
-            if self._feature_mode == 'visual':
-                # Project to LLM space and mean-pool
-                if self.mm_projector is not None:
-                    projected = self.mm_projector(visual_tokens)
-                else:
-                    projected = visual_tokens
-                # Mean-pool over spatial tokens → (mb, proj_dim)
-                features = projected.mean(dim=1)
-
-            elif self._feature_mode == 'lm_hidden':
-                # Run through LLM to get contextualised hidden states
-                if self.mm_projector is not None:
-                    projected = self.mm_projector(visual_tokens)
-                else:
-                    projected = visual_tokens
-
-                # Feed visual tokens as "inputs_embeds" to the LLM
-                lm_out = self.language_model(
-                    inputs_embeds=projected,
-                    output_hidden_states=True,
-                    return_dict=True,
-                )
-                # Last hidden state, mean-pool over sequence
-                features = lm_out.hidden_states[-1].mean(dim=1)
+            # Mean-pool over spatial tokens
+            features = projected.mean(dim=1)  # (mb, 5120)
 
             all_features.append(features.float())
 
-        return torch.cat(all_features, dim=0)  # (B, backbone_dim)
+        return torch.cat(all_features, dim=0)  # (B, 5120)
 
     # ------------------------------------------------------------------ #
     #  Backend: FaRL                                                       #
