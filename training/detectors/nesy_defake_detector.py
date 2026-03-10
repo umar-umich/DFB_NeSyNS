@@ -97,7 +97,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         # -- Module 3: Per-Branch Dual-Graph Causal Discovery ----------------
         self.use_causal = config['causal_module']['enabled']
-        self.causal_module = CausalDiscoveryModule(config)
+        # Pass semantic attribute names for interpretable causal graph nodes
+        sem_attr_names = (self.semantic_extractor.get_attribute_names()
+                          if self.use_semantic_attrs and self.semantic_extractor
+                          else None)
+        self.causal_module = CausalDiscoveryModule(
+            config, semantic_attr_names=sem_attr_names)
 
         # -- Per-branch violation projections -> classifier fusion -----------
         # 4 projections: spatial_real, spatial_fake, freq_real, freq_fake

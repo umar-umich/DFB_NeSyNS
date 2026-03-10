@@ -422,7 +422,7 @@ class CausalDiscoveryModule(nn.Module):
     Aggregated v_real/v_fake are also provided for compatibility.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, semantic_attr_names: Optional[list] = None):
         super().__init__()
 
         causal_cfg = config['causal_module']
@@ -432,9 +432,12 @@ class CausalDiscoveryModule(nn.Module):
 
         self.z_spatial_dim = lv_cfg['z_spatial_dim']      # 128
         self.z_freq_dim = lv_cfg['z_frequency_dim']       # 128
-        self.s_dim = causal_cfg['semantic_dim']            # 128
-        self.d_spatial = self.z_spatial_dim + self.s_dim   # 256
-        self.d_freq = self.z_freq_dim + self.s_dim        # 256
+        self.s_dim = causal_cfg['semantic_dim']            # 211 (FaceBench) or 128 (vision-only)
+        self.d_spatial = self.z_spatial_dim + self.s_dim   # 339 (with LLM) or 256
+        self.d_freq = self.z_freq_dim + self.s_dim        # 339 (with LLM) or 256
+
+        # Store semantic attribute names for interpretable causal graphs
+        self._semantic_attr_names = semantic_attr_names
 
         sae_cfg = config.get('sparse_features', {})
         self.sae_dict_size = sae_cfg.get(
@@ -622,8 +625,12 @@ class CausalDiscoveryModule(nn.Module):
         """
         Human-readable names for the causal variable nodes of a branch.
 
-        Spatial branch:  [z_spatial_0..N, s_0..s_M]
-        Frequency branch: [z_freq_0..N, s_0..s_M]
+        Spatial branch:  [z_spatial_0..N, <semantic_attr_names>]
+        Frequency branch: [z_freq_0..N, <semantic_attr_names>]
+
+        When semantic_attr_names are provided (e.g. 211 FaceBench attributes),
+        causal graphs have interpretable node labels like "black_hair",
+        "smiling", etc., enabling human-readable causal explanations.
         """
         names = []
         if branch == 'spatial':
@@ -632,6 +639,11 @@ class CausalDiscoveryModule(nn.Module):
         else:
             for i in range(self.z_freq_dim):
                 names.append(f'z_freq_{i}')
-        for i in range(self.s_dim):
-            names.append(f's_{i}')
+
+        # Use actual attribute names if available, else generic s_i
+        if self._semantic_attr_names and len(self._semantic_attr_names) == self.s_dim:
+            names.extend(self._semantic_attr_names)
+        else:
+            for i in range(self.s_dim):
+                names.append(f's_{i}')
         return names

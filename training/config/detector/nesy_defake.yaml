@@ -138,10 +138,10 @@ semantic_attributes:
   enabled: true
   backend: face_llava
   model_path: /data/umar/Repos/FaceBench   # wxqlab/face-llava-v1.5-13b checkpoint
-  output_dim: 128            # projected dimension for causal module
-  use_llm: false             # false=vision-only (~1.2GB), true=full 13B LLM (~28GB)
+  output_dim: 211            # 211 named FaceBench attributes (auto-set by LLM mode)
+  use_llm: true              # true=full 13B teacher-forced extraction (211 attributes)
   fp16: true                 # use float16 for the frozen backbone
-  micro_batch_size: 64       # process images in chunks to control peak memory
+  micro_batch_size: 4        # small batches for 13B LLM (bf16, ~28GB VRAM)
   # precomputed_dim: 73      # only for 'precomputed' backend
 
 # -----------------------------------------------------------------------------
@@ -163,7 +163,7 @@ causal_module:
     z_spatial_dim:    128    # per-branch dense active features (4096 sparse → 128 dense)
     z_frequency_dim:  128
 
-  semantic_dim: 128          # auto-overridden by FacialSemanticExtractor.output_dim at init
+  semantic_dim: 211          # auto-overridden by FacialSemanticExtractor.output_dim at init
 
   discovery:
     algorithm:        dagma_dce

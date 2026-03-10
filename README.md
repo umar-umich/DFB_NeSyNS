@@ -676,46 +676,403 @@ _causal_warmup(train_loader, n_batches=200, label_filter=1)   # fake frames → 
 
 Without fake warmup, A_fake starts from zeros and the conformance scorer receives no informative signal at the start of Phase 3. The fake graph will converge during training, but initialising it from real fake data (before any classification gradient biases it) produces faster and more stable fake-artifact discovery.
 
+---
+---
 
+# NeSyDeFake v2 — Per-Branch Causal Discovery with FaceBench Semantic Attributes
 
-Face-LLaVA backend added
+**Date: 2026-03-10**
 
-  How it works — two feature extraction modes:
+> Major architectural revision: per-branch causal graphs with 211 named FaceBench facial attributes extracted via teacher-forced LLM inference. Replaces the previous single-combined-causal-space architecture described above.
 
-  ┌──────────────────┬───────────────────────────────────────────────────────────┬─────────┬─────────────────────────┐
-  │       Mode       │                         What runs                         │  VRAM   │ Speed (batch 256, H200) │
-  ├──────────────────┼───────────────────────────────────────────────────────────┼─────────┼─────────────────────────┤
-  │ visual (default) │ Vision tower + projector only. LLM is deleted from memory │ ~1.5 GB │ ~1-2 sec                │
-  ├──────────────────┼───────────────────────────────────────────────────────────┼─────────┼─────────────────────────┤
-  │ lm_hidden        │ Full model including 7B LLM                               │ ~16 GB  │ ~5-10 sec               │
-  └──────────────────┴───────────────────────────────────────────────────────────┴─────────┴─────────────────────────┘
+---
 
-  Both modes are frozen inference with torch.no_grad(). The only trainable part is the projection head (128K params).
+## What Changed (TL;DR)
 
-  visual mode extracts the visual tokens after the multi-modal projector (which includes Face-Region Guided Cross-Attention) and mean-pools them.
-  This gives you face-aware features in the LLM's embedding space (~4096-d) without actually running the LLM. The LLM is deleted from GPU memory
-  after init.
+| Aspect | Old (v1) | New (v2) |
+|--------|----------|----------|
+| Semantic features | 73-d precomputed (DeepFace + InsightFace + MediaPipe) | 211 named attributes from FaceBench Face-LLaVA-v1.5-13B |
+| Semantic extraction | Offline `.npz` files | Online teacher-forced single-pass LLM inference |
+| Causal graphs | 2 graphs on combined space (d=329) | 4 graphs: 2 per branch (d=339 each) |
+| Causal input | `[z_combined_256, s_73]` | Spatial: `[z_spatial_128, s_211]`, Freq: `[z_freq_128, s_211]` |
+| Node names | Generic `s_0..s_72` | Interpretable: `black_hair`, `smiling`, `AU12_lip_corner_puller`, etc. |
+| Training phases | 3 phases (causal starts at Phase 3) | 2 phases (all modules train from epoch 0 with loss warmup) |
+| SAE feature selection | Single `SparseFeatureSelector(8192→256)` | Per-branch: `spatial_selector(4096→128)`, `freq_selector(4096→128)` |
 
-  lm_hidden mode feeds visual tokens through the full 7B LLM and extracts the last hidden states. Richer but slower. With 148GB H200 you have plenty
-  of room.
+---
 
-  The micro_batch_size: 64 config processes images in chunks to avoid OOM on the vision tower forward pass.
+## How It Works — For Everyone
 
-  What you need to dol
+### The Big Idea
 
-  # 1. Clone Face-LLaVA
-  git clone https://github.com/ihp-lab/Face-LLaVA /data/umar/Repos/Face-LLaVA
+Imagine you're a detective trying to spot a forged painting. You have two tools:
 
-  # 2. Download the checkpoint (follow their README)
-  #    Place it at: /data/umar/weights/FaceLLaVA/
-  #    The directory should contain: config.json, model weights, tokenizer, etc.
+1. **A magnifying glass** (spatial branch) — looks at visual details: skin texture, edge sharpness, colour blending
+2. **A UV light** (frequency branch) — reveals invisible patterns: compression artifacts, spectral signatures that the naked eye can't see
 
-  # 3. If Face-LLaVA has custom model classes, install it:
-  cd /data/umar/Repos/Face-LLaVA && pip install -e .
+And you have a **checklist of 211 facial features** (semantic attributes) — things like "black hair", "smiling", "beard", "wrinkled skin", "eyeglasses", etc.
 
-  The loading code tries three strategies in order: LlavaNextForConditionalGeneration → LlavaForConditionalGeneration → AutoModelForCausalLM with
-  trust_remote_code=True. One of these should work depending on how Face-LLaVA packages their model.
+For each tool, you learn two rulebooks:
+- **Real-face rulebook**: "In genuine photos, when someone smiles, their cheeks always raise and their eyes narrow" (biomechanical constraints)
+- **Fake-face rulebook**: "In generated photos, there's always a weird correlation between skin smoothness and a specific frequency artifact"
 
+To check if a face is fake, you apply both rulebooks with both tools:
+- Does it **violate** the real-face rules? (real faces follow them, fakes don't)
+- Does it **match** the fake-face rules? (fakes show these patterns, real faces don't)
 
+Four scores in total — spatial violations, spatial fake-patterns, frequency violations, frequency fake-patterns — all combined to make the final decision.
 
-  Idea: Somehow generate the causal graph for real faces and purify it with the overlappig fake causal paths...!? 
+### Why This Is Powerful
+
+- **Latent branches** (spatial + frequency SAE features) are good at **learning patterns** — they find statistical regularities in the data that humans might miss
+- **Semantic branch** (211 named attributes) is good at **explanations** — when the system says "this is fake", you can look at the causal graph and see *why*: "the relationship between `smiling` and `cheek_raise` that exists in real faces is broken in this image"
+- **Separate per-branch graphs** let you see exactly what each generator breaks in the spatial vs frequency domains
+
+---
+
+## How It Works — Technical Details
+
+### Architecture Overview (v2)
+
+```
+spatial_frames  → SpatialExtractor (CLIP-L/14)  → raw_spatial (1024-d)
+                                                   ├─→ spatial_proj (1024→1024) ──┐
+                                                   └─→ SAE.spatial → z_spatial     │
+                                                       (4096-d sparse)             │
+                                                                                    ├─→ MultiModalFusion → fused (1024-d)
+freq_frames     → FreqExtractor (FAD-CLIP-L/14) → raw_freq (1024-d)               │
+                                                   ├─→ freq_proj (1024→1024) ──────┘
+                                                   └─→ SAE.freq → z_freq
+                                                       (4096-d sparse)
+
+raw_frames  → FacialSemanticExtractor (FaceBench Face-LLaVA-v1.5-13B)
+                [frozen 13B LLM, teacher-forced single-pass]
+              → semantic_attrs (B, 211) named attribute probabilities
+                (black_hair=0.92, smiling=0.85, wrinkled_skin=0.12, ...)
+
+                    ┌─────────────── CausalDiscoveryModule ──────────────────┐
+                    │                                                         │
+                    │  Spatial branch (d=339):              Freq branch (d=339):
+                    │    spatial_selector(4096→128)           freq_selector(4096→128)
+                    │    x_spatial = [z_spatial_128, s_211]   x_freq = [z_freq_128, s_211]
+                    │         │                                    │
+                    │    SCM_spatial_real  SCM_spatial_fake    SCM_freq_real  SCM_freq_fake
+                    │    A_spatial_real    A_spatial_fake      A_freq_real    A_freq_fake
+                    │    v_spatial_real    v_spatial_fake      v_freq_real    v_freq_fake
+                    │    residuals_s_real  residuals_s_fake    residuals_f_real residuals_f_fake
+                    │         │                                    │
+                    └─────────┼────────────────────────────────────┼──────────┘
+                              │                                    │
+               violation_proj_spatial_real(339→1024)    violation_proj_freq_real(339→1024)
+               violation_proj_spatial_fake(339→1024)    violation_proj_freq_fake(339→1024)
+                              │                                    │
+                              └─── additive fusion ────────────────┘
+                                          │
+                    classifier_input = fused + Δ_spatial_real + Δ_spatial_fake
+                                            + Δ_freq_real + Δ_freq_fake
+                                          ↓
+                    MultiTaskHead → cls (2), uncertainty (1), violation_score (1)
+```
+
+### M2: Facial Semantic Extractor (FaceBench Face-LLaVA)
+
+**Class:** `FacialSemanticExtractor`
+**File:** `training/networks/nesy_defake/semantic/facial_semantic_extractor.py`
+
+#### Why Replace Precomputed 73-d Features?
+
+The old 73-d features (DeepFace + InsightFace + MediaPipe blendshapes) were extracted offline by multiple ad-hoc models. Problems:
+1. **Pipeline fragility**: 3 separate models, each with its own preprocessing
+2. **Limited coverage**: 73 features miss many discriminative facial attributes
+3. **No gradient flow**: precomputed features can't adapt during training
+
+The new approach uses a single FaceBench Face-LLaVA-v1.5-13B model (Wang et al., CVPR 2025) to extract 211 named facial attributes covering appearance, accessories, makeup, surrounding context, psychology/expressions, action units, and identity.
+
+#### Two Modes
+
+| Mode | Config | VRAM | Output | Use Case |
+|------|--------|------|--------|----------|
+| Vision-only | `use_llm: false` | ~1.2GB | `(B, output_dim)` projected features | Fast training, limited GPU |
+| Full LLM | `use_llm: true` | ~28GB | `(B, 211)` named attribute probabilities | Full interpretability |
+
+#### Teacher-Forced Single-Pass Extraction (Full LLM Mode)
+
+Instead of running 211 separate yes/no queries through the 13B model (prohibitively expensive), we use a single teacher-forced forward pass:
+
+```
+Step 1: Image → CLIP-ViT-L/14@336 vision tower → 576 patch tokens (1024-d each)
+Step 2: mm_projector (mlp2x_gelu) → 576 visual tokens (5120-d each)
+Step 3: Construct prompt:
+          SYSTEM: "A chat between..."
+          USER: <image>\nFor each facial attribute, predict 1 if present or 0 if absent.
+          ASSISTANT: black hair: 1\nblonde hair: 1\n...smiling: 1\n... (all 211, answered "1")
+Step 4: Embed all text tokens via LLM embedding layer
+Step 5: Concatenate: [before_embeds, visual_tokens, question_embeds, answer_embeds]
+Step 6: Single LLM forward pass (teacher-forced, no autoregressive generation)
+Step 7: At each of the 211 answer positions, extract:
+          P(present) = sigmoid(logit("1") - logit("0"))
+```
+
+**Key optimisations:**
+- `use_cache=False`: no KV cache allocation (~4GB savings per micro-batch)
+- `torch.bfloat16`: no overflow risk (unlike fp16 with 13B model)
+- `low_cpu_mem_usage=True`: sequential shard loading during init
+- `micro_batch_size=4`: processes images in small chunks to control peak VRAM
+- Answer positions pre-computed once at init by comparing "all 1" vs "all 0" tokenisations
+
+#### 211 FaceBench Attributes (5 Views)
+
+| View | Count | Examples |
+|------|-------|---------|
+| Appearance | 111 | `black_hair`, `wrinkled_skin`, `high_cheekbones`, `oval_face`, `smooth_skin` |
+| Accessories | 30 | `eyeglasses`, `hat`, `necklace`, `face_mask`, `headphones` |
+| Makeup | 13 | `heavy_makeup`, `lipstick`, `eyeliner`, `foundation` |
+| Surrounding | 12 | `indoor_background`, `bright_lighting`, `blurry_image` |
+| Psychology | 33 | `happy`, `neutral_expression`, `AU12_lip_corner_puller`, `AU6_cheek_raise` |
+| Identity | 7 | `male`, `female`, `east_asian`, `caucasian` |
+| **Total** | **211** | |
+
+### M3: Per-Branch Dual-Graph Causal Discovery (v2)
+
+**Class:** `CausalDiscoveryModule`
+**File:** `training/networks/nesy_defake/causal/causal_discovery.py`
+
+#### Architecture: Four Causal Graphs
+
+Each latent branch (spatial, frequency) has its own pair of real/fake causal graphs operating on `[z_branch_active, semantic_attrs]`:
+
+```
+Spatial branch (d_spatial = 128 + 211 = 339):
+  A_spatial_real (339×339):  spatial ↔ semantic causality in REAL faces
+    e.g. smooth_skin → no_wrinkles, smiling → high_cheekbones
+  A_spatial_fake (339×339):  spatial ↔ semantic causality in FAKE faces
+    e.g. blending_artifact ↔ skin_texture_mismatch
+
+Frequency branch (d_freq = 128 + 211 = 339):
+  A_freq_real (339×339):  frequency ↔ semantic causality in REAL faces
+    e.g. natural_high_freq → hair_texture
+  A_freq_fake (339×339):  frequency ↔ semantic causality in FAKE faces
+    e.g. GAN_spectral_peak ↔ face_region
+```
+
+#### Why Per-Branch Graphs?
+
+1. **Interpretability**: See exactly what each generator breaks in spatial vs frequency domains, and how those relate to named facial semantics.
+2. **Smaller causal spaces**: d=339 per branch (vs d=467 if combined), making DAGMA Jacobian computation cheaper per graph.
+3. **Orthogonal signals**: Spatial and frequency artifacts manifest differently; separate graphs let the SCMs specialise.
+
+#### Per-Branch Feature Selectors
+
+```python
+# Each branch has its own selector (no longer a single combined 8192→256)
+spatial_selector = SparseFeatureSelector(4096, 128)  # spatial SAE dict → 128 active
+freq_selector    = SparseFeatureSelector(4096, 128)  # freq SAE dict → 128 active
+```
+
+Each selector is a bias-free linear projection that picks causally relevant SAE dictionary elements for its branch. The causal graph then discovers relationships between these 128 latent features and the 211 named semantic attributes.
+
+#### Interpretable Node Names
+
+Every node in the causal graph has a human-readable name:
+
+```
+Spatial branch (339 nodes):
+  [0:128]   → z_spatial_0 .. z_spatial_127    (data-driven SAE features)
+  [128:339] → black_hair, blonde_hair, ..., smiling, ..., south_asian
+              (211 named FaceBench attributes)
+
+Frequency branch (339 nodes):
+  [0:128]   → z_freq_0 .. z_freq_127          (data-driven SAE features)
+  [128:339] → black_hair, blonde_hair, ..., smiling, ..., south_asian
+              (same 211 named attributes, shared semantics)
+```
+
+When inspecting `A_spatial_real[135, 128+31]`, you're looking at the causal strength from `z_spatial_7` to `smiling` in real faces — not an opaque `node_135 → node_159`.
+
+#### Detection Signal (Four Scores)
+
+| Score | Meaning | High for fakes because... |
+|-------|---------|--------------------------|
+| `v_spatial_real` | Spatial violation of real biomechanics | Fakes break spatial-semantic relationships (e.g. smooth skin but visible pores) |
+| `v_spatial_fake` | Spatial conformance to fake artifacts | Fakes exhibit spatial generator patterns (e.g. blending boundaries) |
+| `v_freq_real` | Frequency violation of real structure | Fakes break frequency-semantic relationships (e.g. wrong spectral profile for hair) |
+| `v_freq_fake` | Frequency conformance to fake artifacts | Fakes exhibit frequency artifacts (e.g. GAN checkerboard in spectrum) |
+
+Aggregated: `v_real = v_spatial_real + v_freq_real`, `v_fake = v_spatial_fake + v_freq_fake`
+
+#### Graph Divergence (Interpretability)
+
+For each branch, comparing real vs fake graphs reveals what generators break or create:
+
+```python
+divergence = model.causal_module.get_graph_divergence('spatial')
+# divergence['broken_by_fakes']   = (A_real - A_fake).clamp(min=0)
+#   → edges present in real faces but missing in fakes (biomechanics violated)
+# divergence['created_by_fakes']  = (A_fake - A_real).clamp(min=0)
+#   → edges present only in fakes (artificial correlations)
+```
+
+Example interpretation: if `broken_by_fakes[smiling, AU6_cheek_raise]` is large, it means real faces have a strong causal link between smiling and cheek raising (Duchenne smile mechanism), but this link is weak or absent in fakes — the generator doesn't properly model this muscle coupling.
+
+### Training Flow (v2)
+
+#### Two Phases (Simplified from v1's Three Phases)
+
+All modules train jointly from epoch 0 with loss weight warm-up. No delayed causal activation.
+
+**Phase 1 — Hard Freeze Backbone [epochs 0–5]:**
+- CLIP backbones fully frozen (including LayerNorms)
+- All other modules train: `fad_frontend`, `projection_heads`, `fusion`, `classifier`, `sparse_ae`, `causal_module`, `semantic_extractor`
+- Loss warm-up active: causal/contrastive/sparse weights ramp from 0.01
+
+**Phase 2 — Full End-to-End [epochs 5–50]:**
+- Backbone LayerNorms unfrozen (GenD-style LN adaptation)
+- All modules continue joint training
+- Loss weights reach full values by epoch 10
+
+#### Loss Weight Warm-Up Schedule
+
+```
+                     epoch 0     epoch 5     epoch 10    epoch 50
+classification:      1.0         1.0         1.0         1.0
+uncertainty:         0.5         0.5         0.5         0.5
+causal (real):       0.01  ───────────────→  0.3         0.3
+causal (fake):       0.005 ───────────────→  0.15        0.15
+contrastive (real):  0.01  ───────────────→  0.3         0.3
+contrastive (fake):  0.005 ───────────────→  0.15        0.15
+sparse (SAE):        0.01  ──────→  0.1      0.1         0.1
+```
+
+This replaces the old phase-gated approach: instead of suddenly activating the causal module at epoch 20, all losses are active from epoch 0 but start small. This allows the causal module to co-adapt with the SAE from the beginning, leading to more stable convergence.
+
+#### Causal Warmup (Reduced)
+
+```python
+causal_warmup_batches: 50   # down from 200 in v1
+```
+
+At the start of training, 50 batches of real-face data are passed through the causal module to pre-populate the EMA adjacency buffers. This is reduced from v1's 200 because end-to-end training from epoch 0 compensates — the causal module doesn't need a fully formed graph before seeing any gradients.
+
+### Training Forward Pass
+
+```python
+# Step 1: Extract raw branch features
+raw_spatial = spatial_extractor(spatial_frames)      # (B, 1024)
+raw_freq    = frequency_extractor(freq_frames)       # (B, 1024)
+
+# Step 2: Project and fuse for classifier
+fused = fusion(spatial_proj(raw_spatial),
+               freq_proj(raw_freq))                  # (B, 1024)
+
+# Step 3: SAE (parallel path)
+z_spatial, z_freq, sae_loss, sae_info = sparse_ae(
+    spatial_feat=raw_spatial,
+    frequency_feat=raw_freq)                         # z_*: (B, 4096) sparse
+
+# Step 4: Semantic attributes (frozen FaceBench LLM)
+semantic_attrs = semantic_extractor(raw_frames)      # (B, 211) P(present)
+
+# Step 5: Per-branch causal discovery
+causal_out = causal_module(
+    z_spatial=z_spatial,       # (B, 4096) spatial SAE sparse
+    z_freq=z_freq,             # (B, 4096) frequency SAE sparse
+    semantic_attrs=semantic_attrs,  # (B, 211) named attributes
+    label=label,               # (B,) routes Jacobians to real/fake subsets
+    return_graph=True)
+
+# Step 6: Violation fusion + classification
+classifier_input = (fused
+    + violation_proj_spatial_real(causal_out['residuals_spatial_real'])
+    + violation_proj_spatial_fake(causal_out['residuals_spatial_fake'])
+    + violation_proj_freq_real(causal_out['residuals_freq_real'])
+    + violation_proj_freq_fake(causal_out['residuals_freq_fake']))
+
+task_outputs = multitaskhead(classifier_input)
+```
+
+### Inference Forward Pass
+
+Same as training except:
+- `label=None`: no Jacobian computation, uses EMA adjacency matrices directly
+- No loss computation
+- SAE uses learned threshold instead of batch TopK
+- Semantic extractor still runs (frozen LLM forward pass for attributes)
+
+### Loss Function (v2)
+
+```
+L_total = w_cls           * L_cls
+        + w_unc           * L_uncertainty
+        + w_causal        * (L_structural_spatial_real + L_structural_freq_real + L_dag_real)
+        + w_causal_fake   * (L_structural_spatial_fake + L_structural_freq_fake + L_dag_fake)
+        + w_contrastive   * (L_contrastive_spatial_real + L_contrastive_freq_real)
+        + w_contr_fake    * (L_contrastive_spatial_fake + L_contrastive_freq_fake)
+        + w_sparse        * L_sae
+```
+
+Key difference from v1: structural and contrastive losses are summed across both branches (spatial + frequency), so each branch's causal module receives its own gradient signal.
+
+### Causal Variable Dimensions (v2)
+
+```
+z_spatial (sparse):          4096-d  (spatial SAE dictionary)
+z_freq (sparse):             4096-d  (frequency SAE dictionary)
+z_spatial_active (dense):    128-d   (spatial_selector linear projection)
+z_freq_active (dense):       128-d   (freq_selector linear projection)
+s_semantic:                  211-d   (FaceBench named attributes)
+
+x_spatial (causal input):    339-d   (z_spatial_active + s_semantic)
+x_freq (causal input):      339-d   (z_freq_active + s_semantic)
+
+residuals per branch:        339-d   (x − SCM(x))
+A per branch:              339×339   (DCE adjacency)
+
+v per branch:                (B,)    (violation/conformance score)
+
+violation_proj per branch:  339→1024 (zero-init, 4 projections total)
+```
+
+### Config Quick Reference (v2)
+
+```yaml
+semantic_attributes:
+  enabled: true
+  backend: face_llava
+  model_path: /data/umar/Repos/FaceBench
+  output_dim: 211              # auto-set by LLM mode
+  use_llm: true                # full 13B teacher-forced extraction
+  micro_batch_size: 4          # small batches for 13B LLM
+
+causal_module:
+  enabled: true                # trains from epoch 0 (with loss warmup)
+  causal_warmup_batches: 50
+  latent_variables:
+    z_spatial_dim: 128         # per-branch dense active features
+    z_frequency_dim: 128
+  semantic_dim: 211            # auto-overridden by extractor
+
+training_phases:
+  phase1: {epochs: [0, 5],  freeze_modules: [foundation_models]}
+  phase2: {epochs: [5, 50], train_modules: [all]}
+
+loss_warmup:
+  causal:             {start: 0.01, end: 0.3, epochs: [0, 10]}
+  contrastive:        {start: 0.01, end: 0.3, epochs: [0, 10]}
+  causal_fake:        {start: 0.005, end: 0.15, epochs: [0, 10]}
+  contrastive_fake:   {start: 0.005, end: 0.15, epochs: [0, 10]}
+  sparse:             {start: 0.01, end: 0.1, epochs: [0, 5]}
+```
+
+### Key Files (v2)
+
+| File | Role |
+|------|------|
+| `training/config/detector/nesy_defake.yaml` | All hyperparameters |
+| `training/detectors/nesy_defake_detector.py` | Detector: forward, losses, metrics (per-branch) |
+| `training/networks/nesy_defake/semantic/facial_semantic_extractor.py` | FaceBench 211-attribute extractor |
+| `training/networks/nesy_defake/causal/causal_discovery.py` | Per-branch DAGMA-DCE (4 graphs) |
+| `training/networks/nesy_defake/classifiers/sparse_autoencoder.py` | BatchTopK SAE (unchanged) |
+| `training/networks/nesy_defake/classifiers/multitask_head.py` | Classifier (unchanged) |
+| `training/trainer/trainer.py` | Train loop, phase transitions |
+| `training/train.py` | Entry point, optimizer construction |
+
