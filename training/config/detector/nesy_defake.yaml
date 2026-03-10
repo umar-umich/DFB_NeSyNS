@@ -155,14 +155,13 @@ causal_module:
   # Causal warmup at epoch 0: pre-populates EMA buffers before main training.
   causal_warmup_batches: 50   # reduced: end-to-end training compensates
 
-  # Z_sae: full dict vectors from both SAE branches
-  #   dict_size=4096 per branch → z_sae is 8192-d sparse (target_k=128 active per branch)
-  # The SparseFeatureSelector projects 8192 → total_sae_dim (dense) linearly.
-  # S_semantic: 73 per-frame attributes
+  # Per-branch causal discovery: each branch (spatial, freq) has its own
+  # pair of real/fake graphs operating on [z_branch_active, semantic_attrs].
+  #   Spatial: 4096 sparse → z_spatial_dim dense, concat semantic → d_spatial
+  #   Freq:    4096 sparse → z_frequency_dim dense, concat semantic → d_freq
   latent_variables:
-    z_spatial_dim:    128    # = target_k from sparse_features (active features per branch per sample)
+    z_spatial_dim:    128    # per-branch dense active features (4096 sparse → 128 dense)
     z_frequency_dim:  128
-    total_sae_dim:    256    # compressed dense output of SparseFeatureSelector (8192 → 256)
 
   semantic_dim: 128          # auto-overridden by FacialSemanticExtractor.output_dim at init
 

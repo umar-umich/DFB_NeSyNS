@@ -398,8 +398,9 @@ class FacialSemanticExtractor(nn.Module):
         """
         import json
 
-        self._llava_batch_size = cfg.get('micro_batch_size', 16)
-        dtype = torch.float16 if cfg.get('fp16', True) else torch.bfloat16
+        # LLM mode: smaller micro-batch default (13B model uses significant VRAM)
+        self._llava_batch_size = cfg.get('micro_batch_size', 4)
+        dtype = torch.bfloat16  # bf16: same speed as fp16 but no overflow risk
 
         if not model_path or not Path(model_path).exists():
             raise ValueError(
@@ -440,8 +441,9 @@ class FacialSemanticExtractor(nn.Module):
         )
 
         # --- Load LLM from FaceBench checkpoint directly ---------------------
-        # Use from_pretrained which handles sharded loading efficiently.
-        # Vision tower and mm_projector weights are loaded separately below.
+        # low_cpu_mem_usage=True: loads weights sequentially shard-by-shard,
+        # avoiding the 2x memory spike from loading all shards at once.
+        # attn_implementation="sdpa": fused attention for long sequences.
         from transformers import LlamaForCausalLM, AutoTokenizer
 
         logger.info(f"[FaceBench] Loading 13B LLM from: {model_path}")
@@ -449,6 +451,7 @@ class FacialSemanticExtractor(nn.Module):
             str(model_path),
             torch_dtype=dtype,
             attn_implementation="sdpa",
+            low_cpu_mem_usage=True,
         )
 
         # --- Load tokenizer ---------------------------------------------------
@@ -802,10 +805,12 @@ class FacialSemanticExtractor(nn.Module):
                 answer_embeds,   # (mb, N_answer, 5120)
             ], dim=1)
 
-            # 5. Single LLM forward pass (no generation, just logits)
+            # 5. Single LLM forward pass (teacher-forced, no generation)
+            # use_cache=False: no KV cache needed (saves ~4GB per micro-batch)
             outputs = self.llm(
                 inputs_embeds=inputs_embeds,
                 return_dict=True,
+                use_cache=False,
             )
             logits = outputs.logits  # (mb, seq_len, vocab_size)
 

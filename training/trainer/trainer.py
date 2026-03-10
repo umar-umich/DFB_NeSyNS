@@ -528,8 +528,6 @@ class Trainer(object):
                         spatial_feat=raw_feats.get('spatial_raw'),
                         frequency_feat=raw_feats.get('frequency_raw'),
                     )
-                z_sae = (m.sparse_ae.get_z_sae(z_spatial, z_freq)
-                         if m.use_sparse else None)
 
             # Causal module needs grad for Jacobian → run outside no_grad.
             # Compute semantic attrs from dedicated face model if enabled.
@@ -548,7 +546,8 @@ class Trainer(object):
                     semantic_attrs = semantic_attrs.detach()
 
             m.causal_module(
-                z_sae=(z_sae.detach() if z_sae is not None else None),
+                z_spatial=(z_spatial.detach() if z_spatial is not None else None),
+                z_freq=(z_freq.detach() if z_freq is not None else None),
                 semantic_attrs=semantic_attrs,
                 label=target_dict['label'],
                 return_graph=False,
@@ -565,14 +564,19 @@ class Trainer(object):
             if name in frozen_params:
                 param.requires_grad = True
 
-        # Report EMA state for the target graph
+        # Report EMA state for the target graphs (per-branch)
         if is_main_process() and hasattr(m, 'causal_module'):
-            learner = (m.causal_module.causal_learner_real if label_filter == 0
-                       else m.causal_module.causal_learner_fake)
-            self.logger.info(
-                f"  Causal warmup ({filter_name}) complete: {n_done} batches. "
-                f"{graph_name} EMA initialized: {learner._ema_initialized}"
-            )
+            for branch_name, pair in [
+                ('spatial', m.causal_module.causal_spatial),
+                ('freq', m.causal_module.causal_freq),
+            ]:
+                learner = (pair.causal_learner_real if label_filter == 0
+                           else pair.causal_learner_fake)
+                self.logger.info(
+                    f"  Causal warmup ({filter_name}/{branch_name}): "
+                    f"{n_done} batches. "
+                    f"{graph_name} EMA initialized: {learner._ema_initialized}"
+                )
 
     def train_epoch(self, epoch, train_data_loader, test_data_loaders=None):
         self.logger.info("===> Epoch[{}] start!".format(epoch))
