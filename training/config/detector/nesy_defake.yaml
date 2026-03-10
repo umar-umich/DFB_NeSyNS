@@ -169,7 +169,7 @@ semantic_attributes:
   output_dim: 211            # 211 named FaceBench attributes (auto-set by LLM mode)
   use_llm: true              # true=full 13B teacher-forced extraction (211 attributes)
   fp16: true                 # use float16 for the frozen backbone
-  micro_batch_size: 4        # small batches for 13B LLM (bf16, ~28GB VRAM)
+  micro_batch_size: 16       # larger micro-batches for 13B LLM (148GB VRAM available)
   # precomputed_dim: 73      # only for 'precomputed' backend
 
 # -----------------------------------------------------------------------------

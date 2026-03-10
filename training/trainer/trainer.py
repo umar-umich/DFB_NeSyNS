@@ -506,7 +506,7 @@ class Trainer(object):
             for key in data_dict.keys():
                 val = data_dict[key]
                 if val is not None and isinstance(val, torch.Tensor) and key != 'name':
-                    data_dict[key] = val.cuda()
+                    data_dict[key] = val.cuda(non_blocking=True)
 
             label = data_dict['label']
             target_mask = (label == label_filter)
@@ -741,7 +741,7 @@ class Trainer(object):
             self.setTrain()
             for key in data_dict.keys():
                 if data_dict[key] is not None and key != 'name':
-                    data_dict[key] = data_dict[key].cuda()
+                    data_dict[key] = data_dict[key].cuda(non_blocking=True)
 
             losses, predictions = self.train_step(data_dict)
 
@@ -844,7 +844,7 @@ class Trainer(object):
             for key in data_dict.keys():
                 val = data_dict[key]
                 if val is not None and isinstance(val, torch.Tensor):
-                    data_dict[key] = val.cuda()
+                    data_dict[key] = val.cuda(non_blocking=True)
 
             predictions = self.inference(data_dict)
             label_lists      += list(data_dict['label'].cpu().detach().numpy())

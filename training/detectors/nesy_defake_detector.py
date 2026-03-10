@@ -198,6 +198,11 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # -- Loss warm-up schedule -------------------------------------------
         self.loss_warmup_cfg = config.get('loss_warmup', {})
 
+        # -- torch.compile on frozen backbones (speed optimization) -----------
+        # Frozen modules have static graphs — torch.compile fuses ops and
+        # eliminates Python overhead. Only applied to inference-only modules.
+        self._try_compile_frozen_modules()
+
         logger.info("NeSyDeFake Hybrid Detector initialised (PER-BRANCH CAUSAL)")
         logger.info(f"  Active branches : {sorted(self.active_branches)}")
         logger.info(f"  Fused dim       : {config['fusion']['fused_dim']}")
@@ -246,6 +251,63 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         for p in module.parameters():
             p.requires_grad = False
         logger.info(f"  Frozen branch   : {name}")
+
+    def _try_compile_frozen_modules(self) -> None:
+        """
+        Apply torch.compile to frozen backbone modules for faster inference.
+
+        Uses default mode (inductor) — NOT reduce-overhead, which uses CUDA
+        graphs that overwrite output tensors on replay, breaking downstream
+        consumers outside the compiled region.
+
+        Catches errors gracefully — compile is a pure speed optimization.
+        """
+        if not hasattr(torch, 'compile'):
+            return
+
+        compiled = []
+        # Compile frozen CLIP vision backbones
+        for attr in ('spatial_extractor', 'frequency_extractor'):
+            ext = getattr(self, attr, None)
+            if ext is None:
+                continue
+            backbone = getattr(ext, 'backbone', None)
+            if backbone is not None and not any(
+                    p.requires_grad for p in backbone.parameters()):
+                try:
+                    ext.backbone = torch.compile(backbone, fullgraph=False)
+                    compiled.append(f'{attr}.backbone')
+                except Exception as e:
+                    logger.warning(f"  torch.compile failed for {attr}: {e}")
+
+        # Compile frozen semantic extractor components
+        if self.use_semantic_attrs and self.semantic_extractor is not None:
+            sem = self.semantic_extractor
+            # Vision tower
+            vt = getattr(sem, 'vision_tower', None)
+            if vt is not None and not any(
+                    p.requires_grad for p in vt.parameters()):
+                try:
+                    sem.vision_tower = torch.compile(vt, fullgraph=False)
+                    compiled.append('semantic.vision_tower')
+                except Exception as e:
+                    logger.warning(
+                        f"  torch.compile failed for semantic vision_tower: {e}")
+            # LLM (13B frozen)
+            llm = getattr(sem, 'llm', None)
+            if llm is not None and not any(
+                    p.requires_grad for p in llm.parameters()):
+                try:
+                    sem.llm = torch.compile(llm, fullgraph=False)
+                    compiled.append('semantic.llm')
+                except Exception as e:
+                    logger.warning(
+                        f"  torch.compile failed for semantic LLM: {e}")
+
+        if compiled:
+            logger.info(f"  torch.compile   : {', '.join(compiled)}")
+        else:
+            logger.info("  torch.compile   : no eligible frozen modules")
 
     def enable_causal(self) -> None:
         self.use_causal = True

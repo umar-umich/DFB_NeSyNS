@@ -191,7 +191,7 @@ class DAGMADCELearner(nn.Module):
         h = self.scm.trunk(x)       # (B, hidden)
         hidden_dim = h.shape[1]
 
-        CHUNK = 32
+        CHUNK = 64
         J_trunk_sq = torch.zeros(d, hidden_dim, device=x.device, dtype=x.dtype)
 
         for k_start in range(0, hidden_dim, CHUNK):

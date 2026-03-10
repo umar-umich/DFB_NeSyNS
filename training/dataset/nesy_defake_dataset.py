@@ -414,13 +414,16 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
                 sampler = dataset.get_weighted_sampler(target_real_fraction=ratio)
                 shuffle = False
 
+        n_workers = int(config["workers"])
         return DataLoader(
             dataset=dataset,
             batch_size=batch_size,
             shuffle=shuffle,
             sampler=sampler,
-            num_workers=int(config["workers"]),
+            num_workers=n_workers,
             collate_fn=NeSyDeFakeDataset.collate_fn,
             pin_memory=True,
             drop_last=(mode == "train"),
+            persistent_workers=(n_workers > 0),
+            prefetch_factor=3 if n_workers > 0 else None,
         )
