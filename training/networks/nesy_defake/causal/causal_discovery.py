@@ -5,7 +5,7 @@ Module 3: Dual-Graph Causal Discovery — DAGMA-DCE for Deepfake Detection
 
 ARCHITECTURE: TWO COMPLEMENTARY GRAPHS
 ---------------------------------------
-Two separate DAGMA-DCE learners operate on the same 329-d causal variable space:
+Two separate DAGMA-DCE learners operate on the same d-dimensional causal variable space:
 
   Graph_real (A_real):
     - SCM_real trained to reconstruct real faces
@@ -318,8 +318,8 @@ class CausalDiscoveryModule(nn.Module):
     """
     Module 3: Dual-Graph Causal Discovery for deepfake detection.
 
-    Two parallel DAGMA-DCE learners operating on the same 329-d causal
-    variable space (256 active SAE features + 73 semantic attributes):
+    Two parallel DAGMA-DCE learners operating on the same d-dimensional
+    causal variable space (z_active SAE features + semantic attributes):
 
       causal_learner_real  → A_real: real-face biomechanical DAG
       causal_learner_fake  → A_fake: fake-face generator artifact DAG
@@ -548,10 +548,10 @@ class CausalDiscoveryModule(nn.Module):
 
     def get_node_names(self) -> list:
         """
-        Human-readable names for the 329 causal variable nodes.
-          [0:128]   z_spatial_0..127
-          [128:256] z_freq_0..127
-          [256:329] s_0..s_72
+        Human-readable names for the d causal variable nodes.
+          [0:z_active_dim//2]                z_spatial_0..N
+          [z_active_dim//2:z_active_dim]     z_freq_0..N
+          [z_active_dim:d]                   s_0..s_M  (semantic features)
         """
         names = []
         half = self.z_active_dim // 2

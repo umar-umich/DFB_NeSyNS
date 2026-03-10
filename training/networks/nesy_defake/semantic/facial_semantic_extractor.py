@@ -20,16 +20,20 @@ SUPPORTED BACKENDS
 ------------------
 1. FaceBench Face-LLaVA (recommended):
    Face-LLaVA-v1.5-13B fine-tuned on FaceBench (Wang et al., CVPR 2025).
-   211 facial attributes across 5 views: Appearance, Accessories,
-   Surrounding, Psychology (action units), Identity.
-
-   Loads the FULL frozen model (vision tower + mm_projector + 13B LLM).
-   Uses teacher-forced single-pass extraction: a structured prompt lists
-   all 211 attributes; the LLM's logits at each answer position give
-   P(present) for that attribute. One forward pass per image.
-
-   VRAM: ~28GB FP16 (full 13B model).  Requires >= 40GB GPU.
    HuggingFace: wxqlab/face-llava-v1.5-13b
+
+   TWO MODES:
+   a) Vision-only (default, use_llm=False):
+      Loads ONLY the CLIP-ViT-L/14@336 vision tower + mm_projector (~1.2GB).
+      Produces face-specialized 5120-d visual features per image.
+      A trainable projection maps these to output_dim for the causal module.
+      VRAM: ~1.2GB. Efficient for training.
+
+   b) Full LLM (use_llm=True):
+      Loads the FULL frozen model (vision tower + mm_projector + 13B LLM).
+      Teacher-forced single-pass extraction gives P(present) for 211 named
+      facial attributes. One forward pass per image.
+      VRAM: ~28GB FP16. Requires >= 40GB GPU.
 
 2. FaRL:
    Microsoft's Face Representation Learning (Zheng et al., CVPR 2022).
@@ -41,8 +45,28 @@ SUPPORTED BACKENDS
 4. Precomputed:
    Pre-extracted attributes loaded from disk by the dataloader.
 
-ARCHITECTURE (FaceBench backend)
---------------------------------
+ARCHITECTURE (FaceBench vision-only)
+-------------------------------------
+  raw_images (B, 3, H, W)          [0, 1] range
+       |
+  [resize to 336x336 + CLIP-normalize]
+       |
+  [CLIP-ViT-L/14 vision tower]     <- FROZEN, from FaceBench checkpoint
+       |
+  hidden_states[-2][:, 1:, :]      576 patch tokens, 1024-d
+       |
+  [mm_projector]                    <- FROZEN, mlp2x_gelu (1024 -> 5120)
+       |
+  average pool over 576 tokens
+       |
+  face_features (B, 5120)           <- face-specialized visual features
+       |
+  [trainable projection]            5120 -> output_dim
+       |
+  semantic_attrs (B, output_dim)    <- OUTPUT: for causal module
+
+ARCHITECTURE (FaceBench full LLM)
+----------------------------------
   raw_images (B, 3, H, W)          [0, 1] range
        |
   [resize to 336x336 + CLIP-normalize]
@@ -94,56 +118,56 @@ CELEBA_ATTRIBUTES = [
 # Attribute names use underscores; converted to spaces in the LLM prompt.
 # ---------------------------------------------------------------------------
 FACEBENCH_ATTRIBUTES = [
-    # ── Appearance: Hair (20) ──────────────────────────────────────────
+    # -- Appearance: Hair (20) --
     'black_hair', 'blonde_hair', 'brown_hair', 'gray_hair', 'red_hair',
     'white_hair', 'long_hair', 'medium_length_hair', 'short_hair', 'bald',
     'straight_hair', 'wavy_hair', 'curly_hair', 'bangs',
     'receding_hairline', 'hair_parted', 'ponytail', 'bun_hair',
     'braided_hair', 'dyed_hair',
-    # ── Appearance: Forehead (3) ───────────────────────────────────────
+    # -- Appearance: Forehead (3) --
     'large_forehead', 'small_forehead', 'forehead_wrinkles',
-    # ── Appearance: Eyebrows (7) ───────────────────────────────────────
+    # -- Appearance: Eyebrows (7) --
     'arched_eyebrows', 'straight_eyebrows', 'thick_eyebrows',
     'thin_eyebrows', 'bushy_eyebrows', 'unibrow', 'sparse_eyebrows',
-    # ── Appearance: Eyes (15) ──────────────────────────────────────────
+    # -- Appearance: Eyes (15) --
     'brown_eyes', 'blue_eyes', 'green_eyes', 'hazel_eyes', 'black_eyes',
     'large_eyes', 'small_eyes', 'narrow_eyes', 'wide_set_eyes',
     'double_eyelid', 'single_eyelid', 'hooded_eyes',
     'bags_under_eyes', 'dark_circles', 'puffy_eyes',
-    # ── Appearance: Eyelashes (3) ──────────────────────────────────────
+    # -- Appearance: Eyelashes (3) --
     'long_eyelashes', 'thick_eyelashes', 'sparse_eyelashes',
-    # ── Appearance: Nose (8) ───────────────────────────────────────────
+    # -- Appearance: Nose (8) --
     'large_nose', 'small_nose', 'pointed_nose', 'broad_nose',
     'upturned_nose', 'long_nose', 'crooked_nose', 'flat_nose',
-    # ── Appearance: Mouth & Lips (10) ──────────────────────────────────
+    # -- Appearance: Mouth & Lips (10) --
     'full_lips', 'thin_lips', 'wide_mouth', 'small_mouth',
     'mouth_open', 'mouth_closed', 'smiling', 'frowning',
     'teeth_visible', 'white_teeth',
-    # ── Appearance: Cheeks (4) ─────────────────────────────────────────
+    # -- Appearance: Cheeks (4) --
     'high_cheekbones', 'round_cheeks', 'hollow_cheeks', 'rosy_cheeks',
-    # ── Appearance: Chin & Jaw (6) ─────────────────────────────────────
+    # -- Appearance: Chin & Jaw (6) --
     'pointed_chin', 'round_chin', 'double_chin', 'cleft_chin',
     'strong_jaw', 'narrow_jaw',
-    # ── Appearance: Face Shape (6) ─────────────────────────────────────
+    # -- Appearance: Face Shape (6) --
     'oval_face', 'round_face', 'square_face', 'heart_shaped_face',
     'long_face', 'diamond_face',
-    # ── Appearance: Ears (3) ───────────────────────────────────────────
+    # -- Appearance: Ears (3) --
     'large_ears', 'small_ears', 'protruding_ears',
-    # ── Appearance: Skin (15) ──────────────────────────────────────────
+    # -- Appearance: Skin (15) --
     'fair_skin', 'medium_skin', 'dark_skin', 'olive_skin', 'pale_skin',
     'smooth_skin', 'wrinkled_skin', 'freckled_skin',
     'acne', 'moles', 'scars', 'skin_blemishes',
     'oily_skin', 'dry_skin', 'age_spots',
-    # ── Appearance: Facial Hair (6) ────────────────────────────────────
+    # -- Appearance: Facial Hair (6) --
     'beard', 'mustache', 'goatee', 'sideburns', 'stubble', 'clean_shaven',
-    # ── Appearance: Neck (2) ───────────────────────────────────────────
+    # -- Appearance: Neck (2) --
     'long_neck', 'short_neck',
-    # ── Appearance: Age (5) ────────────────────────────────────────────
+    # -- Appearance: Age (5) --
     'baby_face', 'young_looking', 'middle_aged', 'elderly_looking',
     'age_ambiguous',
-    # ── Appearance: Other (3) ──────────────────────────────────────────
+    # -- Appearance: Other (3) --
     'attractive', 'symmetrical_face', 'asymmetrical_face',
-    # ── Accessories (30) ───────────────────────────────────────────────
+    # -- Accessories (30) --
     'eyeglasses', 'sunglasses', 'reading_glasses',
     'round_glasses', 'rectangular_glasses', 'rimless_glasses',
     'thick_frame_glasses',
@@ -153,21 +177,21 @@ FACEBENCH_ATTRIBUTES = [
     'nose_piercing', 'lip_piercing', 'ear_piercing',
     'scarf', 'necktie', 'bowtie',
     'face_mask', 'headphones', 'hair_clip', 'hair_band', 'veil',
-    # ── Makeup (13) ────────────────────────────────────────────────────
+    # -- Makeup (13) --
     'heavy_makeup', 'light_makeup', 'no_makeup',
     'lipstick', 'red_lipstick', 'pink_lipstick', 'nude_lipstick',
     'eyeshadow', 'eyeliner', 'mascara',
     'blush', 'foundation', 'contour_makeup',
-    # ── Surrounding (12) ───────────────────────────────────────────────
+    # -- Surrounding (12) --
     'indoor_background', 'outdoor_background',
     'plain_background', 'complex_background',
     'bright_lighting', 'dim_lighting', 'natural_lighting',
     'artificial_lighting', 'side_lighting',
     'blurry_image', 'sharp_image', 'bokeh_background',
-    # ── Psychology: Expression (8) ─────────────────────────────────────
+    # -- Psychology: Expression (8) --
     'neutral_expression', 'happy', 'sad', 'angry',
     'surprised', 'fearful', 'disgusted', 'contemptuous',
-    # ── Psychology: Action Units (25) ──────────────────────────────────
+    # -- Psychology: Action Units (25) --
     'AU1_inner_brow_raise', 'AU2_outer_brow_raise', 'AU4_brow_lowerer',
     'AU5_upper_lid_raise', 'AU6_cheek_raise', 'AU7_lid_tightener',
     'AU9_nose_wrinkler', 'AU10_upper_lip_raiser',
@@ -178,7 +202,7 @@ FACEBENCH_ATTRIBUTES = [
     'AU18_lip_pucker', 'AU20_lip_stretcher', 'AU22_lip_funneler',
     'AU23_lip_tightener', 'AU24_lip_pressor', 'AU25_lips_part',
     'AU26_jaw_drop', 'AU28_lip_suck', 'AU43_eyes_closed', 'AU45_blink',
-    # ── Identity (7) ───────────────────────────────────────────────────
+    # -- Identity (7) --
     'male', 'female',
     'east_asian', 'african', 'caucasian', 'hispanic', 'south_asian',
 ]
@@ -192,9 +216,12 @@ class FacialSemanticExtractor(nn.Module):
     Extracts facial semantic attributes using a dedicated pre-trained face
     analysis model -- completely independent of the spatial/frequency backbone.
 
-    For the FaceBench backend, the FULL frozen 13B model is loaded and
-    211 named attribute scores are extracted per image via teacher-forced
-    single-pass inference. No trainable parameters in this module.
+    For the FaceBench backend:
+    - Vision-only mode (default): loads CLIP-ViT-L/14@336 + mm_projector
+      from the FaceBench checkpoint (~1.2GB). Produces face-specialized
+      5120-d features, projected to output_dim via a trainable head.
+    - Full LLM mode (use_llm=True): loads the full 13B model and extracts
+      211 named attribute probabilities via teacher-forced inference.
     """
 
     SUPPORTED_BACKENDS = ('face_llava', 'farl', 'celeba_vit', 'precomputed')
@@ -231,15 +258,135 @@ class FacialSemanticExtractor(nn.Module):
         )
 
     # ------------------------------------------------------------------ #
-    #  Backend: FaceBench Face-LLaVA (full 13B model)                      #
+    #  Backend: FaceBench Face-LLaVA                                       #
     # ------------------------------------------------------------------ #
 
     def _build_face_llava(self, model_path: str, cfg: dict):
         """
         FaceBench Face-LLaVA-v1.5-13B (Wang et al., CVPR 2025).
 
-        Loads the FULL frozen model: vision tower (CLIP-ViT-L/14@336px),
-        mm_projector (mlp2x_gelu), and the 13B LLM (Llama-2-13B).
+        Dispatches to vision-only or full-LLM build based on use_llm config.
+        """
+        self._use_llm = cfg.get('use_llm', False)
+
+        if self._use_llm:
+            self._build_face_llava_with_llm(model_path, cfg)
+        else:
+            self._build_face_llava_vision_only(model_path, cfg)
+
+    def _build_face_llava_vision_only(self, model_path: str, cfg: dict):
+        """
+        Vision tower + mm_projector ONLY (no 13B LLM). ~1.2GB VRAM.
+
+        The mm_projector was trained jointly with the LLM during FaceBench
+        fine-tuning, so it produces face-specialized 5120-d features that
+        encode facial attribute information. We average-pool the 576 patch
+        tokens and project to output_dim via a trainable head.
+
+        This mode loads only the 1-2 safetensor shards containing vision
+        tower and mm_projector weights (not all 6 shards).
+        """
+        import json
+
+        self._llava_batch_size = cfg.get('micro_batch_size', 64)
+        dtype = torch.float16 if cfg.get('fp16', True) else torch.bfloat16
+
+        if not model_path or not Path(model_path).exists():
+            raise ValueError(
+                "face_llava backend requires 'model_path' pointing to the "
+                "FaceBench Face-LLaVA checkpoint directory.\n"
+                "Download: huggingface.co/wxqlab/face-llava-v1.5-13b\n"
+                "Set semantic_attributes.model_path to that directory.")
+
+        model_path = Path(model_path)
+        logger.info(f"[FaceBench] Loading VISION-ONLY from: {model_path}")
+
+        # --- Read model config ------------------------------------------------
+        with open(model_path / 'config.json') as f:
+            model_config = json.load(f)
+
+        vision_tower_name = model_config.get(
+            'mm_vision_tower', 'openai/clip-vit-large-patch14-336')
+        mm_hidden_size = model_config.get('mm_hidden_size', 1024)
+        hidden_size = model_config.get('hidden_size', 5120)
+        self._vision_select_layer = model_config.get(
+            'mm_vision_select_layer', -2)
+        self._vision_select_feature = model_config.get(
+            'mm_vision_select_feature', 'patch')
+
+        # --- Load CLIP vision tower (skeleton from HuggingFace) ---------------
+        from transformers import CLIPVisionModel, CLIPImageProcessor
+
+        logger.info(f"[FaceBench] Loading vision tower: {vision_tower_name}")
+        self.vision_tower = CLIPVisionModel.from_pretrained(
+            vision_tower_name, dtype=dtype)
+        self.vision_tower.eval()
+
+        # --- Build mm_projector (mlp2x_gelu) ----------------------------------
+        self.mm_projector = nn.Sequential(
+            nn.Linear(mm_hidden_size, hidden_size),
+            nn.GELU(),
+            nn.Linear(hidden_size, hidden_size),
+        )
+
+        # --- Load vision tower + mm_projector from FaceBench checkpoint -------
+        # Only loads the shards containing these weights (skips LLM shards).
+        self._load_vision_weights(model_path, model_config, dtype)
+
+        # --- Image processor for normalization --------------------------------
+        try:
+            image_processor = CLIPImageProcessor.from_pretrained(
+                vision_tower_name)
+            img_mean = list(image_processor.image_mean)
+            img_std = list(image_processor.image_std)
+            crop_size = image_processor.crop_size
+            if isinstance(crop_size, dict):
+                self._image_size = crop_size.get('height', 336)
+            else:
+                self._image_size = crop_size or 336
+        except Exception:
+            img_mean = [0.48145466, 0.4578275, 0.40821073]
+            img_std = [0.26862954, 0.26130258, 0.27577711]
+            self._image_size = 336
+
+        self.register_buffer(
+            'norm_mean', torch.tensor(img_mean).view(1, 3, 1, 1))
+        self.register_buffer(
+            'norm_std', torch.tensor(img_std).view(1, 3, 1, 1))
+
+        # --- Freeze vision tower + mm_projector ───────────────────────────────
+        for p in self.vision_tower.parameters():
+            p.requires_grad = False
+        for p in self.mm_projector.parameters():
+            p.requires_grad = False
+
+        self.mm_projector = self.mm_projector.to(dtype)
+
+        # --- Trainable projection: 5120 → output_dim ─────────────────────────
+        # The mm_projector output is face-specialized but 5120-d is too large
+        # for the causal module. This trainable head learns to extract the
+        # causally relevant facial dimensions.
+        self._backbone_dim = hidden_size  # 5120
+        self.projection = nn.Sequential(
+            nn.Linear(hidden_size, self._output_dim * 2),
+            nn.LayerNorm(self._output_dim * 2),
+            nn.GELU(),
+            nn.Linear(self._output_dim * 2, self._output_dim),
+        )
+        self._attr_names = [f'face_llava_{i}' for i in range(self._output_dim)]
+
+        self._num_visual_tokens = (self._image_size // 14) ** 2  # 576
+
+        logger.info(
+            f"[FaceBench] Vision-only mode loaded. "
+            f"backbone_dim={self._backbone_dim} -> output_dim={self._output_dim}, "
+            f"image_size={self._image_size}, "
+            f"micro_batch={self._llava_batch_size}, "
+            f"visual_tokens={self._num_visual_tokens}")
+
+    def _build_face_llava_with_llm(self, model_path: str, cfg: dict):
+        """
+        Full FaceBench model including 13B LLM. ~28GB VRAM.
 
         Teacher-forced attribute extraction:
           1. Image -> vision tower -> mm_projector -> visual tokens
@@ -248,8 +395,6 @@ class FacialSemanticExtractor(nn.Module):
           4. At each answer position, extract logit("1") - logit("0")
           5. sigmoid -> P(present) for each attribute
           6. Output: (B, 211) named attribute probabilities
-
-        VRAM: ~28GB FP16.  Micro-batched to control peak memory.
         """
         import json
 
@@ -264,7 +409,7 @@ class FacialSemanticExtractor(nn.Module):
                 "Set semantic_attributes.model_path to that directory.")
 
         model_path = Path(model_path)
-        logger.info(f"[FaceBench] Loading FULL model from: {model_path}")
+        logger.info(f"[FaceBench] Loading FULL model (with LLM) from: {model_path}")
 
         # --- Read model config ------------------------------------------------
         with open(model_path / 'config.json') as f:
@@ -294,40 +439,27 @@ class FacialSemanticExtractor(nn.Module):
             nn.Linear(hidden_size, hidden_size),
         )
 
-        # --- Build LLM (Llama-2-13B architecture) ----------------------------
-        from transformers import LlamaForCausalLM, LlamaConfig
+        # --- Load LLM from FaceBench checkpoint directly ---------------------
+        # Use from_pretrained which handles sharded loading efficiently.
+        # Vision tower and mm_projector weights are loaded separately below.
+        from transformers import LlamaForCausalLM, AutoTokenizer
 
-        llama_config = LlamaConfig(
-            hidden_size=hidden_size,
-            intermediate_size=model_config['intermediate_size'],
-            num_hidden_layers=model_config['num_hidden_layers'],
-            num_attention_heads=model_config['num_attention_heads'],
-            num_key_value_heads=model_config.get(
-                'num_key_value_heads', model_config['num_attention_heads']),
-            vocab_size=model_config['vocab_size'],
-            max_position_embeddings=model_config['max_position_embeddings'],
-            rms_norm_eps=model_config.get('rms_norm_eps', 1e-5),
-            hidden_act=model_config.get('hidden_act', 'silu'),
-            pad_token_id=model_config.get('pad_token_id', 0),
-            bos_token_id=model_config.get('bos_token_id', 1),
-            eos_token_id=model_config.get('eos_token_id', 2),
-        )
-        logger.info(f"[FaceBench] Building LLM: {model_config['num_hidden_layers']} "
-                    f"layers, hidden={hidden_size}")
-        # self.llm = LlamaForCausalLM(llama_config)
+        logger.info(f"[FaceBench] Loading 13B LLM from: {model_path}")
         self.llm = LlamaForCausalLM.from_pretrained(
             str(model_path),
-            torch_dtype=torch.bfloat16,             # Cuts memory usage by 50%
-            attn_implementation="sdpa" # Crucial for processing high-res images/long sequences
+            torch_dtype=dtype,
+            attn_implementation="sdpa",
         )
 
         # --- Load tokenizer ---------------------------------------------------
-        from transformers import AutoTokenizer
         self._tokenizer = AutoTokenizer.from_pretrained(
             str(model_path), use_fast=False)
 
-        # --- Load ALL weights from checkpoint ---------------------------------
-        self._load_facebench_weights(model_path, model_config, dtype)
+        # --- Load vision tower + mm_projector from checkpoint -----------------
+        # from_pretrained above only loaded LLM weights (Llama architecture).
+        # Vision tower and mm_projector use different key prefixes and must
+        # be loaded separately from the safetensors shards.
+        self._load_vision_weights(model_path, model_config, dtype)
 
         # --- Image processor for normalization --------------------------------
         try:
@@ -372,52 +504,56 @@ class FacialSemanticExtractor(nn.Module):
         self._attr_names = list(FACEBENCH_ATTRIBUTES)
 
         logger.info(
-            f"[FaceBench] Loaded FULL model. "
+            f"[FaceBench] Full model loaded. "
             f"output_dim={self._output_dim} (named attributes), "
             f"image_size={self._image_size}, "
             f"micro_batch={self._llava_batch_size}")
 
-    def _load_facebench_weights(self, model_path: Path, model_config: dict,
-                                dtype):
+    def _load_vision_weights(self, model_path: Path, model_config: dict,  # noqa: ARG002
+                             dtype):
         """
-        Load ALL weights: vision tower, mm_projector, AND LLM from
-        safetensors checkpoint shards.
+        Load vision tower and mm_projector weights from FaceBench safetensors.
+
+        Only reads the specific shards containing these weights, skipping
+        the LLM shards (~24GB) entirely when in vision-only mode.
         """
         import json
         from safetensors import safe_open
 
-        # Find all shards
+        # Determine which shards contain vision tower / mm_projector keys
         index_path = model_path / 'model.safetensors.index.json'
         if index_path.exists():
             with open(index_path) as f:
                 index = json.load(f)
-            all_shards = sorted(set(index['weight_map'].values()))
+            needed_shards = set()
+            for key, shard in index['weight_map'].items():
+                if (key.startswith('model.vision_tower.')
+                        or key.startswith('model.mm_projector.')):
+                    needed_shards.add(shard)
+            all_shards = sorted(needed_shards)
         else:
+            # Fallback: scan all shards
             all_shards = sorted(
                 p.name for p in model_path.glob('*.safetensors'))
 
-        logger.info(f"[FaceBench] Loading weights from {len(all_shards)} shards")
+        logger.info(f"[FaceBench] Loading vision weights from "
+                    f"{len(all_shards)} shard(s) (of "
+                    f"{len(list(model_path.glob('*.safetensors')))} total)")
 
         vt_state = {}
         proj_state = {}
-        llm_state = {}
 
         for shard_name in all_shards:
             shard_path = model_path / shard_name
             with safe_open(str(shard_path), framework='pt',
                            device='cpu') as f:
                 for key in f.keys():
-                    tensor = f.get_tensor(key).to(dtype)
-                    if key.startswith(
-                            'model.vision_tower.vision_tower.'):
+                    if key.startswith('model.vision_tower.vision_tower.'):
                         clean = key[len('model.vision_tower.vision_tower.'):]
-                        vt_state[clean] = tensor
+                        vt_state[clean] = f.get_tensor(key).to(dtype)
                     elif key.startswith('model.mm_projector.'):
                         clean = key[len('model.mm_projector.'):]
-                        proj_state[clean] = tensor
-                    else:
-                        # LLM weights: embed_tokens, layers, norm, lm_head
-                        llm_state[key] = tensor
+                        proj_state[clean] = f.get_tensor(key).to(dtype)
 
         # Load vision tower
         if vt_state:
@@ -429,6 +565,9 @@ class FacialSemanticExtractor(nn.Module):
                     f"({len(missing)}): {missing[:3]}...")
             logger.info(f"[FaceBench] Loaded {len(vt_state)} vision tower "
                         f"weight tensors")
+        else:
+            logger.warning("[FaceBench] No vision tower weights found in "
+                          "checkpoint; using base CLIP weights.")
 
         # Load mm_projector
         if proj_state:
@@ -438,20 +577,6 @@ class FacialSemanticExtractor(nn.Module):
         else:
             raise RuntimeError(
                 "No mm_projector weights found in checkpoint.")
-
-        # Load LLM
-        if llm_state:
-            missing, unexpected = self.llm.load_state_dict(
-                llm_state, strict=False)
-            loaded = len(llm_state) - len(unexpected)
-            logger.info(
-                f"[FaceBench] Loaded {loaded} LLM weight tensors "
-                f"(missing={len(missing)}, unexpected={len(unexpected)})")
-            if missing and len(missing) > 5:
-                logger.warning(
-                    f"[FaceBench] LLM missing keys: {missing[:5]}...")
-        else:
-            raise RuntimeError("No LLM weights found in checkpoint.")
 
     def _build_attribute_prompt(self, dtype):
         """
@@ -546,9 +671,68 @@ class FacialSemanticExtractor(nn.Module):
             f"{len(answer_positions)} answer positions found, "
             f"yes_id={self._yes_token_id}, no_id={self._no_token_id}")
 
+    # ------------------------------------------------------------------ #
+    #  Face-LLaVA feature extraction                                       #
+    # ------------------------------------------------------------------ #
+
+    def _extract_face_llava_vision_features(self, images: torch.Tensor) -> torch.Tensor:
+        """
+        Vision-only: extract face-specialized 5120-d features.
+
+        For each micro-batch:
+          1. Vision tower -> hidden_states[-2] patch tokens (576 x 1024)
+          2. mm_projector -> projected tokens (576 x 5120)
+          3. Average pool over 576 tokens -> (5120,)
+
+        Returns: (B, 5120) face-specialized visual features.
+        """
+        import torch.nn.functional as F_func
+
+        B = images.shape[0]
+        dtype = next(self.vision_tower.parameters()).dtype
+
+        # Resize to vision tower resolution (336x336)
+        if images.shape[-1] != self._image_size or \
+                images.shape[-2] != self._image_size:
+            images = F_func.interpolate(
+                images, size=(self._image_size, self._image_size),
+                mode='bilinear', align_corners=False)
+
+        # Normalize with CLIP stats
+        images = (images - self.norm_mean) / self.norm_std
+
+        all_features = []
+        mbs = self._llava_batch_size
+
+        for i in range(0, B, mbs):
+            batch = images[i:i + mbs].to(dtype)
+
+            # 1. Vision tower forward
+            vt_out = self.vision_tower(
+                pixel_values=batch,
+                output_hidden_states=True,
+                return_dict=True,
+            )
+            hidden_states = vt_out.hidden_states[self._vision_select_layer]
+            if self._vision_select_feature == 'patch':
+                visual_tokens = hidden_states[:, 1:, :]  # skip CLS
+            else:
+                visual_tokens = hidden_states
+            # visual_tokens: (mb, 576, 1024)
+
+            # 2. MM projector
+            projected = self.mm_projector(visual_tokens)
+            # projected: (mb, 576, 5120)
+
+            # 3. Average pool over spatial tokens
+            pooled = projected.mean(dim=1)  # (mb, 5120)
+            all_features.append(pooled.float())
+
+        return torch.cat(all_features, dim=0)  # (B, 5120)
+
     def _extract_face_llava_features(self, images: torch.Tensor) -> torch.Tensor:
         """
-        Extract 211 named facial attribute scores via teacher-forced
+        Full LLM: extract 211 named facial attribute scores via teacher-forced
         single-pass inference through the full FaceBench 13B model.
 
         For each micro-batch:
@@ -565,7 +749,6 @@ class FacialSemanticExtractor(nn.Module):
         import torch.nn.functional as F_func
 
         B = images.shape[0]
-        device = images.device
         dtype = next(self.vision_tower.parameters()).dtype
 
         # Resize to vision tower resolution (336x336)
@@ -844,7 +1027,8 @@ class FacialSemanticExtractor(nn.Module):
 
         Returns:
             (B, output_dim) semantic attribute vector.
-            For face_llava: (B, 211) named attribute probabilities.
+            For face_llava vision-only: (B, output_dim) projected features.
+            For face_llava with LLM: (B, 211) named attribute probabilities.
         """
         if self.backend_name == 'precomputed':
             if precomputed_attrs is None:
@@ -858,7 +1042,11 @@ class FacialSemanticExtractor(nn.Module):
 
         with torch.no_grad():
             if self.backend_name == 'face_llava':
-                features = self._extract_face_llava_features(raw_images)
+                if self._use_llm:
+                    features = self._extract_face_llava_features(raw_images)
+                else:
+                    features = self._extract_face_llava_vision_features(
+                        raw_images)
             elif self.backend_name == 'farl':
                 x = (raw_images - self.norm_mean) / self.norm_std
                 features = self.backbone(x)
