@@ -51,8 +51,8 @@ projection_dropout:
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 256
-test_batchSize:  256
+train_batchSize: 20
+test_batchSize:  20
 workers:         8
 
 use_data_augmentation: true
@@ -152,7 +152,7 @@ causal_module:
   enabled: true
 
   # Causal warmup at epoch 0: pre-populates EMA buffers before main training.
-  causal_warmup_batches: 100   # reduced: end-to-end training compensates
+  causal_warmup_batches: 50   # reduced: end-to-end training compensates
 
   # Z_sae: full dict vectors from both SAE branches
   #   dict_size=4096 per branch → z_sae is 8192-d sparse (target_k=128 active per branch)

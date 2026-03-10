@@ -97,6 +97,7 @@ run_experiment() {
     if [[ "$MODE" == "single" ]]; then
         # ── Single GPU ────────────────────────────────────────────────────
         CUDA_VISIBLE_DEVICES="${GPUS}" \
+        PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
         TF_USE_LEGACY_KERAS=1 \
         $PYTHON training/train.py \
             --detector_path "${DETECTOR_PATH}" \
