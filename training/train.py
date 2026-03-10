@@ -269,6 +269,9 @@ def choose_optimizer(model, config):
         mod = getattr(m, attr, None)
         if mod is not None:
             _add(list(mod.parameters()), g7)
+    # Semantic gate (nn.Parameter, not a module)
+    if hasattr(m, 'semantic_gate') and isinstance(getattr(m, 'semantic_gate'), nn.Parameter):
+        _add([m.semantic_gate], g7)
 
     lr_backbone_ln = lr_cfg.get('backbone_layernorms', 1e-5)
     lr_always      = lr_cfg.get('always_trainable',    base_lr)

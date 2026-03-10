@@ -53,6 +53,53 @@ logger = logging.getLogger(__name__)
 ALL_BRANCHES = ('spatial', 'frequency')
 
 
+# ---------------------------------------------------------------------------
+# Uniformity-Alignment loss (Wang & Isola, 2020)
+# ---------------------------------------------------------------------------
+
+def uniformity_loss(x: torch.Tensor, t: float = 2.0) -> torch.Tensor:
+    """
+    Uniformity loss on the unit hypersphere.
+    Encourages features to spread evenly, preventing representation collapse.
+    L_uniform = log E_{x,y ~ P} [e^{-t * ||x - y||^2}]
+
+    Args:
+        x: (B, D) L2-normalized features
+        t: temperature (default 2.0, from Wang & Isola)
+    """
+    pdist = torch.pdist(x, p=2).pow(2)
+    return pdist.mul(-t).exp().mean().clamp(min=1e-6).log()
+
+
+def alignment_loss(x: torch.Tensor, labels: torch.Tensor,
+                   alpha: float = 2.0) -> torch.Tensor:
+    """
+    Alignment loss: pull same-class features together on the hypersphere.
+    L_align = E_{x,y ~ P+} [||x - y||^alpha]
+
+    Args:
+        x: (B, D) L2-normalized features
+        labels: (B,) integer class labels
+        alpha: distance exponent (default 2.0)
+    """
+    device = x.device
+    total = torch.zeros(1, device=device)
+    count = 0
+
+    for c in labels.unique():
+        mask = (labels == c)
+        if mask.sum() < 2:
+            continue
+        x_c = x[mask]
+        dists = torch.pdist(x_c, p=2).pow(alpha)
+        total = total + dists.sum()
+        count += len(dists)
+
+    if count == 0:
+        return torch.zeros(1, device=device)
+    return total / count
+
+
 def _zero_grad_anchor(module: nn.Module, device: torch.device) -> torch.Tensor:
     anchor = torch.zeros(1, device=device, dtype=torch.float32)
     for p in module.parameters():
@@ -121,6 +168,26 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         nn.init.zeros_(self.violation_proj_spatial_fake.weight)
         nn.init.zeros_(self.violation_proj_freq_real.weight)
         nn.init.zeros_(self.violation_proj_freq_fake.weight)
+
+        # -- Semantic Feature Gating (generalization) --------------------------
+        # Trainable sigmoid gate on semantic attributes: learns which of the
+        # 211 attributes carry universal (cross-dataset) signal vs
+        # dataset-specific noise. Initialized to 0 (sigmoid(0) = 0.5 = neutral).
+        sem_gate_cfg = config.get('semantic_gate', {})
+        self.use_semantic_gate = sem_gate_cfg.get('enabled', True) and self.use_semantic_attrs
+        if self.use_semantic_gate:
+            gate_dim = config['causal_module']['semantic_dim']
+            self.semantic_gate = nn.Parameter(torch.zeros(gate_dim))
+            logger.info(f"  Semantic gate   : {gate_dim}-d (sigmoid, init=0.5)")
+
+        # -- L2 normalization + Uniformity-Alignment loss (GenD recipe) ------
+        ua_cfg = config.get('uniformity_alignment', {})
+        self.use_ua_loss = ua_cfg.get('enabled', True)
+        self.ua_alpha = ua_cfg.get('alignment_weight', 0.1)
+        self.ua_beta = ua_cfg.get('uniformity_weight', 0.5)
+        self.use_l2_norm = ua_cfg.get('l2_normalize', True)
+        if self.use_ua_loss:
+            logger.info(f"  UA loss         : alpha={self.ua_alpha}, beta={self.ua_beta}")
 
         # -- Module 5: Classifier --------------------------------------------
         self.multitaskhead = MultiTaskHead(config)
@@ -283,6 +350,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             else:
                 semantic_attrs = data_dict.get('semantic_attrs', None)
 
+            # Apply semantic feature gate (soft selection for generalization)
+            if (self.use_semantic_gate and semantic_attrs is not None
+                    and hasattr(self, 'semantic_gate')):
+                gate = torch.sigmoid(self.semantic_gate)  # (s_dim,)
+                semantic_attrs = semantic_attrs * gate.unsqueeze(0)
+
             label = data_dict.get('label', None) if not inference else None
 
             causal_out = self.causal_module(
@@ -306,6 +379,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 + self.violation_proj_freq_fake(causal_out['residuals_freq_fake'])
             )
 
+        # L2-normalize for hyperspherical representation (GenD recipe)
+        l2_embeddings = F.normalize(classifier_input, p=2, dim=1)
+
+        # Classify on un-normalized features (GenD: normalize for UA loss only)
         task_outputs = self.classifier(classifier_input)
         cls_logits = task_outputs['classification']
         prob = torch.softmax(cls_logits, dim=1)[:, 1]
@@ -318,6 +395,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             'cls':            cls_logits,
             'prob':           prob,
             'feat':           fused_features,
+            'l2_embeddings':  l2_embeddings,
             'spatial_feat':   raw_feats.get('spatial_raw'),
             'frequency_feat': raw_feats.get('frequency_raw'),
             'z_spatial':      z_spatial,
@@ -415,6 +493,14 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                         contrastive_loss_fake = contrastive_loss_fake + (
                             self._contrastive_margin(v_f, real_mask, fake_mask, margin=1.0))
 
+        # -- Uniformity-Alignment loss (GenD recipe) --------------------------
+        ua_align = torch.zeros(1, device=device)
+        ua_uniform = torch.zeros(1, device=device)
+        if self.use_ua_loss and pred_dict.get('l2_embeddings') is not None:
+            l2_emb = pred_dict['l2_embeddings']
+            ua_align = alignment_loss(l2_emb, label, alpha=2.0)
+            ua_uniform = uniformity_loss(l2_emb, t=2.0)
+
         # SAE loss
         sae_loss = pred_dict.get('sae_loss', torch.zeros(1, device=device))
         if not isinstance(sae_loss, torch.Tensor):
@@ -438,6 +524,9 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             mod = getattr(self, attr, None)
             if mod is not None:
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(mod, device)
+        # Semantic gate is an nn.Parameter, not a module
+        if hasattr(self, 'semantic_gate') and isinstance(self.semantic_gate, nn.Parameter):
+            ddp_anchor = ddp_anchor + self.semantic_gate.sum() * 0.0
 
         # Loss weights
         w = self.loss_weights
@@ -454,6 +543,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             + w_contr                    * contrastive_loss_real
             + w_contr_fake               * contrastive_loss_fake
             + w.get('sparse', 0.0)       * sae_loss
+            + self.ua_alpha              * ua_align
+            + self.ua_beta               * ua_uniform
             + ddp_anchor
         )
 
@@ -469,6 +560,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             'contrastive_real':   _scalar(contrastive_loss_real),
             'contrastive_fake':   _scalar(contrastive_loss_fake),
             'sparse':             _scalar(sae_loss),
+            'ua_alignment':       _scalar(ua_align),
+            'ua_uniformity':      _scalar(ua_uniform),
             # Legacy keys
             'causal':             _scalar(causal_loss_real),
             'contrastive':        _scalar(contrastive_loss_real),

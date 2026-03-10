@@ -51,13 +51,18 @@ projection_dropout:
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 20
-test_batchSize:  20
-workers:         8
+train_batchSize: 64          # N pairs -> 2N frames per batch (64 frames effective)
+test_batchSize:  64
+workers:         16
 
 use_data_augmentation: true
 balance_classes:       true
-balance_target_ratio: 0.35   # tune: 0.5=full balance, 0.35=soft, 0.25=mild
+balance_target_ratio: 0.5    # paired mode: 1:1 real:fake (each pair has exactly one of each)
+
+# Source-paired training (GenD, WACV 2026):
+# Each batch contains source-matched real-fake pairs from the same video.
+# Forces the model to learn manipulation artifacts, not identity shortcuts.
+paired_training: true
 
 data_aug:
   flip_prob:        0.5   # keep — class-neutral
@@ -112,10 +117,33 @@ foundation_models:
 
 # Fusion
 fusion:
-  type:           attention 
+  type:           attention
   fused_dim:      2048
   projection_dim: 1024
   dropout:        0.3
+
+# -----------------------------------------------------------------------------
+# Uniformity-Alignment Loss (Wang & Isola, 2020 / GenD, WACV 2026)
+# -----------------------------------------------------------------------------
+# L2-normalize fused features onto unit hypersphere, then apply:
+#   L_align:   pull same-class features together
+#   L_uniform: spread all features evenly on the hypersphere
+# Prevents representation collapse and improves cross-dataset generalization.
+uniformity_alignment:
+  enabled: true
+  alignment_weight: 0.1     # alpha (GenD: 0.1 for CLIP)
+  uniformity_weight: 0.5    # beta  (GenD: 0.5 for CLIP)
+  l2_normalize: true
+
+# -----------------------------------------------------------------------------
+# Semantic Feature Gate (generalization)
+# -----------------------------------------------------------------------------
+# Trainable sigmoid gate on the 211 FaceBench attributes.
+# Learns to downweight dataset-specific attributes (background, lighting)
+# while preserving universal facial semantics (face shape, action units).
+# Initialized to sigmoid(0)=0.5 (neutral), learns during training.
+semantic_gate:
+  enabled: true
 
 # -----------------------------------------------------------------------------
 # Facial Semantic Attributes (dedicated face analysis model)
@@ -306,10 +334,10 @@ optimizer:
     beta1: 0.9
     beta2: 0.999
     eps: 0.00000001
-    weight_decay: 0.0005
+    weight_decay: 0.0001       # reduced from 0.0005 (GenD uses 0)
     amsgrad: false
   module_lr:
-    backbone_layernorms: 0.00001
+    backbone_layernorms: 0.0001  # increased from 1e-5 (GenD uses 3e-4)
     always_trainable:    0.0001
     phase_proj:          0.0003
     projection_heads:    0.0001
