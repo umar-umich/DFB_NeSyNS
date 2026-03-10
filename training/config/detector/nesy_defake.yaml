@@ -51,8 +51,8 @@ projection_dropout:
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 64          # N pairs -> 2N frames per batch (64 frames effective)
-test_batchSize:  64
+train_batchSize: 128         # N pairs -> 2N frames per batch (no 13B LLM = more VRAM for batches)
+test_batchSize:  128
 workers:         16
 
 use_data_augmentation: true
@@ -162,15 +162,20 @@ semantic_gate:
 #   'celeba_vit':  ViT fine-tuned on CelebA-40 attributes (40 interpretable).
 #   'precomputed': Pre-cached attributes from disk.
 # -----------------------------------------------------------------------------
+# Semantic attributes: use precomputed Face-LLaVA features for speed.
+# To switch back to on-the-fly extraction, change backend to 'face_llava'
+# and set use_llm: true. See precompute_semantic_features.py for details.
 semantic_attributes:
   enabled: true
-  backend: face_llava
-  model_path: /data/umar/Repos/FaceBench   # wxqlab/face-llava-v1.5-13b checkpoint
-  output_dim: 211            # 211 named FaceBench attributes (auto-set by LLM mode)
-  use_llm: true              # true=full 13B teacher-forced extraction (211 attributes)
-  fp16: true                 # use float16 for the frozen backbone
-  micro_batch_size: 16       # larger micro-batches for 13B LLM (148GB VRAM available)
-  # precomputed_dim: 73      # only for 'precomputed' backend
+  backend: precomputed        # 'precomputed' for speed, 'face_llava' for on-the-fly
+  precomputed_dim: 211        # matches Face-LLaVA 211 FaceBench attributes
+  precomputed_dir: facellava_semantic  # subdir alongside frames/ in dataset
+  output_dim: 211
+  # -- On-the-fly settings (used when backend: face_llava) --
+  model_path: /data/umar/Repos/FaceBench
+  use_llm: true
+  fp16: true
+  micro_batch_size: 16
 
 # -----------------------------------------------------------------------------
 # Module 3: Causal Discovery
@@ -197,6 +202,7 @@ causal_module:
     algorithm:        dagma_dce
     max_parents:      3
     sparsity_penalty: 0.01
+    jacobian_every_n: 4       # compute Jacobians every N steps (1=every step, 4=4x faster)
 
   dag_learning:
     hidden_dim:          128

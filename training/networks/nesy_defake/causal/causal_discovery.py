@@ -315,6 +315,8 @@ class BranchCausalPair(nn.Module):
         super().__init__()
         self.d = d
         self.branch_name = branch_name
+        self._jacobian_every_n = disc_cfg.get('jacobian_every_n', 1)
+        self._step_counter = 0
 
         self.causal_learner_real = DAGMADCELearner(
             d=d,
@@ -365,10 +367,22 @@ class BranchCausalPair(nn.Module):
         residuals_fake = x - x_hat_fake
 
         # Graph discovery (label-restricted Jacobians)
+        # Jacobian computation is expensive (128 autograd passes per graph).
+        # When jacobian_every_n > 1, we only compute Jacobians every N steps
+        # and reuse the EMA graph on intermediate steps. The EMA changes
+        # slowly, so skipping steps has minimal impact on graph quality.
         A_real = self.causal_learner_real._A_dce_ema
         A_fake = self.causal_learner_fake._A_dce_ema
 
-        if self.training and label is not None:
+        compute_jacobian = (
+            not self.training
+            or self._jacobian_every_n <= 1
+            or (self._step_counter % self._jacobian_every_n == 0)
+        )
+        if self.training:
+            self._step_counter += 1
+
+        if self.training and label is not None and compute_jacobian:
             real_mask = (label == 0)
             fake_mask = (label == 1)
 

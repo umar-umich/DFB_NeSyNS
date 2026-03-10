@@ -534,8 +534,11 @@ class Trainer(object):
             if getattr(m, 'use_semantic_attrs', False) and m.semantic_extractor is not None:
                 with torch.no_grad():
                     if m.semantic_extractor.is_precomputed:
+                        precomputed = target_dict.get('precomputed_attrs')
+                        if precomputed is None:
+                            precomputed = target_dict.get('semantic_attrs')
                         semantic_attrs = m.semantic_extractor(
-                            precomputed_attrs=target_dict.get('semantic_attrs'))
+                            precomputed_attrs=precomputed)
                     else:
                         semantic_attrs = m.semantic_extractor(
                             raw_images=target_dict.get('raw_frames'))
@@ -740,8 +743,9 @@ class Trainer(object):
         ):
             self.setTrain()
             for key in data_dict.keys():
-                if data_dict[key] is not None and key != 'name':
-                    data_dict[key] = data_dict[key].cuda(non_blocking=True)
+                val = data_dict[key]
+                if val is not None and isinstance(val, torch.Tensor) and key != 'name':
+                    data_dict[key] = val.cuda(non_blocking=True)
 
             losses, predictions = self.train_step(data_dict)
 

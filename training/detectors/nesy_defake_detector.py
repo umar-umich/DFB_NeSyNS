@@ -224,7 +224,30 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         active = active & set(ALL_BRANCHES)
         self.active_branches = active
 
+        # -- Share CLIP backbone between spatial and frequency branches --------
+        # Both load the same openai/clip-vit-large-patch14 weights. Sharing
+        # saves ~600MB VRAM and enables batched forward (2x backbone speed).
+        # Each branch keeps its own pre/post processing (FAD front-end,
+        # SafeLayerNorm, projection heads). Phase 2 shared LayerNorms adapt
+        # to both input distributions simultaneously — beneficial for
+        # generalization (see GenD: LN adaptation is distribution-agnostic).
+        self._shared_backbone = False
         fm = config['foundation_models']
+        spatial_path = fm.get('spatial', {}).get('model_path', '')
+        freq_path = fm.get('frequency', {}).get('model_path', '')
+        freq_name = fm.get('frequency', {}).get('name', '')
+        if (spatial_path == freq_path
+                and freq_name == 'fad_clip'
+                and 'spatial' in active and 'frequency' in active):
+            # Point freq extractor to spatial's backbone (shared weights)
+            self.frequency_extractor.backbone = self.spatial_extractor.backbone
+            self._shared_backbone = True
+            n_saved = sum(p.numel() for p in self.spatial_extractor.backbone.parameters())
+            logger.info(
+                f"  Shared backbone : spatial & frequency share CLIP "
+                f"({n_saved:,} params, ~{n_saved * 2 / 1e6:.0f}MB BF16 saved)")
+
+        proj_dim = fm['spatial']['output_dim']
         proj_dim = config['fusion']['projection_dim']
 
         branch_dims = {
@@ -266,17 +289,21 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             return
 
         compiled = []
+        compiled_backbone_ids = set()
         # Compile frozen CLIP vision backbones
         for attr in ('spatial_extractor', 'frequency_extractor'):
             ext = getattr(self, attr, None)
             if ext is None:
                 continue
             backbone = getattr(ext, 'backbone', None)
-            if backbone is not None and not any(
-                    p.requires_grad for p in backbone.parameters()):
+            if backbone is None or id(backbone) in compiled_backbone_ids:
+                continue  # skip shared backbone (already compiled via other branch)
+            if not any(p.requires_grad for p in backbone.parameters()):
                 try:
                     ext.backbone = torch.compile(backbone, fullgraph=False)
-                    compiled.append(f'{attr}.backbone')
+                    compiled_backbone_ids.add(id(ext.backbone))
+                    compiled.append(f'{attr}.backbone'
+                                    + (' (shared)' if self._shared_backbone else ''))
                 except Exception as e:
                     logger.warning(f"  torch.compile failed for {attr}: {e}")
 
@@ -349,10 +376,63 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
     def extract_raw_features(self, data_dict: dict) -> dict:
         raw = {}
-        if 'spatial' in self.active_branches:
-            raw['spatial_raw'] = self.spatial_extractor(data_dict['spatial_frames'])
-        if 'frequency' in self.active_branches:
-            raw['frequency_raw'] = self.frequency_extractor(data_dict['freq_frames'])
+        both_active = ('spatial' in self.active_branches
+                       and 'frequency' in self.active_branches)
+
+        if both_active and self._shared_backbone:
+            # -- Batched forward through shared CLIP backbone ------------------
+            # 1. Prepare spatial input (already CLIP-normalized by dataset)
+            spatial_input = data_dict['spatial_frames']
+            if self.spatial_extractor.needs_resize:
+                spatial_input = F.interpolate(
+                    spatial_input,
+                    size=(self.spatial_extractor.required_size,
+                          self.spatial_extractor.required_size),
+                    mode='bilinear', align_corners=False)
+
+            # 2. Prepare frequency input (FAD front-end in FP32, then
+            #    CLIP-normalize — produces images CLIP can process)
+            freq_ext = self.frequency_extractor
+            with torch.cuda.amp.autocast(enabled=False):
+                freq_input_raw = data_dict['freq_frames'].float()
+                _, _, H, W = freq_input_raw.shape
+                if H != freq_ext.required_size or W != freq_ext.required_size:
+                    freq_input_raw = F.interpolate(
+                        freq_input_raw,
+                        size=(freq_ext.required_size, freq_ext.required_size),
+                        mode='bilinear', align_corners=False)
+                freq_input = freq_ext.fad_front_end(freq_input_raw)
+
+            B = spatial_input.shape[0]
+
+            # 3. Concatenate along batch dim and run single CLIP forward
+            #    Both inputs are CLIP-ready: spatial is pre-normalized,
+            #    freq is FAD-enhanced + CLIP-normalized by FADFrontEnd
+            batched = torch.cat([spatial_input, freq_input], dim=0)
+
+            use_bf16 = torch.cuda.is_bf16_supported()
+            if use_bf16:
+                with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                    outputs = self.spatial_extractor.backbone(pixel_values=batched)
+                    pooled = outputs.pooler_output
+            else:
+                with torch.cuda.amp.autocast(enabled=False):
+                    outputs = self.spatial_extractor.backbone(
+                        pixel_values=batched.float())
+                    pooled = outputs.pooler_output
+
+            # 4. Split back into spatial and frequency features
+            raw['spatial_raw'] = pooled[:B]
+            with torch.cuda.amp.autocast(enabled=False):
+                raw['frequency_raw'] = freq_ext.freq_norm(pooled[B:].float())
+        else:
+            # -- Standard separate forward (single branch or non-shared) ------
+            if 'spatial' in self.active_branches:
+                raw['spatial_raw'] = self.spatial_extractor(
+                    data_dict['spatial_frames'])
+            if 'frequency' in self.active_branches:
+                raw['frequency_raw'] = self.frequency_extractor(
+                    data_dict['freq_frames'])
         return raw
 
     def features(self):
@@ -404,8 +484,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             # Compute semantic attributes from dedicated face analysis model
             if self.use_semantic_attrs and self.semantic_extractor is not None:
                 if self.semantic_extractor.is_precomputed:
+                    # Use precomputed Face-LLaVA features from dataset
+                    precomputed = data_dict.get('precomputed_attrs')
+                    if precomputed is None:
+                        precomputed = data_dict.get('semantic_attrs')
                     semantic_attrs = self.semantic_extractor(
-                        precomputed_attrs=data_dict.get('semantic_attrs'))
+                        precomputed_attrs=precomputed)
                 else:
                     semantic_attrs = self.semantic_extractor(
                         raw_images=data_dict.get('raw_frames'))

@@ -78,6 +78,18 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         )
         self.use_semantic = config.get('load_semantic_features', True)
 
+        # ── Precomputed Face-LLaVA semantic features ─────────────────────
+        sem_cfg = config.get('semantic_attributes', {})
+        self.use_precomputed_semantic = (
+            sem_cfg.get('backend') == 'precomputed'
+            and sem_cfg.get('enabled', False)
+        )
+        self._precomputed_subdir = sem_cfg.get(
+            'precomputed_dir', 'facellava_semantic')
+        self._precomputed_dim = sem_cfg.get('precomputed_dim', 211)
+        # Cache: video_base_dir -> {frame_idx: tensor}
+        self._precomputed_cache = {} if self.use_precomputed_semantic else None
+
         # ── Parent handles JSON parsing, image_list/label_list ────────────
         super().__init__(config, mode)
 
@@ -113,6 +125,7 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             f"\n  Augmentation      : {'ON' if aug_active else 'OFF'}"
             f"\n  Balanced sampling : {'ON' if balance_active else 'OFF'}"
             f"\n  Semantic features : {'ON' if self.use_semantic else 'OFF'}"
+            f"\n  Precomputed sem.  : {'ON (' + self._precomputed_subdir + ')' if self.use_precomputed_semantic else 'OFF'}"
             f"\n  Paired training   : {'ON' if self.paired_training else 'OFF'}"
             f"\n  Active branches   : spatial, frequency (no temporal)"
             f"\n{'='*60}\n"
@@ -222,6 +235,63 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             return np.zeros(SEMANTIC_DIM, dtype=np.float32)
 
     # ------------------------------------------------------------------ #
+    #  Precomputed Face-LLaVA feature loading                              #
+    # ------------------------------------------------------------------ #
+
+    def _load_precomputed_semantic(self, frame_path: str) -> torch.Tensor:
+        """
+        Load precomputed Face-LLaVA 211-d attributes from .pt file.
+        Returns (precomputed_dim,) tensor. Zero-vector on any failure.
+        """
+        try:
+            sep = "/" if "/" in frame_path else "\\"
+            parts = frame_path.split(sep)
+
+            if 'frames' not in parts:
+                return torch.zeros(self._precomputed_dim)
+
+            frames_idx = parts.index('frames')
+            video_name = parts[frames_idx + 1]
+            base_dir = sep.join(parts[:frames_idx])
+
+            # Cache key
+            cache_key = f"{base_dir}/{video_name}"
+            if cache_key not in self._precomputed_cache:
+                pt_path = os.path.join(
+                    base_dir, self._precomputed_subdir, f'{video_name}.pt')
+                if os.path.exists(pt_path):
+                    data = torch.load(pt_path, map_location='cpu',
+                                      weights_only=False)
+                    self._precomputed_cache[cache_key] = data
+                else:
+                    self._precomputed_cache[cache_key] = None
+
+            cached = self._precomputed_cache[cache_key]
+            if cached is None:
+                return torch.zeros(self._precomputed_dim)
+
+            features = cached['features']  # (n_frames, 211)
+            frame_paths = cached.get('frame_paths', [])
+
+            # Try to find exact frame match
+            if frame_paths:
+                frame_filename = parts[-1]
+                for idx, fp in enumerate(frame_paths):
+                    if fp.endswith(frame_filename):
+                        return features[idx]
+
+            # Fallback: index by frame number
+            frame_filename = parts[-1]
+            frame_num = int(os.path.splitext(frame_filename)[0])
+            if frame_num < features.shape[0]:
+                return features[frame_num]
+
+            return torch.zeros(self._precomputed_dim)
+
+        except Exception:
+            return torch.zeros(self._precomputed_dim)
+
+    # ------------------------------------------------------------------ #
     #  Single-frame loading helper                                         #
     # ------------------------------------------------------------------ #
 
@@ -251,13 +321,20 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
         semantic_attrs = self._load_semantic_for_frame(frame_path, index)
 
+        # Precomputed Face-LLaVA features (loaded alongside old semantic)
+        if self.use_precomputed_semantic:
+            precomputed_attrs = self._load_precomputed_semantic(frame_path)
+        else:
+            precomputed_attrs = torch.zeros(1)  # placeholder
+
         return {
-            "spatial_frames": spatial_frames,
-            "freq_frames":    freq_frames,
-            "raw_frames":     raw_frames,
-            "semantic_attrs": torch.from_numpy(semantic_attrs),
-            "label":          label,
-            "name":           frame_path,
+            "spatial_frames":    spatial_frames,
+            "freq_frames":       freq_frames,
+            "raw_frames":        raw_frames,
+            "semantic_attrs":    torch.from_numpy(semantic_attrs),
+            "precomputed_attrs": precomputed_attrs,
+            "label":             label,
+            "name":              frame_path,
         }
 
     # ------------------------------------------------------------------ #
@@ -337,16 +414,23 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
                                        dtype=torch.long)
         names          = [s["name"] for s in batch]
 
+        # Precomputed Face-LLaVA attributes (if available)
+        precomputed_attrs = None
+        if "precomputed_attrs" in batch[0]:
+            precomputed_attrs = torch.stack(
+                [s["precomputed_attrs"] for s in batch])
+
         return {
-            "spatial_frames": spatial_frames,
-            "freq_frames":    freq_frames,
-            "raw_frames":     raw_frames,
-            "semantic_attrs": semantic_attrs,
-            "label":          labels,
-            "name":           names,
+            "spatial_frames":    spatial_frames,
+            "freq_frames":       freq_frames,
+            "raw_frames":        raw_frames,
+            "semantic_attrs":    semantic_attrs,
+            "precomputed_attrs": precomputed_attrs,
+            "label":             labels,
+            "name":              names,
             # Compatibility keys
-            "landmark":       None,
-            "mask":           None,
+            "landmark":          None,
+            "mask":              None,
         }
 
     # ------------------------------------------------------------------ #

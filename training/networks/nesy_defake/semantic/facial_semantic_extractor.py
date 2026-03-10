@@ -1008,8 +1008,12 @@ class FacialSemanticExtractor(nn.Module):
         self.register_buffer('norm_mean', torch.zeros(1))
         self.register_buffer('norm_std', torch.ones(1))
 
-        self._attr_names = [f'precomputed_{i}'
-                            for i in range(self._output_dim)]
+        # Use FaceBench attribute names if dim matches (211)
+        if input_dim == len(FACEBENCH_ATTRIBUTES):
+            self._attr_names = list(FACEBENCH_ATTRIBUTES)
+        else:
+            self._attr_names = [f'precomputed_{i}'
+                                for i in range(self._output_dim)]
         logger.info(
             f"[Precomputed] input_dim={input_dim} -> "
             f"output_dim={self._output_dim}")
