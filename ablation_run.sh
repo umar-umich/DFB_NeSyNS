@@ -58,7 +58,7 @@ mkdir -p "${LOG_DIR}"
 # ── Experiment definitions ────────────────────────────────────────────────────
 # Format: "TAG|branch1 branch2 ..."
 declare -a EXPERIMENTS=(
-    "S_F|spatial frequency"
+    "S|spatial"
 )
     # "T|temporal"
     # "S|spatial"

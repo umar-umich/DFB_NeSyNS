@@ -111,12 +111,17 @@ def collect_videos_from_json(config):
                             continue
 
                         # Determine output directory from frame path
+                        # Handles both 'frames/' and 'frames_aug_N/' directories
                         sample_frame = frames[0]
                         sep = '/' if '/' in sample_frame else '\\'
                         parts = sample_frame.split(sep)
-                        if 'frames' in parts:
-                            frames_idx = parts.index('frames')
-                            base_dir = sep.join(parts[:frames_idx])
+                        frames_dir_idx = None
+                        for pi, part in enumerate(parts):
+                            if part == 'frames' or part.startswith('frames_aug_'):
+                                frames_dir_idx = pi
+                                break
+                        if frames_dir_idx is not None:
+                            base_dir = sep.join(parts[:frames_dir_idx])
                         else:
                             base_dir = os.path.dirname(
                                 os.path.dirname(sample_frame))

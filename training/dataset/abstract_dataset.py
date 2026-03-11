@@ -192,9 +192,9 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         for label in dataset_info[dataset_name]:
             sub_dataset_info = dataset_info[dataset_name][label][self.mode]
             # Special case for FaceForensics++ and DeepFakeDetection, choose the compression type
-            if cp == None and dataset_name in ['FF-DF', 'FF-F2F', 'FF-FS', 'FF-NT', 'FaceForensics++','DeepFakeDetection','FaceShifter']:
+            if cp == None and dataset_name in ['FF-DF', 'FF-F2F', 'FF-FS', 'FF-NT', 'FaceForensics++','FaceForensics++_augmented','DeepFakeDetection','FaceShifter']:
                 sub_dataset_info = sub_dataset_info[self.compression]
-            elif cp == 'c40' and dataset_name in ['FF-DF', 'FF-F2F', 'FF-FS', 'FF-NT', 'FaceForensics++','DeepFakeDetection','FaceShifter']:
+            elif cp == 'c40' and dataset_name in ['FF-DF', 'FF-F2F', 'FF-FS', 'FF-NT', 'FaceForensics++','FaceForensics++_augmented','DeepFakeDetection','FaceShifter']:
                 sub_dataset_info = sub_dataset_info['c40']
 
             # Iterate over the videos in the dataset

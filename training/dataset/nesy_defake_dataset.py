@@ -141,17 +141,25 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
         For FF++ fake videos like "802_885", the source video is "802".
         For real videos like "929", returns "929".
+        For augmented real videos like "929_aug1", returns "929".
         For non-FF++ datasets, returns None (pairing not available).
         """
         sep = "/" if "/" in frame_path else "\\"
         parts = frame_path.split(sep)
-        if 'frames' not in parts:
-            return None
-        frames_idx = parts.index('frames')
-        if frames_idx + 1 >= len(parts):
+
+        # Find frames directory (handles 'frames' and 'frames_aug_N')
+        frames_idx = None
+        for pi, part in enumerate(parts):
+            if part == 'frames' or part.startswith('frames_aug_'):
+                frames_idx = pi
+                break
+        if frames_idx is None or frames_idx + 1 >= len(parts):
             return None
         video_name = parts[frames_idx + 1]
 
+        # Augmented real video names: "929_aug1" -> source is "929"
+        if '_aug' in video_name:
+            return video_name.split('_aug')[0]
         # Fake video names have format "source_target" (e.g., "802_885")
         if '_' in video_name:
             return video_name.split('_')[0]
@@ -209,8 +217,13 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             sep = "/" if "/" in frame_path else "\\"
             parts = frame_path.split(sep)
 
-            if 'frames' in parts:
-                frames_idx = parts.index('frames')
+            # Find frames directory (handles 'frames' and 'frames_aug_N')
+            frames_idx = None
+            for pi, part in enumerate(parts):
+                if part == 'frames' or part.startswith('frames_aug_'):
+                    frames_idx = pi
+                    break
+            if frames_idx is not None:
                 video_name = parts[frames_idx + 1]
                 npz_parts = parts[:frames_idx] + ['semantic_features', f'{video_name}.npz']
                 npz_path = sep.join(npz_parts)
@@ -241,16 +254,22 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
     def _load_precomputed_semantic(self, frame_path: str) -> torch.Tensor:
         """
         Load precomputed Face-LLaVA 211-d attributes from .pt file.
+        Handles both 'frames/' and 'frames_aug_N/' directories.
         Returns (precomputed_dim,) tensor. Zero-vector on any failure.
         """
         try:
             sep = "/" if "/" in frame_path else "\\"
             parts = frame_path.split(sep)
 
-            if 'frames' not in parts:
+            # Find the frames directory (handles 'frames' and 'frames_aug_N')
+            frames_idx = None
+            for pi, part in enumerate(parts):
+                if part == 'frames' or part.startswith('frames_aug_'):
+                    frames_idx = pi
+                    break
+            if frames_idx is None:
                 return torch.zeros(self._precomputed_dim)
 
-            frames_idx = parts.index('frames')
             video_name = parts[frames_idx + 1]
             base_dir = sep.join(parts[:frames_idx])
 

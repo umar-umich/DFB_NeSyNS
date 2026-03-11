@@ -490,3 +490,15 @@ torchrun --nproc_per_node=4 training/train.py \
 - **BatchTopK SAE** (Bussmann et al., 2024): Direct sparsity control without L1 tuning
 - **DAGMA-DCE** (Bello et al., 2022): Differentiable causal structure learning with acyclicity constraint
 - **Wang & Isola (2020)**: Uniformity and alignment on the hypersphere
+
+
+Correct order:
+  # Step 1: Augment real frames (creates images + augmented JSON)
+  python training/augment_real_frames.py --detector_path training/config/detector/nesy_defake.yaml --n_augmentations 3 --workers 16
+  --skip_existing
+
+  # Step 2: Update config train_dataset to [FaceForensics++_augmented]
+
+  # Step 3: Precompute features for ALL frames (skips already-done originals)
+  python training/precompute_semantic_features.py --detector_path training/config/detector/nesy_defake.yaml --batch_size 32
+  --skip_existing --device cuda:1
