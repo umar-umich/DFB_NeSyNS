@@ -102,10 +102,22 @@ def collect_videos_from_json(config):
         for top_key, top_val in data.items():
             for label_key, label_val in top_val.items():
                 for mode_key, mode_val in label_val.items():
-                    if compression not in mode_val:
+                    # Support two JSON layouts:
+                    #   FF++ style:    mode_val = {c23: {video_id: {frames:[...]}}}
+                    #   CelebDF style: mode_val = {video_id: {frames: [...]}}
+                    # Detect by checking if the first value has a 'frames' key directly.
+                    first_val = next(iter(mode_val.values()), {})
+                    if isinstance(first_val, dict) and 'frames' in first_val:
+                        # CelebDF-style: no compression level
+                        video_items = mode_val.items()
+                    elif compression in mode_val:
+                        # FF++-style: compression level present
+                        video_items = mode_val[compression].items()
+                    else:
+                        # Unknown structure or wrong compression key — skip
                         continue
-                    comp_val = mode_val[compression]
-                    for video_id, video_data in comp_val.items():
+
+                    for video_id, video_data in video_items:
                         frames = video_data.get('frames', [])
                         if not frames:
                             continue

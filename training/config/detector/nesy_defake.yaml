@@ -51,8 +51,8 @@ projection_dropout:
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 64         # N pairs -> 2N frames per batch (no 13B LLM = more VRAM for batches)
-test_batchSize:  64
+train_batchSize: 128         # N pairs -> 2N frames per batch (no 13B LLM = more VRAM for batches)
+test_batchSize:  128
 workers:         8
 
 use_data_augmentation: true
@@ -178,6 +178,37 @@ semantic_attributes:
   micro_batch_size: 16
 
 # -----------------------------------------------------------------------------
+# NeSy Change 1: Causal Violation Attention Fusion
+# -----------------------------------------------------------------------------
+# The fused CLIP features (query) attend over the 4 causal violation residuals
+# (keys/values), dynamically selecting which violations are most informative.
+# Full residual info preserved (values = full proj_dim), no lossy compression.
+# Interpretable: per-sample (B,4) attention weights log which violation type
+# (spatial_real/fake, freq_real/fake) the model relies on most.
+causal_attention:
+  attn_dim: 256   # query/key projection dimension for attention scoring
+
+# -----------------------------------------------------------------------------
+# NeSy Change 2: Concept Prediction Head
+# -----------------------------------------------------------------------------
+# Maps gated semantic attrs → per-attribute violation probability [0,1].
+# Supervised by real SCM residuals on fake faces: which attributes the real
+# causal model fails to reconstruct → those attributes were manipulated.
+# Interpretable: after training, high activations = manipulated face concepts.
+concept_prediction:
+  enabled: true
+  hidden_dim: 128
+
+# -----------------------------------------------------------------------------
+# NeSy Change 3: Graph Divergence (Cross-Reconstruction)
+# -----------------------------------------------------------------------------
+# Real SCM must have HIGH residuals on fake faces (can't explain them).
+# Fake SCM must have HIGH residuals on real faces (can't explain them).
+# Prevents both SCMs collapsing to the same solution.
+graph_divergence:
+  enabled: true
+
+# -----------------------------------------------------------------------------
 # Module 3: Causal Discovery
 # -----------------------------------------------------------------------------
 causal_module:
@@ -295,40 +326,56 @@ loss_func:
   causal_consistency:     violation_penalty
   sparse_penalty:         l1_norm
   weights:
-    classification: 1.0
-    uncertainty:    0.5
-    causal:         0.01    # start small, ramped up by loss_warmup schedule
-    sparse:         0.01    # start small, ramped up by loss_warmup schedule
-    contrastive:    0.01    # start small, ramped up by loss_warmup schedule
+    classification:     1.0
+    uncertainty:        0.0    # disabled: conflicts with classification gradient
+    causal:             0.01   # start small, ramped up by loss_warmup schedule
+    sparse:             0.01   # start small, ramped up by loss_warmup schedule
+    contrastive:        0.0    # disabled: saturates quickly, adds noise
+    graph_divergence:   0.0    # disabled: adversarial mini-max destabilizes training
+    concept_prediction: 0.0    # disabled: circular targets from untrained SCMs
 
 # Loss weight warm-up: linear ramp so all modules learn jointly from epoch 0
 # without any single loss dominating early training.
+# Loss weight warm-up: only active losses get warmup.
+# Disabled losses (contrastive, graph_divergence, concept_prediction) have
+# weight=0 above so warmup entries here are no-ops but kept for re-enablement.
 loss_warmup:
   causal:
     start_epoch: 0
     end_epoch: 10
     start_weight: 0.01
-    end_weight: 0.3
-  contrastive:
-    start_epoch: 0
-    end_epoch: 10
-    start_weight: 0.01
-    end_weight: 0.3
+    end_weight: 0.2       # reduced from 0.3 — let classification dominate
   causal_fake:
     start_epoch: 0
     end_epoch: 10
     start_weight: 0.005
-    end_weight: 0.15
+    end_weight: 0.1       # reduced from 0.15
+  sparse:
+    start_epoch: 0
+    end_epoch: 10
+    start_weight: 0.01
+    end_weight: 0.1       # reduced from 0.15
+  # Disabled losses — kept for future re-enablement
+  contrastive:
+    start_epoch: 0
+    end_epoch: 10
+    start_weight: 0.0
+    end_weight: 0.0
   contrastive_fake:
     start_epoch: 0
     end_epoch: 10
-    start_weight: 0.005
-    end_weight: 0.15
-  sparse:
-    start_epoch: 0
-    end_epoch: 5
-    start_weight: 0.01
-    end_weight: 0.1
+    start_weight: 0.0
+    end_weight: 0.0
+  graph_divergence:
+    start_epoch: 2
+    end_epoch: 15
+    start_weight: 0.0
+    end_weight: 0.0
+  concept_prediction:
+    start_epoch: 2
+    end_epoch: 15
+    start_weight: 0.0
+    end_weight: 0.0
 
 # -----------------------------------------------------------------------------
 # Optimizer
@@ -384,14 +431,16 @@ training_phases:
 
   # ─────────────────────────────────────────────────────────────────────────
   # Phase 2 — Full end-to-end with GenD-style LN adaptation
-  #   Unfreeze backbone LayerNorms. All modules continue joint training.
-  #   Loss weights reach full values by epoch 10.
+  #   LN adaptation is GenD's key CelebDF generalization driver. Starting
+  #   earlier (epoch 5) gives the model more epochs to adapt representations
+  #   for cross-dataset shift. The causal gate (init≈0.05) protects the CLIP
+  #   signal from noisy causal deltas during early LN adaptation.
   # ─────────────────────────────────────────────────────────────────────────
   phase2:
     epochs:         [5, 50]
     freeze_modules: []
     train_modules:  [all]
-    description:    "Unfreeze backbone LNs. Full end-to-end training. Loss warmup completes by epoch 10."
+    description:    "Unfreeze backbone LNs at epoch 5. Causal gate protects CLIP signal."
 
 # -----------------------------------------------------------------------------
 # Metrics & interpretability
@@ -422,5 +471,5 @@ checkpoint:
 # Early stopping: stop if no improvement for patience epochs
 early_stopping:
   enabled: true
-  patience: 15                  # epochs without avg AUC improvement
+  patience: 20                  # give more room after Phase 2 starts at epoch 15
   min_delta: 0.001              # minimum improvement to reset patience

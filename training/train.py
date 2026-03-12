@@ -265,13 +265,18 @@ def choose_optimizer(model, config):
     for attr in ('causal_module', 'sparse_ae',
                  'violation_proj_spatial_real', 'violation_proj_spatial_fake',
                  'violation_proj_freq_real', 'violation_proj_freq_fake',
-                 'semantic_extractor'):
+                 'semantic_extractor',
+                 'causal_attn_fusion',   # NeSy-1: was missing — weights never updated
+                 'concept_head',          # NeSy-2: was missing — weights never updated
+                 ):
         mod = getattr(m, attr, None)
         if mod is not None:
             _add(list(mod.parameters()), g7)
-    # Semantic gate (nn.Parameter, not a module)
+    # Semantic gate + causal gate (nn.Parameter, not modules)
     if hasattr(m, 'semantic_gate') and isinstance(getattr(m, 'semantic_gate'), nn.Parameter):
         _add([m.semantic_gate], g7)
+    if hasattr(m, 'causal_gate') and isinstance(getattr(m, 'causal_gate'), nn.Parameter):
+        _add([m.causal_gate], g7)
 
     lr_backbone_ln = lr_cfg.get('backbone_layernorms', 1e-5)
     lr_always      = lr_cfg.get('always_trainable',    base_lr)
