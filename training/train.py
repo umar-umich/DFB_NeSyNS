@@ -261,13 +261,12 @@ def choose_optimizer(model, config):
         _add(list(m.multitaskhead.parameters()), g6)
 
     # Group 7: Optional modules (always built at init for phase-transition activation)
+    # Note: causal_module includes causal_semantic (Part A) as a sub-module,
+    # so its parameters are automatically included via causal_module.parameters().
     g7 = []
     for attr in ('causal_module', 'sparse_ae',
-                 'violation_proj_spatial_real', 'violation_proj_spatial_fake',
-                 'violation_proj_freq_real', 'violation_proj_freq_fake',
                  'semantic_extractor',
-                 'causal_attn_fusion',   # NeSy-1: was missing — weights never updated
-                 'concept_head',          # NeSy-2: was missing — weights never updated
+                 'causal_attn_fusion',
                  ):
         mod = getattr(m, attr, None)
         if mod is not None:

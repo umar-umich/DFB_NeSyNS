@@ -29,7 +29,7 @@ set -euo pipefail
 # ── Configurable paths ────────────────────────────────────────────────────────
 DETECTOR_PATH="./training/config/detector/nesy_defake.yaml"
 RESULTS_DIR="./ablation_results"
-LOG_DIR="${RESULTS_DIR}/logs_5"
+LOG_DIR="${RESULTS_DIR}/logs_6_wo_causal"
 PYTHON="python"          # or "python3"
 TORCHRUN="torchrun"
 
@@ -58,7 +58,7 @@ mkdir -p "${LOG_DIR}"
 # ── Experiment definitions ────────────────────────────────────────────────────
 # Format: "TAG|branch1 branch2 ..."
 declare -a EXPERIMENTS=(
-    "S|spatial"
+    "S_F|spatial frequency"
 )
     # "T|temporal"
     # "S|spatial"

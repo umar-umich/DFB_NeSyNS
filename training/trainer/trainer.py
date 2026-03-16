@@ -1005,6 +1005,21 @@ class Trainer(object):
         synchronize()
 
         self.logger.info('===> Test Done!')
+
+        # -- Graph visualization (Part C) --
+        if is_main_process():
+            interp = self.config.get('interpretability', {})
+            viz_every = interp.get('graph_viz_every_n_epochs', 5)
+            if interp.get('save_causal_graphs', False) and epoch % viz_every == 0:
+                m = self.model.module if isinstance(self.model, DDP) else self.model
+                if hasattr(m, 'causal_module') and getattr(m, 'use_causal', False):
+                    try:
+                        from detectors.utils.graph_visualization import save_all_causal_graphs
+                        top_k = interp.get('graph_viz_top_k', 20)
+                        save_all_causal_graphs(m.causal_module, self.log_dir, epoch, top_k=top_k)
+                    except Exception as e:
+                        self.logger.warning(f"Graph visualization failed: {e}")
+
         return self.best_metrics_all_time
 
     @torch.no_grad()

@@ -1,12 +1,13 @@
 # =============================================================================
-# NeSyDeFake Hybrid Detector — Configuration (FRAME-LEVEL + SAE, Step 5b)
+# NeSyDeFake Hybrid Detector — Configuration (v4 — cleaned up)
 # =============================================================================
-# Changelog (Step 5b — SAE integration):
-#   - sparse_features.enabled: true (SAE now active)
-#   - Added: dict_size, target_k, dead_feature_window, aux_loss_coeff, normalize_inputs
-#   - SAE operates on raw CLIP features (pre-projection, 1024-d)
-#   - SAE loss weight: 0.1 (tunable — start low so SAE doesn't dominate early)
-#   - Added SAE to optimizer (optional_modules group, base LR)
+# v4 changes:
+#   - Removed dead modules: ViolationScorer, ConceptPredictionHead,
+#     contrastive loss, graph divergence, uncertainty head
+#   - Causal gate init raised: -3.0 → 0.0 (sigmoid=0.5)
+#   - SAE dict_size: 4096 → 1024 (fix 95% dead features)
+#   - Classifier simplified to classification-only
+#   - Loss landscape: classification + causal_structural + sparse + UA + causal_semantic
 # =============================================================================
 
 log_dir: /data/umar/Repos/DFB_NeSyNS/logs_debug/nesydefake_hybrid
@@ -40,7 +41,7 @@ resolution:    224
 with_mask:     false
 with_landmark: false
 
-load_semantic_features: false   # Replaced by on-the-fly CLIP facial attributes
+load_semantic_features: false
 
 class_weights: [1.0, 1.0]
 
@@ -51,29 +52,27 @@ projection_dropout:
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 128         # N pairs -> 2N frames per batch (no 13B LLM = more VRAM for batches)
+train_batchSize: 128
 test_batchSize:  128
 workers:         8
 
 use_data_augmentation: true
 balance_classes:       true
-balance_target_ratio: 0.5    # paired mode: 1:1 real:fake (each pair has exactly one of each)
+balance_target_ratio: 0.5
 
-# Source-paired training (GenD, WACV 2026):
-# Each batch contains source-matched real-fake pairs from the same video.
-# Forces the model to learn manipulation artifacts, not identity shortcuts.
+# Source-paired training (GenD, WACV 2026)
 paired_training: true
 
 data_aug:
-  flip_prob:        0.5   # keep — class-neutral
-  rotate_prob:      0.3   # keep but reduce slightly
+  flip_prob:        0.5
+  rotate_prob:      0.3
   rotate_limit:     [-10, 10]
-  blur_prob:        0.1   # reduce from 0.5 — blur mimics fake compression artifacts
-  blur_limit:       [3, 5]  # reduce max kernel
-  brightness_prob:  0.5   # keep — class-neutral
+  blur_prob:        0.1
+  blur_limit:       [3, 5]
+  brightness_prob:  0.5
   brightness_limit: [-0.1, 0.1]
   contrast_limit:   [-0.1, 0.1]
-  quality_lower:    80    # raise floor significantly — low quality = fake artifact
+  quality_lower:    80
   quality_upper:    100
 
 mean: [0.5, 0.5, 0.5]
@@ -89,9 +88,6 @@ foundation_models:
     model_path:      openai/clip-vit-large-patch14
     output_dim:      1024
     freeze_backbone: true
-    # Phase 1: train_layernorms=false → true hard freeze (backbone + LNs frozen).
-    # The trainer calls unfreeze_layernorms() at phase2_start, which is when LNs
-    # actually start training (GenD-style: LN-only adaptation for generalization).
     train_layernorms: false
     normalization:
       mean: [0.481, 0.458, 0.408]
@@ -102,9 +98,6 @@ foundation_models:
     model_path:       openai/clip-vit-large-patch14
     output_dim:       1024
     freeze_backbone:  true
-    # Phase 1: same hard freeze as spatial. The FAD front-end (DCT filters,
-    # emphasis weights) is ALWAYS trainable regardless of this flag — it is
-    # not part of the pretrained backbone and must adapt from epoch 0.
     train_layernorms: false
     fad_mode:         single
     fad_learnable:    true
@@ -125,115 +118,65 @@ fusion:
 # -----------------------------------------------------------------------------
 # Uniformity-Alignment Loss (Wang & Isola, 2020 / GenD, WACV 2026)
 # -----------------------------------------------------------------------------
-# L2-normalize fused features onto unit hypersphere, then apply:
-#   L_align:   pull same-class features together
-#   L_uniform: spread all features evenly on the hypersphere
-# Prevents representation collapse and improves cross-dataset generalization.
 uniformity_alignment:
   enabled: true
-  alignment_weight: 0.1     # alpha (GenD: 0.1 for CLIP)
-  uniformity_weight: 0.5    # beta  (GenD: 0.5 for CLIP)
+  alignment_weight: 0.1
+  uniformity_weight: 0.5
   l2_normalize: true
 
 # -----------------------------------------------------------------------------
 # Semantic Feature Gate (generalization)
 # -----------------------------------------------------------------------------
-# Trainable sigmoid gate on the 211 FaceBench attributes.
-# Learns to downweight dataset-specific attributes (background, lighting)
-# while preserving universal facial semantics (face shape, action units).
-# Initialized to sigmoid(0)=0.5 (neutral), learns during training.
 semantic_gate:
   enabled: true
 
 # -----------------------------------------------------------------------------
-# Facial Semantic Attributes (dedicated face analysis model)
+# Facial Semantic Attributes (precomputed Face-LLaVA)
 # -----------------------------------------------------------------------------
-# Extracted by an INDEPENDENT pre-trained face model (not derived from
-# spatial CLIP features). Provides genuinely new semantic information
-# to the causal discovery module.
-#
-# Backends:
-#   'face_llava':  FaceBench Face-LLaVA-v1.5-13B (CVPR 2025).
-#                  211 facial attributes across 5 views. Only loads
-#                  vision tower (CLIP-ViT-L@336) + mm_projector (~1.2GB).
-#                  HuggingFace: wxqlab/face-llava-v1.5-13b
-#   'farl':        FaRL ViT-B/16 (CVPR 2022), pre-trained on 20M faces.
-#                  Download: https://github.com/FacePerceiver/FaRL
-#   'celeba_vit':  ViT fine-tuned on CelebA-40 attributes (40 interpretable).
-#   'precomputed': Pre-cached attributes from disk.
-# -----------------------------------------------------------------------------
-# Semantic attributes: use precomputed Face-LLaVA features for speed.
-# To switch back to on-the-fly extraction, change backend to 'face_llava'
-# and set use_llm: true. See precompute_semantic_features.py for details.
 semantic_attributes:
   enabled: true
-  backend: precomputed        # 'precomputed' for speed, 'face_llava' for on-the-fly
-  precomputed_dim: 211        # matches Face-LLaVA 211 FaceBench attributes
-  precomputed_dir: facellava_semantic  # subdir alongside frames/ in dataset
+  backend: precomputed
+  precomputed_dim: 211
+  precomputed_dir: facellava_semantic
   output_dim: 211
-  # -- On-the-fly settings (used when backend: face_llava) --
   model_path: /data/umar/Repos/FaceBench
   use_llm: true
   fp16: true
   micro_batch_size: 16
 
 # -----------------------------------------------------------------------------
-# NeSy Change 1: Causal Violation Attention Fusion
+# Causal Attention Fusion
 # -----------------------------------------------------------------------------
-# The fused CLIP features (query) attend over the 4 causal violation residuals
-# (keys/values), dynamically selecting which violations are most informative.
-# Full residual info preserved (values = full proj_dim), no lossy compression.
-# Interpretable: per-sample (B,4) attention weights log which violation type
-# (spatial_real/fake, freq_real/fake) the model relies on most.
+# The fused CLIP features (query) attend over the 4 causal residuals
+# (keys/values), dynamically selecting which are most informative.
 causal_attention:
-  attn_dim: 256   # query/key projection dimension for attention scoring
-
-# -----------------------------------------------------------------------------
-# NeSy Change 2: Concept Prediction Head
-# -----------------------------------------------------------------------------
-# Maps gated semantic attrs → per-attribute violation probability [0,1].
-# Supervised by real SCM residuals on fake faces: which attributes the real
-# causal model fails to reconstruct → those attributes were manipulated.
-# Interpretable: after training, high activations = manipulated face concepts.
-concept_prediction:
-  enabled: true
-  hidden_dim: 128
-
-# -----------------------------------------------------------------------------
-# NeSy Change 3: Graph Divergence (Cross-Reconstruction)
-# -----------------------------------------------------------------------------
-# Real SCM must have HIGH residuals on fake faces (can't explain them).
-# Fake SCM must have HIGH residuals on real faces (can't explain them).
-# Prevents both SCMs collapsing to the same solution.
-graph_divergence:
-  enabled: true
+  attn_dim: 256
 
 # -----------------------------------------------------------------------------
 # Module 3: Causal Discovery
 # -----------------------------------------------------------------------------
 causal_module:
-  # End-to-end: causal module trains from epoch 0 with loss weight warm-up.
-  # Gradients flow back through causal module to SAE and backbone.
-  enabled: true
+  enabled: false
+  causal_warmup_batches: 50
 
-  # Causal warmup at epoch 0: pre-populates EMA buffers before main training.
-  causal_warmup_batches: 50   # reduced: end-to-end training compensates
-
-  # Per-branch causal discovery: each branch (spatial, freq) has its own
-  # pair of real/fake graphs operating on [z_branch_active, semantic_attrs].
-  #   Spatial: 4096 sparse → z_spatial_dim dense, concat semantic → d_spatial
-  #   Freq:    4096 sparse → z_frequency_dim dense, concat semantic → d_freq
   latent_variables:
-    z_spatial_dim:    128    # per-branch dense active features (4096 sparse → 128 dense)
+    z_spatial_dim:    128
     z_frequency_dim:  128
 
-  semantic_dim: 211          # auto-overridden by FacialSemanticExtractor.output_dim at init
+  semantic_dim: 211
 
   discovery:
-    algorithm:        dagma_dce
-    max_parents:      3
-    sparsity_penalty: 0.01
-    jacobian_every_n: 4       # compute Jacobians every N steps (1=every step, 4=4x faster)
+    algorithm:              dagma_dce
+    max_parents:            3
+    sparsity_penalty:       0.01
+    jacobian_every_n:       4
+    enforce_directionality: true    # Part B: block latent→semantic edges
+
+  # Part A: Intra-semantic causal graph (211-node SCM pair)
+  semantic_graph:
+    enabled:    true
+    hidden_dim: 64
+    num_layers: 2
 
   dag_learning:
     hidden_dim:          128
@@ -243,49 +186,23 @@ causal_module:
 
 # -----------------------------------------------------------------------------
 # Module 4: Sparse Monosemantic Features (SAE)
-# =============================================================================
-# Architecture: Per-branch BatchTopK SAE
-#   - Spatial CLIP (1024) -> dict_size=4096, target_k=128 active features
-#   - Frequency CLIP (1024) -> dict_size=4096, target_k=128 active features
-#
-# BatchTopK (Bussmann et al., 2024):
-#   - Selects top (k * batch_size) activations across the batch
-#   - Average ~128 active per sample, but adaptive per-sample
-#   - No L1 coefficient tuning needed (direct sparsity control)
-#
-# Training: Joint with detector (SAE loss added to total loss).
-#   - SAE loss = variance-normalized MSE + (1/32) * dead_feature_aux
-#   - Loss weight 0.1 initially — tune up if reconstruction degrades
-#
-# Decoder normalization: Unit-norm columns, enforced after each optimizer step.
-#   - Trainer calls model.sparse_ae.normalize_decoder_weights() post-step.
-# =============================================================================
+# -----------------------------------------------------------------------------
+# v4: Reduced dict_size 4096→1024 to fix 95% dead features.
+# With 1024 features and target_k=128, ~12.5% are active per sample,
+# making it much harder for features to die.
 sparse_features:
-  enabled: true   # SAE trains jointly from Phase 1; loss weight controlled by loss_func.weights.sparse
+  enabled: false
   per_branch: false
-
-  # Dictionary size: 4x expansion is standard (Anthropic, OpenAI, DeepMind)
-  # 1024 * 4 = 4096 features per branch
-  dict_size: 4096
-
-  # Target active features per sample per branch
-  # 128 = ~3% of dict_size (4096) — good sparsity for interpretability
+  dict_size: 1024              # was 4096 — 95% dead features
   target_k: 128
-
-  # Features inactive for this many batches get auxiliary loss to revive them
   dead_feature_window: 200
-
-  # Auxiliary loss coefficient (1/32 is standard from OpenAI TopK paper)
-  aux_loss_coeff: 0.2 #0.03125
-
-  # LayerNorm CLIP features before SAE (recommended: CLIP features have
-  # high variance across dimensions, LN makes SAE training more stable)
+  aux_loss_coeff: 0.2
   normalize_inputs: true
 
-  # Legacy config (kept for backward compat, overridden by above)
+  # Legacy config (kept for backward compat)
   sparse_autoencoder:
     input_dim:              1024
-    expansion_factor:       4
+    expansion_factor:       1       # updated to match dict_size=1024
     sparsity_penalty:       0.05
     l1_coefficient:         0.001
     target_active_features: 128
@@ -294,88 +211,55 @@ sparse_features:
     top_k_features:       10
 
 # -----------------------------------------------------------------------------
-# Module 5: Multi-task Classifier
+# Module 5: Classifier (classification only)
 # -----------------------------------------------------------------------------
 classifier:
   type:       multi_task
-  input_dim:  1024       # matches fusion.projection_dim (classifier sees fused features)
+  input_dim:  1024
 
   tasks:
     - name:        classification
       type:        binary
       output_dim:  2
       loss_weight: 1.0
-    - name:        uncertainty
-      type:        regression
-      output_dim:  1
-      loss_weight: 0.5
-    - name:        violation_score
-      type:        regression
-      output_dim:  1
-      loss_weight: 0.3
 
   hidden_dims: [512, 256]
-  dropout:     0.4
+  dropout:     0.3              # reduced from 0.4
 
 # -----------------------------------------------------------------------------
-# Loss function
+# Loss function (v4: cleaned up — only active losses)
 # -----------------------------------------------------------------------------
 loss_func:
   classification:         cross_entropy
-  probabilistic_circuits: expected_calibration_error
-  causal_consistency:     violation_penalty
   sparse_penalty:         l1_norm
   weights:
     classification:     1.0
-    uncertainty:        0.0    # disabled: conflicts with classification gradient
-    causal:             0.01   # start small, ramped up by loss_warmup schedule
-    sparse:             0.01   # start small, ramped up by loss_warmup schedule
-    contrastive:        0.0    # disabled: saturates quickly, adds noise
-    graph_divergence:   0.0    # disabled: adversarial mini-max destabilizes training
-    concept_prediction: 0.0    # disabled: circular targets from untrained SCMs
+    causal:             0.01
+    sparse:             0.01
+    causal_semantic:    0.01
 
-# Loss weight warm-up: linear ramp so all modules learn jointly from epoch 0
-# without any single loss dominating early training.
-# Loss weight warm-up: only active losses get warmup.
-# Disabled losses (contrastive, graph_divergence, concept_prediction) have
-# weight=0 above so warmup entries here are no-ops but kept for re-enablement.
+# Loss weight warm-up
 loss_warmup:
   causal:
     start_epoch: 0
     end_epoch: 10
     start_weight: 0.01
-    end_weight: 0.2       # reduced from 0.3 — let classification dominate
+    end_weight: 0.2
   causal_fake:
     start_epoch: 0
     end_epoch: 10
     start_weight: 0.005
-    end_weight: 0.1       # reduced from 0.15
+    end_weight: 0.1
   sparse:
     start_epoch: 0
     end_epoch: 10
     start_weight: 0.01
-    end_weight: 0.1       # reduced from 0.15
-  # Disabled losses — kept for future re-enablement
-  contrastive:
+    end_weight: 0.1
+  causal_semantic:
     start_epoch: 0
     end_epoch: 10
-    start_weight: 0.0
-    end_weight: 0.0
-  contrastive_fake:
-    start_epoch: 0
-    end_epoch: 10
-    start_weight: 0.0
-    end_weight: 0.0
-  graph_divergence:
-    start_epoch: 2
-    end_epoch: 15
-    start_weight: 0.0
-    end_weight: 0.0
-  concept_prediction:
-    start_epoch: 2
-    end_epoch: 15
-    start_weight: 0.0
-    end_weight: 0.0
+    start_weight: 0.01
+    end_weight: 0.1
 
 # -----------------------------------------------------------------------------
 # Optimizer
@@ -387,24 +271,22 @@ optimizer:
     beta1: 0.9
     beta2: 0.999
     eps: 0.00000001
-    weight_decay: 0.0001       # reduced from 0.0005 (GenD uses 0)
+    weight_decay: 0.0001
     amsgrad: false
   module_lr:
-    backbone_layernorms: 0.0001  # increased from 1e-5 (GenD uses 3e-4)
+    backbone_layernorms: 0.0001
     always_trainable:    0.0001
     phase_proj:          0.0003
     projection_heads:    0.0001
     fusion:              0.0002
     classifier:          0.0002
-    # SAE gets standard LR (in optional_modules group)
-    # Can increase to 0.0003 if SAE reconstruction is slow to converge
 
 # -----------------------------------------------------------------------------
 # Training schedule
 # -----------------------------------------------------------------------------
 lr_scheduler:   cosine_warmup
 warmup_epochs:  2
-nEpochs:        50
+nEpochs:        100
 start_epoch:    0
 save_epoch:     1
 rec_iter:       100
@@ -416,44 +298,32 @@ grad_clip:      1.0
 freq_grad_clip: 2.0
 
 training_phases:
-  # ─────────────────────────────────────────────────────────────────────────
-  # Phase 1 — Warm-up with hard-frozen backbone (short)
-  #   All modules train jointly from epoch 0 (including causal + SAE).
-  #   Backbone frozen (incl LayerNorms) so projections/fusion/causal/SAE
-  #   stabilize on static pretrained features first.
-  #   Loss warm-up: causal/contrastive/sparse weights ramp from 0.01.
-  # ─────────────────────────────────────────────────────────────────────────
   phase1:
     epochs:         [0, 5]
     freeze_modules: [foundation_models]
     train_modules:  [fad_frontend, projection_heads, fusion, classifier, sparse_ae, causal_module, semantic_extractor]
-    description:    "Hard freeze backbone. All other modules train jointly. Loss warmup active."
+    description:    "Hard freeze backbone. All modules train jointly. Loss warmup active."
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Phase 2 — Full end-to-end with GenD-style LN adaptation
-  #   LN adaptation is GenD's key CelebDF generalization driver. Starting
-  #   earlier (epoch 5) gives the model more epochs to adapt representations
-  #   for cross-dataset shift. The causal gate (init≈0.05) protects the CLIP
-  #   signal from noisy causal deltas during early LN adaptation.
-  # ─────────────────────────────────────────────────────────────────────────
   phase2:
     epochs:         [5, 50]
     freeze_modules: []
     train_modules:  [all]
-    description:    "Unfreeze backbone LNs at epoch 5. Causal gate protects CLIP signal."
+    description:    "Unfreeze backbone LNs at epoch 5. Causal module active from epoch 0."
 
 # -----------------------------------------------------------------------------
 # Metrics & interpretability
 # -----------------------------------------------------------------------------
 metric_scoring:     auc
-additional_metrics: [acc, eer, ap, uncertainty_calibration]
+additional_metrics: [acc, eer, ap]
 
 interpretability:
   save_attention_maps:      true
   save_causal_graphs:       true
   save_feature_activations: true
-  save_sae_features:        true     # log top-activating images per SAE feature
+  save_sae_features:        true
   visualization_frequency:  500
+  graph_viz_top_k:          20
+  graph_viz_every_n_epochs: 5
 
 # -----------------------------------------------------------------------------
 # Hardware
@@ -463,13 +333,12 @@ cudnn:           true
 mixed_precision: true
 
 checkpoint:
-  save_best_only: false         # Save periodic checkpoints for analysis
-  save_interval: 5              # Save every 5 epochs
+  save_best_only: false
+  save_interval: 5
   monitor:        val_auc
   mode:           max
 
-# Early stopping: stop if no improvement for patience epochs
 early_stopping:
   enabled: true
-  patience: 20                  # give more room after Phase 2 starts at epoch 15
-  min_delta: 0.001              # minimum improvement to reset patience
+  patience: 20
+  min_delta: 0.001

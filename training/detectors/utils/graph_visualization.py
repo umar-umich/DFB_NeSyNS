@@ -1,398 +1,415 @@
 """
-Visualization utilities for NeSyDeFake
-- Causal DAG visualization with concept names
-- Semantic concept interpretation
-- Violation score analysis
+Graph visualization utilities for NeSy causal discovery module.
+
+Saves PNG visualizations of the learned causal graphs at the end of training
+epochs. Handles 339-node graphs via category-level aggregation.
+
+All functions use matplotlib Agg backend (no display), close figures after
+saving, and handle all-zero adjacency matrices gracefully.
 """
 
 import os
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
+import logging
 from typing import Dict, List, Optional
 
+import numpy as np
 import torch
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
-def visualize_causal_dag(
-    dag: torch.Tensor,
-    concept_names: List[str],
-    save_path: Optional[str] = None,
-    figsize: tuple = (12, 10),
-    title: str = "Learned Causal DAG"
-):
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Semantic category structure for 211 FaceBench attributes
+# ---------------------------------------------------------------------------
+
+SEMANTIC_CATEGORIES = {
+    'Hair':             (0, 20),
+    'Forehead':         (20, 23),
+    'Eyebrows':         (23, 30),
+    'Eyes':             (30, 45),
+    'Eyelashes':        (45, 48),
+    'Nose':             (48, 56),
+    'Mouth_Lips':       (56, 66),
+    'Cheeks':           (66, 70),
+    'Chin_Jaw':         (70, 76),
+    'Face_Shape':       (76, 82),
+    'Ears':             (82, 85),
+    'Skin':             (85, 100),
+    'Facial_Hair':      (100, 106),
+    'Neck':             (106, 108),
+    'Age':              (108, 113),
+    'Other_Appearance': (113, 116),
+    'Accessories':      (116, 146),
+    'Makeup':           (146, 159),
+    'Surrounding':      (159, 171),
+    'Expression':       (171, 179),
+    'Action_Units':     (179, 204),
+    'Identity':         (204, 211),
+}
+
+
+def _to_numpy(t) -> np.ndarray:
+    """Convert tensor or array to numpy."""
+    if isinstance(t, torch.Tensor):
+        return t.detach().cpu().float().numpy()
+    return np.asarray(t, dtype=np.float32)
+
+
+def _aggregate_to_categories(A: np.ndarray, z_dim: int,
+                             categories: Dict[str, tuple]) -> tuple:
     """
-    Visualize the learned causal DAG as a heatmap
-    
-    Args:
-        dag: (N, N) adjacency matrix
-        concept_names: List of concept names
-        save_path: Path to save figure (optional)
-        figsize: Figure size
-        title: Plot title
+    Aggregate a (d, d) adjacency matrix into (n_cat+1, n_cat+1) category-level.
+
+    Returns (agg_matrix, category_names) where the first entry is 'Latent'
+    (aggregating z_dim latent features) followed by semantic categories.
     """
-    dag_np = dag.detach().cpu().numpy()
-    
-    plt.figure(figsize=figsize)
-    
-    # Create heatmap
-    sns.heatmap(
-        dag_np,
-        xticklabels=concept_names,
-        yticklabels=concept_names,
-        cmap='RdBu_r',
-        center=0,
-        annot=True,
-        fmt='.2f',
-        square=True,
-        cbar_kws={'label': 'Causal Strength'}
-    )
-    
-    plt.title(title, fontsize=16, fontweight='bold')
-    plt.xlabel('Effect (Child Concept)', fontsize=12, fontweight='bold')
-    plt.ylabel('Cause (Parent Concept)', fontsize=12, fontweight='bold')
-    plt.xticks(rotation=45, ha='right')
-    plt.yticks(rotation=0)
+    cat_names = ['Latent']
+    cat_ranges = [(0, z_dim)]
+    for name, (start, end) in categories.items():
+        cat_names.append(name)
+        cat_ranges.append((z_dim + start, z_dim + end))
+
+    n = len(cat_ranges)
+    agg = np.zeros((n, n), dtype=np.float32)
+    for i, (si, ei) in enumerate(cat_ranges):
+        for j, (sj, ej) in enumerate(cat_ranges):
+            block = A[si:ei, sj:ej]
+            if block.size > 0:
+                agg[i, j] = block.mean()
+    return agg, cat_names
+
+
+def _aggregate_semantic_categories(A: np.ndarray,
+                                   categories: Dict[str, tuple]) -> tuple:
+    """
+    Aggregate a (s_dim, s_dim) semantic-only adjacency into (n_cat, n_cat).
+    """
+    cat_names = []
+    cat_ranges = []
+    for name, (start, end) in categories.items():
+        cat_names.append(name)
+        cat_ranges.append((start, end))
+
+    n = len(cat_ranges)
+    agg = np.zeros((n, n), dtype=np.float32)
+    for i, (si, ei) in enumerate(cat_ranges):
+        for j, (sj, ej) in enumerate(cat_ranges):
+            block = A[si:ei, sj:ej]
+            if block.size > 0:
+                agg[i, j] = block.mean()
+    return agg, cat_names
+
+
+# ---------------------------------------------------------------------------
+# Visualization functions
+# ---------------------------------------------------------------------------
+
+def save_category_heatmap(A_real: np.ndarray, A_fake: np.ndarray,
+                          z_dim: int, categories: Dict[str, tuple],
+                          save_path: str) -> None:
+    """
+    Three-panel heatmap: A_real, A_fake, divergence (A_real - A_fake).
+    Aggregated from (d,d) to (n_categories+1, n_categories+1).
+    """
+    agg_real, cat_names = _aggregate_to_categories(A_real, z_dim, categories)
+    agg_fake, _ = _aggregate_to_categories(A_fake, z_dim, categories)
+    divergence = agg_real - agg_fake
+
+    fig, axes = plt.subplots(1, 3, figsize=(24, 7))
+
+    vmax = max(agg_real.max(), agg_fake.max(), 1e-6)
+
+    for ax, data, title, cmap in [
+        (axes[0], agg_real, 'Real Graph', 'Blues'),
+        (axes[1], agg_fake, 'Fake Graph', 'Reds'),
+        (axes[2], divergence, 'Divergence (Real - Fake)', 'RdBu_r'),
+    ]:
+        if title == 'Divergence (Real - Fake)':
+            vm = max(abs(divergence.min()), abs(divergence.max()), 1e-6)
+            im = ax.imshow(data, cmap=cmap, vmin=-vm, vmax=vm, aspect='auto')
+        else:
+            im = ax.imshow(data, cmap=cmap, vmin=0, vmax=vmax, aspect='auto')
+
+        ax.set_xticks(range(len(cat_names)))
+        ax.set_yticks(range(len(cat_names)))
+        ax.set_xticklabels(cat_names, rotation=45, ha='right', fontsize=7)
+        ax.set_yticklabels(cat_names, fontsize=7)
+        ax.set_title(title, fontsize=11, fontweight='bold')
+        ax.set_xlabel('Effect', fontsize=9)
+        ax.set_ylabel('Cause', fontsize=9)
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
     plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Causal DAG saved to {save_path}")
-    
-    plt.show()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
 
 
-def visualize_causal_graph_network(
-    dag: torch.Tensor,
-    concept_names: List[str],
-    threshold: float = 0.3,
-    save_path: Optional[str] = None,
-    figsize: tuple = (14, 10)
-):
+def save_top_k_edges(A: np.ndarray, node_names: List[str], k: int,
+                     save_path: str, title: str = 'Top-K Strongest Edges') -> None:
     """
-    Visualize causal DAG as a network graph with arrows
-    
-    Args:
-        dag: (N, N) adjacency matrix
-        concept_names: List of concept names
-        threshold: Only show edges with strength > threshold
-        save_path: Path to save figure
-        figsize: Figure size
+    Save table of top-K strongest directed edges with named source/target.
+    Saves both as PNG (matplotlib table) and .txt file.
     """
-    try:
-        import networkx as nx
-    except ImportError:
-        print("networkx not installed. Install with: pip install networkx")
+    d = A.shape[0]
+    # Flatten and get top-k indices
+    flat = A.flatten()
+    if flat.max() < 1e-8:
+        # All-zero adjacency — nothing to show
+        fig, ax = plt.subplots(figsize=(6, 2))
+        ax.text(0.5, 0.5, 'No edges learned (all-zero adjacency)',
+                ha='center', va='center', fontsize=12)
+        ax.axis('off')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
         return
-    
-    dag_np = dag.detach().cpu().numpy()
-    
-    # Create directed graph
-    G = nx.DiGraph()
-    
-    # Add nodes
-    for i, name in enumerate(concept_names):
-        G.add_node(i, label=name)
-    
-    # Add edges above threshold
-    edge_weights = []
-    for i in range(dag_np.shape[0]):
-        for j in range(dag_np.shape[1]):
-            if dag_np[i, j] > threshold:
-                G.add_edge(i, j, weight=dag_np[i, j])
-                edge_weights.append(dag_np[i, j])
-    
-    # Layout
-    pos = nx.spring_layout(G, k=2, iterations=50, seed=42)
-    
-    # Create figure
-    plt.figure(figsize=figsize)
-    
-    # Draw nodes
-    node_colors = ['lightblue' if i < 7 else 'lightgreen' for i in range(len(concept_names))]
-    nx.draw_networkx_nodes(
-        G, pos,
-        node_color=node_colors,
-        node_size=3000,
-        alpha=0.9
+
+    top_k_idx = np.argsort(flat)[::-1][:k]
+    rows, cols = np.unravel_index(top_k_idx, (d, d))
+
+    # Build table data
+    table_data = []
+    for rank, (i, j) in enumerate(zip(rows, cols)):
+        src = node_names[i] if i < len(node_names) else f'node_{i}'
+        tgt = node_names[j] if j < len(node_names) else f'node_{j}'
+        weight = A[i, j]
+        if weight < 1e-8:
+            break
+        table_data.append([rank + 1, src, tgt, f'{weight:.4f}'])
+
+    if not table_data:
+        return
+
+    # Save as text
+    txt_path = save_path.rsplit('.', 1)[0] + '.txt'
+    with open(txt_path, 'w') as f:
+        f.write(f"{'Rank':>4}  {'Source':<30}  {'Target':<30}  {'Weight':>8}\n")
+        f.write('-' * 78 + '\n')
+        for row in table_data:
+            f.write(f"{row[0]:>4}  {row[1]:<30}  {row[2]:<30}  {row[3]:>8}\n")
+
+    # Save as PNG table
+    fig, ax = plt.subplots(figsize=(10, max(2, 0.4 * len(table_data) + 1)))
+    ax.axis('off')
+    ax.set_title(title, fontsize=12, fontweight='bold', pad=10)
+    table = ax.table(
+        cellText=table_data,
+        colLabels=['Rank', 'Source', 'Target', 'Weight'],
+        loc='center',
+        cellLoc='left',
     )
-    
-    # Draw node labels
-    labels = {i: name for i, name in enumerate(concept_names)}
-    nx.draw_networkx_labels(
-        G, pos,
-        labels,
-        font_size=9,
-        font_weight='bold'
-    )
-    
-    # Draw edges with varying thickness
-    if edge_weights:
-        edges = G.edges()
-        weights = [G[u][v]['weight'] for u, v in edges]
-        
-        # Normalize weights for visualization
-        max_weight = max(weights) if weights else 1
-        widths = [3 * w / max_weight for w in weights]
-        
-        nx.draw_networkx_edges(
-            G, pos,
-            edgelist=edges,
-            width=widths,
-            alpha=0.6,
-            edge_color=weights,
-            edge_cmap=plt.cm.Blues,
-            arrows=True,
-            arrowsize=20,
-            arrowstyle='->',
-            connectionstyle='arc3,rad=0.1'
-        )
-    
-    plt.title(f"Causal Network (threshold={threshold})", fontsize=16, fontweight='bold')
-    plt.axis('off')
+    table.auto_set_font_size(False)
+    table.set_fontsize(8)
+    table.scale(1.0, 1.3)
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+
+def save_semantic_subgraph(A_sem_real: np.ndarray, A_sem_fake: np.ndarray,
+                           attr_names: List[str],
+                           categories: Dict[str, tuple],
+                           save_path: str) -> None:
+    """
+    Category-level 22x22 heatmap for the 211-node intra-semantic graph.
+    Three panels: real, fake, divergence.
+    """
+    agg_real, cat_names = _aggregate_semantic_categories(A_sem_real, categories)
+    agg_fake, _ = _aggregate_semantic_categories(A_sem_fake, categories)
+    divergence = agg_real - agg_fake
+
+    fig, axes = plt.subplots(1, 3, figsize=(22, 6))
+    vmax = max(agg_real.max(), agg_fake.max(), 1e-6)
+
+    for ax, data, title, cmap in [
+        (axes[0], agg_real, 'Semantic Real', 'Blues'),
+        (axes[1], agg_fake, 'Semantic Fake', 'Reds'),
+        (axes[2], divergence, 'Semantic Divergence', 'RdBu_r'),
+    ]:
+        if 'Divergence' in title:
+            vm = max(abs(divergence.min()), abs(divergence.max()), 1e-6)
+            im = ax.imshow(data, cmap=cmap, vmin=-vm, vmax=vm, aspect='auto')
+        else:
+            im = ax.imshow(data, cmap=cmap, vmin=0, vmax=vmax, aspect='auto')
+
+        ax.set_xticks(range(len(cat_names)))
+        ax.set_yticks(range(len(cat_names)))
+        ax.set_xticklabels(cat_names, rotation=45, ha='right', fontsize=7)
+        ax.set_yticklabels(cat_names, fontsize=7)
+        ax.set_title(title, fontsize=11, fontweight='bold')
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    plt.suptitle('Intra-Semantic Causal Graph (211 FaceBench Attributes)',
+                 fontsize=13, fontweight='bold')
     plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Causal network saved to {save_path}")
-    
-    plt.show()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
 
 
-def visualize_semantic_concepts(
-    semantic_concepts: torch.Tensor,
-    concept_names: List[str],
-    sample_idx: int = 0,
-    save_path: Optional[str] = None,
-    figsize: tuple = (10, 6)
-):
+def save_divergence_analysis(A_real: np.ndarray, A_fake: np.ndarray,
+                             z_dim: int, attr_names: List[str],
+                             categories: Dict[str, tuple],
+                             save_path: str) -> None:
     """
-    Visualize semantic concept values for a sample
-    
-    Args:
-        semantic_concepts: (B, num_concepts) tensor
-        concept_names: List of concept names
-        sample_idx: Which sample to visualize
-        save_path: Path to save figure
-        figsize: Figure size
+    Bar chart: which categories have most broken/created edges.
+    Plus top-10 broken and top-10 created edges with named nodes.
     """
-    concepts = semantic_concepts[sample_idx].detach().cpu().numpy()
-    
-    plt.figure(figsize=figsize)
-    
-    # Create bar plot
-    colors = ['skyblue' if 'emotion' in name else 
-              'lightgreen' if 'gender' in name else
-              'coral' if 'age' in name else
-              'plum' for name in concept_names]
-    
-    bars = plt.bar(range(len(concepts)), concepts, color=colors, alpha=0.7, edgecolor='black')
-    
-    plt.xlabel('Semantic Concepts', fontsize=12, fontweight='bold')
-    plt.ylabel('Value / Probability', fontsize=12, fontweight='bold')
-    plt.title(f'Semantic Concepts (Sample {sample_idx})', fontsize=14, fontweight='bold')
-    plt.xticks(range(len(concepts)), concept_names, rotation=45, ha='right')
-    plt.ylim([0, 1.1])
-    plt.grid(axis='y', alpha=0.3)
-    
-    # Add value labels on bars
-    for bar, value in zip(bars, concepts):
-        height = bar.get_height()
-        plt.text(
-            bar.get_x() + bar.get_width() / 2.,
-            height + 0.02,
-            f'{value:.2f}',
-            ha='center',
-            va='bottom',
-            fontsize=8
-        )
-    
+    divergence = A_real - A_fake  # positive = broken by fakes
+    d = A_real.shape[0]
+
+    # Build node names: latent + semantic
+    node_names = [f'z_{i}' for i in range(z_dim)]
+    if len(attr_names) > 0:
+        node_names.extend(attr_names)
+    else:
+        node_names.extend([f's_{i}' for i in range(d - z_dim)])
+
+    # Category-level aggregation of absolute divergence
+    cat_names = ['Latent']
+    cat_ranges = [(0, z_dim)]
+    for name, (start, end) in categories.items():
+        cat_names.append(name)
+        cat_ranges.append((z_dim + start, z_dim + end))
+
+    # Per-category: sum of broken and created edge strengths
+    broken_per_cat = []
+    created_per_cat = []
+    for si, ei in cat_ranges:
+        # Edges FROM this category
+        block_out = divergence[si:ei, :]
+        broken_per_cat.append(block_out.clip(min=0).sum())
+        created_per_cat.append((-block_out).clip(min=0).sum())
+
+    fig, axes = plt.subplots(1, 3, figsize=(22, 6))
+
+    # Panel 1: broken vs created per category
+    x = np.arange(len(cat_names))
+    w = 0.35
+    axes[0].bar(x - w/2, broken_per_cat, w, label='Broken by fakes', color='tab:red', alpha=0.7)
+    axes[0].bar(x + w/2, created_per_cat, w, label='Created by fakes', color='tab:blue', alpha=0.7)
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(cat_names, rotation=45, ha='right', fontsize=7)
+    axes[0].set_ylabel('Total edge weight')
+    axes[0].set_title('Edge Changes by Category', fontweight='bold')
+    axes[0].legend(fontsize=8)
+
+    # Panel 2: Top-10 broken edges
+    flat_div = divergence.flatten()
+    top_broken = np.argsort(flat_div)[::-1][:10]
+    broken_data = []
+    for idx in top_broken:
+        i, j = np.unravel_index(idx, (d, d))
+        if flat_div[idx] < 1e-8:
+            break
+        src = node_names[i] if i < len(node_names) else f'n_{i}'
+        tgt = node_names[j] if j < len(node_names) else f'n_{j}'
+        broken_data.append(f'{src} -> {tgt}: {flat_div[idx]:.4f}')
+
+    axes[1].axis('off')
+    axes[1].set_title('Top-10 Broken Edges', fontweight='bold')
+    text = '\n'.join(broken_data) if broken_data else 'No broken edges'
+    axes[1].text(0.05, 0.95, text, transform=axes[1].transAxes,
+                 fontsize=8, verticalalignment='top', fontfamily='monospace')
+
+    # Panel 3: Top-10 created edges
+    top_created = np.argsort(flat_div)[:10]
+    created_data = []
+    for idx in top_created:
+        i, j = np.unravel_index(idx, (d, d))
+        if flat_div[idx] > -1e-8:
+            break
+        src = node_names[i] if i < len(node_names) else f'n_{i}'
+        tgt = node_names[j] if j < len(node_names) else f'n_{j}'
+        created_data.append(f'{src} -> {tgt}: {-flat_div[idx]:.4f}')
+
+    axes[2].axis('off')
+    axes[2].set_title('Top-10 Created Edges', fontweight='bold')
+    text = '\n'.join(created_data) if created_data else 'No created edges'
+    axes[2].text(0.05, 0.95, text, transform=axes[2].transAxes,
+                 fontsize=8, verticalalignment='top', fontfamily='monospace')
+
+    plt.suptitle('Causal Graph Divergence Analysis', fontsize=13, fontweight='bold')
     plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Semantic concepts saved to {save_path}")
-    
-    plt.show()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
 
 
-def compare_real_vs_fake_concepts(
-    real_concepts: torch.Tensor,
-    fake_concepts: torch.Tensor,
-    concept_names: List[str],
-    save_path: Optional[str] = None,
-    figsize: tuple = (14, 6)
-):
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
+
+def save_all_causal_graphs(causal_module, log_dir: str, epoch: int,
+                           top_k: int = 20) -> None:
     """
-    Compare semantic concept distributions for real vs fake videos
-    
+    Save all causal graph visualizations to {log_dir}/graphs/epoch_{epoch}/.
+
     Args:
-        real_concepts: (N, num_concepts) tensor for real videos
-        fake_concepts: (M, num_concepts) tensor for fake videos
-        concept_names: List of concept names
-        save_path: Path to save figure
-        figsize: Figure size
+        causal_module: CausalDiscoveryModule instance
+        log_dir: base logging directory
+        epoch: current epoch number
+        top_k: number of top edges to show
     """
-    real_mean = real_concepts.mean(dim=0).detach().cpu().numpy()
-    fake_mean = fake_concepts.mean(dim=0).detach().cpu().numpy()
-    
-    real_std = real_concepts.std(dim=0).detach().cpu().numpy()
-    fake_std = fake_concepts.std(dim=0).detach().cpu().numpy()
-    
-    x = np.arange(len(concept_names))
-    width = 0.35
-    
-    fig, ax = plt.subplots(figsize=figsize)
-    
-    bars1 = ax.bar(x - width/2, real_mean, width, label='Real', 
-                   yerr=real_std, capsize=5, alpha=0.7, color='green')
-    bars2 = ax.bar(x + width/2, fake_mean, width, label='Fake',
-                   yerr=fake_std, capsize=5, alpha=0.7, color='red')
-    
-    ax.set_xlabel('Semantic Concepts', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Mean Value ± Std', fontsize=12, fontweight='bold')
-    ax.set_title('Real vs Fake: Semantic Concept Comparison', fontsize=14, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels(concept_names, rotation=45, ha='right')
-    ax.legend(fontsize=12)
-    ax.grid(axis='y', alpha=0.3)
-    
-    plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Concept comparison saved to {save_path}")
-    
-    plt.show()
-
-
-def analyze_violation_scores(
-    violation_scores: torch.Tensor,
-    labels: torch.Tensor,
-    save_path: Optional[str] = None,
-    figsize: tuple = (10, 6)
-):
-    """
-    Analyze and visualize causal violation scores
-    
-    Args:
-        violation_scores: (B,) tensor of violation scores
-        labels: (B,) tensor of labels (0=real, 1=fake)
-        save_path: Path to save figure
-        figsize: Figure size
-    """
-    violations = violation_scores.detach().cpu().numpy()
-    labels_np = labels.detach().cpu().numpy()
-    
-    real_violations = violations[labels_np == 0]
-    fake_violations = violations[labels_np == 1]
-    
-    fig, axes = plt.subplots(1, 2, figsize=figsize)
-    
-    # Histogram
-    axes[0].hist(real_violations, bins=30, alpha=0.6, label='Real', color='green', density=True)
-    axes[0].hist(fake_violations, bins=30, alpha=0.6, label='Fake', color='red', density=True)
-    axes[0].set_xlabel('Causal Violation Score', fontsize=12)
-    axes[0].set_ylabel('Density', fontsize=12)
-    axes[0].set_title('Distribution of Violation Scores', fontsize=14, fontweight='bold')
-    axes[0].legend()
-    axes[0].grid(alpha=0.3)
-    
-    # Box plot
-    data = [real_violations, fake_violations]
-    axes[1].boxplot(data, labels=['Real', 'Fake'], patch_artist=True,
-                    boxprops=dict(facecolor='lightblue', alpha=0.7),
-                    medianprops=dict(color='red', linewidth=2))
-    axes[1].set_ylabel('Causal Violation Score', fontsize=12)
-    axes[1].set_title('Violation Score by Class', fontsize=14, fontweight='bold')
-    axes[1].grid(axis='y', alpha=0.3)
-    
-    plt.tight_layout()
-    
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Violation analysis saved to {save_path}")
-    
-    plt.show()
-    
-    # Print statistics
-    print("\n=== Violation Score Statistics ===")
-    print(f"Real videos - Mean: {real_violations.mean():.4f}, Std: {real_violations.std():.4f}")
-    print(f"Fake videos - Mean: {fake_violations.mean():.4f}, Std: {fake_violations.std():.4f}")
-    print(f"Separation: {abs(real_violations.mean() - fake_violations.mean()):.4f}")
-
-
-def create_summary_report(
-    pred_dict: Dict,
-    data_dict: Dict,
-    config: Dict,
-    save_dir: str
-):
-    """
-    Create a comprehensive visualization report
-    
-    Args:
-        pred_dict: Model prediction dictionary
-        data_dict: Input data dictionary
-        config: Model configuration
-        save_dir: Directory to save visualizations
-    """
+    save_dir = os.path.join(log_dir, 'graphs', f'epoch_{epoch}')
     os.makedirs(save_dir, exist_ok=True)
-    
-    print(f"\nCreating visualization report in {save_dir}...")
-    
-    # 1. Causal DAG heatmap
-    if pred_dict.get('causal_dag') is not None:
-        from nesydefake_detector import NeSyDeFakeHybridDetector
-        model = NeSyDeFakeHybridDetector(config)
-        concept_names = model.causal_module.get_concept_names(config)
-        
-        visualize_causal_dag(
-            pred_dict['causal_dag'],
-            concept_names,
-            save_path=os.path.join(save_dir, 'causal_dag_heatmap.png')
-        )
-        
-        visualize_causal_graph_network(
-            pred_dict['causal_dag'],
-            concept_names,
-            threshold=0.3,
-            save_path=os.path.join(save_dir, 'causal_network.png')
-        )
-    
-    # 2. Semantic concepts
-    if pred_dict.get('semantic_concepts') is not None:
-        from semantic_grounding import DeepFaceSemanticExtractor
-        extractor = DeepFaceSemanticExtractor(config)
-        concept_names = extractor.get_concept_names()
-        
-        visualize_semantic_concepts(
-            pred_dict['semantic_concepts'],
-            concept_names,
-            sample_idx=0,
-            save_path=os.path.join(save_dir, 'semantic_concepts.png')
-        )
-    
-    # 3. Violation scores
-    if pred_dict.get('violation_score') is not None and data_dict.get('label') is not None:
-        analyze_violation_scores(
-            pred_dict['violation_score'],
-            data_dict['label'],
-            save_path=os.path.join(save_dir, 'violation_analysis.png')
-        )
-    
-    print(f"Visualization report created successfully!")
 
+    categories = SEMANTIC_CATEGORIES
+    z_spatial_dim = causal_module.z_spatial_dim
+    z_freq_dim = causal_module.z_freq_dim
 
-# Example usage
-if __name__ == '__main__':
-    # Test with dummy data
-    num_concepts = 10
-    concept_names = [f'concept_{i}' for i in range(num_concepts)]
-    
-    # Random DAG
-    dag = torch.rand(num_concepts, num_concepts)
-    dag = dag * (torch.rand_like(dag) > 0.7).float()  # Sparsify
-    
-    visualize_causal_dag(dag, concept_names)
-    visualize_causal_graph_network(dag, concept_names, threshold=0.2)
+    try:
+        # -- Branch graphs (spatial, frequency) ---
+        for branch, z_dim in [('spatial', z_spatial_dim), ('freq', z_freq_dim)]:
+            pair = causal_module.causal_spatial if branch == 'spatial' else causal_module.causal_freq
+            A_real = _to_numpy(pair.causal_learner_real._A_dce_ema)
+            A_fake = _to_numpy(pair.causal_learner_fake._A_dce_ema)
+
+            node_names = causal_module.get_node_names(
+                'spatial' if branch == 'spatial' else 'frequency')
+
+            # Category heatmap
+            save_category_heatmap(
+                A_real, A_fake, z_dim, categories,
+                os.path.join(save_dir, f'{branch}_category_heatmap.png'))
+
+            # Top-K edges for real and fake
+            save_top_k_edges(
+                A_real, node_names, top_k,
+                os.path.join(save_dir, f'{branch}_real_top{top_k}.png'),
+                title=f'{branch.title()} Real: Top-{top_k} Edges')
+            save_top_k_edges(
+                A_fake, node_names, top_k,
+                os.path.join(save_dir, f'{branch}_fake_top{top_k}.png'),
+                title=f'{branch.title()} Fake: Top-{top_k} Edges')
+
+            # Divergence analysis
+            attr_names = causal_module.get_semantic_node_names()
+            save_divergence_analysis(
+                A_real, A_fake, z_dim, attr_names, categories,
+                os.path.join(save_dir, f'{branch}_divergence_analysis.png'))
+
+        # -- Semantic graph (Part A, if enabled) ---
+        if causal_module.use_semantic_graph and causal_module.causal_semantic is not None:
+            sem_pair = causal_module.causal_semantic
+            A_sem_real = _to_numpy(sem_pair.causal_learner_real._A_dce_ema)
+            A_sem_fake = _to_numpy(sem_pair.causal_learner_fake._A_dce_ema)
+            attr_names = causal_module.get_semantic_node_names()
+
+            save_semantic_subgraph(
+                A_sem_real, A_sem_fake, attr_names, categories,
+                os.path.join(save_dir, 'semantic_graph_heatmap.png'))
+
+            save_top_k_edges(
+                A_sem_real, attr_names, top_k,
+                os.path.join(save_dir, f'semantic_real_top{top_k}.png'),
+                title=f'Semantic Real: Top-{top_k} Edges')
+            save_top_k_edges(
+                A_sem_fake, attr_names, top_k,
+                os.path.join(save_dir, f'semantic_fake_top{top_k}.png'),
+                title=f'Semantic Fake: Top-{top_k} Edges')
+
+        logger.info(f"[GraphViz] Saved causal graphs to {save_dir}")
+
+    except Exception as e:
+        logger.warning(f"[GraphViz] Failed to save graphs at epoch {epoch}: {e}")

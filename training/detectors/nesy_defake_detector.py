@@ -1,33 +1,34 @@
 """
 detectors/nesy_defake_hybrid_detector.py
 =========================================
-END-TO-END PER-BRANCH DUAL-GRAPH CAUSAL DISCOVERY
+END-TO-END PER-BRANCH DUAL-GRAPH CAUSAL DISCOVERY (v4 — cleaned up)
 
 Data flow:
   spatial_frames --> SpatialExtractor --> raw_spatial (1024-d) --+-> spatial_proj -> fused -> classifier
-                                                                  +-> SAE.spatial -> z_spatial (4096) --+
-  freq_frames ----> FreqExtractor ----> raw_freq (1024-d) ------+-> freq_proj -> fused -> classifier   |
-                                                                  +-> SAE.freq -> z_freq (4096) --------+
-  raw_frames -----> FacialSemanticExtractor (FaceBench/FaRL/precomputed)                                |
-                      [frozen backbone] -> [trainable proj]                                             |
-                      -> semantic_attrs (128-d) --------------------------------------------------------+
-                                                                                                        |
-                                    CausalModule (per-branch, all epochs)                               v
-                                      Spatial branch:                             Frequency branch:
-                                        SCM_spatial_real -> residuals_s_real        SCM_freq_real -> residuals_f_real
-                                        SCM_spatial_fake -> residuals_s_fake        SCM_freq_fake -> residuals_f_fake
-                                                   |                                           |
-                      violation_proj_spatial_real(r_s_real) --+      violation_proj_freq_real(r_f_real) --+
-                      violation_proj_spatial_fake(r_s_fake) --+      violation_proj_freq_fake(r_f_fake) --+
-                                                              |                                          |
-                                                              +-- additive fusion into classifier -------+
-                                                                                    |
-                                                       classifier_input = fused + delta_spatial + delta_freq
-                                                                                    |
-                                                       MultiTaskHead -> cls (2), uncertainty (1)
+                                                                  +-> SAE.spatial -> z_spatial --+
+  freq_frames ----> FreqExtractor ----> raw_freq (1024-d) ------+-> freq_proj -> fused -> classifier
+                                                                  +-> SAE.freq -> z_freq --------+
+  raw_frames -----> FacialSemanticExtractor (FaceBench precomputed)                              |
+                      -> semantic_attrs (211-d) -------------------------------------------------+
+                                                                                                  |
+                            CausalModule (per-branch + semantic, from epoch 0)                    v
+                              Spatial: SCM_real/fake -> residuals_s_real/fake
+                              Freq:    SCM_real/fake -> residuals_f_real/fake
+                              Semantic: SCM_real/fake -> residuals_sem_real/fake
+                                                |
+                         CausalViolationAttentionFusion (fused attends 4 residuals)
+                                                |
+                         classifier_input = fused + gate * causal_delta
+                                                |
+                         MultiTaskHead -> cls (2)
 
-All modules train jointly from epoch 0 with loss weight warm-up.
-Gradients flow end-to-end through causal module back to SAE and backbone.
+v4 changes (cleanup):
+  - Removed ViolationScorer (dead: 1e-30 outputs, no training signal)
+  - Removed ConceptPredictionHead (circular self-supervision)
+  - Removed contrastive loss (saturated at margin)
+  - Removed graph divergence loss (adversarial minimax)
+  - Removed uncertainty head (weight=0, conflicts with classification)
+  - Raised causal_gate init: -3.0 → 0.0 (sigmoid=0.5, force causal contribution)
 """
 
 import logging
@@ -62,11 +63,6 @@ def uniformity_loss(x: torch.Tensor, t: float = 2.0) -> torch.Tensor:
     """
     Uniformity loss on the unit hypersphere.
     Encourages features to spread evenly, preventing representation collapse.
-    L_uniform = log E_{x,y ~ P} [e^{-t * ||x - y||^2}]
-
-    Args:
-        x: (B, D) L2-normalized features
-        t: temperature (default 2.0, from Wang & Isola)
     """
     pdist = torch.pdist(x, p=2).pow(2)
     return pdist.mul(-t).exp().mean().clamp(min=1e-6).log()
@@ -74,15 +70,7 @@ def uniformity_loss(x: torch.Tensor, t: float = 2.0) -> torch.Tensor:
 
 def alignment_loss(x: torch.Tensor, labels: torch.Tensor,
                    alpha: float = 2.0) -> torch.Tensor:
-    """
-    Alignment loss: pull same-class features together on the hypersphere.
-    L_align = E_{x,y ~ P+} [||x - y||^alpha]
-
-    Args:
-        x: (B, D) L2-normalized features
-        labels: (B,) integer class labels
-        alpha: distance exponent (default 2.0)
-    """
+    """Alignment loss: pull same-class features together on the hypersphere."""
     device = x.device
     total = torch.zeros(1, device=device)
     count = 0
@@ -197,42 +185,6 @@ class CausalViolationAttentionFusion(nn.Module):
         return self.out_norm(causal_delta), attn_weights
 
 
-# ---------------------------------------------------------------------------
-# NeSy Change 2: Concept Prediction Head
-# ---------------------------------------------------------------------------
-
-class ConceptPredictionHead(nn.Module):
-    """
-    NeSy concept bottleneck: maps gated semantic attributes -> per-attribute
-    manipulation violation probability in [0, 1].
-
-    The model must predict WHICH semantic concepts (e.g., eye_blink, skin_texture)
-    are causally violated in fake faces. Supervised by the actual per-attribute
-    residuals computed by the real-face SCM, creating a concept-level symbolic
-    supervision signal.
-
-    This is interpretable: after training, inspecting high-activation outputs
-    shows which face attributes the model identifies as manipulated.
-    """
-
-    def __init__(self, s_dim: int, hidden_dim: int = 128):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(s_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, s_dim),
-            nn.Sigmoid(),
-        )
-        # Near-zero init: start predicting no violations → gradients activate it
-        nn.init.zeros_(self.net[-2].bias)
-        nn.init.normal_(self.net[-2].weight, std=0.01)
-
-    def forward(self, semantic_attrs: torch.Tensor) -> torch.Tensor:
-        """(B, s_dim) -> (B, s_dim) per-attribute violation probabilities."""
-        return self.net(semantic_attrs.float())
-
-
 def _make_projection(in_dim: int, out_dim: int, dropout: float = 0.0) -> nn.Sequential:
     layers = [nn.Linear(in_dim, out_dim), nn.LayerNorm(out_dim), nn.GELU()]
     if dropout > 0.0:
@@ -305,28 +257,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     f"4×k/v({d_spatial}/{d_freq}→{attn_dim}/{proj_dim}) "
                     f"(params: {n_attn_params:,})")
 
-        # -- NeSy Change 2: Concept Prediction Head ---------------------------
-        # Maps gated semantic attrs → per-attribute violation probability.
-        # Supervised by the real SCM's per-attribute residuals on fake faces,
-        # creating an interpretable concept-level symbolic supervision signal.
-        concept_cfg = config.get('concept_prediction', {})
-        self.use_concept_pred = concept_cfg.get('enabled', True) and self.use_semantic_attrs
-        if self.use_concept_pred:
-            self.concept_head = ConceptPredictionHead(
-                s_dim=s_dim,
-                hidden_dim=concept_cfg.get('hidden_dim', 128),
-            )
-            logger.info(f"  Concept head    : {s_dim}-d attrs → {s_dim}-d violation probs")
-
-        # -- NeSy Change 3: Graph Divergence ----------------------------------
-        # Cross-reconstruction loss applied in get_losses():
-        #   real SCM has HIGH error on fake faces (can't explain them)
-        #   fake SCM has HIGH error on real faces (can't explain them)
-        # Forces the two SCMs to specialize rather than collapse to the same solution.
-        graph_div_cfg = config.get('graph_divergence', {})
-        self.use_graph_div = graph_div_cfg.get('enabled', True) and self.use_causal
-        logger.info(f"  Graph divergence: {'enabled' if self.use_graph_div else 'disabled'}"
-                    f" (cross-reconstruction SCM specialization)")
+        # -- (Removed) Concept Prediction Head — circular self-supervision -----
+        # -- (Removed) Graph Divergence — adversarial minimax destabilizes -----
+        self.use_concept_pred = False
+        self.use_graph_div = False
 
         # -- Semantic Feature Gating (generalization) --------------------------
         # Trainable sigmoid gate on semantic attributes: learns which of the
@@ -339,12 +273,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             self.semantic_gate = nn.Parameter(torch.zeros(gate_dim))
             logger.info(f"  Semantic gate   : {gate_dim}-d (sigmoid, init=0.5)")
 
-        # -- Learnable causal gate (prevents CLIP signal corruption early) ----
-        # sigmoid(-3) ≈ 0.047 → causal delta is near-zero at init, grows as
-        # the causal module learns meaningful structure. Prevents random SCM
-        # residuals from corrupting the clean CLIP classification signal.
-        self.causal_gate = nn.Parameter(torch.tensor(-3.0))
-        logger.info(f"  Causal gate     : scalar (sigmoid, init≈{torch.sigmoid(torch.tensor(-3.0)).item():.3f})")
+        # -- Learnable causal gate (controls causal contribution to classifier) -
+        # sigmoid(0) = 0.5 → causal delta contributes 50% from epoch 0.
+        # Forces the classifier to learn to USE causal residuals early,
+        # breaking the chicken-and-egg where gate stays closed because
+        # classifier never learns to use causal signal.
+        self.causal_gate = nn.Parameter(torch.tensor(0.0))
+        logger.info(f"  Causal gate     : scalar (sigmoid, init={torch.sigmoid(torch.tensor(0.0)).item():.3f})")
 
         # -- L2 normalization + Uniformity-Alignment loss (GenD recipe) ------
         ua_cfg = config.get('uniformity_alignment', {})
@@ -369,7 +304,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # eliminates Python overhead. Only applied to inference-only modules.
         self._try_compile_frozen_modules()
 
-        logger.info("NeSyDeFake Hybrid Detector initialised (NeSy v2 — PER-BRANCH CAUSAL)")
+        logger.info("NeSyDeFake Hybrid Detector initialised (v4 — cleaned up)")
         logger.info(f"  Active branches : {sorted(self.active_branches)}")
         logger.info(f"  Fused dim       : {config['fusion']['fused_dim']}")
         logger.info(f"  Projection dim  : {proj_dim}")
@@ -377,9 +312,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         logger.info(f"  SAE enabled     : {self.use_sparse}")
         logger.info(f"  Causal enabled  : {self.use_causal}")
         logger.info(f"  Semantic attrs  : {self.use_semantic_attrs}")
-        logger.info(f"  [NeSy-1] Causal attn fusion: attn_dim={attn_dim}")
-        logger.info(f"  [NeSy-2] Concept prediction: {self.use_concept_pred}")
-        logger.info(f"  [NeSy-3] Graph divergence  : {self.use_graph_div}")
+        logger.info(f"  Causal attn fusion: attn_dim={attn_dim}")
 
     # ------------------------------------------------------------------ #
     #  Construction helpers                                                #
@@ -686,18 +619,11 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 return_graph=True,
             )
 
-        # -- Step 5a: Concept prediction (NeSy: which attributes are violated?) -
-        # Maps gated semantic attrs -> per-attribute violation prob in [0,1].
-        # Loss supervised by actual SCM residuals (computed in get_losses).
-        concept_violations = None
-        if self.use_concept_pred and semantic_attrs is not None:
-            concept_violations = self.concept_head(semantic_attrs)
-
-        # -- Step 5b: Causal attention fusion + Classification ----------------
-        # Query = fused_features attends over 4 violation residuals (keys/values).
+        # -- Step 5: Causal attention fusion + Classification -------------------
+        # Query = fused_features attends over 4 causal residuals (keys/values).
         # Returns causal_delta (B, proj_dim) and attention weights (B, 4).
         classifier_input = fused_features
-        causal_primitives = None          # attention weights stored here
+        causal_primitives = None
         if self.use_causal and causal_out is not None:
             residuals = {
                 'spatial_real': causal_out['residuals_spatial_real'],
@@ -708,7 +634,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             causal_delta, attn_weights = self.causal_attn_fusion(
                 fused_features, residuals)
             causal_primitives = attn_weights   # (B, 4) for interpretability
-            # Gated injection: sigmoid(-3)≈0.05 at init → grows as causal learns
             gate_value = torch.sigmoid(self.causal_gate)
             classifier_input = fused_features + gate_value * causal_delta
 
@@ -720,10 +645,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         cls_logits = task_outputs['classification']
         prob = torch.softmax(cls_logits, dim=1)[:, 1]
 
-        # Aggregated scores for backward compat
-        v_real = causal_out['v_real'] if causal_out else None
-        v_fake = causal_out['v_fake'] if causal_out else None
-
         pred_dict = {
             'cls':            cls_logits,
             'prob':           prob,
@@ -733,16 +654,9 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             'frequency_feat': raw_feats.get('frequency_raw'),
             'z_spatial':      z_spatial,
             'z_freq':         z_freq,
-            'uncertainty':    task_outputs.get('uncertainty'),
             # Per-branch causal outputs
             'causal_out':     causal_out,
-            # Aggregated (backward compat)
-            'v_real':         v_real,
-            'v_fake':         v_fake,
-            'violation_score': v_real,
-            # NeSy: concept violation predictions + causal attention weights
-            'concept_violations': concept_violations,   # (B, s_dim) in [0,1]
-            'causal_primitives':  causal_primitives,    # (B, 4) attn weights per violation type
+            'causal_primitives':  causal_primitives,    # (B, 4) attn weights
             # SAE
             'task_outputs':   task_outputs,
             'sae_loss':       sae_loss,
@@ -768,20 +682,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         cls_loss = self.cls_loss(pred_dict['cls'], label)
 
-        # Uncertainty loss
-        uncertainty_loss = torch.zeros(1, device=device)
-        if pred_dict.get('uncertainty') is not None:
-            pred_label = pred_dict['cls'].argmax(dim=1)
-            is_correct = (pred_label == label).float()
-            uncertainty_loss = self.reg_loss(
-                pred_dict['uncertainty'].squeeze(), 1 - is_correct)
-
-        # -- Per-branch dual-graph causal losses -----------------------------
-        # Aggregated across branches: causal_real = spatial_real + freq_real
+        # -- Per-branch dual-graph causal structural losses --------------------
         causal_loss_real = torch.zeros(1, device=device)
         causal_loss_fake = torch.zeros(1, device=device)
-        contrastive_loss_real = torch.zeros(1, device=device)
-        contrastive_loss_fake = torch.zeros(1, device=device)
+        causal_semantic_loss = torch.zeros(1, device=device)
 
         if self.use_causal:
             causal_out = pred_dict.get('causal_out')
@@ -790,25 +694,34 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 fake_mask = (label == 1)
                 dag_w = self.config['causal_module']['dag_learning']['dag_penalty_weight']
 
-                # -- Structural losses: SCM must reconstruct its target class --
+                # Structural losses: SCM must reconstruct its target class
                 for branch in ('spatial', 'freq'):
                     r_real = causal_out.get(f'residuals_{branch}_real')
                     r_fake = causal_out.get(f'residuals_{branch}_fake')
 
-                    # L_structural_real: real SCM reconstructs reals well
                     if r_real is not None and real_mask.any():
                         causal_loss_real = causal_loss_real + r_real[real_mask].pow(2).mean()
-
-                    # L_structural_fake: fake SCM reconstructs fakes well
                     if r_fake is not None and fake_mask.any():
                         causal_loss_fake = causal_loss_fake + r_fake[fake_mask].pow(2).mean()
 
-                # -- DAG acyclicity penalties ----------------------------------
+                # Semantic graph structural loss (Part A)
+                if self.causal_module.use_semantic_graph:
+                    r_sem_real = causal_out.get('residuals_sem_real')
+                    r_sem_fake = causal_out.get('residuals_sem_fake')
+                    if r_sem_real is not None and real_mask.any():
+                        causal_semantic_loss = causal_semantic_loss + r_sem_real[real_mask].pow(2).mean()
+                    if r_sem_fake is not None and fake_mask.any():
+                        causal_semantic_loss = causal_semantic_loss + r_sem_fake[fake_mask].pow(2).mean()
+
+                # DAG acyclicity penalties
                 cm = self.causal_module
-                for branch_pair, weight_mult in [
+                branch_pairs_for_dag = [
                     (cm.causal_spatial, 1.0),
                     (cm.causal_freq, 1.0),
-                ]:
+                ]
+                if cm.use_semantic_graph and cm.causal_semantic is not None:
+                    branch_pairs_for_dag.append((cm.causal_semantic, 0.5))
+                for branch_pair, weight_mult in branch_pairs_for_dag:
                     causal_loss_real = causal_loss_real + (
                         dag_w * weight_mult
                         * branch_pair.causal_learner_real.compute_dag_penalty()
@@ -817,74 +730,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                         0.5 * dag_w * weight_mult
                         * branch_pair.causal_learner_fake.compute_dag_penalty()
                     )
-
-                # -- Contrastive losses: v scores high for fakes, low for reals
-                for branch in ('spatial', 'freq'):
-                    v_r = causal_out.get(f'v_{branch}_real')
-                    v_f = causal_out.get(f'v_{branch}_fake')
-                    if v_r is not None:
-                        contrastive_loss_real = contrastive_loss_real + (
-                            self._contrastive_margin(v_r, real_mask, fake_mask, margin=1.0))
-                    if v_f is not None:
-                        contrastive_loss_fake = contrastive_loss_fake + (
-                            self._contrastive_margin(v_f, real_mask, fake_mask, margin=1.0))
-
-        # -- NeSy Change 3: Graph Divergence Loss ----------------------------
-        # Cross-reconstruction: force real SCM to fail on fakes and vice versa.
-        # real SCM should have HIGH residuals on fake faces (can't explain them).
-        # fake SCM should have HIGH residuals on real faces (can't explain them).
-        # Together with causal_loss (which minimizes same-class residuals), this
-        # creates a proper separation: each SCM specialises for its target class.
-        graph_div_loss = torch.zeros(1, device=device)
-        if self.use_graph_div:
-            causal_out_gd = pred_dict.get('causal_out')
-            if causal_out_gd is not None:
-                gd_real_mask = (label == 0)
-                gd_fake_mask = (label == 1)
-                for branch in ('spatial', 'freq'):
-                    r_real = causal_out_gd.get(f'residuals_{branch}_real')
-                    r_fake = causal_out_gd.get(f'residuals_{branch}_fake')
-                    # Real SCM should fail on fakes (maximize cross error)
-                    if r_real is not None and gd_fake_mask.any():
-                        graph_div_loss = graph_div_loss - (
-                            r_real[gd_fake_mask].pow(2).mean().clamp(max=5.0))
-                    # Fake SCM should fail on reals (maximize cross error)
-                    if r_fake is not None and gd_real_mask.any():
-                        graph_div_loss = graph_div_loss - (
-                            r_fake[gd_real_mask].pow(2).mean().clamp(max=5.0))
-
-        # -- NeSy Change 2: Concept Prediction Loss --------------------------
-        # Supervise which semantic attributes are causally violated in fakes.
-        # Target = normalized absolute residuals of real SCM on the semantic
-        # portion of the causal input (last s_dim dims of residuals_spatial_real).
-        # Real samples: zero violation target (real structure not violated).
-        # Fake samples: residual magnitude = violation signal per attribute.
-        concept_loss = torch.zeros(1, device=device)
-        if self.use_concept_pred:
-            concept_violations = pred_dict.get('concept_violations')
-            causal_out_cp = pred_dict.get('causal_out')
-            if concept_violations is not None and causal_out_cp is not None:
-                cp_real_mask = (label == 0)
-                cp_fake_mask = (label == 1)
-                z_dim = self.causal_module.z_spatial_dim
-                r_spatial_real = causal_out_cp.get('residuals_spatial_real')
-                if r_spatial_real is not None and r_spatial_real.shape[1] > z_dim:
-                    # Semantic portion of real-SCM residuals: (B, s_dim)
-                    r_sem = r_spatial_real[:, z_dim:].abs().detach()
-                    # Per-attribute max for normalization (avoid zero div)
-                    r_sem_max = r_sem.max(dim=0)[0].clamp(min=1e-4)
-                    concept_target = (r_sem / r_sem_max).clamp(max=1.0)
-
-                    if cp_fake_mask.any():
-                        # Fake faces: predict which attributes have high violation
-                        concept_loss = concept_loss + F.mse_loss(
-                            concept_violations[cp_fake_mask],
-                            concept_target[cp_fake_mask])
-                    if cp_real_mask.any():
-                        # Real faces: predict near-zero violation for all attributes
-                        concept_loss = concept_loss + 0.5 * F.mse_loss(
-                            concept_violations[cp_real_mask],
-                            torch.zeros_like(concept_violations[cp_real_mask]))
 
         # -- Uniformity-Alignment loss (GenD recipe) --------------------------
         ua_align = torch.zeros(1, device=device)
@@ -910,15 +755,11 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(extractor, device)
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(proj, device)
 
-        for attr in ('causal_module', 'sparse_ae', 'multitaskhead', 'semantic_extractor',
-                     # Causal attention fusion (NeSy Change 1)
-                     'causal_attn_fusion',
-                     # Concept prediction head (NeSy Change 2)
-                     'concept_head'):
+        for attr in ('causal_module', 'sparse_ae', 'multitaskhead',
+                     'semantic_extractor', 'causal_attn_fusion'):
             mod = getattr(self, attr, None)
             if mod is not None:
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(mod, device)
-        # Semantic gate + causal gate are nn.Parameters, not modules
         if hasattr(self, 'semantic_gate') and isinstance(self.semantic_gate, nn.Parameter):
             ddp_anchor = ddp_anchor + self.semantic_gate.sum() * 0.0
         if hasattr(self, 'causal_gate') and isinstance(self.causal_gate, nn.Parameter):
@@ -928,23 +769,16 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         w = self.loss_weights
         w_causal      = w.get('causal', 0.0)
         w_causal_fake = w.get('causal_fake', w_causal * 0.5)
-        w_contr       = w.get('contrastive', 0.0)
-        w_contr_fake  = w.get('contrastive_fake', w_contr * 0.5)
-        w_graph_div   = w.get('graph_divergence', 0.0)
-        w_concept     = w.get('concept_prediction', 0.0)
+        w_causal_sem  = w.get('causal_semantic', 0.0)
 
         total_loss = (
             w.get('classification', 1.0) * cls_loss
-            + w.get('uncertainty', 0.0)  * uncertainty_loss
             + w_causal                   * causal_loss_real
             + w_causal_fake              * causal_loss_fake
-            + w_contr                    * contrastive_loss_real
-            + w_contr_fake               * contrastive_loss_fake
             + w.get('sparse', 0.0)       * sae_loss
             + self.ua_alpha              * ua_align
             + self.ua_beta               * ua_uniform
-            + w_graph_div                * graph_div_loss
-            + w_concept                  * concept_loss
+            + w_causal_sem               * causal_semantic_loss
             + ddp_anchor
         )
 
@@ -954,40 +788,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         return {
             'overall':            _scalar(total_loss),
             'classification':     _scalar(cls_loss),
-            'uncertainty':        _scalar(uncertainty_loss),
             'causal_real':        _scalar(causal_loss_real),
             'causal_fake':        _scalar(causal_loss_fake),
-            'contrastive_real':   _scalar(contrastive_loss_real),
-            'contrastive_fake':   _scalar(contrastive_loss_fake),
             'sparse':             _scalar(sae_loss),
             'ua_alignment':       _scalar(ua_align),
             'ua_uniformity':      _scalar(ua_uniform),
-            # NeSy losses
-            'graph_divergence':   _scalar(graph_div_loss),
-            'concept_prediction': _scalar(concept_loss),
-            # Legacy keys
-            'causal':             _scalar(causal_loss_real),
-            'contrastive':        _scalar(contrastive_loss_real),
+            'causal_semantic':    _scalar(causal_semantic_loss),
         }
-
-    @staticmethod
-    def _contrastive_margin(
-        score: torch.Tensor,
-        real_mask: torch.Tensor,
-        fake_mask: torch.Tensor,
-        margin: float = 1.0,
-    ) -> torch.Tensor:
-        """
-        Margin contrastive loss: score[fake].mean() - score[real].mean() >= margin.
-        """
-        device = score.device
-        if real_mask.any() and fake_mask.any():
-            return F.relu(margin - (score[fake_mask].mean() - score[real_mask].mean()))
-        elif real_mask.any():
-            return score[real_mask].mean().clamp(min=0)
-        elif fake_mask.any():
-            return F.relu(margin - score[fake_mask].mean())
-        return torch.zeros(1, device=device)
 
     # ------------------------------------------------------------------ #
     #  Metrics                                                             #
@@ -1000,10 +807,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             label.detach().float(), pred.detach().float())
         metrics = {'acc': acc, 'auc': auc, 'eer': eer, 'ap': ap}
 
-        if pred_dict.get('uncertainty') is not None:
-            metrics['mean_uncertainty'] = float(
-                pred_dict['uncertainty'].detach().float().cpu().numpy().mean())
-
         # SAE diagnostics
         sae_info = pred_dict.get('sae_info', {})
         for branch_name, branch_info in sae_info.items():
@@ -1012,42 +815,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 metrics[f'sae_{branch_name}_fvu']  = float(branch_info.get('fvu', 0))
                 metrics[f'sae_{branch_name}_dead'] = int(branch_info.get('n_dead', 0))
 
-        # Per-branch causal diagnostics
-        if self.use_causal:
-            causal_out = pred_dict.get('causal_out')
-            if causal_out is not None:
-                real_mask = (label == 0)
-                fake_mask = (label == 1)
-
-                # Aggregated scores
-                v_real = causal_out['v_real'].detach().float()
-                v_fake = causal_out['v_fake'].detach().float()
-                if real_mask.any():
-                    metrics['v_real_reals'] = float(v_real[real_mask].mean())
-                    metrics['v_fake_reals'] = float(v_fake[real_mask].mean())
-                if fake_mask.any():
-                    metrics['v_real_fakes'] = float(v_real[fake_mask].mean())
-                    metrics['v_fake_fakes'] = float(v_fake[fake_mask].mean())
-                if real_mask.any() and fake_mask.any():
-                    metrics['v_real_separation'] = float(
-                        v_real[fake_mask].mean() - v_real[real_mask].mean())
-                    metrics['v_fake_separation'] = float(
-                        v_fake[fake_mask].mean() - v_fake[real_mask].mean())
-
-                # Per-branch scores
-                for branch in ('spatial', 'freq'):
-                    v_br = causal_out[f'v_{branch}_real'].detach().float()
-                    v_bf = causal_out[f'v_{branch}_fake'].detach().float()
-                    if real_mask.any() and fake_mask.any():
-                        metrics[f'v_{branch}_real_sep'] = float(
-                            v_br[fake_mask].mean() - v_br[real_mask].mean())
-                        metrics[f'v_{branch}_fake_sep'] = float(
-                            v_bf[fake_mask].mean() - v_bf[real_mask].mean())
-
-        # NeSy: causal attention weights (interpretability)
-        # Logs mean attention weight per violation type across the batch.
-        # spatial_real/fake = how much spatial causal structure drives detection
-        # freq_real/fake    = how much frequency causal structure drives detection
+        # Causal attention weights (interpretability)
         causal_primitives = pred_dict.get('causal_primitives')
         if causal_primitives is not None:
             aw = causal_primitives.detach().float().mean(0)  # (4,)
