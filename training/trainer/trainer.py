@@ -635,7 +635,7 @@ class Trainer(object):
         if phase2_start is not None and epoch == phase2_start:
             self.logger.info(
                 f"===> Phase 2 transition at epoch {epoch}: "
-                f"unfreezing backbone LayerNorms across all active branches."
+                f"unfreezing backbone LayerNorms + causal module."
             )
             # Unwrap DDP to access the actual model attributes
             m = self.model.module if isinstance(self.model, DDP) else self.model
@@ -655,6 +655,10 @@ class Trainer(object):
                         f"Add it following the GenD-style extractor pattern."
                     )
 
+            # Unfreeze causal module if it was frozen in Phase 1
+            if hasattr(m, 'unfreeze_causal'):
+                m.unfreeze_causal()
+
             # Rebuild optimizer so newly unfrozen params are in a param group.
             # Without this, their gradients are computed but silently discarded
             # because Adam has no state for them yet.
@@ -670,9 +674,10 @@ class Trainer(object):
             if hasattr(self, '_freq_params_cache'):
                 del self._freq_params_cache
 
-        # ── Causal warmup at epoch 0 ──────────────────────────────────────
-        # Pre-populate both EMA buffers before main training begins.
-        # In end-to-end mode, causal is enabled from epoch 0 — warmup runs once.
+        # ── Causal warmup ─────────────────────────────────────────────────
+        # Pre-populate both EMA buffers before causal module starts training.
+        # Runs at phase2_start (epoch 5) so the classifier has converged on
+        # clean CLIP features first, and backbone features are stable.
         # Legacy phase3 transition is also supported for backward compatibility.
         phase3 = phases.get('phase3', {})
         phase3_start = phase3.get('epochs', [None, None])[0]
@@ -703,10 +708,20 @@ class Trainer(object):
 
             run_causal_warmup = True
 
-        elif epoch == 0 and getattr(m_causal, 'use_causal', False):
-            # End-to-end: causal enabled from config, warmup at epoch 0
+        elif (phase2_start is not None and epoch == phase2_start
+              and getattr(m_causal, 'use_causal', False)):
+            # Causal warmup at phase2 start (epoch 5): classifier has had
+            # 5 epochs to converge on clean features, backbone is stable.
             self.logger.info(
-                "===> Causal warmup at epoch 0 (end-to-end mode)"
+                f"===> Causal warmup at epoch {epoch} (phase2 start)"
+            )
+            run_causal_warmup = True
+
+        elif (phase2_start is None and epoch == 0
+              and getattr(m_causal, 'use_causal', False)):
+            # Fallback: no phases defined, warmup at epoch 0
+            self.logger.info(
+                "===> Causal warmup at epoch 0 (no phase config)"
             )
             run_causal_warmup = True
 
