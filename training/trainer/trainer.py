@@ -498,7 +498,7 @@ class Trainer(object):
         n_done = 0
 
         for data_dict in dataloader:
-            if n_done >= n_batches:
+            if n_batches > 0 and n_done >= n_batches:
                 break
             if 'label' not in data_dict:
                 continue
@@ -548,6 +548,25 @@ class Trainer(object):
                 if semantic_attrs is not None:
                     semantic_attrs = semantic_attrs.detach()
 
+            # Augment semantic vector with Tier 1 + Tier 2 (mirrors detector forward)
+            if semantic_attrs is not None:
+                sem_parts = [semantic_attrs]
+                if getattr(m, 'use_consistency_rules', False):
+                    with torch.no_grad():
+                        consistency_feats = m.consistency_rules(semantic_attrs)
+                    sem_parts.append(consistency_feats.detach())
+                if getattr(m, 'use_forensic_features', False):
+                    forensic_feats = target_dict.get('forensic_features')
+                    if forensic_feats is not None:
+                        sem_parts.append(forensic_feats.to(semantic_attrs.device).detach())
+                    else:
+                        B = semantic_attrs.shape[0]
+                        sem_parts.append(torch.zeros(
+                            B, getattr(m, '_tier2_dim', 30),
+                            device=semantic_attrs.device))
+                if len(sem_parts) > 1:
+                    semantic_attrs = torch.cat(sem_parts, dim=1)
+
             m.causal_module(
                 z_spatial=(z_spatial.detach() if z_spatial is not None else None),
                 z_freq=(z_freq.detach() if z_freq is not None else None),
@@ -559,7 +578,8 @@ class Trainer(object):
             n_done += 1
             if n_done % 50 == 0 and is_main_process():
                 self.logger.info(
-                    f"  Causal warmup ({filter_name}): {n_done}/{n_batches} batches"
+                    f"  Causal warmup ({filter_name}): {n_done}/"
+                    f"{'all' if n_batches < 0 else n_batches} batches"
                 )
 
         # Restore trainable states
@@ -695,10 +715,12 @@ class Trainer(object):
                 self.config.get('causal_module', {})
                 .get('causal_warmup_batches', 100)
             )
-            if causal_warmup_batches > 0:
+            if causal_warmup_batches != 0:
+                n_label = ("all" if causal_warmup_batches < 0
+                           else str(causal_warmup_batches))
                 self.logger.info(
                     f"  Causal warmup — real graph: "
-                    f"{causal_warmup_batches} real-face batches..."
+                    f"{n_label} real-face batches..."
                 )
                 self._run_causal_warmup(
                     train_data_loader,
@@ -707,7 +729,7 @@ class Trainer(object):
                 )
                 self.logger.info(
                     f"  Causal warmup — fake graph: "
-                    f"{causal_warmup_batches} fake-face batches..."
+                    f"{n_label} fake-face batches..."
                 )
                 self._run_causal_warmup(
                     train_data_loader,

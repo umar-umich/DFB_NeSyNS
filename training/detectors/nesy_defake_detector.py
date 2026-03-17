@@ -50,6 +50,11 @@ from networks.nesy_defake.causal import CausalDiscoveryModule
 from networks.nesy_defake.classifiers import MultiTaskHead
 from networks.nesy_defake.classifiers.sparse_autoencoder import DualBranchSparseAutoencoder
 from networks.nesy_defake.semantic import FacialSemanticExtractor
+from networks.nesy_defake.semantic.consistency_rules import CrossAttributeConsistencyRules
+from networks.nesy_defake.semantic.forensic_features import (
+    FORENSIC_FEATURE_NAMES, get_forensic_feature_names,
+)
+from networks.nesy_defake.semantic.causal_intervention import CausalInterventionModule
 
 logger = logging.getLogger(__name__)
 ALL_BRANCHES = ('spatial', 'frequency')
@@ -213,6 +218,32 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                         f"(backend={sem_cfg.get('backend', 'farl')})")
         else:
             self.semantic_extractor = None
+            actual_dim = config['causal_module'].get('semantic_dim', 211)
+
+        # -- Tier 1: Cross-Attribute Consistency Rules -------------------------
+        cr_cfg = config.get('consistency_rules', {})
+        self.use_consistency_rules = (
+            cr_cfg.get('enabled', False) and self.use_semantic_attrs)
+        self._tier1_dim = 0
+        if self.use_consistency_rules:
+            self.consistency_rules = CrossAttributeConsistencyRules()
+            self._tier1_dim = cr_cfg.get('output_dim', 18)
+            actual_dim += self._tier1_dim
+            logger.info(f"  Tier 1 (consistency): {self._tier1_dim} features")
+
+        # -- Tier 2: Pixel-Level Forensic Features (precomputed) ---------------
+        ff_cfg = config.get('forensic_features', {})
+        self.use_forensic_features = ff_cfg.get('enabled', False)
+        self._tier2_dim = 0
+        if self.use_forensic_features:
+            self._tier2_dim = ff_cfg.get('output_dim', 30)
+            actual_dim += self._tier2_dim
+            logger.info(f"  Tier 2 (forensic)  : {self._tier2_dim} features")
+
+        # Update semantic_dim with augmented dimensions
+        config['causal_module']['semantic_dim'] = actual_dim
+        logger.info(f"  Augmented sem dim: {actual_dim} "
+                    f"(base + {self._tier1_dim} tier1 + {self._tier2_dim} tier2)")
 
         # -- Module 4: Sparse Autoencoder ------------------------------------
         self.use_sparse = config['sparse_features']['enabled']
@@ -221,12 +252,16 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         # -- Module 3: Per-Branch Dual-Graph Causal Discovery ----------------
         self.use_causal = config['causal_module']['enabled']
-        # Pass semantic attribute names for interpretable causal graph nodes
-        sem_attr_names = (self.semantic_extractor.get_attribute_names()
-                          if self.use_semantic_attrs and self.semantic_extractor
-                          else None)
+        # Build combined semantic attribute names for interpretable causal graphs
+        sem_attr_names = []
+        if self.use_semantic_attrs and self.semantic_extractor:
+            sem_attr_names.extend(self.semantic_extractor.get_attribute_names())
+        if self.use_consistency_rules:
+            sem_attr_names.extend(self.consistency_rules.get_feature_names())
+        if self.use_forensic_features:
+            sem_attr_names.extend(get_forensic_feature_names())
         self.causal_module = CausalDiscoveryModule(
-            config, semantic_attr_names=sem_attr_names)
+            config, semantic_attr_names=sem_attr_names if sem_attr_names else None)
 
         # -- NeSy Change 1: Causal Violation Attention Fusion ----------------
         # Replaces the original 4 direct d→proj_dim zero-init projections.
@@ -280,6 +315,18 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # classifier never learns to use causal signal.
         self.causal_gate = nn.Parameter(torch.tensor(0.0))
         logger.info(f"  Causal gate     : scalar (sigmoid, init={torch.sigmoid(torch.tensor(0.0)).item():.3f})")
+
+        # -- Tier 3: Causal Intervention Module (inference only) ---------------
+        ci_cfg = config.get('causal_intervention', {})
+        self.use_causal_intervention = ci_cfg.get('enabled', False)
+        if self.use_causal_intervention:
+            self.causal_intervention = CausalInterventionModule(ci_cfg)
+            ci_dim = ci_cfg.get('output_dim', 16)
+            self.ci_projection = nn.Linear(ci_dim, proj_dim)
+            # Init near zero so Tier 3 doesn't disrupt trained classifier
+            nn.init.normal_(self.ci_projection.weight, std=0.01)
+            nn.init.zeros_(self.ci_projection.bias)
+            logger.info(f"  Tier 3 (intervention): {ci_dim}→{proj_dim} (inference only)")
 
         # -- L2 normalization + Uniformity-Alignment loss (GenD recipe) ------
         ua_cfg = config.get('uniformity_alignment', {})
@@ -599,10 +646,35 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             else:
                 semantic_attrs = data_dict.get('semantic_attrs', None)
 
-            # Apply semantic feature gate (soft selection for generalization)
+            # -- Augment semantic vector with Tier 1 + Tier 2 ------------------
+            if semantic_attrs is not None:
+                sem_parts = [semantic_attrs]  # base (B, 211)
+
+                # Tier 1: cross-attribute consistency rules (differentiable)
+                if self.use_consistency_rules:
+                    # Compute on un-gated base attrs for accurate rule evaluation
+                    consistency_feats = self.consistency_rules(semantic_attrs)
+                    sem_parts.append(consistency_feats)
+
+                # Tier 2: precomputed forensic features
+                if self.use_forensic_features:
+                    forensic_feats = data_dict.get('forensic_features')
+                    if forensic_feats is not None:
+                        sem_parts.append(forensic_feats.to(semantic_attrs.device))
+                    else:
+                        # Zero-fill if not available (graceful fallback)
+                        B = semantic_attrs.shape[0]
+                        sem_parts.append(torch.zeros(
+                            B, self._tier2_dim, device=semantic_attrs.device))
+
+                # Concatenate: (B, 211 + tier1 + tier2) = (B, 259)
+                if len(sem_parts) > 1:
+                    semantic_attrs = torch.cat(sem_parts, dim=1)
+
+            # Apply semantic feature gate on full augmented vector
             if (self.use_semantic_gate and semantic_attrs is not None
                     and hasattr(self, 'semantic_gate')):
-                gate = torch.sigmoid(self.semantic_gate)  # (s_dim,)
+                gate = torch.sigmoid(self.semantic_gate)  # (augmented_dim,)
                 semantic_attrs = semantic_attrs * gate.unsqueeze(0)
 
             label = data_dict.get('label', None) if not inference else None
@@ -636,6 +708,18 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             causal_primitives = attn_weights   # (B, 4) for interpretability
             gate_value = torch.sigmoid(self.causal_gate)
             classifier_input = fused_features + gate_value * causal_delta
+
+        # -- Tier 3: Causal Intervention (inference only) ----------------------
+        if (inference and self.use_causal_intervention
+                and self.use_causal and semantic_attrs is not None):
+            ci_feats = self.causal_intervention(
+                causal_module=self.causal_module,
+                augmented_semantic=semantic_attrs,
+                z_spatial=z_spatial.detach() if z_spatial is not None else None,
+                z_freq=z_freq.detach() if z_freq is not None else None,
+            )  # (B, 16)
+            ci_delta = self.ci_projection(ci_feats)
+            classifier_input = classifier_input + ci_delta
 
         # L2-normalize for hyperspherical representation (GenD recipe)
         l2_embeddings = F.normalize(classifier_input, p=2, dim=1)
@@ -754,6 +838,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             if name not in self.active_branches:
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(extractor, device)
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(proj, device)
+
+        # Tier 3 ci_projection needs DDP anchor (inference-only, no train gradient)
+        if hasattr(self, 'ci_projection'):
+            ddp_anchor = ddp_anchor + _zero_grad_anchor(self.ci_projection, device)
 
         for attr in ('causal_module', 'sparse_ae', 'multitaskhead',
                      'semantic_extractor', 'causal_attn_fusion'):

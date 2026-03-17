@@ -16,7 +16,7 @@ Each .pt file contains:
   {'features': Tensor(n_frames, 211), 'frame_paths': List[str]}
 
 Usage:
-  python training/precompute_semantic_features.py \
+  python preprocessing/precompute_semantic_features.py \
       --detector_path training/config/detector/nesy_defake.yaml \
       --batch_size 32 \
       --output_dir facellava_semantic
@@ -174,7 +174,7 @@ def build_extractor(config, device, batch_size):
     sem_cfg['use_llm'] = sem_cfg.get('use_llm', True)
     extract_config['semantic_attributes'] = sem_cfg
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'training'))
     from networks.nesy_defake.semantic import FacialSemanticExtractor
 
     extractor = FacialSemanticExtractor(extract_config)

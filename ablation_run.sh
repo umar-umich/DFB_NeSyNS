@@ -6,7 +6,7 @@
 # USAGE
 # ─────
 #   Single-GPU (e.g. GPU 7):
-#       bash ablation_run.sh --mode single --gpus 7
+#       bash ablation_run.sh --mode single --gpus 7 --seeds "42 123 512"  
 #
 #   Multi-GPU DDP (e.g. GPUs 4,5,6):
 #       bash ablation_run.sh --mode ddp --gpus 4,5,6 --port 29501
@@ -29,7 +29,7 @@ set -euo pipefail
 # ── Configurable paths ────────────────────────────────────────────────────────
 DETECTOR_PATH="./training/config/detector/nesy_defake.yaml"
 RESULTS_DIR="./ablation_results"
-LOG_DIR="${RESULTS_DIR}/logs_6_wo_causal"
+LOG_DIR="${RESULTS_DIR}/logs_8_causal_semantic"   # subdir for this ablation set (change if running multiple sets)
 PYTHON="python"          # or "python3"
 TORCHRUN="torchrun"
 
@@ -38,6 +38,7 @@ MODE="single"            # single | ddp
 GPUS="7"                 # comma-separated GPU IDs
 MASTER_PORT="29501"
 ONLY=""                  # if set, run only the experiment with this tag
+SEEDS="42 123 256 512 1024"   # seeds to sweep; override with --seeds "s1 s2 ..."
 
 # ── Parse CLI args ────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -46,6 +47,7 @@ while [[ $# -gt 0 ]]; do
         --gpus)   GPUS="$2";        shift 2 ;;
         --port)   MASTER_PORT="$2"; shift 2 ;;
         --only)   ONLY="$2";        shift 2 ;;
+        --seeds)  SEEDS="$2";       shift 2 ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
@@ -73,6 +75,7 @@ declare -a EXPERIMENTS=(
 run_experiment() {
     local TAG="$1"
     local BRANCHES="$2"          # space-separated branch names
+    local SEED="$3"              # random seed
 
     # Skip if --only is set and tag doesn't match
     if [[ -n "$ONLY" && "$TAG" != "$ONLY" ]]; then
@@ -85,11 +88,12 @@ run_experiment() {
     done
     BRANCH_ARGS="${BRANCH_ARGS# }"   # trim leading space
 
-    local STDOUT_LOG="${LOG_DIR}/exp_${TAG}.log"
+    local RUN_TAG="${TAG}_seed${SEED}"
+    local STDOUT_LOG="${LOG_DIR}/exp_${RUN_TAG}.log"
 
     echo ""
     echo "════════════════════════════════════════════════════════════════"
-    echo "  Experiment : ${TAG}  (branches: ${BRANCHES})"
+    echo "  Experiment : ${RUN_TAG}  (branches: ${BRANCHES}, seed: ${SEED})"
     echo "  GPUs       : ${GPUS}  |  Mode: ${MODE}"
     echo "  Log        : ${STDOUT_LOG}"
     echo "════════════════════════════════════════════════════════════════"
@@ -102,13 +106,14 @@ run_experiment() {
         $PYTHON training/train.py \
             --detector_path "${DETECTOR_PATH}" \
             --local_rank 0 \
-            --task_target "ablation_${TAG}" \
+            --task_target "ablation_${RUN_TAG}" \
             --active_branches $BRANCH_ARGS \
+            --seed "${SEED}" \
             2>&1 | tee "${STDOUT_LOG}"
 
     elif [[ "$MODE" == "ddp" ]]; then
         # ── Multi-GPU DDP ─────────────────────────────────────────────────
-        TORCH_DISTRIBUTED_DEBUG=DETAIL 
+        TORCH_DISTRIBUTED_DEBUG=DETAIL \
         CUDA_VISIBLE_DEVICES="${GPUS}" \
         TF_USE_LEGACY_KERAS=1 \
         $TORCHRUN \
@@ -117,8 +122,9 @@ run_experiment() {
             training/train.py \
             --detector_path "${DETECTOR_PATH}" \
             --ddp \
-            --task_target "ablation_${TAG}" \
+            --task_target "ablation_${RUN_TAG}" \
             --active_branches $BRANCH_ARGS \
+            --seed "${SEED}" \
             2>&1 | tee "${STDOUT_LOG}"
     else
         echo "ERROR: unknown mode '${MODE}'. Use 'single' or 'ddp'."
@@ -128,19 +134,22 @@ run_experiment() {
     # Increment port so back-to-back DDP runs don't clash on the same host
     MASTER_PORT=$((MASTER_PORT + 1))
 
-    echo "  ✓ Experiment ${TAG} complete."
+    echo "  ✓ Experiment ${RUN_TAG} complete."
 }
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 echo ""
 echo "NeSyDeFake Branch Ablation — $(date)"
 echo "Mode: ${MODE} | GPUs: ${GPUS} | GPU count: ${GPU_COUNT}"
+echo "Seeds: ${SEEDS}"
 echo ""
 
 for entry in "${EXPERIMENTS[@]}"; do
     TAG="${entry%%|*}"
     BRANCHES="${entry##*|}"
-    run_experiment "$TAG" "$BRANCHES"
+    for SEED in $SEEDS; do
+        run_experiment "$TAG" "$BRANCHES" "$SEED"
+    done
 done
 
 echo ""

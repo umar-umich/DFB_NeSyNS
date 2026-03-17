@@ -60,6 +60,12 @@ parser.add_argument(
     default=None,
     help='Override active_branches. E.g. --active_branches spatial frequency'
 )
+parser.add_argument(
+    '--seed',
+    type=int,
+    default=None,
+    help='Override manualSeed. E.g. --seed 123'
+)
 
 args = parser.parse_args()
 
@@ -381,6 +387,9 @@ def main():
         config['test_dataset'] = args.test_dataset
     config['save_ckpt'] = args.save_ckpt
     config['save_feat'] = args.save_feat
+
+    if args.seed is not None:
+        config['manualSeed'] = args.seed
 
     if args.active_branches:
         valid = [b for b in args.active_branches if b in ('spatial', 'frequency')]

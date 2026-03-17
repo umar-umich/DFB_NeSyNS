@@ -1,8 +1,9 @@
 #!/bin/bash
-# Full pipeline: augment real frames + precompute Face-LLaVA features
+# Full pipeline: augment real frames + precompute all features
 #
 # Step 1: Augment real frames (3 copies each to balance 4:1 fake:real ratio)
 # Step 2: Precompute Face-LLaVA 211 attributes for ALL frames (original + augmented)
+# Step 3: Precompute Tier 2 forensic features (30-d) for ALL frames
 #
 # After running, update train_dataset to use the _augmented JSON.
 
@@ -23,10 +24,21 @@ echo "============================================================"
 echo "Step 2: Precomputing Face-LLaVA features for ALL frames"
 echo "============================================================"
 # This picks up both original and augmented frames from the _augmented JSON
-python training/precompute_semantic_features.py \
+python preprocessing/precompute_semantic_features.py \
     --detector_path training/config/detector/nesy_defake.yaml \
     --batch_size 32 \
     --output_dir facellava_semantic \
+    --skip_existing \
+    --device cuda:1
+
+echo ""
+echo "============================================================"
+echo "Step 3: Precomputing forensic features for ALL frames"
+echo "============================================================"
+python preprocessing/precompute_forensic_features.py \
+    --detector_path training/config/detector/nesy_defake.yaml \
+    --batch_size 256 \
+    --output_dir forensic_features \
     --skip_existing \
     --device cuda:1
 

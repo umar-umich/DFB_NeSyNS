@@ -145,6 +145,35 @@ semantic_attributes:
   micro_batch_size: 16
 
 # -----------------------------------------------------------------------------
+# Tier 1: Cross-Attribute Consistency Rules (forensic)
+# -----------------------------------------------------------------------------
+# Differentiable violation scores computed from 211 FaceBench attributes.
+# Captures gender-attribute, expression-AU, and mutually-exclusive conflicts.
+consistency_rules:
+  enabled: true
+  output_dim: 18
+
+# -----------------------------------------------------------------------------
+# Tier 2: Pixel-Level Forensic Features (precomputed)
+# -----------------------------------------------------------------------------
+# Boundary gradients, regional blur, L/R symmetry, color consistency,
+# frequency anomaly, quality metrics — extracted via SegFormer face parsing.
+forensic_features:
+  enabled: true           # Enable after running precompute_forensic_features.py
+  output_dim: 30
+  precomputed_dir: forensic_features
+
+# -----------------------------------------------------------------------------
+# Tier 3: Causal Intervention Module (inference only)
+# -----------------------------------------------------------------------------
+# Do-calculus interventions on learned causal graphs at test time.
+# Flips top-k attributes and measures SCM response discrepancy.
+causal_intervention:
+  enabled: true
+  output_dim: 16
+  top_k_interventions: 10
+
+# -----------------------------------------------------------------------------
 # Causal Attention Fusion
 # -----------------------------------------------------------------------------
 # The fused CLIP features (query) attend over the 4 causal residuals
@@ -156,8 +185,8 @@ causal_attention:
 # Module 3: Causal Discovery
 # -----------------------------------------------------------------------------
 causal_module:
-  enabled: false
-  causal_warmup_batches: 50
+  enabled: true
+  causal_warmup_batches: -1          # -1 = use all training batches
 
   latent_variables:
     z_spatial_dim:    128

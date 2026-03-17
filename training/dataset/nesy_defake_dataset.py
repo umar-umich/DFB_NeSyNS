@@ -90,6 +90,16 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         # Cache: video_base_dir -> {frame_idx: tensor}
         self._precomputed_cache = {} if self.use_precomputed_semantic else None
 
+        # ── Precomputed Tier 2 forensic features ───────────────────────────
+        ff_cfg = config.get('forensic_features', {})
+        self.use_forensic_features = (
+            ff_cfg.get('enabled', False)
+            and bool(ff_cfg.get('precomputed_dir'))
+        )
+        self._forensic_subdir = ff_cfg.get('precomputed_dir', 'forensic_features')
+        self._forensic_dim = ff_cfg.get('output_dim', 30)
+        self._forensic_cache = {} if self.use_forensic_features else None
+
         # ── Parent handles JSON parsing, image_list/label_list ────────────
         super().__init__(config, mode)
 
@@ -311,6 +321,68 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             return torch.zeros(self._precomputed_dim)
 
     # ------------------------------------------------------------------ #
+    #  Precomputed Tier 2 forensic feature loading                         #
+    # ------------------------------------------------------------------ #
+
+    def _load_forensic_features(self, frame_path: str) -> torch.Tensor:
+        """
+        Load precomputed forensic features (30-d) from .pt file.
+        Same caching pattern as _load_precomputed_semantic.
+        Returns (forensic_dim,) tensor. Zero-vector on any failure.
+        """
+        try:
+            sep = "/" if "/" in frame_path else "\\"
+            parts = frame_path.split(sep)
+
+            # Find the frames directory (handles 'frames' and 'frames_aug_N')
+            frames_idx = None
+            for pi, part in enumerate(parts):
+                if part == 'frames' or part.startswith('frames_aug_'):
+                    frames_idx = pi
+                    break
+            if frames_idx is None:
+                return torch.zeros(self._forensic_dim)
+
+            video_name = parts[frames_idx + 1]
+            base_dir = sep.join(parts[:frames_idx])
+
+            cache_key = f"{base_dir}/{video_name}"
+            if cache_key not in self._forensic_cache:
+                pt_path = os.path.join(
+                    base_dir, self._forensic_subdir, f'{video_name}.pt')
+                if os.path.exists(pt_path):
+                    data = torch.load(pt_path, map_location='cpu',
+                                      weights_only=False)
+                    self._forensic_cache[cache_key] = data
+                else:
+                    self._forensic_cache[cache_key] = None
+
+            cached = self._forensic_cache[cache_key]
+            if cached is None:
+                return torch.zeros(self._forensic_dim)
+
+            features = cached['features']  # (n_frames, 30)
+            frame_paths = cached.get('frame_paths', [])
+
+            # Try exact frame match
+            if frame_paths:
+                frame_filename = parts[-1]
+                for idx, fp in enumerate(frame_paths):
+                    if fp.endswith(frame_filename):
+                        return features[idx]
+
+            # Fallback: index by frame number
+            frame_filename = parts[-1]
+            frame_num = int(os.path.splitext(frame_filename)[0])
+            if frame_num < features.shape[0]:
+                return features[frame_num]
+
+            return torch.zeros(self._forensic_dim)
+
+        except Exception:
+            return torch.zeros(self._forensic_dim)
+
+    # ------------------------------------------------------------------ #
     #  Single-frame loading helper                                         #
     # ------------------------------------------------------------------ #
 
@@ -346,12 +418,19 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         else:
             precomputed_attrs = torch.zeros(1)  # placeholder
 
+        # Precomputed Tier 2 forensic features
+        if self.use_forensic_features:
+            forensic_features = self._load_forensic_features(frame_path)
+        else:
+            forensic_features = torch.zeros(self._forensic_dim)
+
         return {
             "spatial_frames":    spatial_frames,
             "freq_frames":       freq_frames,
             "raw_frames":        raw_frames,
             "semantic_attrs":    torch.from_numpy(semantic_attrs),
             "precomputed_attrs": precomputed_attrs,
+            "forensic_features": forensic_features,
             "label":             label,
             "name":              frame_path,
         }
@@ -439,12 +518,19 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             precomputed_attrs = torch.stack(
                 [s["precomputed_attrs"] for s in batch])
 
+        # Precomputed Tier 2 forensic features (if available)
+        forensic_features = None
+        if "forensic_features" in batch[0]:
+            forensic_features = torch.stack(
+                [s["forensic_features"] for s in batch])
+
         return {
             "spatial_frames":    spatial_frames,
             "freq_frames":       freq_frames,
             "raw_frames":        raw_frames,
             "semantic_attrs":    semantic_attrs,
             "precomputed_attrs": precomputed_attrs,
+            "forensic_features": forensic_features,
             "label":             labels,
             "name":              names,
             # Compatibility keys

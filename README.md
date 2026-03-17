@@ -502,3 +502,76 @@ Correct order:
   # Step 3: Precompute features for ALL frames (skips already-done originals)
   python training/precompute_semantic_features.py --detector_path training/config/detector/nesy_defake.yaml --batch_size 32
   --skip_existing --device cuda:1
+
+# Proposed Direction
+
+  I see three tiers of increasing ambition:
+
+  ## Tier 1: Cross-Attribute Consistency Rules (easy, no new models)
+
+  Add ~15–20 computed consistency features from the existing 211 attributes — violations of expected causal rules. These become new dimensions in
+  the semantic vector:
+  - gender_beard_consistency: P(beard|male) violation score
+  - expression_AU_consistency: mismatch between emotion label and AUs
+  - age_appearance_consistency: elderly + smooth_skin = suspicious
+  - These are cheap to compute, genuinely forensic, and give the causal module meaningful signal
+
+  ## Tier 2: Pixel-Level Forensic Features (~30 features, face parsing model needed)
+
+  Use a face parsing model (e.g., BiSeNet, pretrained) to extract regions, then compute:
+  - Blending boundary gradient magnitude at each region edge
+  - Regional texture entropy differences (forged vs. unforged regions)
+  - Color histogram divergence at face boundary
+  - Local Laplacian energy per region (blur detection)
+  - These can be precomputed like the FaceBench features
+
+  ## Tier 3: VLM Forensic Queries (agentic, most powerful, most expensive)
+
+  Use Face-LLaVA or a general VLM to answer ~20 forensic-specific yes/no questions:
+  - "Are there visible blending artifacts at the face boundary?"
+  - "Is the lip region blurry or inconsistent with surrounding skin?"
+  - "Are there any duplicate or ghost-like facial features?"
+  - "Is the skin texture consistent across the entire face?"
+  - Precomputed to .pt files like the current FaceBench features
+
+  ---
+  My recommendation: Start with Tier 1 + Tier 2 together. Tier 1 is trivial to add (just a tensor computation on existing attributes) and gives
+  immediate causal signal. Tier 2 adds genuinely new pixel-level forensic information. Together they'd expand semantic features from 211 → ~260, all
+   forensically relevant.
+
+  Tier 3 is the "agentic workflow" option — powerful but needs careful prompt engineering and precomputation time. Worth doing later if Tier 1+2
+  show the causal graphs learning meaningful divergence.
+
+ Yes I think you are right. Let's do tier 1 & 2 for both training and inference and tier 3 just for inference as a causal intervention module,     
+what you think? And any way to do that without LVMs or better to do with LVMs?                                                                      
+                                                                                                                                                    
+● Good thinking. Let me refine this:                                                                                                                
+                                                                                                                                                    
+  Tier 1 (consistency rules) — pure tensor math on existing 211 attributes, trivial for both train and inference.                                   
+                                                                                                                                                    
+  Tier 2 (pixel-level forensic features) — precomputed with a face parsing model (BiSeNet), used in both train and inference. No LVM needed — these 
+  are classical CV metrics (gradients, entropy, frequency analysis) computed on parsed face regions.                                                
+
+  Tier 3 (causal intervention at inference) — here's the key question:
+
+  Tier 3 without VLMs: Rule-Based Causal Intervention Module
+
+  You can do this without VLMs by defining forensic rules as hard constraints on the learned causal graph:
+  - At inference, compute cross-graph consistency scores: "does this sample's attribute pattern match the real-graph SCM or the fake-graph SCM?"
+  - Apply do-calculus style interventions: fix a subset of semantic nodes (e.g., force gender=male) and check if downstream predictions (beard,
+  jawline) match observations
+  - Compute intervention discrepancy scores as additional classifier features
+  - This is fast, interpretable, and truly neuro-symbolic
+
+  Tier 3 with VLMs: More powerful but expensive
+
+  A VLM could answer open-ended forensic questions that rules can't capture ("does this face look uncanny?"). But at inference time it adds ~2s per
+  image with a 13B model, which may be impractical.
+
+  My recommendation: Do Tier 3 without VLMs — use the learned causal graphs themselves for do-calculus interventions at inference. This is:
+  1. Actually neuro-symbolic (the "NeSy" in your project name)
+  2. Fast at inference
+  3. Uses the causal graphs for their intended purpose — intervention, not just observation
+  4. If the causal graphs learn meaningful structure from Tier 1+2 features, the interventions will carry real signal
+
+  The VLM approach could be a separate ablation/experiment later.
