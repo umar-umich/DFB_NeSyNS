@@ -1083,3 +1083,178 @@ class FacialSemanticExtractor(nn.Module):
     @property
     def backbone_dim(self) -> int:
         return self._backbone_dim
+
+
+# ======================================================================== #
+#  Quick test / demo                                                        #
+# ======================================================================== #
+
+if __name__ == '__main__':
+    """
+    Test the FacialSemanticExtractor on a single face image.
+
+    Usage:
+      # Vision-only mode (default, ~1.2GB VRAM):
+      python facial_semantic_extractor.py /path/to/face.png
+
+      # Precomputed mode (loads a .pt file):
+      python facial_semantic_extractor.py /path/to/semantic.pt --mode precomputed
+
+      # Full LLM mode (~28GB VRAM):
+      python facial_semantic_extractor.py /path/to/face.png --mode llm
+
+      # With custom config:
+      python facial_semantic_extractor.py /path/to/face.png \
+          --config /path/to/nesy_defake.yaml
+    """
+    import argparse
+    import sys
+    import os
+
+    # Add training dir for imports
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
+    logging.basicConfig(level=logging.INFO, format='%(name)s - %(message)s')
+
+    parser = argparse.ArgumentParser(
+        description='Test FacialSemanticExtractor on a face image')
+    parser.add_argument('input_path', type=str,
+                        help='Path to face image (.png/.jpg) or precomputed .pt file')
+    parser.add_argument('--mode', choices=['vision', 'llm', 'precomputed'],
+                        default='vision',
+                        help='Extraction mode (default: vision)')
+    parser.add_argument('--config', type=str, default=None,
+                        help='Path to detector YAML config (optional)')
+    parser.add_argument('--model_path', type=str, default=None,
+                        help='Override model_path from config')
+    parser.add_argument('--top_k', type=int, default=20,
+                        help='Number of top attributes to display')
+    parser.add_argument('--device', type=str, default='cuda',
+                        help='Device (cuda or cpu)')
+    args = parser.parse_args()
+
+    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
+    print(f"\nDevice: {device}")
+
+    # --- Build config ---
+    if args.config:
+        import yaml
+        with open(args.config) as f:
+            full_cfg = yaml.safe_load(f)
+        sem_cfg = full_cfg.get('semantic_attributes', {})
+    else:
+        sem_cfg = {
+            'backend': 'face_llava',
+            'output_dim': 211,
+            'model_path': '/data/umar/Repos/FaceBench',
+            'use_llm': args.mode == 'llm',
+            'fp16': True,
+        }
+
+    if args.model_path:
+        sem_cfg['model_path'] = args.model_path
+
+    if args.mode == 'precomputed':
+        sem_cfg['backend'] = 'precomputed'
+        sem_cfg['precomputed_dim'] = 211
+
+    if args.mode == 'llm':
+        sem_cfg['use_llm'] = True
+
+    # --- Build extractor ---
+    print(f"\nBuilding FacialSemanticExtractor (backend={sem_cfg.get('backend')}, "
+          f"use_llm={sem_cfg.get('use_llm', False)})...")
+    extractor = FacialSemanticExtractor(sem_cfg).to(device)
+    extractor.eval()
+
+    n_params = sum(p.numel() for p in extractor.parameters())
+    n_trainable = sum(p.numel() for p in extractor.parameters() if p.requires_grad)
+    print(f"Parameters: {n_params:,} total, {n_trainable:,} trainable")
+    print(f"Output dim: {extractor.output_dim}")
+    print(f"Backbone dim: {extractor.backbone_dim}")
+    print(f"Attribute names ({len(extractor.get_attribute_names())}): "
+          f"{extractor.get_attribute_names()[:5]}...")
+
+    # --- Load input ---
+    input_path = args.input_path
+    if args.mode == 'precomputed':
+        print(f"\nLoading precomputed features from: {input_path}")
+        precomputed = torch.load(input_path, map_location=device, weights_only=True)
+        if precomputed.dim() == 1:
+            precomputed = precomputed.unsqueeze(0)
+        print(f"  Shape: {precomputed.shape}")
+
+        with torch.no_grad():
+            output = extractor(precomputed_attrs=precomputed)
+    else:
+        from PIL import Image
+        import torchvision.transforms.functional as TF
+
+        print(f"\nLoading image: {input_path}")
+        img = Image.open(input_path).convert('RGB')
+        print(f"  Original size: {img.size}")
+
+        # Convert to tensor [0, 1]
+        img_tensor = TF.to_tensor(img).unsqueeze(0).to(device)  # (1, 3, H, W)
+        print(f"  Tensor shape: {img_tensor.shape}, range: [{img_tensor.min():.3f}, {img_tensor.max():.3f}]")
+
+        with torch.no_grad():
+            if sem_cfg.get('fp16') and device.type == 'cuda':
+                with torch.cuda.amp.autocast():
+                    output = extractor(raw_images=img_tensor)
+            else:
+                output = extractor(raw_images=img_tensor)
+
+    # --- Display results ---
+    print(f"\nOutput shape: {output.shape}")
+    print(f"Output dtype: {output.dtype}")
+    print(f"Output range: [{output.min().item():.4f}, {output.max().item():.4f}]")
+    print(f"Output mean:  {output.mean().item():.4f}")
+    print(f"Output std:   {output.std().item():.4f}")
+    print(f"Non-zero:     {(output.abs() > 0.01).sum().item()} / {output.shape[-1]}")
+
+    attr_names = extractor.get_attribute_names()
+    scores = output[0].float().cpu()
+
+    # Top-K highest
+    top_vals, top_idx = scores.topk(min(args.top_k, len(scores)))
+    print(f"\n{'='*60}")
+    print(f"Top-{args.top_k} attributes (highest scores):")
+    print(f"{'='*60}")
+    for i, (val, idx) in enumerate(zip(top_vals, top_idx)):
+        name = attr_names[idx] if idx < len(attr_names) else f'attr_{idx}'
+        print(f"  {i+1:3d}. {name:<35s} {val.item():.4f}")
+
+    # Bottom-K lowest
+    bot_vals, bot_idx = scores.topk(min(10, len(scores)), largest=False)
+    print(f"\nBottom-10 attributes (lowest scores):")
+    print(f"{'-'*60}")
+    for i, (val, idx) in enumerate(zip(bot_vals, bot_idx)):
+        name = attr_names[idx] if idx < len(attr_names) else f'attr_{idx}'
+        print(f"  {i+1:3d}. {name:<35s} {val.item():.4f}")
+
+    # Category breakdown (FaceBench)
+    if len(attr_names) == 211:
+        categories = {
+            'Hair (0-19)':        scores[0:20],
+            'Forehead (20-22)':   scores[20:23],
+            'Eyebrows (23-29)':   scores[23:30],
+            'Eyes (30-44)':       scores[30:45],
+            'Nose (48-55)':       scores[48:56],
+            'Mouth (56-65)':      scores[56:66],
+            'Skin (91-105)':      scores[91:106],
+            'Facial Hair (106-111)': scores[106:112],
+            'Accessories (116-145)': scores[116:146],
+            'Makeup (146-158)':   scores[146:159],
+            'Expression (171-178)': scores[171:179],
+            'Action Units (179-203)': scores[179:204],
+            'Identity (204-210)': scores[204:211],
+        }
+        print(f"\n{'='*60}")
+        print("Category-level summary (mean score):")
+        print(f"{'='*60}")
+        for cat, vals in categories.items():
+            print(f"  {cat:<30s}  mean={vals.mean().item():.4f}  "
+                  f"max={vals.max().item():.4f}  min={vals.min().item():.4f}")
+
+    print(f"\nDone.")

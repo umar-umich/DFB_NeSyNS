@@ -330,17 +330,23 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.causal_gate = nn.Parameter(torch.tensor(-3.0))
         logger.info(f"  Causal gate     : scalar (sigmoid, init={torch.sigmoid(torch.tensor(-3.0)).item():.3f})")
 
-        # -- Tier 3: Causal Intervention Module (inference only) ---------------
+        # -- Tier 3: Causal Intervention (train + inference) --------------------
         ci_cfg = config.get('causal_intervention', {})
         self.use_causal_intervention = ci_cfg.get('enabled', False)
         if self.use_causal_intervention:
             self.causal_intervention = CausalInterventionModule(ci_cfg)
-            ci_dim = ci_cfg.get('output_dim', 16)
+            ci_dim = ci_cfg.get('output_dim', 28)
+            self.ci_norm = nn.LayerNorm(ci_dim)
             self.ci_projection = nn.Linear(ci_dim, proj_dim)
-            # Init near zero so Tier 3 doesn't disrupt trained classifier
+            ci_gate_init = ci_cfg.get('ci_gate_init', -2.0)
+            self.ci_gate = nn.Parameter(torch.tensor(float(ci_gate_init)))
+            # Init near zero — gate suppresses contribution early
             nn.init.normal_(self.ci_projection.weight, std=0.01)
             nn.init.zeros_(self.ci_projection.bias)
-            logger.info(f"  Tier 3 (intervention): {ci_dim}→{proj_dim} (inference only)")
+            logger.info(
+                f"  Tier 3 (intervention): {ci_dim}→{proj_dim}, "
+                f"gate_init={ci_gate_init} (sigmoid={torch.sigmoid(torch.tensor(ci_gate_init)).item():.3f})"
+            )
 
         # -- L2 normalization + Uniformity-Alignment loss (GenD recipe) ------
         ua_cfg = config.get('uniformity_alignment', {})
@@ -747,17 +753,22 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             gate_value = torch.sigmoid(self.causal_gate)
             classifier_input = fused_features + gate_value * causal_delta
 
-        # -- Tier 3: Causal Intervention (inference only) ----------------------
-        if (inference and self.use_causal_intervention
-                and self.use_causal and semantic_attrs is not None):
-            ci_feats = self.causal_intervention(
-                causal_module=self.causal_module,
-                augmented_semantic=semantic_attrs,
-                z_spatial=z_spatial.detach() if z_spatial is not None else None,
-                z_freq=z_freq.detach() if z_freq is not None else None,
-            )  # (B, 16)
-            ci_delta = self.ci_projection(ci_feats)
-            classifier_input = classifier_input + ci_delta
+        # -- Tier 3: Causal Intervention (train + inference) --------------------
+        # 28 features computed under no_grad (no gradient to SCMs).
+        # ci_projection trains via classification loss backprop.
+        if (self.use_causal_intervention and self.use_causal
+                and semantic_attrs is not None and causal_out is not None):
+            with torch.no_grad():
+                ci_feats = self.causal_intervention(
+                    causal_module=self.causal_module,
+                    causal_out=causal_out,
+                    augmented_semantic=semantic_attrs,
+                    z_spatial=z_spatial.detach() if z_spatial is not None else None,
+                    z_freq=z_freq.detach() if z_freq is not None else None,
+                )  # (B, 28)
+            ci_delta = self.ci_projection(self.ci_norm(ci_feats))
+            ci_gate_value = torch.sigmoid(self.ci_gate)
+            classifier_input = classifier_input + ci_gate_value * ci_delta
 
         # L2-normalize for hyperspherical representation (GenD recipe)
         l2_embeddings = F.normalize(classifier_input, p=2, dim=1)
@@ -896,9 +907,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(extractor, device)
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(proj, device)
 
-        # Tier 3 ci_projection needs DDP anchor (inference-only, no train gradient)
-        if hasattr(self, 'ci_projection'):
-            ddp_anchor = ddp_anchor + _zero_grad_anchor(self.ci_projection, device)
+        # Tier 3 ci_projection/ci_gate/ci_norm now train via classification loss
+        # (no DDP anchor needed — they get real gradients every step)
 
         for attr in ('causal_module', 'sparse_ae', 'multitaskhead',
                      'semantic_extractor', 'causal_attn_fusion'):

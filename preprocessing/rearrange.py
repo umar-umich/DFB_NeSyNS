@@ -82,7 +82,9 @@ def generate_dataset_file(dataset_name, dataset_root_path, output_file_path, com
 
     ## FaceForensics++ dataset or DeepfakeDetection dataset
     ## Note: DeepfakeDetection dataset is a subset of FaceForensics++ dataset
-    if dataset_name == 'FaceForensics++' or dataset_name == 'DeepFakeDetection' or dataset_name == 'FaceShifter': 
+    augmented = dataset_name == 'FaceForensics++_augmented'
+    effective_name = 'FaceForensics++' if augmented else dataset_name
+    if effective_name in ('FaceForensics++', 'DeepFakeDetection', 'FaceShifter'):
         ff_dict = {
             'Deepfakes': 'FF-DF',
             'Face2Face': 'FF-F2F',
@@ -125,30 +127,51 @@ def generate_dataset_file(dataset_name, dataset_root_path, output_file_path, com
         
         
         # FaceForensics++ real dataset
+        top_key = 'FaceForensics++_augmented' if augmented else 'FaceForensics++'
         if os.path.isdir(dataset_path) and os.path.isdir(os.path.join(dataset_path, 'original_sequences')):
             label = 'Real'
-            dataset_dict['FaceForensics++'] = {}
-            dataset_dict['FaceForensics++']['FF-real'] = {}
-            dataset_dict['FaceForensics++']['DFD_real'] = {}
-            
+            dataset_dict[top_key] = {}
+            dataset_dict[top_key]['FF-real'] = {}
+            dataset_dict[top_key]['DFD_real'] = {}
+
             # Iterate over all compression levels: c23, c40, raw
-            dataset_dict['FaceForensics++']['FF-real']['train'] = {}
-            dataset_dict['FaceForensics++']['FF-real']['test'] = {}
-            dataset_dict['FaceForensics++']['FF-real']['val'] = {}
+            dataset_dict[top_key]['FF-real']['train'] = {}
+            dataset_dict[top_key]['FF-real']['test'] = {}
+            dataset_dict[top_key]['FF-real']['val'] = {}
             for compression_level in os.scandir(os.path.join(dataset_path, 'original_sequences', 'youtube')):
                 if compression_level.is_dir():
                     compression_level = compression_level.name
-                    dataset_dict['FaceForensics++']['FF-real']['train'][compression_level] = {}
-                    dataset_dict['FaceForensics++']['FF-real']['test'][compression_level] = {}
-                    dataset_dict['FaceForensics++']['FF-real']['val'][compression_level] = {}
-            
-                # Iterate over all videos
-                for video_path in os.scandir(os.path.join(dataset_path, 'original_sequences', 'youtube', compression_level, 'frames')):
+                    dataset_dict[top_key]['FF-real']['train'][compression_level] = {}
+                    dataset_dict[top_key]['FF-real']['test'][compression_level] = {}
+                    dataset_dict[top_key]['FF-real']['val'][compression_level] = {}
+
+                # Iterate over all videos in frames/
+                comp_dir = os.path.join(dataset_path, 'original_sequences', 'youtube', compression_level)
+                for video_path in os.scandir(os.path.join(comp_dir, 'frames')):
                     if video_path.is_dir():
                         video_name = video_path.name
                         mode = video_to_mode[video_name]
                         frame_paths = [os.path.join(video_path, frame.name) for frame in os.scandir(video_path)]
-                        dataset_dict['FaceForensics++']['FF-real'][mode][compression_level][video_name] = {'label': ff_dict[label], 'frames': frame_paths}
+                        dataset_dict[top_key]['FF-real'][mode][compression_level][video_name] = {'label': ff_dict[label], 'frames': frame_paths}
+
+                # Also pick up frames_aug_* directories (augmented real frames)
+                if augmented:
+                    for aug_dir in sorted(os.scandir(comp_dir), key=lambda e: e.name):
+                        if not aug_dir.is_dir() or not aug_dir.name.startswith('frames_aug_'):
+                            continue
+                        aug_suffix = aug_dir.name.replace('frames_', '')  # 'aug_1', 'aug_2', etc.
+                        for video_path in os.scandir(aug_dir.path):
+                            if video_path.is_dir():
+                                video_name = video_path.name
+                                if video_name not in video_to_mode:
+                                    continue
+                                mode = video_to_mode[video_name]
+                                # Only add augmented frames to train split
+                                if mode != 'train':
+                                    continue
+                                aug_video_id = f'{video_name}_{aug_suffix}'
+                                frame_paths = [os.path.join(video_path, frame.name) for frame in os.scandir(video_path)]
+                                dataset_dict[top_key]['FF-real']['train'][compression_level][aug_video_id] = {'label': ff_dict[label], 'frames': frame_paths}
                         
             label = 'DFD_Real'  
             # Same operations for DeepfakeDetection real dataset

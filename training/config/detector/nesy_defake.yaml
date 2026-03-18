@@ -54,8 +54,8 @@ projection_dropout:
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 160
-test_batchSize:  160
+train_batchSize: 180
+test_batchSize:  180
 workers:         12
 
 use_data_augmentation: true
@@ -166,14 +166,17 @@ forensic_features:
   precomputed_dir: forensic_features
 
 # -----------------------------------------------------------------------------
-# Tier 3: Causal Intervention Module (inference only)
+# Tier 3: Causal Intervention Module (train + inference)
 # -----------------------------------------------------------------------------
-# Do-calculus interventions on learned causal graphs at test time.
-# Flips top-k attributes and measures SCM response discrepancy.
+# Neuro-symbolic reasoning via cross-graph scoring + do-calculus interventions.
+# 28 features: 8 cross-graph + 16 intervention stats + 4 differential response.
+# Computed under no_grad (no gradient to SCMs); ci_projection trains via cls loss.
 causal_intervention:
   enabled: true
-  output_dim: 16
+  output_dim: 28
   top_k_interventions: 10
+  graph_guided_alpha: 0.5     # blend confidence (α) + graph importance (1-α)
+  ci_gate_init: -2.0          # sigmoid≈0.12, grows as module learns
 
 # -----------------------------------------------------------------------------
 # Causal Attention Fusion

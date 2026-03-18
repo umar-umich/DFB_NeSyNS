@@ -15,7 +15,7 @@ echo "Step 1: Augmenting real frames (3 copies for 4:1 balance)"
 echo "============================================================"
 python training/augment_real_frames.py \
     --detector_path training/config/detector/nesy_defake.yaml \
-    --n_augmentations 3 \
+    --n_augmentations 5 \
     --workers 16 \
     --skip_existing
 
@@ -26,7 +26,7 @@ echo "============================================================"
 # This picks up both original and augmented frames from the _augmented JSON
 python preprocessing/precompute_semantic_features.py \
     --detector_path training/config/detector/nesy_defake.yaml \
-    --batch_size 32 \
+    --batch_size 64 \
     --output_dir facellava_semantic \
     --skip_existing \
     --device cuda:1

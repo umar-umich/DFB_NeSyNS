@@ -48,7 +48,9 @@ def parse_args():
     parser.add_argument('--detector_path', type=str, required=True,
                         help='Path to detector YAML config')
     parser.add_argument('--n_augmentations', type=int, default=3,
-                        help='Number of augmented copies per real frame (3 for 4:1 ratio)')
+                        help='Number of augmented copies to create in this run')
+    parser.add_argument('--start_index', type=int, default=None,
+                        help='Starting augmentation index (default: auto-detect from existing)')
     parser.add_argument('--workers', type=int, default=16,
                         help='Number of parallel workers for augmentation')
     parser.add_argument('--skip_existing', action='store_true',
@@ -156,14 +158,22 @@ def collect_real_frames(config):
                     continue
 
                 for video_id, video_data in train_val[compression].items():
+                    # Skip already-augmented entries (e.g., 929_aug1)
+                    if '_aug' in video_id:
+                        continue
                     frames = video_data.get('frames', [])
                     if not frames:
                         continue
+                    # Only collect frames from the original frames/ directory
+                    orig_frames = [f for f in frames if '/frames/' in f
+                                   and '/frames_aug_' not in f]
+                    if not orig_frames:
+                        continue
                     real_videos[video_id] = {
-                        'frames': sorted(frames),
+                        'frames': sorted(orig_frames),
                         'label': label_key,
                     }
-                    total_frames += len(frames)
+                    total_frames += len(orig_frames)
 
     print(f"  Found {len(real_videos)} real videos, {total_frames} frames")
     return real_videos
@@ -172,7 +182,7 @@ def collect_real_frames(config):
 def augment_single_video(args_tuple):
     """Augment all frames of a single video. Runs in a worker process."""
     (video_id, frame_paths, n_augs, aug_config, resolution,
-     skip_existing, seed) = args_tuple
+     skip_existing, seed, start_index) = args_tuple
 
     # Build augmentation pipeline in each worker
     import albumentations as A
@@ -237,7 +247,7 @@ def augment_single_video(args_tuple):
             continue
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        for aug_i in range(1, n_augs + 1):
+        for aug_i in range(start_index, start_index + n_augs):
             # Build output path: replace 'frames' with 'frames_aug_N'
             aug_parts = list(parts)
             aug_parts[frames_idx] = f'frames_aug_{aug_i}'
@@ -261,7 +271,7 @@ def augment_single_video(args_tuple):
     return video_id, dict(augmented_paths), n_created
 
 
-def update_dataset_json(config, real_videos, n_augs):
+def update_dataset_json(config, real_videos, n_augs, start_index=1):
     """
     Create an updated dataset JSON that includes augmented real frames.
 
@@ -306,7 +316,7 @@ def update_dataset_json(config, real_videos, n_augs):
                     original_frames = train_data[video_id]['frames']
                     original_label = train_data[video_id]['label']
 
-                    for aug_i in range(1, n_augs + 1):
+                    for aug_i in range(start_index, start_index + n_augs):
                         aug_video_id = f'{video_id}_aug{aug_i}'
                         if aug_video_id in train_data:
                             continue  # already exists
@@ -324,19 +334,24 @@ def update_dataset_json(config, real_videos, n_augs):
                         modified = True
 
         if modified:
+            # Determine output name — avoid double _augmented suffix
+            if dataset_name.endswith('_augmented'):
+                aug_dataset_name = dataset_name
+            else:
+                aug_dataset_name = f'{dataset_name}_augmented'
+
             # Rename top-level key to match the augmented filename
             # (abstract_dataset.py looks up dataset_info[dataset_name])
-            aug_dataset_name = f'{dataset_name}_augmented'
             if dataset_name in data and aug_dataset_name not in data:
                 data[aug_dataset_name] = data.pop(dataset_name)
 
-            # Save to a new file (don't overwrite original)
+            # Save (overwrite if already augmented, new file otherwise)
             aug_json_path = os.path.join(
-                json_folder, f'{dataset_name}_augmented.json')
+                json_folder, f'{aug_dataset_name}.json')
             with open(aug_json_path, 'w') as f:
                 json.dump(data, f, indent=2)
             print(f"\n  Updated JSON saved to: {aug_json_path}")
-            print(f"  To use: set train_dataset to ['{dataset_name}_augmented'] "
+            print(f"  To use: set train_dataset to ['{aug_dataset_name}'] "
                   f"in your config, or rename the file.")
 
             # Also count final balance
@@ -358,10 +373,6 @@ def main():
     print("=" * 60)
     print("Real Frame Augmentation for Class Balance")
     print("=" * 60)
-    print(f"  Augmentation copies: {args.n_augmentations}")
-    print(f"  Workers: {args.workers}")
-    print(f"  Skip existing: {args.skip_existing}")
-    print()
 
     # Collect real frames
     print("Collecting real frames...")
@@ -371,13 +382,37 @@ def main():
         print("No real frames found!")
         return
 
+    # Auto-detect start_index from existing frames_aug_* directories
+    start_index = args.start_index
+    if start_index is None:
+        # Find highest existing augmentation index from the first video's path
+        sample_path = next(iter(real_videos.values()))['frames'][0]
+        frames_dir = os.path.dirname(os.path.dirname(sample_path))  # .../c23/frames/vid -> .../c23
+        existing_augs = [
+            d for d in os.listdir(frames_dir)
+            if os.path.isdir(os.path.join(frames_dir, d))
+            and d.startswith('frames_aug_')
+        ]
+        if existing_augs:
+            max_existing = max(int(d.split('_')[-1]) for d in existing_augs)
+            start_index = max_existing + 1
+            print(f"  Found existing augmentations up to frames_aug_{max_existing}")
+        else:
+            start_index = 1
+
+    end_index = start_index + args.n_augmentations - 1
+    print(f"  Creating augmentations: frames_aug_{start_index} to frames_aug_{end_index}")
+    print(f"  Workers: {args.workers}")
+    print(f"  Skip existing: {args.skip_existing}")
+    print()
+
     # Prepare work items
     aug_config = config.get('data_aug', {})
     resolution = config.get('resolution', 224)
 
     work_items = [
         (vid_id, vid_info['frames'], args.n_augmentations,
-         aug_config, resolution, args.skip_existing, args.seed)
+         aug_config, resolution, args.skip_existing, args.seed, start_index)
         for vid_id, vid_info in real_videos.items()
     ]
 
@@ -408,7 +443,7 @@ def main():
 
     # Update dataset JSON
     print("\nUpdating dataset JSON...")
-    update_dataset_json(config, real_videos, args.n_augmentations)
+    update_dataset_json(config, real_videos, args.n_augmentations, start_index)
 
     print(f"\n{'=' * 60}")
     print("Next steps:")

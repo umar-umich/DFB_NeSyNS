@@ -1,73 +1,156 @@
 """
 networks/nesy_defake/semantic/causal_intervention.py
 =====================================================
-Tier 3: Do-Calculus Causal Intervention Module (Inference Only).
+Tier 3: Neuro-Symbolic Causal Intervention Module.
 
-At inference, uses the learned SCMs and causal graphs to perform
-counterfactual interventions: "if we flip attribute X, how do the
-causal predictions change?"
+Active at both train and inference. Uses learned SCMs and causal graphs
+for two complementary reasoning tasks:
 
-Real faces show expected causal cascades (flip 'happy' → AU6/AU12 change).
-Fake faces show anomalous responses (manipulation breaks causal structure).
+A. Cross-graph consistency scoring (8 features, zero extra SCM forwards):
+   Compares how well each sample fits the real vs fake SCMs using
+   already-computed residuals from the causal module.
 
-Produces 16 features (4 graphs × 4 statistics) added to classifier_input.
-No trainable parameters — reads frozen graph state from CausalDiscoveryModule.
+B. Do-calculus interventions (20 features):
+   Flips top-k semantically important nodes and measures how SCM
+   predictions change. Graph-guided node selection prioritizes
+   causally important nodes. Differential response across real/fake
+   SCMs provides additional discrimination.
+
+Total: 28 interpretable features projected into classifier space.
+All computed under torch.no_grad() — no gradient flows to SCMs.
+The ci_projection layer trains via classification loss backprop.
 """
 
 import logging
-from typing import List
+from typing import Dict, List
 
 import torch
 import torch.nn as nn
 
 logger = logging.getLogger(__name__)
 
-CAUSAL_INTERVENTION_NAMES = [
-    # Spatial real graph
+# -- Cross-graph consistency features (8) ------------------------------------
+CROSS_GRAPH_NAMES = [
+    'cg_spatial_real_fit',
+    'cg_spatial_fake_fit',
+    'cg_spatial_consistency',
+    'cg_spatial_z_sem_ratio',
+    'cg_freq_real_fit',
+    'cg_freq_fake_fit',
+    'cg_freq_consistency',
+    'cg_freq_z_sem_ratio',
+]
+
+# -- Do-calculus intervention features (16) ----------------------------------
+INTERVENTION_NAMES = [
     'ci_spatial_real_mean_disc',
     'ci_spatial_real_max_disc',
     'ci_spatial_real_disc_entropy',
     'ci_spatial_real_structural',
-    # Spatial fake graph
     'ci_spatial_fake_mean_disc',
     'ci_spatial_fake_max_disc',
     'ci_spatial_fake_disc_entropy',
     'ci_spatial_fake_structural',
-    # Frequency real graph
     'ci_freq_real_mean_disc',
     'ci_freq_real_max_disc',
     'ci_freq_real_disc_entropy',
     'ci_freq_real_structural',
-    # Frequency fake graph
     'ci_freq_fake_mean_disc',
     'ci_freq_fake_max_disc',
     'ci_freq_fake_disc_entropy',
     'ci_freq_fake_structural',
 ]
 
-NUM_INTERVENTION_FEATURES = len(CAUSAL_INTERVENTION_NAMES)
+# -- Differential intervention features (4) ---------------------------------
+DIFFERENTIAL_NAMES = [
+    'ci_spatial_diff_mean',
+    'ci_spatial_diff_max',
+    'ci_freq_diff_mean',
+    'ci_freq_diff_max',
+]
+
+# All feature names in order
+CAUSAL_INTERVENTION_NAMES = CROSS_GRAPH_NAMES + INTERVENTION_NAMES + DIFFERENTIAL_NAMES
+NUM_INTERVENTION_FEATURES = len(CAUSAL_INTERVENTION_NAMES)  # 28
+
+
+def _disc_stats(disc_matrix: torch.Tensor):
+    """Compute 4 summary statistics from a (B, k) discrepancy matrix."""
+    mean_disc = disc_matrix.mean(dim=1)                         # (B,)
+    max_disc = disc_matrix.max(dim=1)[0]                        # (B,)
+    # Entropy of discrepancy distribution
+    disc_probs = disc_matrix / (disc_matrix.sum(dim=1, keepdim=True) + 1e-10)
+    disc_entropy = -(disc_probs * (disc_probs + 1e-10).log()).sum(dim=1)
+    # Coefficient of variation (high = inconsistent causal responses)
+    disc_std = disc_matrix.std(dim=1)
+    structural = disc_std / (mean_disc + 1e-10)
+    return mean_disc, max_disc, disc_entropy, structural
 
 
 class CausalInterventionModule(nn.Module):
     """
-    Perform do-calculus interventions on learned causal graphs at inference.
+    Neuro-symbolic causal reasoning via cross-graph scoring and do-calculus.
 
-    For each of 4 SCMs (spatial_real, spatial_fake, freq_real, freq_fake):
-      1. Compute baseline reconstruction: x_hat = SCM(x)
-      2. For top-k most confident semantic attributes, flip each one
-      3. Measure how much downstream predictions change (discrepancy)
-      4. Aggregate into 4 summary statistics
+    Produces 28 interpretable features:
+      - 8 cross-graph consistency scores (from already-computed residuals)
+      - 16 do-calculus intervention statistics (4 graphs x 4 stats)
+      - 4 differential intervention responses (real vs fake SCM comparison)
 
-    Real faces: predictable causal responses (high structural consistency)
-    Fake faces: anomalous responses (broken causal structure)
+    No trainable parameters — reads frozen graph state from CausalDiscoveryModule.
     """
 
     def __init__(self, config: dict):
         super().__init__()
         self.top_k = config.get('top_k_interventions', 10)
+        self.graph_guided_alpha = config.get('graph_guided_alpha', 0.5)
+
+    # ------------------------------------------------------------------ #
+    #  A. Cross-graph consistency scoring (8 features)                     #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    @torch.no_grad()
+    def compute_cross_graph_scores(
+        causal_out: Dict[str, torch.Tensor],
+        z_spatial_dim: int,
+        z_freq_dim: int,
+    ) -> torch.Tensor:
+        """
+        Compare how well each sample fits real vs fake SCMs.
+
+        Uses residuals already in causal_out — zero extra SCM forwards.
+
+        Returns:
+            (B, 8) cross-graph consistency features.
+        """
+        feats = []
+
+        for branch, z_dim in [('spatial', z_spatial_dim), ('freq', z_freq_dim)]:
+            res_real = causal_out[f'residuals_{branch}_real']   # (B, d)
+            res_fake = causal_out[f'residuals_{branch}_fake']   # (B, d)
+
+            # How well sample fits each SCM (lower residual = better fit)
+            real_fit = res_real.pow(2).sum(dim=1)               # (B,)
+            fake_fit = res_fake.pow(2).sum(dim=1)               # (B,)
+
+            # Consistency: positive = more real-like structure
+            consistency = real_fit - fake_fit                    # (B,)
+
+            # Z-feature vs semantic residual ratio
+            z_res_real = res_real[:, :z_dim].pow(2).sum(dim=1)
+            s_res_real = res_real[:, z_dim:].pow(2).sum(dim=1)
+            z_sem_ratio = z_res_real / (s_res_real + 1e-10)     # (B,)
+
+            feats.extend([real_fit, fake_fit, consistency, z_sem_ratio])
+
+        return torch.stack(feats, dim=1)  # (B, 8)
+
+    # ------------------------------------------------------------------ #
+    #  B+C. Do-calculus interventions + differential response (20 features)#
+    # ------------------------------------------------------------------ #
 
     @torch.no_grad()
-    def forward(
+    def compute_intervention_features(
         self,
         causal_module: nn.Module,
         augmented_semantic: torch.Tensor,
@@ -75,20 +158,20 @@ class CausalInterventionModule(nn.Module):
         z_freq: torch.Tensor = None,
     ) -> torch.Tensor:
         """
-        Compute intervention features for each sample.
+        Do-calculus interventions with graph-guided node selection.
 
-        Args:
-            causal_module: CausalDiscoveryModule with trained SCMs
-            augmented_semantic: (B, s_dim) augmented semantic vector
-            z_spatial: (B, sae_dim) spatial SAE features (detached)
-            z_freq: (B, sae_dim) frequency SAE features (detached)
+        For each branch (spatial, freq):
+          1. Build causal input, select top-k nodes by blended score
+          2. For each intervention, run both real and fake SCMs
+          3. Compute per-graph stats (16) + differential response (4)
+
         Returns:
-            (B, 16) intervention discrepancy features
+            (B, 20) intervention + differential features.
         """
         B = augmented_semantic.shape[0]
         device = augmented_semantic.device
 
-        # Build per-branch causal inputs (same as CausalDiscoveryModule._build_branch_input)
+        # Build per-branch causal inputs
         x_spatial = causal_module._build_branch_input(
             z_spatial, augmented_semantic,
             causal_module.spatial_selector, causal_module.z_spatial_norm,
@@ -98,77 +181,120 @@ class CausalInterventionModule(nn.Module):
             causal_module.freq_selector, causal_module.z_freq_norm,
             causal_module.z_freq_dim)
 
-        # Identify top-k forensic node indices to intervene on.
-        # Semantic nodes are the last s_dim dimensions of each branch input.
-        # In forensic_only mode, s_dim=48 (consistency+forensic features).
         s_dim = causal_module.s_dim
-        z_spatial_dim = causal_module.z_spatial_dim
         sem_start = causal_module._sem_slice_start
         sem_end = causal_module._sem_slice_end
 
-        # Use the forensic portion of augmented_semantic for confidence ranking
+        # Confidence ranking of forensic nodes
         sem_portion = augmented_semantic[:, sem_start:sem_end]  # (B, s_dim)
-        # Confidence = how far from 0.5 (most decisive features)
-        confidence = torch.abs(sem_portion - 0.5)  # (B, s_dim)
-        # Top-k per sample
+        confidence = torch.abs(sem_portion - 0.5)               # (B, s_dim)
+
         k = min(self.top_k, s_dim)
-        _, top_indices = confidence.topk(k, dim=1)  # (B, k)
+        alpha = self.graph_guided_alpha
 
         all_feats = []
 
-        # Process each graph
-        scm_pairs = [
-            ('spatial', 'real', causal_module.causal_spatial.causal_learner_real.scm, x_spatial, z_spatial_dim),
-            ('spatial', 'fake', causal_module.causal_spatial.causal_learner_fake.scm, x_spatial, z_spatial_dim),
-            ('freq', 'real', causal_module.causal_freq.causal_learner_real.scm, x_freq, causal_module.z_freq_dim),
-            ('freq', 'fake', causal_module.causal_freq.causal_learner_fake.scm, x_freq, causal_module.z_freq_dim),
+        # Process per-branch (spatial, freq) — each branch has real+fake SCMs
+        branch_configs = [
+            ('spatial', x_spatial, causal_module.z_spatial_dim,
+             causal_module.causal_spatial.causal_learner_real,
+             causal_module.causal_spatial.causal_learner_fake),
+            ('freq', x_freq, causal_module.z_freq_dim,
+             causal_module.causal_freq.causal_learner_real,
+             causal_module.causal_freq.causal_learner_fake),
         ]
 
-        for branch, dist, scm, x_input, z_dim in scm_pairs:
-            # Baseline reconstruction
-            x_hat_baseline = scm(x_input)  # (B, d)
+        for branch, x_input, z_dim, learner_real, learner_fake in branch_configs:
+            scm_real = learner_real.scm
+            scm_fake = learner_fake.scm
 
-            # Collect per-intervention discrepancies
-            discrepancies = []
+            # -- Graph-guided node selection ----------------------------------
+            # Blend confidence with structural importance from EMA adjacency
+            if alpha < 1.0 and hasattr(learner_real, '_A_dce_ema'):
+                # Average importance from both real and fake graphs
+                A_real = learner_real._A_dce_ema  # (d, d)
+                A_fake = learner_fake._A_dce_ema  # (d, d)
+                # Out-degree of semantic nodes (sum of outgoing edge weights)
+                sem_importance_real = A_real[z_dim:, :].sum(dim=1)  # (s_dim,)
+                sem_importance_fake = A_fake[z_dim:, :].sum(dim=1)  # (s_dim,)
+                sem_importance = (sem_importance_real + sem_importance_fake) / 2
+                # Normalize to [0, 1]
+                imp_max = sem_importance.max()
+                if imp_max > 1e-10:
+                    sem_importance = sem_importance / imp_max
+                # Blend: (B, s_dim)
+                combined_score = (alpha * confidence
+                                  + (1 - alpha) * sem_importance.unsqueeze(0))
+            else:
+                combined_score = confidence
+
+            _, top_indices = combined_score.topk(k, dim=1)  # (B, k)
+            batch_idx = torch.arange(B, device=device)
+
+            # -- Baseline reconstructions -------------------------------------
+            x_hat_base_real = scm_real(x_input)  # (B, d)
+            x_hat_base_fake = scm_fake(x_input)  # (B, d)
+
+            disc_real_list = []
+            disc_fake_list = []
 
             for ki in range(k):
-                # Semantic node index in the full causal vector
-                # Semantic attrs start at index z_dim
                 sem_node_idx = z_dim + top_indices[:, ki]  # (B,)
 
-                # Flip the attribute: 1 - current value
+                # Flip the attribute
                 x_perturbed = x_input.clone()
-                batch_idx = torch.arange(B, device=device)
-                current_val = x_perturbed[batch_idx, sem_node_idx]
-                x_perturbed[batch_idx, sem_node_idx] = 1.0 - current_val
+                x_perturbed[batch_idx, sem_node_idx] = (
+                    1.0 - x_perturbed[batch_idx, sem_node_idx])
 
-                # Intervened reconstruction
-                x_hat_perturbed = scm(x_perturbed)  # (B, d)
+                # Run both SCMs on same perturbation
+                x_hat_pert_real = scm_real(x_perturbed)
+                x_hat_pert_fake = scm_fake(x_perturbed)
 
-                # Per-sample discrepancy
-                disc = (x_hat_perturbed - x_hat_baseline).pow(2).sum(dim=1).sqrt()  # (B,)
-                discrepancies.append(disc)
+                disc_r = (x_hat_pert_real - x_hat_base_real).pow(2).sum(dim=1).sqrt()
+                disc_f = (x_hat_pert_fake - x_hat_base_fake).pow(2).sum(dim=1).sqrt()
+                disc_real_list.append(disc_r)
+                disc_fake_list.append(disc_f)
 
-            # Stack: (B, k)
-            disc_matrix = torch.stack(discrepancies, dim=1)
+            disc_real_mat = torch.stack(disc_real_list, dim=1)  # (B, k)
+            disc_fake_mat = torch.stack(disc_fake_list, dim=1)  # (B, k)
 
-            # Summary statistics per sample
-            mean_disc = disc_matrix.mean(dim=1)     # (B,)
-            max_disc = disc_matrix.max(dim=1)[0]    # (B,)
+            # Per-graph statistics (4 stats × 2 distributions = 8 per branch)
+            all_feats.extend(_disc_stats(disc_real_mat))   # 4: real graph
+            all_feats.extend(_disc_stats(disc_fake_mat))   # 4: fake graph
 
-            # Entropy of discrepancy distribution (how spread out)
-            disc_probs = disc_matrix / (disc_matrix.sum(dim=1, keepdim=True) + 1e-10)
-            disc_entropy = -(disc_probs * (disc_probs + 1e-10).log()).sum(dim=1)  # (B,)
+            # Differential response: how differently real vs fake SCMs react
+            diff_mat = (disc_real_mat - disc_fake_mat).abs()   # (B, k)
+            diff_mean = diff_mat.mean(dim=1)                   # (B,)
+            diff_max = diff_mat.max(dim=1)[0]                  # (B,)
+            all_feats.extend([diff_mean, diff_max])
 
-            # Structural anomaly: coefficient of variation
-            # High CV = inconsistent causal responses = suspicious
-            disc_std = disc_matrix.std(dim=1)       # (B,)
-            structural = disc_std / (mean_disc + 1e-10)  # (B,)
-
-            all_feats.extend([mean_disc, max_disc, disc_entropy, structural])
-
-        # Stack all 16 features: (B, 16)
+        # Stack: 2 branches × (8 per-graph + 2 differential) = 20
         return torch.stack(all_feats, dim=1)
+
+    # ------------------------------------------------------------------ #
+    #  Legacy forward (calls both methods)                                 #
+    # ------------------------------------------------------------------ #
+
+    @torch.no_grad()
+    def forward(
+        self,
+        causal_module: nn.Module,
+        causal_out: Dict[str, torch.Tensor],
+        augmented_semantic: torch.Tensor,
+        z_spatial: torch.Tensor = None,
+        z_freq: torch.Tensor = None,
+    ) -> torch.Tensor:
+        """
+        Compute all 28 intervention features.
+
+        Returns:
+            (B, 28) concatenated cross-graph + intervention + differential.
+        """
+        cross_graph = self.compute_cross_graph_scores(
+            causal_out, causal_module.z_spatial_dim, causal_module.z_freq_dim)
+        intervention = self.compute_intervention_features(
+            causal_module, augmented_semantic, z_spatial, z_freq)
+        return torch.cat([cross_graph, intervention], dim=1)
 
     @staticmethod
     def get_feature_names() -> List[str]:

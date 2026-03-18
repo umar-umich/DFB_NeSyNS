@@ -277,11 +277,16 @@ def choose_optimizer(model, config):
         mod = getattr(m, attr, None)
         if mod is not None:
             _add(list(mod.parameters()), g7)
-    # Semantic gate + causal gate (nn.Parameter, not modules)
-    if hasattr(m, 'semantic_gate') and isinstance(getattr(m, 'semantic_gate'), nn.Parameter):
-        _add([m.semantic_gate], g7)
-    if hasattr(m, 'causal_gate') and isinstance(getattr(m, 'causal_gate'), nn.Parameter):
-        _add([m.causal_gate], g7)
+    # Semantic gate + causal gate + ci_gate (nn.Parameter, not modules)
+    for gate_attr in ('semantic_gate', 'causal_gate', 'ci_gate'):
+        gate = getattr(m, gate_attr, None)
+        if gate is not None and isinstance(gate, nn.Parameter):
+            _add([gate], g7)
+    # Tier 3 intervention projection + normalization
+    for ci_attr in ('ci_projection', 'ci_norm'):
+        ci_mod = getattr(m, ci_attr, None)
+        if ci_mod is not None:
+            _add(list(ci_mod.parameters()), g7)
 
     lr_backbone_ln = lr_cfg.get('backbone_layernorms', 1e-5)
     lr_always      = lr_cfg.get('always_trainable',    base_lr)
