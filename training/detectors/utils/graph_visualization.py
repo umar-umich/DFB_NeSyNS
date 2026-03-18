@@ -2,7 +2,12 @@
 Graph visualization utilities for NeSy causal discovery module.
 
 Saves PNG visualizations of the learned causal graphs at the end of training
-epochs. Handles 339-node graphs via category-level aggregation.
+epochs. Handles compact ~64-node forensic-focused graphs.
+
+v2: Updated for compact causal graphs (16 z + 48 forensic nodes).
+Previous 387-node graphs used 22-category aggregation over 211 FaceBench
+attributes; compact graphs use 11 forensic subcategories + 1 latent group.
+Individual-node heatmaps now feasible at 64×64 scale.
 
 All functions use matplotlib Agg backend (no display), close figures after
 saving, and handle all-zero adjacency matrices gracefully.
@@ -23,9 +28,28 @@ import matplotlib.colors as mcolors
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Semantic category structure for 211 FaceBench attributes
+# Forensic category structure for compact 48-node forensic portion
 # ---------------------------------------------------------------------------
+# Offsets are relative to the START of the forensic portion (after z-features).
+# _aggregate_to_categories() adds z_dim to convert to full-graph indices.
 
+FORENSIC_CATEGORIES = {
+    # Consistency Rules (18 features) — Tier 1
+    'CR_Gender':        (0, 4),    # cr_gender_{beard,mustache,stubble,makeup}
+    'CR_Mutual':        (4, 7),    # cr_mutual_{mouth,gender,smile_frown}
+    'CR_Appearance':    (7, 11),   # cr_lighting, cr_hair, cr_age_smooth, cr_age_wrinkle
+    'CR_Expression_AU': (11, 16),  # cr_happy_au6, cr_happy_au12, cr_surprise, cr_sad, cr_angry
+    'CR_Quality':       (16, 18),  # cr_symmetry_conflict, cr_image_quality
+    # Forensic Features (30 features) — Tier 2
+    'FF_Boundary':      (18, 24),  # ff_grad_*
+    'FF_Blur':          (24, 30),  # ff_blur_*
+    'FF_Symmetry':      (30, 34),  # ff_sym_*
+    'FF_Color':         (34, 38),  # ff_color_*
+    'FF_Frequency':     (38, 44),  # ff_dct_*
+    'FF_Quality':       (44, 48),  # ff_quality_*
+}
+
+# Legacy 211-attribute categories (kept for backward compat if needed)
 SEMANTIC_CATEGORIES = {
     'Hair':             (0, 20),
     'Forehead':         (20, 23),
@@ -65,7 +89,7 @@ def _aggregate_to_categories(A: np.ndarray, z_dim: int,
     Aggregate a (d, d) adjacency matrix into (n_cat+1, n_cat+1) category-level.
 
     Returns (agg_matrix, category_names) where the first entry is 'Latent'
-    (aggregating z_dim latent features) followed by semantic categories.
+    (aggregating z_dim latent features) followed by forensic categories.
     """
     cat_names = ['Latent']
     cat_ranges = [(0, z_dim)]
@@ -83,30 +107,49 @@ def _aggregate_to_categories(A: np.ndarray, z_dim: int,
     return agg, cat_names
 
 
-def _aggregate_semantic_categories(A: np.ndarray,
-                                   categories: Dict[str, tuple]) -> tuple:
-    """
-    Aggregate a (s_dim, s_dim) semantic-only adjacency into (n_cat, n_cat).
-    """
-    cat_names = []
-    cat_ranges = []
-    for name, (start, end) in categories.items():
-        cat_names.append(name)
-        cat_ranges.append((start, end))
-
-    n = len(cat_ranges)
-    agg = np.zeros((n, n), dtype=np.float32)
-    for i, (si, ei) in enumerate(cat_ranges):
-        for j, (sj, ej) in enumerate(cat_ranges):
-            block = A[si:ei, sj:ej]
-            if block.size > 0:
-                agg[i, j] = block.mean()
-    return agg, cat_names
-
-
 # ---------------------------------------------------------------------------
 # Visualization functions
 # ---------------------------------------------------------------------------
+
+def save_node_heatmap(A_real: np.ndarray, A_fake: np.ndarray,
+                      node_names: List[str], save_path: str) -> None:
+    """
+    Full node-level heatmap (feasible for 64×64 compact graphs).
+    Three panels: A_real, A_fake, divergence.
+    """
+    d = A_real.shape[0]
+    divergence = A_real - A_fake
+
+    fig, axes = plt.subplots(1, 3, figsize=(28, 9))
+    vmax = max(A_real.max(), A_fake.max(), 1e-6)
+
+    for ax, data, title, cmap in [
+        (axes[0], A_real, 'Real Graph', 'Blues'),
+        (axes[1], A_fake, 'Fake Graph', 'Reds'),
+        (axes[2], divergence, 'Divergence (Real - Fake)', 'RdBu_r'),
+    ]:
+        if 'Divergence' in title:
+            vm = max(abs(divergence.min()), abs(divergence.max()), 1e-6)
+            im = ax.imshow(data, cmap=cmap, vmin=-vm, vmax=vm, aspect='auto')
+        else:
+            im = ax.imshow(data, cmap=cmap, vmin=0, vmax=vmax, aspect='auto')
+
+        # Only show tick labels if graph is small enough
+        if d <= 80:
+            ax.set_xticks(range(d))
+            ax.set_yticks(range(d))
+            ax.set_xticklabels(node_names[:d], rotation=90, ha='center', fontsize=4)
+            ax.set_yticklabels(node_names[:d], fontsize=4)
+        ax.set_title(title, fontsize=11, fontweight='bold')
+        ax.set_xlabel('Effect', fontsize=9)
+        ax.set_ylabel('Cause', fontsize=9)
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    plt.suptitle(f'Causal Adjacency ({d} nodes)', fontsize=13, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
 
 def save_category_heatmap(A_real: np.ndarray, A_fake: np.ndarray,
                           z_dim: int, categories: Dict[str, tuple],
@@ -208,48 +251,8 @@ def save_top_k_edges(A: np.ndarray, node_names: List[str], k: int,
     plt.close(fig)
 
 
-def save_semantic_subgraph(A_sem_real: np.ndarray, A_sem_fake: np.ndarray,
-                           attr_names: List[str],
-                           categories: Dict[str, tuple],
-                           save_path: str) -> None:
-    """
-    Category-level 22x22 heatmap for the 211-node intra-semantic graph.
-    Three panels: real, fake, divergence.
-    """
-    agg_real, cat_names = _aggregate_semantic_categories(A_sem_real, categories)
-    agg_fake, _ = _aggregate_semantic_categories(A_sem_fake, categories)
-    divergence = agg_real - agg_fake
-
-    fig, axes = plt.subplots(1, 3, figsize=(22, 6))
-    vmax = max(agg_real.max(), agg_fake.max(), 1e-6)
-
-    for ax, data, title, cmap in [
-        (axes[0], agg_real, 'Semantic Real', 'Blues'),
-        (axes[1], agg_fake, 'Semantic Fake', 'Reds'),
-        (axes[2], divergence, 'Semantic Divergence', 'RdBu_r'),
-    ]:
-        if 'Divergence' in title:
-            vm = max(abs(divergence.min()), abs(divergence.max()), 1e-6)
-            im = ax.imshow(data, cmap=cmap, vmin=-vm, vmax=vm, aspect='auto')
-        else:
-            im = ax.imshow(data, cmap=cmap, vmin=0, vmax=vmax, aspect='auto')
-
-        ax.set_xticks(range(len(cat_names)))
-        ax.set_yticks(range(len(cat_names)))
-        ax.set_xticklabels(cat_names, rotation=45, ha='right', fontsize=7)
-        ax.set_yticklabels(cat_names, fontsize=7)
-        ax.set_title(title, fontsize=11, fontweight='bold')
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-
-    plt.suptitle('Intra-Semantic Causal Graph (211 FaceBench Attributes)',
-                 fontsize=13, fontweight='bold')
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-
-
 def save_divergence_analysis(A_real: np.ndarray, A_fake: np.ndarray,
-                             z_dim: int, attr_names: List[str],
+                             z_dim: int, node_names: List[str],
                              categories: Dict[str, tuple],
                              save_path: str) -> None:
     """
@@ -258,13 +261,6 @@ def save_divergence_analysis(A_real: np.ndarray, A_fake: np.ndarray,
     """
     divergence = A_real - A_fake  # positive = broken by fakes
     d = A_real.shape[0]
-
-    # Build node names: latent + semantic
-    node_names = [f'z_{i}' for i in range(z_dim)]
-    if len(attr_names) > 0:
-        node_names.extend(attr_names)
-    else:
-        node_names.extend([f's_{i}' for i in range(d - z_dim)])
 
     # Category-level aggregation of absolute divergence
     cat_names = ['Latent']
@@ -345,6 +341,12 @@ def save_all_causal_graphs(causal_module, log_dir: str, epoch: int,
     """
     Save all causal graph visualizations to {log_dir}/graphs/epoch_{epoch}/.
 
+    For compact forensic-focused graphs (v2), saves:
+      - Node-level 64x64 heatmap (real, fake, divergence)
+      - Category-level 12x12 heatmap (Latent + 11 forensic subcategories)
+      - Top-K edge tables (real and fake, with named nodes)
+      - Divergence analysis (broken/created edges by category)
+
     Args:
         causal_module: CausalDiscoveryModule instance
         log_dir: base logging directory
@@ -354,7 +356,10 @@ def save_all_causal_graphs(causal_module, log_dir: str, epoch: int,
     save_dir = os.path.join(log_dir, 'graphs', f'epoch_{epoch}')
     os.makedirs(save_dir, exist_ok=True)
 
-    categories = SEMANTIC_CATEGORIES
+    # Use forensic categories for compact graphs, legacy for full graphs
+    is_compact = getattr(causal_module, '_forensic_only', False)
+    categories = FORENSIC_CATEGORIES if is_compact else SEMANTIC_CATEGORIES
+
     z_spatial_dim = causal_module.z_spatial_dim
     z_freq_dim = causal_module.z_freq_dim
 
@@ -367,6 +372,12 @@ def save_all_causal_graphs(causal_module, log_dir: str, epoch: int,
 
             node_names = causal_module.get_node_names(
                 'spatial' if branch == 'spatial' else 'frequency')
+
+            # Node-level heatmap (compact graphs only — too large for 387-node)
+            if A_real.shape[0] <= 100:
+                save_node_heatmap(
+                    A_real, A_fake, node_names,
+                    os.path.join(save_dir, f'{branch}_node_heatmap.png'))
 
             # Category heatmap
             save_category_heatmap(
@@ -384,30 +395,9 @@ def save_all_causal_graphs(causal_module, log_dir: str, epoch: int,
                 title=f'{branch.title()} Fake: Top-{top_k} Edges')
 
             # Divergence analysis
-            attr_names = causal_module.get_semantic_node_names()
             save_divergence_analysis(
-                A_real, A_fake, z_dim, attr_names, categories,
+                A_real, A_fake, z_dim, node_names, categories,
                 os.path.join(save_dir, f'{branch}_divergence_analysis.png'))
-
-        # -- Semantic graph (Part A, if enabled) ---
-        if causal_module.use_semantic_graph and causal_module.causal_semantic is not None:
-            sem_pair = causal_module.causal_semantic
-            A_sem_real = _to_numpy(sem_pair.causal_learner_real._A_dce_ema)
-            A_sem_fake = _to_numpy(sem_pair.causal_learner_fake._A_dce_ema)
-            attr_names = causal_module.get_semantic_node_names()
-
-            save_semantic_subgraph(
-                A_sem_real, A_sem_fake, attr_names, categories,
-                os.path.join(save_dir, 'semantic_graph_heatmap.png'))
-
-            save_top_k_edges(
-                A_sem_real, attr_names, top_k,
-                os.path.join(save_dir, f'semantic_real_top{top_k}.png'),
-                title=f'Semantic Real: Top-{top_k} Edges')
-            save_top_k_edges(
-                A_sem_fake, attr_names, top_k,
-                os.path.join(save_dir, f'semantic_fake_top{top_k}.png'),
-                title=f'Semantic Fake: Top-{top_k} Edges')
 
         logger.info(f"[GraphViz] Saved causal graphs to {save_dir}")
 

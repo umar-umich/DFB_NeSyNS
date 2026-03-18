@@ -54,9 +54,9 @@ projection_dropout:
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 128
-test_batchSize:  128
-workers:         8
+train_batchSize: 160
+test_batchSize:  160
+workers:         12
 
 use_data_augmentation: true
 balance_classes:       true
@@ -190,28 +190,40 @@ causal_module:
   enabled: true
   causal_warmup_batches: -1          # -1 = use all training batches
 
+  # z-dimensions for causal graphs.
+  # When matching dict_size (1024) and SAE is disabled, raw backbone
+  # features flow directly into causal graph (Identity selector).
+  # Total causal nodes: 1024+48=1072 per branch.
   latent_variables:
-    z_spatial_dim:    128
-    z_frequency_dim:  128
+    z_spatial_dim:    1024
+    z_frequency_dim:  1024
 
-  semantic_dim: 211
+  semantic_dim: 211    # updated by detector at init (211+18+30=259)
+
+  # Forensic-focused: only consistency rules (18) + forensic features (30)
+  # enter causal graph. Base 211 demographics excluded — they carry identity
+  # signal, not forensic signal. Total causal nodes: 1024+48=1072 per branch.
+  forensic_only: true
 
   discovery:
     algorithm:              dagma_dce
+    scm_type:               linear   # linear SCM for identifiable structure
     max_parents:            3
     sparsity_penalty:       0.01
-    jacobian_every_n:       4
-    enforce_directionality: true    # Part B: block latent→semantic edges
+    jacobian_every_n:       4        # irrelevant for linear (exact adjacency)
+    enforce_directionality: true     # block latent→forensic edges
 
-  # Part A: Intra-semantic causal graph (211-node SCM pair)
+  # Semantic-only graph disabled (v2): demographics don't belong in
+  # causal graph; forensic features already capture inter-attribute
+  # relationships via consistency rules.
   semantic_graph:
-    enabled:    true
+    enabled:    false
     hidden_dim: 64
     num_layers: 2
 
   dag_learning:
     hidden_dim:          128
-    num_layers:          3
+    num_layers:          2
     learning_rate:       0.001
     dag_penalty_weight:  0.1
 
@@ -271,17 +283,17 @@ loss_func:
     graph_divergence:   0.001
 
 # Loss weight warm-up
-# Causal warmup delayed to epoch 5 (after Phase 1 classifier convergence)
-# and extended to epoch 25 for gradual graph maturation.
+# Causal learning from epoch 0 — raw backbone features are informative
+# enough for graph discovery from the start.
 loss_warmup:
   causal:
-    start_epoch: 5
-    end_epoch: 25
+    start_epoch: 0
+    end_epoch: 15
     start_weight: 0.001
     end_weight: 0.1
   causal_fake:
-    start_epoch: 5
-    end_epoch: 25
+    start_epoch: 0
+    end_epoch: 15
     start_weight: 0.0005
     end_weight: 0.05
   sparse:
@@ -290,13 +302,13 @@ loss_warmup:
     start_weight: 0.01
     end_weight: 0.1
   causal_semantic:
-    start_epoch: 5
-    end_epoch: 25
+    start_epoch: 0
+    end_epoch: 15
     start_weight: 0.001
     end_weight: 0.05
   graph_divergence:
-    start_epoch: 5
-    end_epoch: 25
+    start_epoch: 0
+    end_epoch: 15
     start_weight: 0.001
     end_weight: 0.01
 
@@ -325,7 +337,7 @@ optimizer:
 # -----------------------------------------------------------------------------
 lr_scheduler:   cosine_warmup
 warmup_epochs:  2
-nEpochs:        100
+nEpochs:        30
 start_epoch:    0
 save_epoch:     1
 rec_iter:       100
@@ -336,18 +348,10 @@ save_feat:      true
 grad_clip:      1.0
 freq_grad_clip: 2.0
 
-training_phases:
-  phase1:
-    epochs:         [0, 5]
-    freeze_modules: [foundation_models, causal_module]
-    train_modules:  [fad_frontend, projection_heads, fusion, classifier, sparse_ae, semantic_extractor]
-    description:    "Hard freeze backbone + causal. Classifier converges on clean CLIP features."
-
-  phase2:
-    epochs:         [5, 50]
-    freeze_modules: []
-    train_modules:  [all]
-    description:    "Unfreeze backbone LNs + causal at epoch 5. Causal warmup runs here."
+# Single-phase training: all modules train from epoch 0.
+# Backbone LNs are unfrozen at init (GenD-style, see spatial/freq extractor configs).
+# Causal gate init=-3.0 (sigmoid≈0.05) naturally suppresses causal influence early on.
+# Causal warmup runs before epoch 0 to pre-populate EMA buffers.
 
 # -----------------------------------------------------------------------------
 # Metrics & interpretability
@@ -379,5 +383,5 @@ checkpoint:
 
 early_stopping:
   enabled: true
-  patience: 20
+  patience: 10
   min_delta: 0.001

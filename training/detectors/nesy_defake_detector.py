@@ -35,7 +35,7 @@ v5 changes (causal graph quality + performance):
   - Graph divergence loss re-added at small weight (pushes real≠fake)
   - Z-feature reconstruction weighted 3x vs semantic in SCM loss
   - Per-tier normalization (LayerNorm) before semantic concatenation
-  - Causal module frozen in Phase 1, unfrozen at Phase 2 (epoch 5)
+  - Single-phase training: all modules train from epoch 0 (causal gate suppresses early)
   - Class weights [0.8, 1.2] to reduce cross-dataset real bias
 """
 
@@ -285,18 +285,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             config, semantic_attr_names=sem_attr_names if sem_attr_names else None)
 
         # -- NeSy Change 1: Causal Violation Attention Fusion ----------------
-        # Replaces the original 4 direct d→proj_dim zero-init projections.
         # The fused CLIP features (query) attend over the 4 causal violation
         # residuals (keys/values), dynamically weighting which violations
         # are most informative per sample.
-        #
-        # No information is lost (values project to full proj_dim) while the
-        # query-key attention learns which branch/distribution violations to
-        # trust, with interpretable per-sample attention weights.
-        causal_cfg = config['causal_module']
-        s_dim = causal_cfg['semantic_dim']
-        d_spatial = causal_cfg['latent_variables']['z_spatial_dim'] + s_dim
-        d_freq = causal_cfg['latent_variables']['z_frequency_dim'] + s_dim
+        # Dimensions come from causal module's actual compact graph size.
+        d_spatial = self.causal_module.d_spatial  # 16 + 48 = 64
+        d_freq = self.causal_module.d_freq        # 16 + 48 = 64
         proj_dim = config['fusion']['projection_dim']  # 1024
 
         attn_cfg = config.get('causal_attention', {})
@@ -381,12 +375,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         logger.info(f"  Semantic attrs  : {self.use_semantic_attrs}")
         logger.info(f"  Causal attn fusion: attn_dim={attn_dim}")
 
-        # -- Phase 1 causal freeze: if config says to freeze causal in phase1,
-        #    do it now. Trainer will call unfreeze_causal() at phase2 start.
-        phase1_freeze = (config.get('training_phases', {})
-                         .get('phase1', {}).get('freeze_modules', []))
-        if 'causal_module' in phase1_freeze and self.use_causal:
-            self.freeze_causal()
+        # All modules train from epoch 0. Causal gate init=-3.0 (sigmoid≈0.05)
+        # naturally suppresses causal influence until the module learns.
 
     # ------------------------------------------------------------------ #
     #  Construction helpers                                                #
@@ -516,34 +506,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.use_causal = True
         logger.info("Per-branch dual-graph causal module enabled")
 
-    def freeze_causal(self) -> int:
-        """Freeze causal module + attention fusion during Phase 1."""
-        n = 0
-        for module in (self.causal_module, self.causal_attn_fusion):
-            for p in module.parameters():
-                if p.requires_grad:
-                    p.requires_grad = False
-                    n += p.numel()
-        # Also freeze causal gate
-        if hasattr(self, 'causal_gate') and self.causal_gate.requires_grad:
-            self.causal_gate.requires_grad = False
-            n += self.causal_gate.numel()
-        logger.info(f"  Causal frozen   : {n:,} params frozen for Phase 1")
-        return n
-
-    def unfreeze_causal(self) -> int:
-        """Unfreeze causal module + attention fusion at Phase 2 start."""
-        n = 0
-        for module in (self.causal_module, self.causal_attn_fusion):
-            for p in module.parameters():
-                if not p.requires_grad:
-                    p.requires_grad = True
-                    n += p.numel()
-        if hasattr(self, 'causal_gate') and not self.causal_gate.requires_grad:
-            self.causal_gate.requires_grad = True
-            n += self.causal_gate.numel()
-        logger.info(f"  Causal unfrozen : {n:,} params unfrozen for Phase 2")
-        return n
 
     def enable_sparse(self) -> None:
         self.use_sparse = True

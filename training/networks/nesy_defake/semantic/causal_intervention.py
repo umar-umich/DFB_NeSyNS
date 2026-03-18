@@ -98,14 +98,17 @@ class CausalInterventionModule(nn.Module):
             causal_module.freq_selector, causal_module.z_freq_norm,
             causal_module.z_freq_dim)
 
-        # Identify top-k semantic node indices to intervene on
-        # Semantic nodes are the last s_dim dimensions of each branch input
+        # Identify top-k forensic node indices to intervene on.
+        # Semantic nodes are the last s_dim dimensions of each branch input.
+        # In forensic_only mode, s_dim=48 (consistency+forensic features).
         s_dim = causal_module.s_dim
         z_spatial_dim = causal_module.z_spatial_dim
+        sem_start = causal_module._sem_slice_start
+        sem_end = causal_module._sem_slice_end
 
-        # Use the semantic portion (after z_active) for confidence ranking
-        sem_portion = augmented_semantic  # (B, s_dim)
-        # Confidence = how far from 0.5 (most decisive attributes)
+        # Use the forensic portion of augmented_semantic for confidence ranking
+        sem_portion = augmented_semantic[:, sem_start:sem_end]  # (B, s_dim)
+        # Confidence = how far from 0.5 (most decisive features)
         confidence = torch.abs(sem_portion - 0.5)  # (B, s_dim)
         # Top-k per sample
         k = min(self.top_k, s_dim)

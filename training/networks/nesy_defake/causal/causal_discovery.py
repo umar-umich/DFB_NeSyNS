@@ -1,25 +1,36 @@
 """
 networks/nesy_defake/causal/causal_discovery_module.py
 =======================================================
-Module 3: Per-Branch Dual-Graph Causal Discovery — DAGMA-DCE for Deepfake Detection
+Module 3: Compact Forensic-Focused Causal Discovery — DAGMA-DCE v2
 
-ARCHITECTURE: CAUSAL GRAPHS (2 branches × 2 distributions + 1 semantic pair)
+ARCHITECTURE: 4 compact causal graphs (2 branches × 2 distributions)
 -------------------------------------------------------------------------
-Each latent branch (spatial, frequency) has its own pair of real/fake causal
-graphs that discover relationships between that branch's SAE features and
-the shared semantic facial attributes.
+v2 redesign rationale:
+  - Previous 6 graphs at 387 nodes each were far beyond DAGMA's validated
+    range (20-100 nodes), leading to demographic-correlation collapse.
+  - Now: 4 graphs at ~64 nodes each — well within tractable range.
+  - Forensic-focused: only consistency rules (18) + forensic features (30)
+    enter the causal graph, NOT the base 211 demographic attributes.
+  - Linear SCM for structure discovery (better identifiability per
+    Peters et al., 2014), nonlinear residuals for detection signal.
 
-Detection signal comes from SCM RESIDUALS:
-  - Real SCM trained on reals → high residuals on fakes (can't explain them)
-  - Fake SCM trained on fakes → high residuals on reals (can't explain them)
-  - Residual patterns fed to attention fusion → classifier
+Node composition per branch graph (d ≈ 64):
+  [z_branch_0..15]  16 compressed latent visual features
+  [cr_*]            18 cross-attribute consistency rules
+  [ff_*]            30 pixel-level forensic features
+  Total:            64 interpretable, forensically relevant nodes
 
-Additionally, an intra-semantic causal graph (Part A) discovers inter-attribute
-causal relationships (e.g., happy → AU6 + AU12) that hold in reals but break
-in fakes.
+Detection signal: linear SCM residuals.
+  - Real SCM trained on reals → high residuals on fakes
+  - Fake SCM trained on fakes → high residuals on reals
+  - Residual difference patterns → CausalViolationAttentionFusion → classifier
 
-Directionality masks (Part B) encode the forensic prior: semantic concepts
-cause visual patterns, not vice versa.
+Algorithm: Hybrid Linear DAGMA + Nonlinear Residual (CDNOD-inspired)
+  - Linear SCM discovers identifiable causal structure
+  - The linear causal structure is shared between real/fake (faces follow
+    same physics); the residual distributions differ (fakes add artifacts)
+  - This handles highly overlapping distributions better than nonlinear
+    SCMs which memorize correlations instead of discovering causation.
 """
 
 import logging
@@ -57,21 +68,58 @@ def dagma_acyclicity(A: torch.Tensor, s: float = 1.0) -> torch.Tensor:
 
 
 # ---------------------------------------------------------------------------
-# Shared SCM: all d nodes modeled by a single batched MLP
+# Linear SCM: identifiable causal structure discovery
+# ---------------------------------------------------------------------------
+
+class LinearSCM(nn.Module):
+    """
+    Linear Structural Causal Model for d variables.
+
+    x_hat = W @ x + b
+
+    Linear SCMs have stronger identifiability guarantees than nonlinear ones
+    (Peters et al., 2014). For causal graph discovery, the weight matrix W
+    directly encodes causal effects — no Jacobian computation needed.
+
+    The Jacobian of a linear model IS the weight matrix: df/dx = W.
+    This makes graph discovery exact, not an EMA approximation.
+    """
+
+    def __init__(self, d: int, **kwargs):
+        super().__init__()
+        self.d = d
+        self.W = nn.Parameter(torch.zeros(d, d))
+        self.b = nn.Parameter(torch.zeros(d))
+        # Small random init — zero-centered for sparsity
+        nn.init.normal_(self.W, std=0.01)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """(B, d) -> (B, d)"""
+        return x @ self.W.t() + self.b
+
+    def get_adjacency(self) -> torch.Tensor:
+        """Adjacency = |W| with diagonal zeroed (no self-loops)."""
+        A = self.W.abs()
+        return A * (1.0 - torch.eye(self.d, device=A.device))
+
+
+# ---------------------------------------------------------------------------
+# Nonlinear SCM: expressive residual computation for detection signal
 # ---------------------------------------------------------------------------
 
 class BatchedSCM(nn.Module):
     """
-    Structural Causal Model for d variables.
+    Nonlinear Structural Causal Model for d variables.
 
-    Shared trunk MLP + d output heads. More efficient than d separate NodeMLPs.
-    Sigmoid activations (not ReLU) for everywhere-differentiable Jacobians.
+    Shared trunk MLP + d output heads. Sigmoid activations for
+    everywhere-differentiable Jacobians.
 
     Architecture:
-        x (B, d) -> trunk [Linear->Sigmoid]x(L-1) -> h (B, hidden) -> heads Linear(hidden, d) -> x_hat (B, d)
+        x (B, d) -> trunk [Linear->Sigmoid]x(L-1) -> h (B, hidden)
+        -> heads Linear(hidden, d) -> x_hat (B, d)
     """
 
-    def __init__(self, d: int, hidden_dim: int = 128, num_layers: int = 3):
+    def __init__(self, d: int, hidden_dim: int = 64, num_layers: int = 2):
         super().__init__()
         self.d = d
 
@@ -93,80 +141,82 @@ class BatchedSCM(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# DAGMA-DCE graph learner
+# DAGMA-DCE graph learner (supports linear and nonlinear SCMs)
 # ---------------------------------------------------------------------------
 
 class DAGMADCELearner(nn.Module):
     """
     DAGMA-DCE causal graph learner for one distribution (real OR fake).
 
-    Learns A_dce where A_ij = sqrt( E_x[(df_j/dx_i)^2] ) -- the RMS Jacobian
-    (Differential Causal Effect) of the SCM, interpretable as causal strength.
+    With linear SCM: A = |W| directly (exact, no EMA needed).
+    With nonlinear SCM: A_ij = sqrt(E_x[(df_j/dx_i)^2]) via factored Jacobian.
 
-    The EMA buffer _A_dce_ema accumulates Jacobian estimates from labeled subsets:
-    - DAGMADCELearner for real: updated only from real frames
-    - DAGMADCELearner for fake: updated only from fake frames
+    The EMA buffer accumulates graph estimates for stable visualization.
     """
 
-    def __init__(self, d: int, hidden_dim: int = 128, num_layers: int = 3,
-                 sparsity_penalty: float = 0.01, s: float = 1.0):
+    def __init__(self, d: int, hidden_dim: int = 64, num_layers: int = 2,
+                 sparsity_penalty: float = 0.01, s: float = 1.0,
+                 scm_type: str = 'linear'):
         super().__init__()
         self.d = d
         self.s = s
         self.sparsity_penalty = sparsity_penalty
+        self.scm_type = scm_type
 
-        self.scm = BatchedSCM(d, hidden_dim, num_layers)
+        if scm_type == 'linear':
+            self.scm = LinearSCM(d)
+        else:
+            self.scm = BatchedSCM(d, hidden_dim, num_layers)
 
         self.register_buffer('_A_dce_ema', torch.zeros(d, d))
         self._ema_decay = 0.99
         self._ema_initialized = False
 
     def set_direction_mask(self, mask: torch.Tensor) -> None:
-        """Register a directionality mask to enforce structural priors on A_dce."""
+        """Register a directionality mask to enforce structural priors."""
         self.register_buffer('_direction_mask', mask)
 
     def compute_adjacency_dce(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Compute DAGMA-DCE adjacency matrix via factored Jacobian.
+        Compute adjacency matrix.
 
-        Factored via shared trunk: J_full = heads.weight @ J_trunk, reducing
-        cost from d full backward passes to hidden_dim trunk passes + matmul.
+        Linear: A = |W| (exact, O(d²) — no backward passes).
+        Nonlinear: factored Jacobian (O(hidden_dim) backward passes).
 
         Args:
-            x: (B, d) input from a single distribution (real or fake subset)
+            x: (B, d) input from a single distribution
         Returns:
-            A_dce: (d, d) DCE adjacency matrix; EMA buffer updated in-place.
+            A_dce: (d, d) adjacency matrix; EMA buffer updated in-place.
         """
-        _, d = x.shape
-        assert d == self.d
+        if self.scm_type == 'linear':
+            A_dce = self.scm.get_adjacency()
+        else:
+            # Nonlinear: factored Jacobian (same as v1)
+            _, d = x.shape
+            assert d == self.d
 
-        if not x.requires_grad:
-            x = x.detach().requires_grad_(True)
+            if not x.requires_grad:
+                x = x.detach().requires_grad_(True)
 
-        h = self.scm.trunk(x)       # (B, hidden)
-        hidden_dim = h.shape[1]
+            h = self.scm.trunk(x)
+            hidden_dim = h.shape[1]
 
-        CHUNK = 64
-        J_trunk_sq = torch.zeros(d, hidden_dim, device=x.device, dtype=x.dtype)
-
-        for k_start in range(0, hidden_dim, CHUNK):
-            k_end = min(k_start + CHUNK, hidden_dim)
-            for k in range(k_start, k_end):
+            J_trunk_sq = torch.zeros(d, hidden_dim, device=x.device, dtype=x.dtype)
+            for k in range(hidden_dim):
                 grad_k = torch.autograd.grad(
                     outputs=h[:, k].sum(),
                     inputs=x,
                     create_graph=self.training,
                     retain_graph=True,
-                )[0]                # (B, d)
+                )[0]
                 J_trunk_sq[:, k] = (grad_k ** 2).mean(dim=0)
 
-        # Factored DCE: A_sq[i,j] ~ sum_k W[j,k]^2 * E[(dh_k/dx_i)^2]
-        W_sq = self.scm.heads.weight ** 2   # (d, hidden)
-        A_sq = J_trunk_sq @ W_sq.t()        # (d, d)
-        A_dce = torch.sqrt(A_sq + 1e-10)
-        A_dce = A_dce * (1.0 - torch.eye(d, device=A_dce.device))
+            W_sq = self.scm.heads.weight ** 2
+            A_sq = J_trunk_sq @ W_sq.t()
+            A_dce = torch.sqrt(A_sq + 1e-10)
+            A_dce = A_dce * (1.0 - torch.eye(d, device=A_dce.device))
 
-        # Apply directionality mask (Part B: block latent→semantic edges)
+        # Apply directionality mask
         if hasattr(self, '_direction_mask') and self._direction_mask is not None:
             A_dce = A_dce * self._direction_mask
 
@@ -182,21 +232,20 @@ class DAGMADCELearner(nn.Module):
         return A_dce
 
     def compute_dag_penalty(self) -> torch.Tensor:
-        """DAGMA acyclicity penalty on EMA adjacency. Called from get_losses()."""
+        """DAGMA acyclicity penalty on EMA adjacency."""
         return dagma_acyclicity(self._A_dce_ema, self.s)
 
 
 # ---------------------------------------------------------------------------
-# Feature compression: per-branch SAE sparse -> dense active features
+# Feature compression: backbone features -> compact causal z-features
 # ---------------------------------------------------------------------------
 
 class SparseFeatureSelector(nn.Module):
     """
-    Linear projection: picks out causally relevant SAE dictionary elements.
+    Linear projection: compresses backbone features to compact causal nodes.
 
-    No activation -- keeps the projection interpretable as a linear combination
-    of monosemantic features, so each z_active dimension maps to a fixed set
-    of dictionary atoms that the causal graph can reason about consistently.
+    No activation — keeps the projection interpretable as a linear combination
+    so each z_active dimension maps to a fixed set of backbone features.
     """
 
     def __init__(self, sae_dict_size: int, output_dim: int, num_branches: int = 1):
@@ -211,29 +260,22 @@ class SparseFeatureSelector(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Directionality mask builder (Part B)
+# Directionality mask builder
 # ---------------------------------------------------------------------------
 
 def build_directionality_mask(z_dim: int, s_dim: int) -> torch.Tensor:
     """
     Build a (d, d) binary mask that blocks latent→semantic edges.
 
-    Encodes the forensic prior: semantic concepts cause visual patterns,
-    not vice versa. After masking, allowed edges are:
-      - semantic → latent   (concepts cause features)
-      - semantic → semantic (inter-attribute causality)
+    Encodes the forensic prior: semantic/forensic concepts cause visual
+    patterns, not vice versa. Allowed edges:
+      - forensic → latent   (anomalies cause feature patterns)
+      - forensic → forensic (inter-anomaly causality)
       - latent → latent     (intra-feature relationships)
-      - latent → semantic   BLOCKED
-
-    Args:
-        z_dim: number of latent feature dimensions (first z_dim rows/cols)
-        s_dim: number of semantic attribute dimensions (next s_dim rows/cols)
-    Returns:
-        mask: (d, d) binary tensor, 0 in the latent→semantic block
+      - latent → forensic   BLOCKED
     """
     d = z_dim + s_dim
     mask = torch.ones(d, d)
-    # Zero out block [0:z_dim, z_dim:d] — latent rows, semantic columns
     mask[:z_dim, z_dim:d] = 0.0
     return mask
 
@@ -250,10 +292,7 @@ class BranchCausalPair(nn.Module):
       - causal_learner_real:  DAGMA-DCE for real-face distribution
       - causal_learner_fake:  DAGMA-DCE for fake-face distribution
 
-    Detection signal: SCM residuals (x - x_hat). Real SCM has high residuals
-    on fakes (can't explain generator artifacts), fake SCM has high residuals
-    on reals (can't explain natural structure). These residuals are projected
-    into the classifier via CausalViolationAttentionFusion.
+    Detection signal: SCM residuals (x - x_hat).
     """
 
     def __init__(self, d: int, dag_cfg: dict, disc_cfg: dict, branch_name: str,
@@ -264,12 +303,15 @@ class BranchCausalPair(nn.Module):
         self._jacobian_every_n = disc_cfg.get('jacobian_every_n', 1)
         self._step_counter = 0
 
+        scm_type = disc_cfg.get('scm_type', 'linear')
+
         self.causal_learner_real = DAGMADCELearner(
             d=d,
             hidden_dim=dag_cfg['hidden_dim'],
             num_layers=dag_cfg['num_layers'],
             sparsity_penalty=disc_cfg.get('sparsity_penalty', 0.01),
             s=disc_cfg.get('dagma_s', 1.0),
+            scm_type=scm_type,
         )
 
         self.causal_learner_fake = DAGMADCELearner(
@@ -279,9 +321,9 @@ class BranchCausalPair(nn.Module):
             sparsity_penalty=disc_cfg.get('sparsity_penalty_fake',
                                           disc_cfg.get('sparsity_penalty', 0.01) * 2),
             s=disc_cfg.get('dagma_s', 1.0),
+            scm_type=scm_type,
         )
 
-        # Apply directionality mask if provided
         if direction_mask is not None:
             self.causal_learner_real.set_direction_mask(direction_mask)
             self.causal_learner_fake.set_direction_mask(direction_mask)
@@ -294,14 +336,6 @@ class BranchCausalPair(nn.Module):
     ) -> Dict:
         """
         Run real + fake SCM on input x, return residuals and optionally graphs.
-
-        Args:
-            x:     (B, d) causal variables for this branch
-            label: (B,) 0=real, 1=fake for label-restricted Jacobian
-            return_graph: include adjacency matrices in output
-        Returns:
-            dict with residuals_real, residuals_fake,
-            and optionally A_real, A_fake.
         """
         # SCM reconstructions (all frames)
         x_hat_real = self.causal_learner_real.scm(x)
@@ -309,7 +343,7 @@ class BranchCausalPair(nn.Module):
         residuals_real = x - x_hat_real
         residuals_fake = x - x_hat_fake
 
-        # Graph discovery (label-restricted Jacobians)
+        # Graph discovery (label-restricted)
         A_real = self.causal_learner_real._A_dce_ema
         A_fake = self.causal_learner_fake._A_dce_ema
 
@@ -344,20 +378,22 @@ class BranchCausalPair(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Main module: CausalDiscoveryModule (per-branch dual-graph)
+# Main module: CausalDiscoveryModule (compact forensic-focused)
 # ---------------------------------------------------------------------------
 
 class CausalDiscoveryModule(nn.Module):
     """
-    Module 3: Per-Branch Dual-Graph Causal Discovery for deepfake detection.
+    Module 3: Compact Forensic-Focused Dual-Graph Causal Discovery.
 
-    Two branches (spatial, frequency), each with its own pair of real/fake
-    DAGMA-DCE causal graphs operating on [z_branch_active, semantic_attrs].
+    4 graphs total: 2 branches (spatial, freq) × 2 distributions (real, fake).
+    Each graph has ~64 nodes: 16 z-features + 48 forensic/consistency features.
 
-    Optionally, an intra-semantic causal graph (Part A) operates on just
-    the 211 semantic attributes to discover inter-attribute relationships.
+    The base 211 FaceBench demographic attributes are EXCLUDED from the causal
+    graph — they carry identity/demographic signal, not forensic signal.
+    Demographics flow through the semantic gate directly to the classifier.
 
-    Forward returns per-branch residuals and graphs.
+    The causal graph focuses on: how do visual features (z) relate to
+    forensic anomalies (consistency rules, pixel-level forensics)?
     """
 
     def __init__(self, config: dict, semantic_attr_names: Optional[list] = None):
@@ -368,39 +404,86 @@ class CausalDiscoveryModule(nn.Module):
         dag_cfg = causal_cfg['dag_learning']
         disc_cfg = causal_cfg['discovery']
 
-        self.z_spatial_dim = lv_cfg['z_spatial_dim']      # 128
-        self.z_freq_dim = lv_cfg['z_frequency_dim']       # 128
-        self.s_dim = causal_cfg['semantic_dim']            # 211 (FaceBench) or 128 (vision-only)
-        self.d_spatial = self.z_spatial_dim + self.s_dim   # 339 (with LLM) or 256
-        self.d_freq = self.z_freq_dim + self.s_dim        # 339 (with LLM) or 256
+        # -- z-dimensions for causal graph ------------------------------------
+        # When sparse_features is disabled, z_dim should match backbone output
+        # so raw features flow directly into the causal graph (no compression).
+        self.z_spatial_dim = lv_cfg['z_spatial_dim']
+        self.z_freq_dim = lv_cfg['z_frequency_dim']
 
-        # Store semantic attribute names for interpretable causal graphs
+        # -- Forensic-focused semantic selection ----------------------------
+        # Only consistency rules + forensic features enter the causal graph.
+        # The base 211 attributes are demographics, not forensics.
+        self._forensic_only = causal_cfg.get('forensic_only', True)
+        full_s_dim = causal_cfg['semantic_dim']  # 259 (211+18+30) from detector
+
+        # Parse which portion is forensic (tier1 + tier2)
+        base_attr_dim = config.get('semantic_attributes', {}).get('precomputed_dim', 211)
+        tier1_dim = config.get('consistency_rules', {}).get('output_dim', 18)
+        tier2_dim = config.get('forensic_features', {}).get('output_dim', 30)
+
+        if self._forensic_only:
+            # Only tier1 + tier2 go into causal graph
+            self.s_dim = tier1_dim + tier2_dim  # 48
+            self._sem_slice_start = base_attr_dim  # skip first 211
+            self._sem_slice_end = full_s_dim       # take rest
+        else:
+            # Everything goes in (legacy behavior)
+            self.s_dim = full_s_dim
+            self._sem_slice_start = 0
+            self._sem_slice_end = full_s_dim
+
+        self.d_spatial = self.z_spatial_dim + self.s_dim   # 16 + 48 = 64
+        self.d_freq = self.z_freq_dim + self.s_dim         # 16 + 48 = 64
+
+        # -- Store full semantic dim for external consumers -----------------
+        # CausalInterventionModule and detector need the full semantic dim
+        self._full_s_dim = full_s_dim
+
+        # -- Store semantic attribute names for interpretable graphs --------
         self._semantic_attr_names = semantic_attr_names
+        # Build forensic-only names
+        if semantic_attr_names and self._forensic_only:
+            self._causal_node_sem_names = semantic_attr_names[base_attr_dim:]
+        elif semantic_attr_names:
+            self._causal_node_sem_names = semantic_attr_names
+        else:
+            self._causal_node_sem_names = [f's_{i}' for i in range(self.s_dim)]
 
+        # -- Feature selectors (backbone -> causal z) --------------------------
+        # When z_dim matches input dim (raw features mode), use Identity
+        # instead of a learned projection — no wasted parameters.
         sae_cfg = config.get('sparse_features', {})
         self.sae_dict_size = sae_cfg.get(
             'dict_size',
             sae_cfg.get('sparse_autoencoder', {}).get('input_dim', 1024) * 4,
         )
 
-        # -- Per-branch feature selectors (SAE sparse -> dense active) --------
-        self.spatial_selector = SparseFeatureSelector(
-            sae_dict_size=self.sae_dict_size,
-            output_dim=self.z_spatial_dim,
-            num_branches=1,
-        )
-        self.freq_selector = SparseFeatureSelector(
-            sae_dict_size=self.sae_dict_size,
-            output_dim=self.z_freq_dim,
-            num_branches=1,
-        )
+        if self.z_spatial_dim == self.sae_dict_size:
+            self.spatial_selector = nn.Identity()
+            logger.info(f"[CausalDiscovery] spatial selector: Identity (raw {self.sae_dict_size}-d)")
+        else:
+            self.spatial_selector = SparseFeatureSelector(
+                sae_dict_size=self.sae_dict_size,
+                output_dim=self.z_spatial_dim,
+                num_branches=1,
+            )
 
-        # -- Normalization layers ---------------------------------------------
+        if self.z_freq_dim == self.sae_dict_size:
+            self.freq_selector = nn.Identity()
+            logger.info(f"[CausalDiscovery] freq selector: Identity (raw {self.sae_dict_size}-d)")
+        else:
+            self.freq_selector = SparseFeatureSelector(
+                sae_dict_size=self.sae_dict_size,
+                output_dim=self.z_freq_dim,
+                num_branches=1,
+            )
+
+        # -- Normalization layers -------------------------------------------
         self.z_spatial_norm = nn.LayerNorm(self.z_spatial_dim)
         self.z_freq_norm = nn.LayerNorm(self.z_freq_dim)
-        self.s_norm = nn.LayerNorm(self.s_dim)  # shared for both branches
+        self.s_norm = nn.LayerNorm(self.s_dim)
 
-        # -- Part B: Directionality masks (latent→semantic blocked) -----------
+        # -- Directionality masks (latent→forensic blocked) -----------------
         self.enforce_directionality = disc_cfg.get('enforce_directionality', False)
         spatial_dir_mask = None
         freq_dir_mask = None
@@ -409,43 +492,35 @@ class CausalDiscoveryModule(nn.Module):
             freq_dir_mask = build_directionality_mask(self.z_freq_dim, self.s_dim)
             logger.info(
                 f"[CausalDiscoveryModule] Directionality mask: "
-                f"blocking latent→semantic edges (z→s block zeroed)")
+                f"blocking latent→forensic edges (z→s block zeroed)")
 
-        # -- Spatial branch: real + fake causal graphs -----------------------
+        # -- Spatial branch: real + fake causal graphs ----------------------
         self.causal_spatial = BranchCausalPair(
             d=self.d_spatial, dag_cfg=dag_cfg, disc_cfg=disc_cfg,
             branch_name='spatial', direction_mask=spatial_dir_mask)
 
-        # -- Frequency branch: real + fake causal graphs ---------------------
+        # -- Frequency branch: real + fake causal graphs --------------------
         self.causal_freq = BranchCausalPair(
             d=self.d_freq, dag_cfg=dag_cfg, disc_cfg=disc_cfg,
             branch_name='frequency', direction_mask=freq_dir_mask)
 
-        # -- Part A: Intra-semantic causal graph (211-node SCM pair) ----------
-        sem_graph_cfg = causal_cfg.get('semantic_graph', {})
-        self.use_semantic_graph = sem_graph_cfg.get('enabled', False)
+        # -- Semantic-only graph removed (v2) -------------------------------
+        # Demographics (211 base attrs) don't belong in causal graph.
+        # Forensic features already capture inter-attribute relationships
+        # via consistency rules (e.g., cr_happy_au6, cr_gender_beard).
+        self.use_semantic_graph = False
         self.causal_semantic = None
-        if self.use_semantic_graph:
-            sem_dag_cfg = {
-                'hidden_dim': sem_graph_cfg.get('hidden_dim', 64),
-                'num_layers': sem_graph_cfg.get('num_layers', 2),
-            }
-            self.causal_semantic = BranchCausalPair(
-                d=self.s_dim, dag_cfg=sem_dag_cfg, disc_cfg=disc_cfg,
-                branch_name='semantic')
-            logger.info(
-                f"[CausalDiscoveryModule] Semantic graph: d={self.s_dim}, "
-                f"hidden={sem_dag_cfg['hidden_dim']}, layers={sem_dag_cfg['num_layers']}")
 
         self.sparsity_weight = disc_cfg.get('sparsity_penalty', 0.01)
 
         n_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        scm_type = disc_cfg.get('scm_type', 'linear')
         logger.info(
-            f"[CausalDiscoveryModule] Per-branch dual-graph: "
+            f"[CausalDiscoveryModule] Compact forensic-focused (v2): "
             f"d_spatial={self.d_spatial} (z={self.z_spatial_dim}, s={self.s_dim}), "
             f"d_freq={self.d_freq} (z={self.z_freq_dim}, s={self.s_dim}), "
-            f"SCM hidden={dag_cfg['hidden_dim']}, layers={dag_cfg['num_layers']}, "
-            f"trainable={n_params:,}"
+            f"forensic_only={self._forensic_only}, scm_type={scm_type}, "
+            f"graphs=4, trainable={n_params:,}"
         )
 
     # ------------------------------------------------------------------ #
@@ -456,12 +531,12 @@ class CausalDiscoveryModule(nn.Module):
         self,
         z_branch: Optional[torch.Tensor],
         semantic_attrs: Optional[torch.Tensor],
-        selector: SparseFeatureSelector,
+        selector: nn.Module,
         z_norm: nn.LayerNorm,
         z_dim: int,
     ) -> torch.Tensor:
         """
-        Build causal input for one branch: [z_active, s_semantic].
+        Build causal input: [z_active(z_dim), forensic_attrs(s_dim)].
         """
         B = (z_branch.shape[0] if z_branch is not None
              else semantic_attrs.shape[0])
@@ -474,7 +549,9 @@ class CausalDiscoveryModule(nn.Module):
             z_active = torch.zeros(B, z_dim, device=device)
 
         if semantic_attrs is not None:
-            s_sem = self.s_norm(semantic_attrs.float())
+            # Slice to forensic-only features if configured
+            s_input = semantic_attrs[:, self._sem_slice_start:self._sem_slice_end]
+            s_sem = self.s_norm(s_input.float())
         else:
             s_sem = torch.zeros(B, self.s_dim, device=device)
 
@@ -493,17 +570,15 @@ class CausalDiscoveryModule(nn.Module):
         return_graph: bool = False,
     ) -> Dict:
         """
-        Per-branch dual-graph causal discovery.
+        Compact forensic-focused causal discovery.
 
-        Returns: dict with keys (prefixed by branch):
+        Returns: dict with keys:
             residuals_spatial_real/fake (B, d_spatial) per-branch residuals
             residuals_freq_real/fake    (B, d_freq)   per-branch residuals
-            residuals_sem_real/fake     (B, s_dim)    semantic residuals [if enabled]
             A_spatial_real/fake     (d_spatial, d_spatial) [if return_graph]
             A_freq_real/fake        (d_freq, d_freq)      [if return_graph]
-            A_sem_real/fake         (s_dim, s_dim)        [if return_graph + semantic]
         """
-        # Build per-branch causal inputs
+        # Build compact causal inputs
         x_spatial = self._build_branch_input(
             z_spatial, semantic_attrs,
             self.spatial_selector, self.z_spatial_norm, self.z_spatial_dim)
@@ -511,7 +586,7 @@ class CausalDiscoveryModule(nn.Module):
             z_freq, semantic_attrs,
             self.freq_selector, self.z_freq_norm, self.z_freq_dim)
 
-        # Enable grad for Jacobian computation
+        # Enable grad for Jacobian computation (nonlinear SCM only)
         if not x_spatial.requires_grad:
             x_spatial = x_spatial.requires_grad_(True)
         if not x_freq.requires_grad:
@@ -522,7 +597,6 @@ class CausalDiscoveryModule(nn.Module):
         freq_out = self.causal_freq(x_freq, label, return_graph)
 
         out = {
-            # Per-branch residuals (used by CausalViolationAttentionFusion)
             'residuals_spatial_real': spatial_out['residuals_real'],
             'residuals_spatial_fake': spatial_out['residuals_fake'],
             'residuals_freq_real': freq_out['residuals_real'],
@@ -535,18 +609,6 @@ class CausalDiscoveryModule(nn.Module):
             out['A_freq_real'] = freq_out['A_real']
             out['A_freq_fake'] = freq_out['A_fake']
 
-        # -- Part A: Intra-semantic causal graph (211-node SCM pair) ----------
-        if self.use_semantic_graph and self.causal_semantic is not None and semantic_attrs is not None:
-            s_normed = self.s_norm(semantic_attrs.float())
-            if not s_normed.requires_grad:
-                s_normed = s_normed.requires_grad_(True)
-            sem_out = self.causal_semantic(s_normed, label, return_graph)
-            out['residuals_sem_real'] = sem_out['residuals_real']
-            out['residuals_sem_fake'] = sem_out['residuals_fake']
-            if return_graph:
-                out['A_sem_real'] = sem_out['A_real']
-                out['A_sem_fake'] = sem_out['A_fake']
-
         return out
 
     # ------------------------------------------------------------------ #
@@ -554,7 +616,7 @@ class CausalDiscoveryModule(nn.Module):
     # ------------------------------------------------------------------ #
 
     def get_graph_divergence(self, branch: str = 'spatial') -> Dict[str, torch.Tensor]:
-        """Interpretable comparison of real vs fake causal graphs for a branch."""
+        """Interpretable comparison of real vs fake causal graphs."""
         pair = self.causal_spatial if branch == 'spatial' else self.causal_freq
         A_r = pair.causal_learner_real._A_dce_ema
         A_f = pair.causal_learner_fake._A_dce_ema
@@ -572,7 +634,7 @@ class CausalDiscoveryModule(nn.Module):
         return pair.causal_learner_real._A_dce_ema.clone()
 
     def get_node_names(self, branch: str = 'spatial') -> list:
-        """Human-readable names for the causal variable nodes of a branch."""
+        """Human-readable names for the compact causal graph nodes."""
         names = []
         if branch == 'spatial':
             for i in range(self.z_spatial_dim):
@@ -581,15 +643,9 @@ class CausalDiscoveryModule(nn.Module):
             for i in range(self.z_freq_dim):
                 names.append(f'z_freq_{i}')
 
-        if self._semantic_attr_names and len(self._semantic_attr_names) == self.s_dim:
-            names.extend(self._semantic_attr_names)
-        else:
-            for i in range(self.s_dim):
-                names.append(f's_{i}')
+        names.extend(self._causal_node_sem_names)
         return names
 
     def get_semantic_node_names(self) -> list:
-        """Human-readable names for the 211 semantic-only causal graph nodes."""
-        if self._semantic_attr_names and len(self._semantic_attr_names) == self.s_dim:
-            return list(self._semantic_attr_names)
-        return [f's_{i}' for i in range(self.s_dim)]
+        """Forensic node names used in the causal graph."""
+        return list(self._causal_node_sem_names)

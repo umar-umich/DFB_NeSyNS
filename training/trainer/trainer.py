@@ -458,9 +458,9 @@ class Trainer(object):
 
     def _run_causal_warmup(self, dataloader, n_batches: int, label_filter: int = 0):
         """
-        Pre-populate one causal graph's EMA buffer before phase 3 training.
+        Pre-populate one causal graph's EMA buffer before training starts.
 
-        Called twice at phase3_start:
+        Called twice at epoch 0:
           label_filter=0 → warms up A_real (real-face biomechanical graph)
           label_filter=1 → warms up A_fake (generator artifact graph)
 
@@ -614,118 +614,14 @@ class Trainer(object):
                     + ", ".join(f"{k}={v:.4f}" for k, v in m.loss_weights.items())
                 )
 
-        # ── Phase transition (GenD-style progressive unfreezing) ──────────
-        # Must run BEFORE the iteration loop so the entire epoch trains with
-        # the correct frozen/unfrozen state and correct optimizer param groups.
-        #
-        # Phase 1 (epochs 0→phase2_start): backbone fully frozen, only
-        #   backbone LayerNorms + projection heads + fusion + classifier train.
-        # Phase 2 (epochs phase2_start→end): backbone LayerNorms explicitly
-        #   re-confirmed unfrozen (they already are from phase1, but calling
-        #   unfreeze_layernorms() is idempotent and re-logs for clarity).
-        #   Optimizer is rebuilt so any param that became requires_grad=True
-        #   between epochs is actually in a param group.
-        #
-        # We do NOT call unfreeze_full() — that would destroy pretrained
-        # representations. LayerNorm-only is the GenD generalization regime.
-        phases = self.config.get('training_phases', {})
-        phase2 = phases.get('phase2', {})
-        phase2_start = phase2.get('epochs', [None, None])[0]
-
-        if phase2_start is not None and epoch == phase2_start:
-            self.logger.info(
-                f"===> Phase 2 transition at epoch {epoch}: "
-                f"unfreezing backbone LayerNorms + causal module."
-            )
-            # Unwrap DDP to access the actual model attributes
-            m = self.model.module if isinstance(self.model, DDP) else self.model
-
-            for attr in ('spatial_extractor', 'frequency_extractor'):
-                extractor = getattr(m, attr, None)
-                if extractor is None:
-                    continue
-                if hasattr(extractor, 'unfreeze_layernorms'):
-                    n_unfrozen = extractor.unfreeze_layernorms()
-                    self.logger.info(
-                        f"  {attr}: {n_unfrozen:,} LayerNorm params unfrozen"
-                    )
-                else:
-                    self.logger.warning(
-                        f"  {attr}: no unfreeze_layernorms() method — skipping. "
-                        f"Add it following the GenD-style extractor pattern."
-                    )
-
-            # Unfreeze causal module if it was frozen in Phase 1
-            if hasattr(m, 'unfreeze_causal'):
-                m.unfreeze_causal()
-
-            # Rebuild optimizer so newly unfrozen params are in a param group.
-            # Without this, their gradients are computed but silently discarded
-            # because Adam has no state for them yet.
-            from training.train import choose_optimizer, choose_scheduler
-            self.optimizer = choose_optimizer(self.model, self.config)
-            self.scheduler = choose_scheduler(self.config, self.optimizer)
-            self.logger.info(
-                "  Optimizer and scheduler rebuilt with updated param groups."
-            )
-
-            # v5.1: Invalidate the cached freq params since optimizer was rebuilt
-            # and param groups may have changed.
-            if hasattr(self, '_freq_params_cache'):
-                del self._freq_params_cache
-
-        # ── Causal warmup ─────────────────────────────────────────────────
-        # Pre-populate both EMA buffers before causal module starts training.
-        # Runs at phase2_start (epoch 5) so the classifier has converged on
-        # clean CLIP features first, and backbone features are stable.
-        # Legacy phase3 transition is also supported for backward compatibility.
-        phase3 = phases.get('phase3', {})
-        phase3_start = phase3.get('epochs', [None, None])[0]
-
+        # ── Causal warmup (epoch 0 only) ──────────────────────────────────
+        # Pre-populate EMA buffers before training starts. All modules
+        # train from epoch 0; causal gate init=-3.0 naturally suppresses
+        # causal influence until the module learns meaningful graphs.
         m_causal = self.model.module if isinstance(self.model, DDP) else self.model
-        run_causal_warmup = False
 
-        if phase3_start is not None and epoch == phase3_start:
-            # Legacy: phase3 transition
-            self.logger.info(
-                f"===> Phase 3 transition at epoch {epoch}: "
-                f"enabling dual-graph causal discovery module."
-            )
-            if hasattr(m_causal, 'enable_causal'):
-                m_causal.enable_causal()
-            else:
-                m_causal.use_causal = True
-
-            causal_w = phase3.get('causal_loss_weight', 0.3)
-            causal_fake_w = phase3.get('causal_fake_loss_weight', causal_w * 0.5)
-            for key, val in [
-                ('causal', causal_w), ('contrastive', causal_w),
-                ('causal_fake', causal_fake_w), ('contrastive_fake', causal_fake_w),
-            ]:
-                self.config['loss_func']['weights'][key] = val
-                if hasattr(m_causal, 'loss_weights'):
-                    m_causal.loss_weights[key] = val
-
-            run_causal_warmup = True
-
-        elif (phase2_start is not None and epoch == phase2_start
-              and getattr(m_causal, 'use_causal', False)):
-            # Causal warmup at phase2 start (epoch 5): classifier has had
-            # 5 epochs to converge on clean features, backbone is stable.
-            self.logger.info(
-                f"===> Causal warmup at epoch {epoch} (phase2 start)"
-            )
-            run_causal_warmup = True
-
-        elif (phase2_start is None and epoch == 0
-              and getattr(m_causal, 'use_causal', False)):
-            # Fallback: no phases defined, warmup at epoch 0
-            self.logger.info(
-                "===> Causal warmup at epoch 0 (no phase config)"
-            )
-            run_causal_warmup = True
-
-        if run_causal_warmup:
+        if epoch == 0 and getattr(m_causal, 'use_causal', False):
+            self.logger.info(f"===> Causal warmup at epoch {epoch}")
             causal_warmup_batches = (
                 self.config.get('causal_module', {})
                 .get('causal_warmup_batches', 100)
