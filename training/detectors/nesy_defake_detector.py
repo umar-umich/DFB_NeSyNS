@@ -37,6 +37,14 @@ v5 changes (causal graph quality + performance):
   - Per-tier normalization (LayerNorm) before semantic concatenation
   - Single-phase training: all modules train from epoch 0 (causal gate suppresses early)
   - Class weights [0.8, 1.2] to reduce cross-dataset real bias
+
+v6 changes (tractable causal + semantic projection):
+  - z_dim: 1024→32 (SparseFeatureSelector compresses backbone features)
+    → causal graph: 32+48=80 nodes (was 1072!) — within DAGMA validated range
+  - SemanticProjection: direct 259-d gated semantic → classifier pathway
+    → 259→128→1024, gated, provides explicit attribute signal for classification
+  - Causal gate: -3.0→-1.5 (sigmoid=0.18) — causal signal usable earlier
+    with properly-sized 80-node graphs
 """
 
 import logging
@@ -198,6 +206,47 @@ class CausalViolationAttentionFusion(nn.Module):
         return self.out_norm(causal_delta), attn_weights
 
 
+# ---------------------------------------------------------------------------
+# NeSy Change 2: Semantic Projection (direct semantic → classifier pathway)
+# ---------------------------------------------------------------------------
+
+class SemanticProjection(nn.Module):
+    """
+    Projects gated semantic attributes directly into the classifier space.
+
+    This gives the classifier explicit access to facial attribute signals:
+      - The causal module captures anomaly patterns via SCM residuals
+      - This pathway captures attribute presence/absence for classification
+
+    Architecture: sem_attrs (259) → LayerNorm → Linear → GELU → Dropout
+                  → Linear → LayerNorm → output (proj_dim)
+
+    The bottleneck (hidden_dim=128) forces the model to learn a compact,
+    discriminative representation of the semantic space rather than
+    memorizing all 259 raw features.
+    """
+
+    def __init__(self, sem_dim: int, proj_dim: int, hidden_dim: int = 128,
+                 dropout: float = 0.2):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.LayerNorm(sem_dim),
+            nn.Linear(sem_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, proj_dim),
+            nn.LayerNorm(proj_dim),
+        )
+        # Small init so the projection starts near-zero
+        nn.init.normal_(self.net[1].weight, std=0.02)
+        nn.init.zeros_(self.net[1].bias)
+        nn.init.normal_(self.net[4].weight, std=0.01)
+        nn.init.zeros_(self.net[4].bias)
+
+    def forward(self, semantic_attrs: torch.Tensor) -> torch.Tensor:
+        return self.net(semantic_attrs)
+
+
 def _make_projection(in_dim: int, out_dim: int, dropout: float = 0.0) -> nn.Sequential:
     layers = [nn.Linear(in_dim, out_dim), nn.LayerNorm(out_dim), nn.GELU()]
     if dropout > 0.0:
@@ -323,12 +372,33 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             self.semantic_gate = nn.Parameter(torch.zeros(gate_dim))
             logger.info(f"  Semantic gate   : {gate_dim}-d (sigmoid, init=0.5)")
 
+        # -- NeSy Change 2: Semantic Projection (direct sem → classifier) ------
+        sp_cfg = config.get('semantic_projection', {})
+        self.use_semantic_proj = (
+            sp_cfg.get('enabled', False) and self.use_semantic_attrs)
+        if self.use_semantic_proj:
+            sem_proj_dim = config['causal_module']['semantic_dim']
+            sp_hidden = sp_cfg.get('hidden_dim', 128)
+            sp_dropout = sp_cfg.get('dropout', 0.2)
+            self.semantic_proj = SemanticProjection(
+                sem_dim=sem_proj_dim, proj_dim=proj_dim,
+                hidden_dim=sp_hidden, dropout=sp_dropout)
+            sp_gate_init = sp_cfg.get('gate_init', -1.0)
+            self.semantic_proj_gate = nn.Parameter(
+                torch.tensor(float(sp_gate_init)))
+            n_sp_params = sum(p.numel() for p in self.semantic_proj.parameters())
+            logger.info(
+                f"  Semantic proj   : {sem_proj_dim}→{sp_hidden}→{proj_dim}, "
+                f"gate_init={sp_gate_init} "
+                f"(sigmoid={torch.sigmoid(torch.tensor(sp_gate_init)).item():.3f}), "
+                f"params={n_sp_params:,}")
+
         # -- Learnable causal gate (controls causal contribution to classifier) -
-        # sigmoid(-3.0) ≈ 0.05 → causal delta starts nearly muted.
-        # Lets the classifier converge on clean CLIP features first.
-        # The gate opens naturally as causal graphs mature (via loss warmup).
-        self.causal_gate = nn.Parameter(torch.tensor(-3.0))
-        logger.info(f"  Causal gate     : scalar (sigmoid, init={torch.sigmoid(torch.tensor(-3.0)).item():.3f})")
+        # sigmoid(-1.5) ≈ 0.18 → causal delta starts partially active.
+        # With tractable 80-node graphs (z=32 + forensic=48), causal signal
+        # is meaningful earlier than with the previous 1072-node graphs.
+        self.causal_gate = nn.Parameter(torch.tensor(-1.5))
+        logger.info(f"  Causal gate     : scalar (sigmoid, init={torch.sigmoid(torch.tensor(-1.5)).item():.3f})")
 
         # -- Tier 3: Causal Intervention (train + inference) --------------------
         ci_cfg = config.get('causal_intervention', {})
@@ -371,7 +441,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # eliminates Python overhead. Only applied to inference-only modules.
         self._try_compile_frozen_modules()
 
-        logger.info("NeSyDeFake Hybrid Detector initialised (v4 — cleaned up)")
+        logger.info("NeSyDeFake Hybrid Detector initialised (v6 — tractable causal + semantic proj)")
         logger.info(f"  Active branches : {sorted(self.active_branches)}")
         logger.info(f"  Fused dim       : {config['fusion']['fused_dim']}")
         logger.info(f"  Projection dim  : {proj_dim}")
@@ -770,6 +840,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             ci_gate_value = torch.sigmoid(self.ci_gate)
             classifier_input = classifier_input + ci_gate_value * ci_delta
 
+        # -- Step 5b: Semantic Projection (direct sem → classifier) -------------
+        # Projects the gated 259-d semantic vector into classifier space.
+        # Provides explicit attribute signal that the causal residual pathway
+        # cannot capture (residuals = reconstruction error, not presence/absence).
+        if self.use_semantic_proj and semantic_attrs is not None:
+            sem_delta = self.semantic_proj(semantic_attrs)
+            sem_gate_value = torch.sigmoid(self.semantic_proj_gate)
+            classifier_input = classifier_input + sem_gate_value * sem_delta
+
         # L2-normalize for hyperspherical representation (GenD recipe)
         l2_embeddings = F.normalize(classifier_input, p=2, dim=1)
 
@@ -911,14 +990,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # (no DDP anchor needed — they get real gradients every step)
 
         for attr in ('causal_module', 'sparse_ae', 'multitaskhead',
-                     'semantic_extractor', 'causal_attn_fusion'):
+                     'semantic_extractor', 'causal_attn_fusion',
+                     'semantic_proj'):
             mod = getattr(self, attr, None)
             if mod is not None:
                 ddp_anchor = ddp_anchor + _zero_grad_anchor(mod, device)
-        if hasattr(self, 'semantic_gate') and isinstance(self.semantic_gate, nn.Parameter):
-            ddp_anchor = ddp_anchor + self.semantic_gate.sum() * 0.0
-        if hasattr(self, 'causal_gate') and isinstance(self.causal_gate, nn.Parameter):
-            ddp_anchor = ddp_anchor + self.causal_gate * 0.0
+        for gate_name in ('semantic_gate', 'causal_gate', 'semantic_proj_gate'):
+            gate = getattr(self, gate_name, None)
+            if gate is not None and isinstance(gate, nn.Parameter):
+                ddp_anchor = ddp_anchor + gate.sum() * 0.0
 
         # Loss weights
         w = self.loss_weights
@@ -980,9 +1060,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             for i, name in enumerate(CausalViolationAttentionFusion.RESIDUAL_KEYS):
                 metrics[f'attn_{name}'] = float(aw[i])
 
-        # Causal gate value (monitor how much causal info the model uses)
+        # Gate values (monitor how much each pathway contributes)
         if hasattr(self, 'causal_gate'):
             metrics['causal_gate'] = float(torch.sigmoid(self.causal_gate).item())
+        if hasattr(self, 'semantic_proj_gate') and self.semantic_proj_gate is not None:
+            metrics['sem_proj_gate'] = float(
+                torch.sigmoid(self.semantic_proj_gate).item())
 
         self.video_names = []
         return metrics

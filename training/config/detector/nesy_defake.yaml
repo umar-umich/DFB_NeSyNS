@@ -179,6 +179,19 @@ causal_intervention:
   ci_gate_init: -2.0          # sigmoid≈0.12, grows as module learns
 
 # -----------------------------------------------------------------------------
+# Semantic Projection (direct semantic → classifier pathway)
+# -----------------------------------------------------------------------------
+# Projects the 259-d gated semantic vector (211 FaceBench + 18 consistency +
+# 30 forensic) directly into the classifier space. This gives the classifier
+# explicit access to facial attribute signals — the causal module captures
+# anomaly patterns, while this pathway captures attribute presence/absence.
+semantic_projection:
+  enabled: true
+  hidden_dim: 128          # bottleneck: 259 → 128 → 1024
+  dropout: 0.2
+  gate_init: -1.0          # sigmoid≈0.27, grows with training
+
+# -----------------------------------------------------------------------------
 # Causal Attention Fusion
 # -----------------------------------------------------------------------------
 # The fused CLIP features (query) attend over the 4 causal residuals
@@ -194,18 +207,19 @@ causal_module:
   causal_warmup_batches: -1          # -1 = use all training batches
 
   # z-dimensions for causal graphs.
-  # When matching dict_size (1024) and SAE is disabled, raw backbone
-  # features flow directly into causal graph (Identity selector).
-  # Total causal nodes: 1024+48=1072 per branch.
+  # SparseFeatureSelector projects 1024-d backbone features → z_dim
+  # before entering the causal graph. Total nodes: z_dim + 48 = 80.
+  # This is within DAGMA's validated range (20-100 nodes) for reliable
+  # causal structure discovery.
   latent_variables:
-    z_spatial_dim:    1024
-    z_frequency_dim:  1024
+    z_spatial_dim:    32
+    z_frequency_dim:  32
 
   semantic_dim: 211    # updated by detector at init (211+18+30=259)
 
   # Forensic-focused: only consistency rules (18) + forensic features (30)
   # enter causal graph. Base 211 demographics excluded — they carry identity
-  # signal, not forensic signal. Total causal nodes: 1024+48=1072 per branch.
+  # signal, not forensic signal. Total causal nodes: 32+48=80 per branch.
   forensic_only: true
 
   discovery:
