@@ -1,7 +1,7 @@
 preprocess:
   dataset_name: # the name of dataset
     choices: ['FaceForensics++','Celeb-DF-v1', 'Celeb-DF-v2', 'DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV']
-    default: 'Celeb-DF-v1'
+    default: 'FaceForensics++'
   
   dataset_root_path: # the root path to the original dataset
     type: str
@@ -18,7 +18,7 @@ preprocess:
     default: 'c23'
   
   mode: # based on the numbers of frame or skip the specific stride of frames.
-    choices: ['fixed_num_frames', 'fixed_stride']
+    choices: ['fixed_num_frames', 'fixed_stride', 'at_least']
     default: 'fixed_num_frames'
   
   stride: # when 'mode' is 'fixed_stride', 'stride' is the number of frames to skip between each frame extracted.
@@ -32,7 +32,7 @@ preprocess:
 rearrange:
   dataset_name: # the name of dataset
     choices: ['FaceForensics++', 'DeepFakeDetection', 'Celeb-DF-v1', 'Celeb-DF-v2','DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV','FaceShifter']
-    default: 'Celeb-DF-v2'
+    default: 'FaceForensics++'
   
   dataset_root_path: # the root path to the preprocessed dataset
     type: str

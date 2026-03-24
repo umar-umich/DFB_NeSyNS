@@ -8,3 +8,5 @@
 *.log
 *log*
 **pretrained**
+*.onnx
+preprocessing/weights/

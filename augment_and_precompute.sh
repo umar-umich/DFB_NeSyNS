@@ -15,7 +15,7 @@ echo "Step 1: Augmenting real frames (3 copies for 4:1 balance)"
 echo "============================================================"
 python training/augment_real_frames.py \
     --detector_path training/config/detector/nesy_defake.yaml \
-    --n_augmentations 5 \
+    --n_augmentations 3 \
     --workers 16 \
     --skip_existing
 

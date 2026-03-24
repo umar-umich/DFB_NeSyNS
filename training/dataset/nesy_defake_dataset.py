@@ -1,42 +1,39 @@
 """
 dataset/nesy_defake_dataset.py
 ==============================
-NeSyDeFake Dataset — FRAME-LEVEL with SOURCE-PAIRED TRAINING
+NeSyDeFake Dataset — FRAME-LEVEL with GenD-style PAIRED DATA
 
-v2 changes (2026-03-10):
-  - SOURCE-PAIRED TRAINING: For FF++, each fake frame is paired with a real
-    frame from the same source video. Forces the model to learn manipulation
-    artifacts, not identity/background shortcuts. (GenD, WACV 2026)
-  - Batch structure: each __getitem__ returns a (real, fake) pair from the
-    same source video. Batch size N -> 2N frames in forward pass.
-  - Cross-dataset (non-FF++) falls back to random pairing.
+v3 changes (2026-03-23):
+  - GenD-STYLE PAIRED TRAINING (WACV 2026):
+    Each __getitem__ returns a SINGLE frame with source/video metadata.
+    Pairing is at the DATA PREPARATION level: the training set must include
+    both real and fake frames from the same source videos. Standard shuffled
+    batching + UA loss on the hypersphere handles representation learning.
+    This gives higher batch diversity vs explicit pair-forcing (N unique
+    sources per batch instead of N/2), improving UA loss effectiveness.
+  - Added source_uid, video_uid metadata per sample (GenD fields).
+  - Batch size N = N frames (not N/2 pairs = N frames as before).
+  - GenD paper result: paired data → 90.0% vs unpaired 85.3% cross-dataset.
 
 Design principles:
   1. Single frame per sample — no temporal dimension.
   2. Two active branches (spatial, frequency) receive the SAME frame.
-  3. Semantic attributes (73-d or 211-d) loaded from cache or computed online.
-  4. Paired training: GenD-style source-matched real-fake pairs to prevent
-     shortcut learning. The causal module benefits most — it must discover
-     artifact-related causal edges, not identity-correlated ones.
+  3. Semantic attributes (211-d) loaded from precomputed Face-LLaVA cache.
+  4. Paired data preparation: training set includes both real source video
+     and its fake derivatives → UA loss prevents shortcut learning.
+  5. source_uid / video_uid exposed in batch for optional source-aware losses.
 
-Data flow per paired sample:
-  Fake frame from video "802_885" + Real frame from source video "802"
-      │
-      ├─→ Both augmented independently
-      ├─→ Both get spatial/freq/raw normalizations
-      └─→ Collated as interleaved [real_0, fake_0, real_1, fake_1, ...]
-
-Collated batch shapes (for batch_size N pairs = 2N frames):
-  spatial_frames : (2N, C, H, W)
-  freq_frames    : (2N, C, H, W)
-  raw_frames     : (2N, C, H, W)
-  semantic_attrs : (2N, semantic_dim)
-  label          : (2N,)
+Collated batch shapes (for batch_size N frames):
+  spatial_frames : (N, C, H, W)
+  freq_frames    : (N, C, H, W)
+  raw_frames     : (N, C, H, W)
+  semantic_attrs : (N, semantic_dim)
+  label          : (N,)
+  source_uid     : (N,)
+  video_uid      : (N,)
 """
 
-import json
 import os
-import random
 from collections import defaultdict
 from typing import Optional
 
@@ -56,9 +53,10 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
     Dataset for NeSyDeFake: produces synchronized multi-branch tensors
     for individual frames (no temporal/video mode).
 
-    When paired_training=True (default for train mode on FF++), each sample
-    returns a source-matched (real, fake) pair. The collator interleaves
-    them so the batch contains paired real-fake frames from the same videos.
+    GenD-style paired training (v3): each __getitem__ returns a single frame
+    with source_uid / video_uid metadata. The training set must include
+    source-matched real-fake pairs. Standard shuffled batching + UA loss
+    on the hypersphere learns manipulation-specific representations.
     """
 
     def __init__(self, config: dict, mode: str = "train"):
@@ -103,17 +101,12 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         # ── Parent handles JSON parsing, image_list/label_list ────────────
         super().__init__(config, mode)
 
-        # ── Paired training setup ─────────────────────────────────────────
+        # ── GenD-style source/video UID maps ──────────────────────────────
         self.paired_training = (
             mode == 'train'
             and config.get('paired_training', True)
         )
-
-        if self.paired_training:
-            self._build_pair_index()
-        else:
-            self._fake_indices = None
-            self._source_to_real_frames = None
+        self._build_source_video_maps()
 
         # ── Sanity report ─────────────────────────────────────────────────
         real_count = sum(1 for la in self.label_list if la == 0)
@@ -126,26 +119,39 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             mode == 'train' and self.config.get('balance_classes', False)
         )
 
+        # Count paired sources
+        n_sources_with_both = 0
+        if self.paired_training:
+            for src in self._source_to_indices:
+                labels_for_src = set(
+                    self.label_list[i] for i in self._source_to_indices[src])
+                if 0 in labels_for_src and 1 in labels_for_src:
+                    n_sources_with_both += 1
+
         print(
             f"\n{'='*60}"
-            f"\nNeSyDeFakeDataset [{mode}] — FRAME-LEVEL"
-            f"\n  Total frames      : {len(self.image_list)}"
-            f"\n  Real / Fake       : {real_count} / {fake_count}"
-            f"\n  Resolution        : {self.resolution}x{self.resolution}"
-            f"\n  Augmentation      : {'ON' if aug_active else 'OFF'}"
-            f"\n  Balanced sampling : {'ON' if balance_active else 'OFF'}"
-            f"\n  Semantic features : {'ON' if self.use_semantic else 'OFF'}"
-            f"\n  Precomputed sem.  : {'ON (' + self._precomputed_subdir + ')' if self.use_precomputed_semantic else 'OFF'}"
-            f"\n  Paired training   : {'ON' if self.paired_training else 'OFF'}"
-            f"\n  Active branches   : spatial, frequency (no temporal)"
+            f"\nNeSyDeFakeDataset [{mode}] — FRAME-LEVEL (GenD v3)"
+            f"\n  Total frames        : {len(self.image_list)}"
+            f"\n  Real / Fake         : {real_count} / {fake_count}"
+            f"\n  Unique sources      : {len(self._source_to_indices)}"
+            f"\n  Sources with R+F    : {n_sources_with_both}"
+            f"\n  Unique videos       : {len(self._video_to_uid)}"
+            f"\n  Resolution          : {self.resolution}x{self.resolution}"
+            f"\n  Augmentation        : {'ON' if aug_active else 'OFF'}"
+            f"\n  Balanced sampling   : {'ON' if balance_active else 'OFF'}"
+            f"\n  Semantic features   : {'ON' if self.use_semantic else 'OFF'}"
+            f"\n  Precomputed sem.    : {'ON (' + self._precomputed_subdir + ')' if self.use_precomputed_semantic else 'OFF'}"
+            f"\n  Paired data (GenD)  : {'ON' if self.paired_training else 'OFF'}"
+            f"\n  Active branches     : spatial, frequency (no temporal)"
             f"\n{'='*60}\n"
         )
 
     # ------------------------------------------------------------------ #
-    #  Paired training: build source-matched index                        #
+    #  GenD-style source/video UID maps                                   #
     # ------------------------------------------------------------------ #
 
-    def _extract_source_video(self, frame_path: str) -> Optional[str]:
+    @staticmethod
+    def _extract_source_video(frame_path: str) -> Optional[str]:
         """
         Extract the source video ID from a frame path.
 
@@ -176,40 +182,98 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         # Real video names are just the ID (e.g., "802")
         return video_name
 
-    def _build_pair_index(self):
-        """
-        Build index mapping: source_video_id -> list of real frame indices,
-        and a list of fake frame indices with their source IDs.
+    @staticmethod
+    def _extract_video_name(frame_path: str) -> Optional[str]:
+        """Extract the video directory name from a frame path."""
+        sep = "/" if "/" in frame_path else "\\"
+        parts = frame_path.split(sep)
+        for pi, part in enumerate(parts):
+            if part == 'frames' or part.startswith('frames_aug_'):
+                if pi + 1 < len(parts):
+                    return parts[pi + 1]
+        return None
 
-        This enables O(1) lookup of real frames matching a given fake's source.
+    @staticmethod
+    def _extract_source_name(frame_path: str) -> str:
         """
-        self._source_to_real_frames = defaultdict(list)
-        self._fake_indices = []
-        self._all_real_indices = []
+        Extract the manipulation source name from a frame path (GenD-style).
+        E.g., '.../manipulated_sequences/Deepfakes/c23/frames/...' → 'Deepfakes'
+              '.../original_sequences/youtube/c23/frames/...' → 'youtube'
+        """
+        sep = "/" if "/" in frame_path else "\\"
+        parts = frame_path.split(sep)
+        for pi, part in enumerate(parts):
+            if part == 'frames' or part.startswith('frames_aug_'):
+                # Source name is typically 2 levels up from frames dir
+                # e.g. .../Deepfakes/c23/frames/... → parts[pi-2] = 'Deepfakes'
+                if pi >= 2:
+                    return parts[pi - 2]
+        return "unknown"
+
+    def _build_source_video_maps(self):
+        """
+        Build GenD-style mappings:
+          - source_uid: unique ID per manipulation source (0 for all reals, 1+ for fakes)
+          - video_uid: unique ID per video
+          - source_to_indices: source_video_id → list of dataset indices (for sampling)
+        """
+        # Collect all source names and video names
+        source_names = set()
+        video_names = set()
+        self._source_to_indices = defaultdict(list)
+
+        self._per_sample_source_id = []   # source video ID per sample
+        self._per_sample_video_name = []  # video name per sample
+        self._per_sample_source_name = [] # manipulation source name per sample
 
         for idx, (path, label) in enumerate(
                 zip(self.image_list, self.label_list)):
             if isinstance(path, list):
                 path = path[0]
-            source = self._extract_source_video(path)
 
-            if label == 0:
-                # Real frame — index by its video ID (which is the source)
-                if source:
-                    self._source_to_real_frames[source].append(idx)
-                self._all_real_indices.append(idx)
-            else:
-                # Fake frame — store with its source video ID
-                self._fake_indices.append((idx, source))
+            source_id = self._extract_source_video(path)
+            video_name = self._extract_video_name(path)
+            source_name = self._extract_source_name(path)
 
-        n_paired = sum(
-            1 for _, src in self._fake_indices
-            if src and src in self._source_to_real_frames
-        )
-        n_unpaired = len(self._fake_indices) - n_paired
+            self._per_sample_source_id.append(source_id)
+            self._per_sample_video_name.append(video_name)
+            self._per_sample_source_name.append(source_name)
 
-        print(f"[PairedTraining] {n_paired} fake frames have source-matched "
-              f"real frames, {n_unpaired} will use random real pairing")
+            if source_name:
+                source_names.add(source_name)
+            if video_name:
+                video_names.add(video_name)
+            if source_id:
+                self._source_to_indices[source_id].append(idx)
+
+        # Build source_uid map: all real sources → 0, fake sources → 1, 2, ...
+        # (GenD convention)
+        real_sources = sorted(s for s in source_names if 'real' in s.lower()
+                              or 'youtube' in s.lower() or 'original' in s.lower())
+        fake_sources = sorted(s for s in source_names if s not in real_sources)
+
+        self._source_name_to_uid = {}
+        for s in real_sources:
+            self._source_name_to_uid[s] = 0
+        for i, s in enumerate(fake_sources, start=1):
+            self._source_name_to_uid[s] = i
+
+        # Build video_uid map
+        self._video_to_uid = {v: i for i, v in enumerate(sorted(video_names))}
+
+        # Report paired data stats
+        if self.paired_training:
+            n_paired_fakes = sum(
+                1 for idx, label in enumerate(self.label_list)
+                if label == 1
+                and self._per_sample_source_id[idx]
+                and any(self.label_list[j] == 0
+                        for j in self._source_to_indices.get(
+                            self._per_sample_source_id[idx], []))
+            )
+            n_total_fakes = sum(1 for la in self.label_list if la == 1)
+            print(f"[GenD PairedData] {n_paired_fakes}/{n_total_fakes} fake "
+                  f"frames have source-matched real frames in training set")
 
     # ------------------------------------------------------------------ #
     #  Semantic feature loading                                            #
@@ -424,6 +488,12 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         else:
             forensic_features = torch.zeros(self._forensic_dim)
 
+        # GenD-style source/video UIDs
+        source_name = self._per_sample_source_name[index] if index < len(self._per_sample_source_name) else "unknown"
+        source_uid = self._source_name_to_uid.get(source_name, 0)
+        video_name = self._per_sample_video_name[index] if index < len(self._per_sample_video_name) else None
+        video_uid = self._video_to_uid.get(video_name, 0) if video_name else 0
+
         return {
             "spatial_frames":    spatial_frames,
             "freq_frames":       freq_frames,
@@ -432,6 +502,8 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             "precomputed_attrs": precomputed_attrs,
             "forensic_features": forensic_features,
             "label":             label,
+            "source_uid":        source_uid,
+            "video_uid":         video_uid,
             "name":              frame_path,
         }
 
@@ -441,36 +513,13 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
     def __getitem__(self, index: int) -> dict:
         """
-        Return one sample. In paired mode, returns a dict with both
-        a real and fake frame from the same source video.
-        In unpaired mode, returns a single frame dict.
+        GenD-style: return a SINGLE frame with source/video metadata.
+        Standard shuffled batching + UA loss handles representation learning.
         """
-        if not self.paired_training:
-            return self._load_single_frame(index)
-
-        # ── Paired mode: index into fake list, find matching real ──────
-        fake_idx, source_id = self._fake_indices[index % len(self._fake_indices)]
-
-        # Find a real frame from the same source video
-        if source_id and source_id in self._source_to_real_frames:
-            real_candidates = self._source_to_real_frames[source_id]
-            real_idx = random.choice(real_candidates)
-        else:
-            # Fallback: random real frame (for non-FF++ datasets)
-            real_idx = random.choice(self._all_real_indices)
-
-        real_sample = self._load_single_frame(real_idx)
-        fake_sample = self._load_single_frame(fake_idx)
-
-        return {
-            "real": real_sample,
-            "fake": fake_sample,
-        }
+        return self._load_single_frame(index)
 
     def __len__(self) -> int:
-        if self.paired_training and self._fake_indices:
-            return len(self._fake_indices)
-        assert len(self.image_list) == len(self.label_list)
+        """GenD-style: total frame count (each frame is one sample)."""
         return len(self.image_list)
 
     # ------------------------------------------------------------------ #
@@ -480,35 +529,26 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
     @staticmethod
     def collate_fn(batch: list) -> dict:
         """
-        Stack a list of per-sample dicts into batched tensors.
+        GenD-style collation: stack N single-frame dicts into batched tensors.
 
-        Handles both paired and unpaired modes:
-        - Paired: each item has 'real' and 'fake' sub-dicts. Interleave them
-          so batch[0]=real_0, batch[1]=fake_0, batch[2]=real_1, etc.
-          This ensures each consecutive pair shares the same source video.
-        - Unpaired: each item is a flat dict with frame tensors.
-
-        Output shapes (for N pairs = 2N frames, or N unpaired frames):
-            spatial_frames : (2N or N, C, H, W)
-            freq_frames    : (2N or N, C, H, W)
-            raw_frames     : (2N or N, C, H, W)
-            semantic_attrs : (2N or N, semantic_dim)
-            label          : (2N or N,)
+        Output shapes (for batch_size N):
+            spatial_frames : (N, C, H, W)
+            freq_frames    : (N, C, H, W)
+            raw_frames     : (N, C, H, W)
+            semantic_attrs : (N, semantic_dim)
+            label          : (N,)
+            source_uid     : (N,)
+            video_uid      : (N,)
         """
-        # Detect paired vs unpaired mode
-        if 'real' in batch[0] and 'fake' in batch[0]:
-            # Paired mode: interleave real and fake
-            all_samples = []
-            for item in batch:
-                all_samples.append(item['real'])
-                all_samples.append(item['fake'])
-            batch = all_samples
-
         spatial_frames = torch.stack([s["spatial_frames"] for s in batch])
         freq_frames    = torch.stack([s["freq_frames"]    for s in batch])
         raw_frames     = torch.stack([s["raw_frames"]     for s in batch])
         semantic_attrs = torch.stack([s["semantic_attrs"]  for s in batch])
         labels         = torch.tensor([s["label"] for s in batch],
+                                       dtype=torch.long)
+        source_uids    = torch.tensor([s["source_uid"] for s in batch],
+                                       dtype=torch.long)
+        video_uids     = torch.tensor([s["video_uid"] for s in batch],
                                        dtype=torch.long)
         names          = [s["name"] for s in batch]
 
@@ -532,6 +572,8 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             "precomputed_attrs": precomputed_attrs,
             "forensic_features": forensic_features,
             "label":             labels,
+            "source_uid":        source_uids,
+            "video_uid":         video_uids,
             "name":              names,
             # Compatibility keys
             "landmark":          None,
@@ -544,25 +586,15 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
     def get_weighted_sampler(self, target_real_fraction: float = 0.35) -> WeightedRandomSampler:
         """
-        For unpaired mode: standard weighted random sampling.
-        For paired mode: uniform sampling over fake indices (each fake
-        automatically pulls its paired real).
+        GenD-style: standard balanced real/fake sampling over all frames.
+        Each sample is a single frame — no pair-specific logic needed.
         """
-        if self.paired_training and self._fake_indices:
-            # Paired mode: uniform over fakes (pairing handles balance)
-            n = len(self._fake_indices)
-            return WeightedRandomSampler(
-                weights=torch.ones(n),
-                num_samples=n,
-                replacement=True,
-            )
-
         labels = np.array(self.label_list)
         n_real = (labels == 0).sum()
         n_fake = (labels == 1).sum()
 
-        w_real = target_real_fraction / n_real
-        w_fake = (1.0 - target_real_fraction) / n_fake
+        w_real = target_real_fraction / max(n_real, 1)
+        w_fake = (1.0 - target_real_fraction) / max(n_fake, 1)
         sample_weights = np.where(labels == 0, w_real, w_fake)
 
         print(f"[Sampler] target_real_fraction={target_real_fraction:.2f} | "
@@ -583,10 +615,7 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
     @staticmethod
     def prepare_data_loader(config: dict, mode: str = "train") -> DataLoader:
         """
-        Factory method: create a DataLoader with correct sampler and settings.
-
-        In paired training mode, batch_size refers to the number of pairs.
-        The actual number of frames per batch is 2 * batch_size.
+        GenD-style: standard shuffled DataLoader. batch_size = number of frames.
         """
         dataset    = NeSyDeFakeDataset(config, mode=mode)
         batch_size = (config["train_batchSize"] if mode == "train"

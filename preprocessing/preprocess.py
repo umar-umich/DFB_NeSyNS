@@ -1,11 +1,17 @@
-# author: Zhiyuan Yan
-# email: zhiyuanyan@link.cuhk.edu.cn
-# date: 2023-03-29
-# description: Data pre-processing script for deepfake dataset.
-
+# Data pre-processing script for deepfake datasets.
+# v2: RetinaFace (ONNX) replaces dlib for face detection + alignment.
+#     Ported from GenD (WACV 2026) for better recall on profile/occluded faces.
+#     Uses cv2.estimateAffinePartial2D (LMEDS) instead of skimage SimilarityTransform.
+#     Adds "at_least" frame selection mode (max-spread permutation) from GenD.
 
 """
-Original dataset structure before the preprocessing:
+Output directory structure (unchanged from v1):
+
+  {dataset_path}/frames/{video_stem}/{NNN}.png      — 256x256 aligned face crops
+  {dataset_path}/landmarks/{video_stem}/{NNN}.npy    — 5-point landmarks (post-alignment)
+  {dataset_path}/masks/{video_stem}/{NNN}.png         — binary mask (if available)
+
+Original dataset structure before preprocessing:
 
 -FaceForensics++
     -original_sequences
@@ -14,51 +20,29 @@ Original dataset structure before the preprocessing:
                 -videos
                     *.mp4
     -manipulated_sequences
-        -Deepfakes
+        -Deepfakes / Face2Face / FaceSwap / NeuralTextures / FaceShifter / DeepFakeDetection
             -c23
                 -videos
-        -Face2Face
-            -c23
-                -videos
-        -FaceSwap
-            -c23
-                -videos
-        -NeuralTextures
-            -c23
-                -videos
-        -FaceShifter
-            -c23
-                -videos
-        -DeepFakeDetection
-            -c23
-                -videos
-                
+
 -Celeb-DF-v1/v2
-    -Celeb-synthesis
-        -videos
-    -Celeb-real
-        -videos
-    -YouTube-real
+    -Celeb-synthesis / Celeb-real / YouTube-real
         -videos
 
 -DFDCP
-    -method_A
-    -method_B
-    -original_videos
+    -method_A / method_B / original_videos
 
 -DeeperForensics-1.0
-    -manipulated_videos
-    -source_videos
+    -manipulated_videos / source_videos
 
-We then additionally obtain "frames", "landmarks", and "mask" directories in same directory as the "videos" folder.
+-UADFV
+    -fake / real
 """
-
 
 import os
 import sys
 import time
+import heapq
 import cv2
-import dlib
 import yaml
 import logging
 import datetime
@@ -67,33 +51,24 @@ import concurrent.futures
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
-from imutils import face_utils
-from skimage import transform as trans
 
+from retinaface import RetinaFace, prepare_model
+
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
 
 def create_logger(log_path):
-    """
-    Creates a logger object and saves all messages to a file.
-
-    Args:
-        log_path (str): The path to save the log file.
-
-    Returns:
-        logger: The logger object.
-    """
-    # Create logger object
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
-    # Create file handler and set the formatter
     fh = logging.FileHandler(log_path)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
-
-    # Add the file handler to the logger
     logger.addHandler(fh)
 
-    # Add a stream handler to print to console
     sh = logging.StreamHandler()
     sh.setFormatter(formatter)
     logger.addHandler(sh)
@@ -101,414 +76,448 @@ def create_logger(log_path):
     return logger
 
 
-def get_keypts(image, face, predictor, face_detector):
-    # detect the facial landmarks for the selected face
-    shape = predictor(image, face)
-    
-    # select the key points for the eyes, nose, and mouth
-    leye = np.array([shape.part(37).x, shape.part(37).y]).reshape(-1, 2)
-    reye = np.array([shape.part(44).x, shape.part(44).y]).reshape(-1, 2)
-    nose = np.array([shape.part(30).x, shape.part(30).y]).reshape(-1, 2)
-    lmouth = np.array([shape.part(49).x, shape.part(49).y]).reshape(-1, 2)
-    rmouth = np.array([shape.part(55).x, shape.part(55).y]).reshape(-1, 2)
-    
-    pts = np.concatenate([leye, reye, nose, lmouth, rmouth], axis=0)
+# ---------------------------------------------------------------------------
+# Frame selection (ported from GenD)
+# ---------------------------------------------------------------------------
 
-    return pts
+def max_spread_permutation_pq(N, start=0):
+    """Generate a permutation of 0..N-1 maximizing minimum distance to
+    previously chosen elements at each step (priority-queue based)."""
+    if not (0 <= start < N):
+        raise ValueError("`start` must be in the range [0, N-1]")
+
+    chosen = [start]
+    dist = {i: abs(i - start) for i in range(N) if i != start}
+
+    heap = [(-d, i) for i, d in dist.items()]
+    heapq.heapify(heap)
+
+    while heap:
+        while True:
+            neg_d, candidate = heapq.heappop(heap)
+            current = -neg_d
+            if dist.get(candidate, -1) == current:
+                break
+        chosen.append(candidate)
+        del dist[candidate]
+        for other in list(dist.keys()):
+            new_d = abs(other - candidate)
+            if new_d < dist[other]:
+                dist[other] = new_d
+                heapq.heappush(heap, (-new_d, other))
+
+    return chosen
 
 
-def extract_aligned_face_dlib(face_detector, predictor, image, res=256, mask=None):
-    def img_align_crop(img, landmark=None, outsize=None, scale=1.3, mask=None):
-        """ 
-        align and crop the face according to the given bbox and landmarks
-        landmark: 5 key points
-        """
-
-        M = None
-        target_size = [112, 112]
-        dst = np.array([
-            [30.2946, 51.6963],
-            [65.5318, 51.5014],
-            [48.0252, 71.7366],
-            [33.5493, 92.3655],
-            [62.7299, 92.2041]], dtype=np.float32)
-
-        if target_size[1] == 112:
-            dst[:, 0] += 8.0
-
-        dst[:, 0] = dst[:, 0] * outsize[0] / target_size[0]
-        dst[:, 1] = dst[:, 1] * outsize[1] / target_size[1]
-
-        target_size = outsize
-
-        margin_rate = scale - 1
-        x_margin = target_size[0] * margin_rate / 2.
-        y_margin = target_size[1] * margin_rate / 2.
-
-        # move
-        dst[:, 0] += x_margin
-        dst[:, 1] += y_margin
-
-        # resize
-        dst[:, 0] *= target_size[0] / (target_size[0] + 2 * x_margin)
-        dst[:, 1] *= target_size[1] / (target_size[1] + 2 * y_margin)
-
-        src = landmark.astype(np.float32)
-
-        # use skimage tranformation
-        tform = trans.SimilarityTransform()
-        tform.estimate(src, dst)
-        M = tform.params[0:2, :]
-
-        # M: use opencv
-        # M = cv2.getAffineTransform(src[[0,1,2],:],dst[[0,1,2],:])
-
-        img = cv2.warpAffine(img, M, (target_size[1], target_size[0]))
-
-        if outsize is not None:
-            img = cv2.resize(img, (outsize[1], outsize[0]))
-        
-        if mask is not None:
-            mask = cv2.warpAffine(mask, M, (target_size[1], target_size[0]))
-            mask = cv2.resize(mask, (outsize[1], outsize[0]))
-            return img, mask
-        else:
-            return img, None
-
-    # Image size
-    height, width = image.shape[:2]
-
-    # Convert to rgb
-    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-    # Detect with dlib
-    faces = face_detector(rgb, 1)
-    if len(faces):
-        # For now only take the biggest face
-        face = max(faces, key=lambda rect: rect.width() * rect.height())
-        
-        # Get the landmarks/parts for the face in box d only with the five key points
-        landmarks = get_keypts(rgb, face, predictor, face_detector)
-
-        # Align and crop the face
-        cropped_face, mask_face = img_align_crop(rgb, landmarks, outsize=(res, res), mask=mask)
-        cropped_face = cv2.cvtColor(cropped_face, cv2.COLOR_RGB2BGR)
-        
-        # Extract the all landmarks from the aligned face
-        face_align = face_detector(cropped_face, 1)
-        if len(face_align) == 0:
-            return None, None, None
-        landmark = predictor(cropped_face, face_align[0])
-        landmark = face_utils.shape_to_np(landmark)
-
-        return cropped_face, landmark, mask_face
-    
+def get_frame_indices(total_frames, mode, num_frames, stride):
+    """Return frame indices to extract based on mode."""
+    if mode == 'fixed_num_frames':
+        return np.linspace(0, total_frames - 1, num_frames, endpoint=True, dtype=int)
+    elif mode == 'fixed_stride':
+        return np.arange(0, total_frames, stride, dtype=int)
+    elif mode == 'at_least':
+        return max_spread_permutation_pq(total_frames, start=total_frames // 2)
     else:
-        return None, None, None
+        raise ValueError(f"Invalid mode: {mode}")
 
-def video_manipulate(
-    movie_path: Path,
-    mask_path: Path,
-    dataset_path: Path,
-    mode: str,
-    num_frames: int, 
-    stride: int, 
-    ) -> None:
+
+# ---------------------------------------------------------------------------
+# Face alignment (ported from GenD — cv2.estimateAffinePartial2D + LMEDS)
+# ---------------------------------------------------------------------------
+
+def align_face(img, landmarks, target_size=(256, 256), scale=1.3, mask=None):
     """
-    Processes a single video file by detecting and cropping the largest face in each frame and saving the results.
+    Align and crop face using 5-point landmarks.
+    Uses cv2.estimateAffinePartial2D with LMEDS (robust to outliers).
 
     Args:
-        movie_path (str): Path to the video file to process.
-        dataset_path (str): Path to the dataset directory.
-        mask_path (str): Path to the mask directory.
-        mode (str): Either 'fixed_num_frames' or 'fixed_stride'.
-        num_frames (int): Number of frames to extract from the video.
-        stride (int): Number of frames to skip between each frame extracted.
-        margin (float): Amount to increase the size of the face bounding box by.
-        visualization (bool): Whether to save visualization images.
+        img: BGR image
+        landmarks: (5, 2) array — left_eye, right_eye, nose, left_mouth, right_mouth
+        target_size: (width, height) output size
+        scale: context margin around face (1.3 = 30% extra)
+        mask: optional mask to warp with same transform
 
     Returns:
-        None
+        (aligned_face, aligned_mask_or_None)
     """
+    # Normalized reference points (GenD template)
+    dst = np.array([
+        [0.34, 0.46],
+        [0.66, 0.46],
+        [0.50, 0.64],
+        [0.37, 0.82],
+        [0.63, 0.82],
+    ], dtype=np.float32)
 
-    # Define face detector and predictor models
-    face_detector = dlib.get_frontal_face_detector()
-    predictor_path = './dlib_tools/shape_predictor_81_face_landmarks.dat'
-    ## Check if predictor path exists
-    if not os.path.exists(predictor_path):
-        logger.error(f"Predictor path does not exist: {predictor_path}")
-        sys.exit()
-    face_predictor = dlib.shape_predictor(predictor_path)
-    
-    def facecrop(
-        org_path: Path,
-        mask_path: Path, 
-        save_path: Path, 
-        mode: str,
-        num_frames: int, 
-        stride: int,
-        face_predictor: dlib.shape_predictor, 
-        face_detector: dlib.fhog_object_detector,
-        margin: float = 0.5, 
-        visualization: bool = False
-        ) -> None:
-        """
-        Helper function for cropping face and extracting landmarks.
-        """
-        
-        # Open the video file
-        assert org_path.exists(), f"Video file {org_path} does not exist."
-        cap_org = cv2.VideoCapture(str(org_path))
-        if not cap_org.isOpened():
-            logger.error(f"Failed to open {org_path}")
-            return
+    dst[:, 0] *= target_size[0]
+    dst[:, 1] *= target_size[1]
 
-        if mask_path is not None:
-            cap_mask = cv2.VideoCapture(str(mask_path))
-            if not cap_mask.isOpened():
-                logger.error(f"Failed to open {mask_path}")
-                return
-        
-        # Get the number of frames in the video
-        frame_count_org = int(cap_org.get(cv2.CAP_PROP_FRAME_COUNT))
+    margin_rate = scale - 1
+    x_margin = target_size[0] * margin_rate / 2.0
+    y_margin = target_size[1] * margin_rate / 2.0
 
-        # Get the mode
-        if mode == 'fixed_num_frames':
-            # Get the frame rate of the video by dividing the number of frames by the duration (same interval between frames)
-            frame_idxs = np.linspace(0, frame_count_org - 1, num_frames, endpoint=True, dtype=int)
-        elif mode == 'fixed_stride':
-            # Get the frame rate of the video by dividing the number of frames by the duration (same interval between frames)
-            frame_idxs = np.arange(0, frame_count_org, stride, dtype=int)
+    dst[:, 0] += x_margin
+    dst[:, 1] += y_margin
+    dst[:, 0] *= target_size[0] / (target_size[0] + 2 * x_margin)
+    dst[:, 1] *= target_size[1] / (target_size[1] + 2 * y_margin)
 
-        # Iterate through the frames
-        for cnt_frame in range(frame_count_org):
-            ret_org, frame_org = cap_org.read()
-            if mask_path is not None:
-                ret_mask, frame_mask = cap_mask.read()
-            else:
-                frame_mask = None
-            height, width = frame_org.shape[:-1]
+    src = landmarks.astype(np.float32)
+    M = cv2.estimateAffinePartial2D(src, dst, method=cv2.LMEDS)[0]
 
-            # Check if the frame was successfully read
-            if not ret_org:
-                logger.warning(f"Failed to read frame {cnt_frame} of {org_path}")
-                break
-            
-            # Check if the mask was successfully read
-            if mask_path is not None and not ret_mask:
-                logger.warning(f"Failed to read mask {cnt_frame} of {mask_path}")
-                break
-            # Check if the frame is one of the frames to extract
-            if cnt_frame not in frame_idxs:
-                continue
+    if M is None:
+        return None, None
 
-            # Use the function to extract the aligned and cropped face
-            if mask_path is not None:
-                cropped_face, landmarks, masks = extract_aligned_face_dlib(face_detector, face_predictor, frame_org, mask=frame_mask)
-            else:
-                cropped_face, landmarks, _ = extract_aligned_face_dlib(face_detector, face_predictor, frame_org, mask=frame_mask)
-            
-            # Check if a face was detected and cropped
-            if cropped_face is None:
-                logger.warning(f"No faces in frame {cnt_frame} of {org_path}")
-                continue
-            
-            # Check if the landmarks were detected
-            if landmarks is None:
-                logger.warning(f"No landmarks in frame {cnt_frame} of {org_path}")
-                continue
+    aligned = cv2.warpAffine(img, M, target_size, flags=cv2.INTER_LINEAR)
 
-            # Save cropped face, landmarks, and visualization image
-            save_path_ = save_path / 'frames' / org_path.stem
-            save_path_.mkdir(parents=True, exist_ok=True)
+    aligned_mask = None
+    if mask is not None:
+        aligned_mask = cv2.warpAffine(mask, M, target_size, flags=cv2.INTER_NEAREST)
 
-            # Save cropped face
-            image_path = save_path_ / f"{cnt_frame:03d}.png"
-            if not image_path.is_file():
-                cv2.imwrite(str(image_path), cropped_face)
+    return aligned, aligned_mask
 
-            # Save landmarks
-            land_path = save_path / 'landmarks' / org_path.stem / f"{cnt_frame:03d}.npy"
-            os.makedirs(os.path.dirname(land_path), exist_ok=True)
-            np.save(str(land_path), landmarks)
 
-            # Save mask
-            if mask_path is not None:
-                mask_path = save_path / 'masks' / org_path.stem / f"{cnt_frame:03d}.png"
-                os.makedirs(os.path.dirname(mask_path), exist_ok=True)
-                _, binary_mask = cv2.threshold(masks, 1, 255, cv2.THRESH_BINARY)  # obtain binary mask only
-                cv2.imwrite(str(mask_path), binary_mask)
+# ---------------------------------------------------------------------------
+# Video processing
+# ---------------------------------------------------------------------------
 
-        # Release the video capture
+def process_video(
+    movie_path: Path,
+    mask_path: Path,
+    save_root: Path,
+    model: RetinaFace,
+    mode: str,
+    num_frames: int,
+    stride: int,
+    target_size: tuple = (256, 256),
+    scale: float = 1.3,
+    logger=None,
+):
+    """Process a single video: detect faces, align, save crops + landmarks."""
+
+    cap_org = cv2.VideoCapture(str(movie_path))
+    if not cap_org.isOpened():
+        if logger:
+            logger.error(f"Failed to open {movie_path}")
+        return
+
+    cap_mask = None
+    if mask_path is not None:
+        cap_mask = cv2.VideoCapture(str(mask_path))
+        if not cap_mask.isOpened():
+            if logger:
+                logger.error(f"Failed to open mask {mask_path}")
+            cap_mask = None
+
+    frame_count = int(cap_org.get(cv2.CAP_PROP_FRAME_COUNT))
+    if frame_count <= 0:
+        if logger:
+            logger.warning(f"Empty video: {movie_path}")
         cap_org.release()
-        if mask_path is not None:
+        if cap_mask:
             cap_mask.release()
+        return
 
-    # Iterate through the videos in the dataset and extract faces
-    try:
-        facecrop(movie_path, mask_path, dataset_path, mode, num_frames, stride, face_predictor, face_detector)
-    except Exception as e:
-        logger.error(f"Error processing video {movie_path}: {e}")
+    frame_idxs = get_frame_indices(frame_count, mode, num_frames, stride)
+    # For at_least mode, only take num_frames
+    if mode == 'at_least':
+        frame_idxs = frame_idxs[:num_frames]
+
+    # Convert to set for O(1) lookup
+    frame_set = set(int(idx) for idx in frame_idxs)
+
+    # Output paths
+    frames_dir = save_root / 'frames' / movie_path.stem
+    landmarks_dir = save_root / 'landmarks' / movie_path.stem
+    masks_dir = save_root / 'masks' / movie_path.stem
+
+    num_saved = 0
+    for cnt_frame in range(frame_count):
+        ret_org, frame_org = cap_org.read()
+        frame_mask = None
+        if cap_mask is not None:
+            ret_mask, frame_mask = cap_mask.read()
+            if not ret_mask:
+                frame_mask = None
+
+        if not ret_org:
+            break
+
+        if cnt_frame not in frame_set:
+            continue
+
+        # Detect faces with RetinaFace
+        try:
+            xyxy, kpss = model.detect(frame_org)
+        except Exception as e:
+            if logger:
+                logger.warning(f"Detection error frame {cnt_frame} of {movie_path}: {e}")
+            continue
+
+        if len(xyxy) == 0:
+            if logger:
+                logger.warning(f"No faces in frame {cnt_frame} of {movie_path}")
+            continue
+
+        # Select face: if mask available, pick face with most mask overlap;
+        # otherwise pick largest face.
+        selected_landmarks = None
+
+        if frame_mask is not None and frame_mask.sum() > 0:
+            mask_gray = cv2.cvtColor(frame_mask, cv2.COLOR_BGR2GRAY) if len(frame_mask.shape) == 3 else frame_mask
+            mask_binary = cv2.threshold(mask_gray, 1, 255, cv2.THRESH_BINARY)[1]
+
+            max_intersection = 0
+            for i in range(len(xyxy)):
+                x1, y1, x2, y2 = xyxy[i, :4].astype(int)
+                x1, y1 = max(0, x1), max(0, y1)
+                x2 = min(mask_binary.shape[1], x2)
+                y2 = min(mask_binary.shape[0], y2)
+                face_region = mask_binary[y1:y2, x1:x2]
+                intersection = face_region.sum()
+                if intersection > max_intersection:
+                    max_intersection = intersection
+                    selected_landmarks = kpss[i]
+
+        if selected_landmarks is None:
+            # Pick largest face
+            areas = (xyxy[:, 2] - xyxy[:, 0]) * (xyxy[:, 3] - xyxy[:, 1])
+            idx = np.argmax(areas)
+            selected_landmarks = kpss[idx]
+
+        # Align face
+        aligned_face, aligned_mask = align_face(
+            frame_org, selected_landmarks,
+            target_size=target_size, scale=scale,
+            mask=frame_mask,
+        )
+
+        if aligned_face is None:
+            if logger:
+                logger.warning(f"Alignment failed frame {cnt_frame} of {movie_path}")
+            continue
+
+        # Save aligned face
+        frames_dir.mkdir(parents=True, exist_ok=True)
+        image_path = frames_dir / f"{cnt_frame:03d}.png"
+        if not image_path.is_file():
+            cv2.imwrite(str(image_path), aligned_face)
+
+        # Save 5-point landmarks (post-alignment reference)
+        landmarks_dir.mkdir(parents=True, exist_ok=True)
+        land_path = landmarks_dir / f"{cnt_frame:03d}.npy"
+        np.save(str(land_path), selected_landmarks)
+
+        # Save mask
+        if aligned_mask is not None:
+            masks_dir.mkdir(parents=True, exist_ok=True)
+            mask_save_path = masks_dir / f"{cnt_frame:03d}.png"
+            _, binary_mask = cv2.threshold(aligned_mask, 1, 255, cv2.THRESH_BINARY)
+            if len(binary_mask.shape) == 3:
+                binary_mask = cv2.cvtColor(binary_mask, cv2.COLOR_BGR2GRAY)
+            cv2.imwrite(str(mask_save_path), binary_mask)
+
+        num_saved += 1
+
+    cap_org.release()
+    if cap_mask:
+        cap_mask.release()
+
+    total_target = len(frame_set)
+    if num_saved < total_target and logger:
+        logger.warning(
+            f"{movie_path.stem}: only {num_saved}/{total_target} frames extracted successfully"
+        )
+        failed_log_path = save_root / 'failed_videos.txt'
+        with open(failed_log_path, 'a') as f:
+            f.write(f"{movie_path.stem},{num_saved},{total_target}\n")
 
 
-def preprocess(dataset_path, mask_path, mode, num_frames, stride, logger):
-    # Define paths to videos in dataset
-    movies_path_list = sorted([Path(p) for p in glob.glob(os.path.join(dataset_path, '**/*.mp4'), recursive=True)])
+def preprocess(dataset_path, mask_path, output_path, mode, num_frames, stride, logger, model):
+    """Process all videos in a dataset directory.
+
+    Args:
+        dataset_path: Source directory containing videos.
+        mask_path: Source directory containing mask videos (or None).
+        output_path: Separate output directory for frames/landmarks/masks.
+        mode: Frame selection mode.
+        num_frames: Number of frames to extract.
+        stride: Stride for fixed_stride mode.
+        logger: Logger instance.
+        model: RetinaFace model instance.
+    """
+    movies_path_list = sorted([
+        Path(p) for p in glob.glob(os.path.join(dataset_path, '**/*.mp4'), recursive=True)
+    ])
     if len(movies_path_list) == 0:
         logger.error(f"No videos found in {dataset_path}")
-        sys.exit()
+        return
     logger.info(f"{len(movies_path_list)} videos found in {dataset_path}")
-    
-    # Define paths to masks in dataset
+
+    # Initialize failed-videos log for this sub-dataset
+    failed_log_path = Path(output_path) / 'failed_videos.txt'
+    with open(failed_log_path, 'w') as f:
+        f.write("video_name,extracted_frames,total_frames\n")
+
+    masks_path_list = []
     if mask_path is not None:
-        masks_path_list = sorted([Path(p) for p in glob.glob(os.path.join(mask_path, '**/*.mp4'), recursive=True)])
-        if len(masks_path_list) == 0:
-            logger.error(f"No masks found in {mask_path}")
-            # sys.exit()
-        logger.info(f"{len(masks_path_list)} masks found in {mask_path}")    
-    
-    # Start timer
+        masks_path_list = sorted([
+            Path(p) for p in glob.glob(os.path.join(mask_path, '**/*.mp4'), recursive=True)
+        ])
+        logger.info(f"{len(masks_path_list)} masks found in {mask_path}")
+
     start_time = time.monotonic()
 
-    # Define the number of processes based on CPU capabilities
-    num_processes = os.cpu_count()
+    # Note: RetinaFace ONNX model is NOT thread-safe when using GPU.
+    # Use ThreadPoolExecutor with max_workers=1 for GPU, or process sequentially.
+    # For CPU-only, multiple workers are fine since each thread gets its own session.
+    num_processes = min(os.cpu_count(), 8)
 
-    # Use multiprocessing to process videos in parallel
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_processes) as executor:
         futures = []
         for movie_path in movies_path_list:
-            # Check if there is a mask for the video
+            video_mask_path = None
             if mask_path is not None:
-                if movie_path.stem not in [path.stem for path in masks_path_list]:
-                    logger.error(f"No mask for video {movie_path}")
-                # Define the mask path
-                mask_path = next((path for path in masks_path_list if path.stem == movie_path.stem), None)
-                if mask_path is None:
-                    logger.error(f"Mask path not found for video {movie_path}")
-            # Create a future for each video and submit it for processing
+                video_mask_path = next(
+                    (p for p in masks_path_list if p.stem == movie_path.stem), None
+                )
+                if video_mask_path is None:
+                    logger.warning(f"No mask for video {movie_path}")
+
             futures.append(
                 executor.submit(
-                video_manipulate,
-                movie_path,
-                mask_path,
-                dataset_path,
-                mode,
-                num_frames,
-                stride,
+                    process_video,
+                    movie_path,
+                    video_mask_path,
+                    Path(output_path),
+                    model,
+                    mode,
+                    num_frames,
+                    stride,
+                    logger=logger,
                 )
             )
-        # Wait for all futures to complete and log any errors
+
         for future in tqdm(concurrent.futures.as_completed(futures), total=len(movies_path_list)):
-            # Print the current time
-            logger.info(f"Current time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             try:
                 future.result()
             except Exception as e:
                 logger.error(f"Error processing video: {e}")
-            
-        # End timer
-        end_time = time.monotonic()
-        duration_minutes = (end_time - start_time) / 60
-        logger.info(f"Total time taken: {duration_minutes:.2f} minutes")
+
+    duration_minutes = (time.monotonic() - start_time) / 60
+    logger.info(f"Total time taken: {duration_minutes:.2f} minutes")
+
 
 if __name__ == '__main__':
-    # from config.yaml load parameters
     yaml_path = './config.yaml'
-    # open the yaml file
     try:
         with open(yaml_path, 'r') as f:
             config = yaml.safe_load(f)
     except yaml.parser.ParserError as e:
         print("YAML file parsing error:", e)
+        sys.exit(1)
 
-    # Get the parameters
     dataset_name = config['preprocess']['dataset_name']['default']
     dataset_root_path = config['preprocess']['dataset_root_path']['default']
+    output_root_path = config['preprocess']['output_root_path']['default']
     comp = config['preprocess']['comp']['default']
     mode = config['preprocess']['mode']['default']
     stride = config['preprocess']['stride']['default']
     num_frames = config['preprocess']['num_frames']['default']
-    
-    # use dataset_name and dataset_root_path to get dataset_path
+
+    # Source dataset path (original videos)
     dataset_path = Path(os.path.join(dataset_root_path, dataset_name))
+
+    # Output root — mirrors the dataset sub-structure beneath it
+    output_base = Path(output_root_path) / dataset_name
+    output_base.mkdir(parents=True, exist_ok=True)
 
     # Create logger
     log_path = f'./logs/{dataset_name}.log'
     logger = create_logger(log_path)
 
-    # Define dataset path based on the input arguments
-    ## faceforensic++
+    # Initialize RetinaFace model (once, shared across all videos)
+    logger.info("Initializing RetinaFace model...")
+    model = prepare_model(det_thres=0.5, nms_thresh=0.4)
+    logger.info("RetinaFace model ready.")
+
+    # Define sub-dataset paths based on dataset name
+    ## FaceForensics++
     if dataset_name == 'FaceForensics++':
-        sub_dataset_names = ["original_sequences/youtube","original_sequences/actors", \
-                             "manipulated_sequences/Deepfakes", \
-                            "manipulated_sequences/Face2Face", "manipulated_sequences/FaceSwap", \
-                            "manipulated_sequences/NeuralTextures","manipulated_sequences/FaceShifter",\
-                            "manipulated_sequences/DeepFakeDetection"]
+        sub_dataset_names = [
+            "original_sequences/youtube", "original_sequences/actors",
+            "manipulated_sequences/Deepfakes",
+            "manipulated_sequences/Face2Face", "manipulated_sequences/FaceSwap",
+            "manipulated_sequences/NeuralTextures", "manipulated_sequences/FaceShifter",
+            "manipulated_sequences/DeepFakeDetection",
+        ]
         sub_dataset_paths = [Path(os.path.join(dataset_path, name, comp)) for name in sub_dataset_names]
-        # mask
-        mask_dataset_names = ["manipulated_sequences/Deepfakes", "manipulated_sequences/Face2Face", \
-                            "manipulated_sequences/FaceSwap", "manipulated_sequences/NeuralTextures",\
-                            "manipulated_sequences/DeepFakeDetection"]
-        # mask_dataset_names = []
+        mask_dataset_names = [
+            "manipulated_sequences/Deepfakes", "manipulated_sequences/Face2Face",
+            "manipulated_sequences/FaceSwap", "manipulated_sequences/NeuralTextures",
+            "manipulated_sequences/DeepFakeDetection",
+        ]
         mask_dataset_paths = [Path(os.path.join(dataset_path, name)) for name in mask_dataset_names]
+
     ## Celeb-DF-v1
     elif dataset_name == 'Celeb-DF-v1':
         sub_dataset_names = ['Celeb-real', 'Celeb-synthesis', 'YouTube-real']
         sub_dataset_paths = [Path(os.path.join(dataset_path, name)) for name in sub_dataset_names]
-    
+
     ## Celeb-DF-v2
     elif dataset_name == 'Celeb-DF-v2':
         sub_dataset_names = ['Celeb-real', 'Celeb-synthesis', 'YouTube-real']
         sub_dataset_paths = [Path(os.path.join(dataset_path, name)) for name in sub_dataset_names]
-    
+
     ## DFDCP
     elif dataset_name == 'DFDCP':
         sub_dataset_names = ['original_videos', 'method_A', 'method_B']
         sub_dataset_paths = [Path(os.path.join(dataset_path, name)) for name in sub_dataset_names]
 
-    ## DFDC-test
+    ## DFDC
     elif dataset_name == 'DFDC':
-        sub_dataset_names = ['test', 'train']
-        # train dataset is too large, so we split it into 50 parts
-        sub_train_dataset_names = ["dfdc_train_part_" + str(i) for i in range(0,50)]
+        sub_train_dataset_names = ["dfdc_train_part_" + str(i) for i in range(0, 50)]
         sub_train_dataset_paths = [Path(os.path.join(dataset_path, 'train', name)) for name in sub_train_dataset_names]
         sub_dataset_paths = [Path(os.path.join(dataset_path, 'test'))] + sub_train_dataset_paths
-   
-   ## DeeperForensics-1.0
+
+    ## DeeperForensics-1.0
     elif dataset_name == 'DeeperForensics-1.0':
-        real_sub_dataset_names = ['source_videos/' + name for name in os.listdir(os.path.join(dataset_path, 'source_videos'))]
-        fake_sub_dataset_names = ['manipulated_videos/' + name for name in os.listdir(os.path.join(dataset_path, 'manipulated_videos'))]
-        real_sub_dataset_names.extend(fake_sub_dataset_names)
-        sub_dataset_names = real_sub_dataset_names
+        real_sub = ['source_videos/' + n for n in os.listdir(os.path.join(dataset_path, 'source_videos'))]
+        fake_sub = ['manipulated_videos/' + n for n in os.listdir(os.path.join(dataset_path, 'manipulated_videos'))]
+        sub_dataset_names = real_sub + fake_sub
         sub_dataset_paths = [Path(os.path.join(dataset_path, name)) for name in sub_dataset_names]
-        
+
     ## UADFV
     elif dataset_name == 'UADFV':
         sub_dataset_names = ['fake', 'real']
         sub_dataset_paths = [Path(os.path.join(dataset_path, name)) for name in sub_dataset_names]
     else:
         raise ValueError(f"Dataset {dataset_name} not recognized")
-    
-    # Check if dataset path exists
+
+    # Check paths
     if not Path(dataset_path).exists():
         logger.error(f"Dataset path does not exist: {dataset_path}")
-        sys.exit()
+        sys.exit(1)
 
-    if 'sub_dataset_paths' in globals() and len(sub_dataset_paths) != 0:
-        # Check if sub_dataset path exists
+    if 'sub_dataset_paths' in dir() and len(sub_dataset_paths) != 0:
         for sub_dataset_path in sub_dataset_paths:
             if not Path(sub_dataset_path).exists():
                 logger.error(f"Sub Dataset path does not exist: {sub_dataset_path}")
-                sys.exit()
-        # preprocess each sub_dataset
+                sys.exit(1)
+
         for sub_dataset_path in sub_dataset_paths:
-            # only part of FaceForensics++ has mask
+            # Compute output path mirroring source structure under output_base
+            relative_path = sub_dataset_path.relative_to(dataset_path)
+            output_path = output_base / relative_path
+            output_path.mkdir(parents=True, exist_ok=True)
+
+            # Only part of FF++ has masks
             if dataset_name == 'FaceForensics++' and sub_dataset_path.parent in mask_dataset_paths:
                 mask_dataset_path = os.path.join(sub_dataset_path.parent, "masks")
-                preprocess(sub_dataset_path, mask_dataset_path, mode, num_frames, stride, logger)
+                preprocess(sub_dataset_path, mask_dataset_path, output_path, mode, num_frames, stride, logger, model)
             else:
-                preprocess(sub_dataset_path, None, mode, num_frames, stride, logger)
+                preprocess(sub_dataset_path, None, output_path, mode, num_frames, stride, logger, model)
     else:
-        logger.error(f"Sub Dataset path does not exist: {sub_dataset_paths}")
-        sys.exit()
+        logger.error(f"No sub-dataset paths found")
+        sys.exit(1)
+
     logger.info("Face cropping complete!")
