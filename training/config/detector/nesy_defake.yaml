@@ -1,13 +1,16 @@
 # =============================================================================
-# NeSyDeFake Hybrid Detector — Configuration (v4 — cleaned up)
+# NeSyDeFake Hybrid Detector — Configuration (v5 — dual sub-graph causal)
 # =============================================================================
+# v5 changes (2026-03-23):
+#   - Dual sub-graph causal: identity-causal (103 nodes) + forensic-pixel (62 nodes)
+#   - Two-stage z compression: backbone(1024) → z_feature(128) → z_causal(32)
+#   - Curated 51 FaceBench attributes for identity sub-graph
+#   - Consistency rules: 18→20 training + 13 inference intervention rules
+#   - 8 total causal graphs (2 branches × 2 sub-graphs × 2 distributions)
 # v4 changes:
-#   - Removed dead modules: ViolationScorer, ConceptPredictionHead,
-#     contrastive loss, uncertainty head
+#   - Removed dead modules: ViolationScorer, ConceptPredictionHead
 #   - Causal gate init: -3.0 (sigmoid≈0.05, conservative start)
 #   - SAE dict_size: 4096 → 1024 (fix 95% dead features)
-#   - Classifier simplified to classification-only
-#   - Loss landscape: classification + causal_structural + sparse + UA + causal_semantic
 #   - Graph divergence re-added at small weight (0.01)
 #   - Per-tier normalization for semantic feature categories
 # =============================================================================
@@ -153,7 +156,7 @@ semantic_attributes:
 # Captures gender-attribute, expression-AU, and mutually-exclusive conflicts.
 consistency_rules:
   enabled: true
-  output_dim: 18
+  output_dim: 20
 
 # -----------------------------------------------------------------------------
 # Tier 2: Pixel-Level Forensic Features (precomputed)
@@ -181,13 +184,13 @@ causal_intervention:
 # -----------------------------------------------------------------------------
 # Semantic Projection (direct semantic → classifier pathway)
 # -----------------------------------------------------------------------------
-# Projects the 259-d gated semantic vector (211 FaceBench + 18 consistency +
+# Projects the 261-d gated semantic vector (211 FaceBench + 20 consistency +
 # 30 forensic) directly into the classifier space. This gives the classifier
 # explicit access to facial attribute signals — the causal module captures
 # anomaly patterns, while this pathway captures attribute presence/absence.
 semantic_projection:
   enabled: true
-  hidden_dim: 128          # bottleneck: 259 → 128 → 1024
+  hidden_dim: 128          # bottleneck: 261 → 128 → 1024
   dropout: 0.2
   gate_init: -1.0          # sigmoid≈0.27, grows with training
 
@@ -206,21 +209,26 @@ causal_module:
   enabled: true
   causal_warmup_batches: -1          # -1 = use all training batches
 
-  # z-dimensions for causal graphs.
-  # SparseFeatureSelector projects 1024-d backbone features → z_dim
-  # before entering the causal graph. Total nodes: z_dim + 48 = 80.
-  # This is within DAGMA's validated range (20-100 nodes) for reliable
-  # causal structure discovery.
+  # z-dimensions: two-stage compression for causal graphs.
+  # Stage 1: SparseFeatureSelector projects 1024-d backbone → z_feature (128).
+  # Stage 2: CausalCompressor projects z_feature (128) → z_causal (32).
+  # Identity sub-graph: z_causal(32) + curated_attrs(51) + rules(20) = 103 nodes.
+  # Forensic sub-graph: z_causal(32) + forensic_feats(30) = 62 nodes.
+  # Both within DAGMA's validated range (20-120 nodes).
   latent_variables:
-    z_spatial_dim:    32
-    z_frequency_dim:  32
+    z_spatial_dim:    128
+    z_frequency_dim:  128
+    z_causal_dim:     32
 
-  semantic_dim: 211    # updated by detector at init (211+18+30=259)
+  semantic_dim: 211    # updated by detector at init (211+20+30=261)
 
-  # Forensic-focused: only consistency rules (18) + forensic features (30)
-  # enter causal graph. Base 211 demographics excluded — they carry identity
-  # signal, not forensic signal. Total causal nodes: 32+48=80 per branch.
-  forensic_only: true
+  # Dual sub-graph architecture (v3):
+  # - Identity-Causal: curated 51 FaceBench attrs + 20 consistency rules
+  #   (gender→facial_hair, age→skin, expression→AU causal chains)
+  # - Forensic-Pixel: 30 precomputed forensic features
+  #   (blur→boundary→frequency artifact chains)
+  # Total: 8 graphs (2 branches × 2 sub-graphs × 2 distributions)
+  dual_subgraph: true
 
   discovery:
     algorithm:              dagma_dce

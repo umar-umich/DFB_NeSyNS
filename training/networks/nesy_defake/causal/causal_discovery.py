@@ -1,36 +1,29 @@
 """
 networks/nesy_defake/causal/causal_discovery_module.py
 =======================================================
-Module 3: Compact Forensic-Focused Causal Discovery — DAGMA-DCE v2
+Module 3: Dual Sub-Graph Causal Discovery — DAGMA-DCE v3
 
-ARCHITECTURE: 4 compact causal graphs (2 branches × 2 distributions)
--------------------------------------------------------------------------
-v2 redesign rationale:
-  - Previous 6 graphs at 387 nodes each were far beyond DAGMA's validated
-    range (20-100 nodes), leading to demographic-correlation collapse.
-  - Now: 4 graphs at ~64 nodes each — well within tractable range.
-  - Forensic-focused: only consistency rules (18) + forensic features (30)
-    enter the causal graph, NOT the base 211 demographic attributes.
-  - Linear SCM for structure discovery (better identifiability per
-    Peters et al., 2014), nonlinear residuals for detection signal.
+ARCHITECTURE: 8 causal graphs (2 branches × 2 sub-graphs × 2 distributions)
+-----------------------------------------------------------------------------
+v3 redesign (2026-03-23):
+  - Dual sub-graphs per branch:
+    A) Identity-Causal: z_causal(32) + curated_attrs(51) + rules(20) = 103 nodes
+       Discovers: gender→facial_hair, age→skin, expression→AU causal chains
+       that faceswap breaks by pasting a face with different identity attributes.
+    B) Forensic-Pixel: z_causal(32) + forensic_features(30) = 62 nodes
+       Discovers: blur→boundary→frequency artifact causal chains.
+  - Two-stage compression: backbone(1024) → z_feature(128) → z_causal(32)
+    128-d features used for fusion/classifier; 32-d for graph tractability.
+  - Curated 51 FaceBench attributes (from 211) selected for causal chains:
+    gender-linked(11), age-linked(9), structural(10), expression-AU(15),
+    skin-tone(4), symmetry(2).
+  - Expanded consistency rules: 20 training + 13 inference-intervention.
+  - Linear SCM for structure discovery (Peters et al., 2014).
 
-Node composition per branch graph (d ≈ 64):
-  [z_branch_0..15]  16 compressed latent visual features
-  [cr_*]            18 cross-attribute consistency rules
-  [ff_*]            30 pixel-level forensic features
-  Total:            64 interpretable, forensically relevant nodes
-
-Detection signal: linear SCM residuals.
-  - Real SCM trained on reals → high residuals on fakes
-  - Fake SCM trained on fakes → high residuals on reals
-  - Residual difference patterns → CausalViolationAttentionFusion → classifier
-
-Algorithm: Hybrid Linear DAGMA + Nonlinear Residual (CDNOD-inspired)
-  - Linear SCM discovers identifiable causal structure
-  - The linear causal structure is shared between real/fake (faces follow
-    same physics); the residual distributions differ (fakes add artifacts)
-  - This handles highly overlapping distributions better than nonlinear
-    SCMs which memorize correlations instead of discovering causation.
+Detection signal: residuals from both sub-graphs concatenated per branch.
+  - Identity residuals: captures identity-constraint violations
+  - Forensic residuals: captures pixel-level artifact patterns
+  - Combined → CausalViolationAttentionFusion → classifier
 """
 
 import logging
@@ -383,75 +376,70 @@ class BranchCausalPair(nn.Module):
 
 class CausalDiscoveryModule(nn.Module):
     """
-    Module 3: Compact Forensic-Focused Dual-Graph Causal Discovery.
+    Module 3: Dual Sub-Graph Causal Discovery (v3).
 
-    4 graphs total: 2 branches (spatial, freq) × 2 distributions (real, fake).
-    Each graph has ~64 nodes: 16 z-features + 48 forensic/consistency features.
+    8 graphs total: 2 branches × 2 sub-graphs × 2 distributions.
 
-    The base 211 FaceBench demographic attributes are EXCLUDED from the causal
-    graph — they carry identity/demographic signal, not forensic signal.
-    Demographics flow through the semantic gate directly to the classifier.
+    Per branch:
+      A) Identity-Causal sub-graph (~103 nodes):
+         z_causal(32) + curated_attrs(51) + training_rules(20)
+         Discovers: gender→facial_hair, age→skin, expression→AU chains
+      B) Forensic-Pixel sub-graph (~62 nodes):
+         z_causal(32) + forensic_features(30)
+         Discovers: blur→boundary→frequency artifact chains
 
-    The causal graph focuses on: how do visual features (z) relate to
-    forensic anomalies (consistency rules, pixel-level forensics)?
+    Two-stage compression: backbone(1024) → z_feature(128) → z_causal(32).
+    128-d features go to fusion/classifier; 32-d for graph tractability.
+    Residuals from both sub-graphs concatenated per branch for attention fusion.
     """
 
     def __init__(self, config: dict, semantic_attr_names: Optional[list] = None):
         super().__init__()
+
+        from ..semantic.facial_semantic_extractor import (
+            CAUSAL_ATTRIBUTE_INDICES, CAUSAL_ATTRIBUTE_NAMES,
+            NUM_CAUSAL_ATTRIBUTES,
+        )
 
         causal_cfg = config['causal_module']
         lv_cfg = causal_cfg['latent_variables']
         dag_cfg = causal_cfg['dag_learning']
         disc_cfg = causal_cfg['discovery']
 
-        # -- z-dimensions for causal graph ------------------------------------
-        # When sparse_features is disabled, z_dim should match backbone output
-        # so raw features flow directly into the causal graph (no compression).
-        self.z_spatial_dim = lv_cfg['z_spatial_dim']
-        self.z_freq_dim = lv_cfg['z_frequency_dim']
+        # -- z-dimensions: two-stage compression --------------------------------
+        # Stage 1: backbone(1024) → z_feature via SparseFeatureSelector
+        self.z_spatial_dim = lv_cfg['z_spatial_dim']       # 128
+        self.z_freq_dim = lv_cfg['z_frequency_dim']         # 128
+        # Stage 2: z_feature → z_causal for graph nodes
+        self.z_causal_dim = lv_cfg.get('z_causal_dim', 32)  # 32
 
-        # -- Forensic-focused semantic selection ----------------------------
-        # Only consistency rules + forensic features enter the causal graph.
-        # The base 211 attributes are demographics, not forensics.
-        self._forensic_only = causal_cfg.get('forensic_only', True)
-        full_s_dim = causal_cfg['semantic_dim']  # 259 (211+18+30) from detector
-
-        # Parse which portion is forensic (tier1 + tier2)
+        # -- Semantic dimension parsing -----------------------------------------
+        full_s_dim = causal_cfg['semantic_dim']  # 261 (211+20+30) from detector
         base_attr_dim = config.get('semantic_attributes', {}).get('precomputed_dim', 211)
-        tier1_dim = config.get('consistency_rules', {}).get('output_dim', 18)
+        tier1_dim = config.get('consistency_rules', {}).get('output_dim', 20)
         tier2_dim = config.get('forensic_features', {}).get('output_dim', 30)
 
-        if self._forensic_only:
-            # Only tier1 + tier2 go into causal graph
-            self.s_dim = tier1_dim + tier2_dim  # 48
-            self._sem_slice_start = base_attr_dim  # skip first 211
-            self._sem_slice_end = full_s_dim       # take rest
-        else:
-            # Everything goes in (legacy behavior)
-            self.s_dim = full_s_dim
-            self._sem_slice_start = 0
-            self._sem_slice_end = full_s_dim
-
-        self.d_spatial = self.z_spatial_dim + self.s_dim   # 16 + 48 = 64
-        self.d_freq = self.z_freq_dim + self.s_dim         # 16 + 48 = 64
-
-        # -- Store full semantic dim for external consumers -----------------
-        # CausalInterventionModule and detector need the full semantic dim
+        # Store for external consumers
         self._full_s_dim = full_s_dim
+        self._base_attr_dim = base_attr_dim
+        self._tier1_dim = tier1_dim
+        self._tier2_dim = tier2_dim
 
-        # -- Store semantic attribute names for interpretable graphs --------
-        self._semantic_attr_names = semantic_attr_names
-        # Build forensic-only names
-        if semantic_attr_names and self._forensic_only:
-            self._causal_node_sem_names = semantic_attr_names[base_attr_dim:]
-        elif semantic_attr_names:
-            self._causal_node_sem_names = semantic_attr_names
-        else:
-            self._causal_node_sem_names = [f's_{i}' for i in range(self.s_dim)]
+        # -- Curated attribute indices for identity sub-graph -------------------
+        self._causal_attr_indices = CAUSAL_ATTRIBUTE_INDICES  # 51 indices into 211
+        self._curated_dim = NUM_CAUSAL_ATTRIBUTES             # 51
+        self._identity_s_dim = self._curated_dim + tier1_dim  # 51 + 20 = 71
+        self._forensic_s_dim = tier2_dim                       # 30
 
-        # -- Feature selectors (backbone -> causal z) --------------------------
-        # When z_dim matches input dim (raw features mode), use Identity
-        # instead of a learned projection — no wasted parameters.
+        # -- Graph node dimensions per sub-graph --------------------------------
+        self.d_identity = self.z_causal_dim + self._identity_s_dim  # 32+71 = 103
+        self.d_forensic = self.z_causal_dim + self._forensic_s_dim  # 32+30 = 62
+
+        # Combined residual dim per branch (for attention fusion interface)
+        self.d_spatial = self.d_identity + self.d_forensic  # 103+62 = 165
+        self.d_freq = self.d_identity + self.d_forensic     # same
+
+        # -- Feature selectors: backbone → z_feature (128) ----------------------
         sae_cfg = config.get('sparse_features', {})
         self.sae_dict_size = sae_cfg.get(
             'dict_size',
@@ -460,102 +448,138 @@ class CausalDiscoveryModule(nn.Module):
 
         if self.z_spatial_dim == self.sae_dict_size:
             self.spatial_selector = nn.Identity()
-            logger.info(f"[CausalDiscovery] spatial selector: Identity (raw {self.sae_dict_size}-d)")
         else:
             self.spatial_selector = SparseFeatureSelector(
                 sae_dict_size=self.sae_dict_size,
-                output_dim=self.z_spatial_dim,
-                num_branches=1,
-            )
+                output_dim=self.z_spatial_dim, num_branches=1)
 
         if self.z_freq_dim == self.sae_dict_size:
             self.freq_selector = nn.Identity()
-            logger.info(f"[CausalDiscovery] freq selector: Identity (raw {self.sae_dict_size}-d)")
         else:
             self.freq_selector = SparseFeatureSelector(
                 sae_dict_size=self.sae_dict_size,
-                output_dim=self.z_freq_dim,
-                num_branches=1,
-            )
+                output_dim=self.z_freq_dim, num_branches=1)
 
-        # -- Normalization layers -------------------------------------------
-        self.z_spatial_norm = nn.LayerNorm(self.z_spatial_dim)
-        self.z_freq_norm = nn.LayerNorm(self.z_freq_dim)
-        self.s_norm = nn.LayerNorm(self.s_dim)
+        # -- Causal compressors: z_feature(128) → z_causal(32) -----------------
+        # Linear projection keeps interpretability (each z_causal node is a
+        # fixed linear combination of z_feature dims).
+        self.spatial_compressor = nn.Linear(
+            self.z_spatial_dim, self.z_causal_dim, bias=False)
+        self.freq_compressor = nn.Linear(
+            self.z_freq_dim, self.z_causal_dim, bias=False)
+        nn.init.normal_(self.spatial_compressor.weight,
+                        std=1.0 / math.sqrt(self.z_spatial_dim))
+        nn.init.normal_(self.freq_compressor.weight,
+                        std=1.0 / math.sqrt(self.z_freq_dim))
 
-        # -- Directionality masks (latent→forensic blocked) -----------------
+        # -- Normalization layers -----------------------------------------------
+        self.z_feature_spatial_norm = nn.LayerNorm(self.z_spatial_dim)
+        self.z_feature_freq_norm = nn.LayerNorm(self.z_freq_dim)
+        self.z_causal_norm = nn.LayerNorm(self.z_causal_dim)
+        self.identity_s_norm = nn.LayerNorm(self._identity_s_dim)
+        self.forensic_s_norm = nn.LayerNorm(self._forensic_s_dim)
+
+        # -- Directionality masks -----------------------------------------------
         self.enforce_directionality = disc_cfg.get('enforce_directionality', False)
-        spatial_dir_mask = None
-        freq_dir_mask = None
+        identity_dir_mask = None
+        forensic_dir_mask = None
         if self.enforce_directionality:
-            spatial_dir_mask = build_directionality_mask(self.z_spatial_dim, self.s_dim)
-            freq_dir_mask = build_directionality_mask(self.z_freq_dim, self.s_dim)
-            logger.info(
-                f"[CausalDiscoveryModule] Directionality mask: "
-                f"blocking latent→forensic edges (z→s block zeroed)")
+            identity_dir_mask = build_directionality_mask(
+                self.z_causal_dim, self._identity_s_dim)
+            forensic_dir_mask = build_directionality_mask(
+                self.z_causal_dim, self._forensic_s_dim)
 
-        # -- Spatial branch: real + fake causal graphs ----------------------
-        self.causal_spatial = BranchCausalPair(
-            d=self.d_spatial, dag_cfg=dag_cfg, disc_cfg=disc_cfg,
-            branch_name='spatial', direction_mask=spatial_dir_mask)
+        # -- Identity-Causal sub-graphs (per branch) ----------------------------
+        self.identity_spatial = BranchCausalPair(
+            d=self.d_identity, dag_cfg=dag_cfg, disc_cfg=disc_cfg,
+            branch_name='spatial_identity', direction_mask=identity_dir_mask)
+        self.identity_freq = BranchCausalPair(
+            d=self.d_identity, dag_cfg=dag_cfg, disc_cfg=disc_cfg,
+            branch_name='freq_identity', direction_mask=identity_dir_mask)
 
-        # -- Frequency branch: real + fake causal graphs --------------------
-        self.causal_freq = BranchCausalPair(
-            d=self.d_freq, dag_cfg=dag_cfg, disc_cfg=disc_cfg,
-            branch_name='frequency', direction_mask=freq_dir_mask)
+        # -- Forensic-Pixel sub-graphs (per branch) -----------------------------
+        self.forensic_spatial = BranchCausalPair(
+            d=self.d_forensic, dag_cfg=dag_cfg, disc_cfg=disc_cfg,
+            branch_name='spatial_forensic', direction_mask=forensic_dir_mask)
+        self.forensic_freq = BranchCausalPair(
+            d=self.d_forensic, dag_cfg=dag_cfg, disc_cfg=disc_cfg,
+            branch_name='freq_forensic', direction_mask=forensic_dir_mask)
 
-        # -- Semantic-only graph removed (v2) -------------------------------
-        # Demographics (211 base attrs) don't belong in causal graph.
-        # Forensic features already capture inter-attribute relationships
-        # via consistency rules (e.g., cr_happy_au6, cr_gender_beard).
+        # Legacy compat
         self.use_semantic_graph = False
         self.causal_semantic = None
-
         self.sparsity_weight = disc_cfg.get('sparsity_penalty', 0.01)
+
+        # -- Node names for interpretability ------------------------------------
+        self._identity_node_names = (
+            [f'z_causal_{i}' for i in range(self.z_causal_dim)]
+            + list(CAUSAL_ATTRIBUTE_NAMES)
+            + list(config.get('_training_rule_names', [f'cr_{i}' for i in range(tier1_dim)]))
+        )
+        from ..semantic.forensic_features import get_forensic_feature_names
+        self._forensic_node_names = (
+            [f'z_causal_{i}' for i in range(self.z_causal_dim)]
+            + get_forensic_feature_names()
+        )
 
         n_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
         scm_type = disc_cfg.get('scm_type', 'linear')
         logger.info(
-            f"[CausalDiscoveryModule] Compact forensic-focused (v2): "
-            f"d_spatial={self.d_spatial} (z={self.z_spatial_dim}, s={self.s_dim}), "
-            f"d_freq={self.d_freq} (z={self.z_freq_dim}, s={self.s_dim}), "
-            f"forensic_only={self._forensic_only}, scm_type={scm_type}, "
-            f"graphs=4, trainable={n_params:,}"
+            f"[CausalDiscoveryModule] Dual sub-graph (v3): "
+            f"d_identity={self.d_identity} (z_causal={self.z_causal_dim}, "
+            f"curated={self._curated_dim}, rules={tier1_dim}), "
+            f"d_forensic={self.d_forensic} (z_causal={self.z_causal_dim}, "
+            f"forensic={tier2_dim}), "
+            f"z_feature={self.z_spatial_dim}, scm_type={scm_type}, "
+            f"graphs=8, trainable={n_params:,}"
         )
 
     # ------------------------------------------------------------------ #
     #  Input construction                                                  #
     # ------------------------------------------------------------------ #
 
-    def _build_branch_input(
+    def _compress_z(
         self,
         z_branch: Optional[torch.Tensor],
-        semantic_attrs: Optional[torch.Tensor],
         selector: nn.Module,
-        z_norm: nn.LayerNorm,
-        z_dim: int,
+        compressor: nn.Module,
+        z_feature_norm: nn.LayerNorm,
+        B: int, device: torch.device,
     ) -> torch.Tensor:
-        """
-        Build causal input: [z_active(z_dim), forensic_attrs(s_dim)].
-        """
-        B = (z_branch.shape[0] if z_branch is not None
-             else semantic_attrs.shape[0])
-        device = (z_branch.device if z_branch is not None
-                  else semantic_attrs.device)
-
+        """backbone(1024) → selector → z_feature(128) → compressor → z_causal(32)"""
         if z_branch is not None:
-            z_active = z_norm(selector(z_branch))
+            z_feature = z_feature_norm(selector(z_branch))
+            z_causal = self.z_causal_norm(compressor(z_feature))
         else:
-            z_active = torch.zeros(B, z_dim, device=device)
+            z_causal = torch.zeros(B, self.z_causal_dim, device=device)
+        return z_causal
 
-        if semantic_attrs is not None:
-            # Slice to forensic-only features if configured
-            s_input = semantic_attrs[:, self._sem_slice_start:self._sem_slice_end]
-            s_sem = self.s_norm(s_input.float())
-        else:
-            s_sem = torch.zeros(B, self.s_dim, device=device)
+    def _build_identity_input(
+        self, z_causal: torch.Tensor, semantic_attrs: torch.Tensor,
+    ) -> torch.Tensor:
+        """Build identity sub-graph input: [z_causal(32), curated(51), rules(20)]."""
+        B = z_causal.shape[0]
+        device = z_causal.device
 
-        return torch.cat([z_active, s_sem], dim=1)
+        # Extract curated attributes (51 selected from base 211)
+        curated = semantic_attrs[:, self._causal_attr_indices].float()
+        # Extract training rules (tier1, after base 211)
+        rules = semantic_attrs[:, self._base_attr_dim:
+                               self._base_attr_dim + self._tier1_dim].float()
+        # Concatenate and normalize
+        s_identity = torch.cat([curated, rules], dim=1)  # (B, 71)
+        s_identity = self.identity_s_norm(s_identity)
+        return torch.cat([z_causal, s_identity], dim=1)  # (B, 103)
+
+    def _build_forensic_input(
+        self, z_causal: torch.Tensor, semantic_attrs: torch.Tensor,
+    ) -> torch.Tensor:
+        """Build forensic sub-graph input: [z_causal(32), forensic(30)]."""
+        # Extract forensic features (tier2, after base 211 + tier1)
+        start = self._base_attr_dim + self._tier1_dim
+        forensic = semantic_attrs[:, start:start + self._tier2_dim].float()
+        forensic = self.forensic_s_norm(forensic)
+        return torch.cat([z_causal, forensic], dim=1)  # (B, 62)
 
     # ------------------------------------------------------------------ #
     #  Forward                                                             #
@@ -570,44 +594,66 @@ class CausalDiscoveryModule(nn.Module):
         return_graph: bool = False,
     ) -> Dict:
         """
-        Compact forensic-focused causal discovery.
+        Dual sub-graph causal discovery (v3).
 
         Returns: dict with keys:
-            residuals_spatial_real/fake (B, d_spatial) per-branch residuals
-            residuals_freq_real/fake    (B, d_freq)   per-branch residuals
-            A_spatial_real/fake     (d_spatial, d_spatial) [if return_graph]
-            A_freq_real/fake        (d_freq, d_freq)      [if return_graph]
+            residuals_spatial_real/fake  (B, d_identity + d_forensic)
+            residuals_freq_real/fake     (B, d_identity + d_forensic)
+            A_*_identity_real/fake       (d_identity, d_identity)  [if return_graph]
+            A_*_forensic_real/fake       (d_forensic, d_forensic)  [if return_graph]
         """
-        # Build compact causal inputs
-        x_spatial = self._build_branch_input(
-            z_spatial, semantic_attrs,
-            self.spatial_selector, self.z_spatial_norm, self.z_spatial_dim)
-        x_freq = self._build_branch_input(
-            z_freq, semantic_attrs,
-            self.freq_selector, self.z_freq_norm, self.z_freq_dim)
+        B = (z_spatial.shape[0] if z_spatial is not None
+             else semantic_attrs.shape[0])
+        device = (z_spatial.device if z_spatial is not None
+                  else semantic_attrs.device)
 
-        # Enable grad for Jacobian computation (nonlinear SCM only)
-        if not x_spatial.requires_grad:
-            x_spatial = x_spatial.requires_grad_(True)
-        if not x_freq.requires_grad:
-            x_freq = x_freq.requires_grad_(True)
+        # Stage 1+2: compress to z_causal (32-d)
+        z_causal_spatial = self._compress_z(
+            z_spatial, self.spatial_selector, self.spatial_compressor,
+            self.z_feature_spatial_norm, B, device)
+        z_causal_freq = self._compress_z(
+            z_freq, self.freq_selector, self.freq_compressor,
+            self.z_feature_freq_norm, B, device)
 
-        # Per-branch causal discovery
-        spatial_out = self.causal_spatial(x_spatial, label, return_graph)
-        freq_out = self.causal_freq(x_freq, label, return_graph)
+        # Build sub-graph inputs
+        x_spatial_identity = self._build_identity_input(z_causal_spatial, semantic_attrs)
+        x_spatial_forensic = self._build_forensic_input(z_causal_spatial, semantic_attrs)
+        x_freq_identity = self._build_identity_input(z_causal_freq, semantic_attrs)
+        x_freq_forensic = self._build_forensic_input(z_causal_freq, semantic_attrs)
 
+        # Enable grad for potential Jacobian computation
+        for t in [x_spatial_identity, x_spatial_forensic,
+                  x_freq_identity, x_freq_forensic]:
+            if not t.requires_grad:
+                t.requires_grad_(True)
+
+        # Run all 8 sub-graphs
+        si_out = self.identity_spatial(x_spatial_identity, label, return_graph)
+        sf_out = self.forensic_spatial(x_spatial_forensic, label, return_graph)
+        fi_out = self.identity_freq(x_freq_identity, label, return_graph)
+        ff_out = self.forensic_freq(x_freq_forensic, label, return_graph)
+
+        # Concatenate residuals per branch (identity + forensic)
         out = {
-            'residuals_spatial_real': spatial_out['residuals_real'],
-            'residuals_spatial_fake': spatial_out['residuals_fake'],
-            'residuals_freq_real': freq_out['residuals_real'],
-            'residuals_freq_fake': freq_out['residuals_fake'],
+            'residuals_spatial_real': torch.cat([
+                si_out['residuals_real'], sf_out['residuals_real']], dim=1),
+            'residuals_spatial_fake': torch.cat([
+                si_out['residuals_fake'], sf_out['residuals_fake']], dim=1),
+            'residuals_freq_real': torch.cat([
+                fi_out['residuals_real'], ff_out['residuals_real']], dim=1),
+            'residuals_freq_fake': torch.cat([
+                fi_out['residuals_fake'], ff_out['residuals_fake']], dim=1),
         }
 
         if return_graph:
-            out['A_spatial_real'] = spatial_out['A_real']
-            out['A_spatial_fake'] = spatial_out['A_fake']
-            out['A_freq_real'] = freq_out['A_real']
-            out['A_freq_fake'] = freq_out['A_fake']
+            out['A_spatial_identity_real'] = si_out.get('A_real')
+            out['A_spatial_identity_fake'] = si_out.get('A_fake')
+            out['A_spatial_forensic_real'] = sf_out.get('A_real')
+            out['A_spatial_forensic_fake'] = sf_out.get('A_fake')
+            out['A_freq_identity_real'] = fi_out.get('A_real')
+            out['A_freq_identity_fake'] = fi_out.get('A_fake')
+            out['A_freq_forensic_real'] = ff_out.get('A_real')
+            out['A_freq_forensic_fake'] = ff_out.get('A_fake')
 
         return out
 
@@ -615,9 +661,10 @@ class CausalDiscoveryModule(nn.Module):
     #  Interpretability helpers                                            #
     # ------------------------------------------------------------------ #
 
-    def get_graph_divergence(self, branch: str = 'spatial') -> Dict[str, torch.Tensor]:
+    def get_graph_divergence(self, branch: str = 'spatial',
+                             subgraph: str = 'identity') -> Dict[str, torch.Tensor]:
         """Interpretable comparison of real vs fake causal graphs."""
-        pair = self.causal_spatial if branch == 'spatial' else self.causal_freq
+        pair = self._get_pair(branch, subgraph)
         A_r = pair.causal_learner_real._A_dce_ema
         A_f = pair.causal_learner_fake._A_dce_ema
         return {
@@ -628,24 +675,32 @@ class CausalDiscoveryModule(nn.Module):
             'created_by_fakes': (A_f - A_r).clamp(min=0).clone(),
         }
 
-    def get_causal_graph(self, branch: str = 'spatial') -> torch.Tensor:
-        """Return real-face graph EMA for a branch."""
-        pair = self.causal_spatial if branch == 'spatial' else self.causal_freq
+    def get_causal_graph(self, branch: str = 'spatial',
+                          subgraph: str = 'identity') -> torch.Tensor:
+        """Return real-face graph EMA."""
+        pair = self._get_pair(branch, subgraph)
         return pair.causal_learner_real._A_dce_ema.clone()
 
-    def get_node_names(self, branch: str = 'spatial') -> list:
-        """Human-readable names for the compact causal graph nodes."""
-        names = []
+    def _get_pair(self, branch: str, subgraph: str) -> BranchCausalPair:
         if branch == 'spatial':
-            for i in range(self.z_spatial_dim):
-                names.append(f'z_spatial_{i}')
+            return self.identity_spatial if subgraph == 'identity' else self.forensic_spatial
         else:
-            for i in range(self.z_freq_dim):
-                names.append(f'z_freq_{i}')
+            return self.identity_freq if subgraph == 'identity' else self.forensic_freq
 
-        names.extend(self._causal_node_sem_names)
-        return names
+    def get_node_names(self, branch: str = 'spatial',
+                        subgraph: str = 'identity') -> list:
+        """Human-readable names for causal graph nodes."""
+        if subgraph == 'identity':
+            prefix = 'z_spatial' if branch == 'spatial' else 'z_freq'
+            return ([f'{prefix}_{i}' for i in range(self.z_causal_dim)]
+                    + self._identity_node_names[self.z_causal_dim:])
+        else:
+            prefix = 'z_spatial' if branch == 'spatial' else 'z_freq'
+            return ([f'{prefix}_{i}' for i in range(self.z_causal_dim)]
+                    + self._forensic_node_names[self.z_causal_dim:])
 
-    def get_semantic_node_names(self) -> list:
-        """Forensic node names used in the causal graph."""
-        return list(self._causal_node_sem_names)
+    def get_semantic_node_names(self, subgraph: str = 'identity') -> list:
+        """Semantic node names used in a sub-graph."""
+        if subgraph == 'identity':
+            return self._identity_node_names[self.z_causal_dim:]
+        return self._forensic_node_names[self.z_causal_dim:]

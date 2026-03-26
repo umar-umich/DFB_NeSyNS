@@ -316,8 +316,8 @@ training/
 │   ├── causal/
 │   │   └── causal_discovery.py             # DAGMA-DCE, LinearSCM, per-branch graphs
 │   └── semantic/
-│       ├── facial_semantic_extractor.py    # FaceBench 211 attributes
-│       ├── consistency_rules.py            # Tier 1: 18 cross-attribute rules
+│       ├── facial_semantic_extractor.py    # FaceBench 211 attrs + 51 curated causal attrs
+│       ├── consistency_rules.py            # Tier 1: 20 training + 13 intervention rules
 │       ├── forensic_features.py            # Tier 2: 30 pixel-level features
 │       └── causal_intervention.py          # Tier 3: do-calculus interventions
 ├── dataset/nesy_defake_dataset.py          # Paired training dataset
@@ -332,3 +332,137 @@ training/
 - **Peters et al., 2014**: Identifiability of linear SCMs for causal discovery
 - **FACS** (Ekman & Friesen): Facial Action Coding System — anatomical basis for expression-AU consistency rules
 - **FaceBench**: Comprehensive facial attribute benchmark (211 attributes via Face-LLaVA)
+
+---
+
+## v5 — Dual Sub-Graph Causal Architecture (2026-03-23)
+
+### Motivation
+
+The v4 causal module used a single graph per branch with all 48 semantic features (18 consistency + 30 forensic) alongside 32 latent z-features, totalling 80 nodes. This conflated two fundamentally different causal processes:
+
+1. **Identity-constraint violations**: Static face attributes that should not co-occur (female + beard, young + gray hair) or should co-activate (happy + AU6/AU12). These are identity-level semantic contradictions introduced by face swapping.
+2. **Pixel-level forensic artifacts**: Boundary gradients, regional blur, frequency anomalies, color inconsistencies. These are manipulation traces at the signal level.
+
+Mixing these in one graph dilutes both signals — DAGMA-DCE cannot distinguish gender→beard causation from blur→boundary artifact chains.
+
+### Architecture: Dual Sub-Graphs per Branch
+
+```
+backbone(1024) → SparseFeatureSelector → z_feature(128) → CausalCompressor → z_causal(32)
+                                                                                    │
+                                                            ┌───────────────────────┤
+                                                            ▼                       ▼
+                                                  Identity-Causal            Forensic-Pixel
+                                                  z(32) + s(71) = 103       z(32) + s(30) = 62
+                                                  ┌──────────┐              ┌──────────┐
+                                                  │ SCM_real  │              │ SCM_real  │
+                                                  │ SCM_fake  │              │ SCM_fake  │
+                                                  └──────────┘              └──────────┘
+                                                       │                         │
+                                                       └──────────┬──────────────┘
+                                                                  ▼
+                                                  Concatenated residuals (165-d)
+                                                  → CausalViolationAttentionFusion
+```
+
+**Total: 8 causal graphs** (2 branches × 2 sub-graphs × 2 distributions)
+
+### Two-Stage Visual Feature Compression
+
+The backbone outputs 1024-d features, far too large for DAGMA (validated for 20-120 nodes). Two-stage compression solves this while preserving information:
+
+| Stage | Transformation | Purpose |
+|-------|---------------|---------|
+| 1 | `SparseFeatureSelector(1024→128)` | Feature selection, retains rich representation |
+| 2 | `CausalCompressor(128→32)` | Linear projection for graph tractability |
+
+The 128-d intermediate representation feeds the classifier pathway (via attention fusion), while the 32-d compressed version enters the causal graphs.
+
+### Curated 51 FaceBench Attributes (Identity Sub-Graph)
+
+From the full 211 FaceBench attributes, 51 are selected for causal chain formation in the identity sub-graph:
+
+| Group | Count | Attributes | Causal Role |
+|-------|-------|------------|-------------|
+| **A: Gender anchors + linked** | 11 | male, female, beard, mustache, goatee, sideburns, stubble, clean_shaven, heavy_makeup, lipstick, eyeshadow | Gender→facial_hair, gender→makeup chains |
+| **B: Age anchors + linked** | 9 | young_looking, middle_aged, elderly_looking, smooth_skin, wrinkled_skin, age_spots, forehead_wrinkles, gray_hair, receding_hairline | Age→skin, age→hair chains |
+| **C: Structural geometry** | 10 | strong_jaw, narrow_jaw, thick_eyebrows, thin_eyebrows, bushy_eyebrows, large_nose, small_nose, broad_nose, double_chin, pointed_chin | Bone structure contradictions |
+| **D: Expression-AU coherence** | 15 | neutral, happy, sad, angry, surprised + AU1, AU2, AU4, AU5, AU6, AU9, AU12, AU14, AU15, mouth_open | Expression→muscle activation chains (FACS) |
+| **E: Skin tone** | 4 | fair_skin, medium_skin, dark_skin, olive_skin | Tone blending artifacts |
+| **F: Symmetry** | 2 | symmetrical_face, asymmetrical_face | Swap boundary indicators |
+
+### Expanded Consistency Rules
+
+#### Training Rules (20 features — enter identity sub-graph as nodes)
+
+These fire often enough during training to provide gradient signal:
+
+| Category | Rules | Operation |
+|----------|-------|-----------|
+| Mutually exclusive (4) | mouth_open×closed, male×female, smiling×frowning, bright×dim_lighting | Product (both high = violation) |
+| Expression-AU original (5) | \|happy-AU6\|, \|happy-AU12\|, \|surprised-mean(AU1,AU2)\|, \|sad-AU15\|, \|angry-AU4\| | Absolute difference |
+| Expression-AU new (4) | \|fearful-mean(AU1,AU5)\|, \|disgusted-AU9\|, \|contemptuous-AU14\|, neutral×max(key_AUs) | Extended to all basic emotions |
+| Structural (3) | double_chin×narrow_jaw, square_face×narrow_jaw, round_face×pointed_chin | Bone structure contradictions |
+| Skin coherence (2) | fair_skin×dark_skin, acne×elderly | Tone/age conflicts |
+| Symmetry/quality (2) | symmetrical×asymmetrical, blurry×sharp | Quality contradictions |
+
+#### Intervention Rules (13 definitions — do-calculus at inference)
+
+Too sparse during training (near-zero for >95% of samples) but powerful as do-calculus interventions on learned graphs:
+
+| Rule | Intervene On | Observe | Direction | Reason for Intervention |
+|------|-------------|---------|-----------|------------------------|
+| Gender→beard/mustache/stubble/sideburns (4) | female | facial_hair attrs | opposite | FaceBench correctly identifies swapped face's gender; violation is face-vs-context |
+| Gender→makeup/eyeliner (2) | male | heavy_makeup, eyeliner | opposite | Same as above — within-face attrs consistent |
+| Gender→strong_jaw (1) | female | strong_jaw | opposite | Statistical co-occurrence |
+| Bald→long_hair (1) | bald | long_hair | opposite | Contradictory hair state |
+| Age→smooth_skin/wrinkles/gray/receding/spots (5) | elderly/young | appearance attrs | opposite | Age-appearance contradictions |
+
+**Key insight**: Gender-specific rules like female×beard produce ~0 during training even on fakes because FaceBench correctly identifies the swapped face's gender. The violation is between face attributes and surrounding context (body/hair/clothing), which FaceBench doesn't capture. Intervening on the gender node at inference and observing causal cascades through the learned graph is far more powerful than checking a near-zero product.
+
+### FaceBench Sparsity Analysis
+
+From a sample real frame (FF++ source 021, frame 002):
+- **22/211 attributes present** at 0.5 threshold, **188 absent**, 1 unsure
+- Present: female, caucasian, blonde_hair, long_hair, brown_eyes, fair_skin, smooth_skin, happy, young_looking, etc.
+- All AUs are NO despite happy expression — demonstrates LLM extraction noise
+- Continuous probabilities [0,1] are richer than binary thresholds; the causal module operates on raw probabilities
+
+### Node Dimension Summary
+
+| Sub-Graph | z_causal | Semantic | Total | Count |
+|-----------|----------|----------|-------|-------|
+| Identity-Causal | 32 | 51 curated + 20 rules = 71 | 103 | 4 graphs (2 branches × 2 dist) |
+| Forensic-Pixel | 32 | 30 forensic | 62 | 4 graphs (2 branches × 2 dist) |
+| **Combined residual per branch** | — | — | **165** | Feeds attention fusion |
+
+### Configuration Changes (nesy_defake.yaml)
+
+```yaml
+# Two-stage z compression
+latent_variables:
+  z_spatial_dim:    128    # was 32
+  z_frequency_dim:  128    # was 32
+  z_causal_dim:     32     # new — graph tractability
+
+# Dual sub-graph replaces forensic_only
+dual_subgraph: true        # was forensic_only: true
+
+# Expanded consistency rules
+consistency_rules:
+  output_dim: 20           # was 18
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `semantic/facial_semantic_extractor.py` | Added `CAUSAL_ATTRIBUTE_NAMES` (51), `CAUSAL_ATTRIBUTE_INDICES`, `NUM_CAUSAL_ATTRIBUTES` |
+| `semantic/consistency_rules.py` | Rewritten: 20 training rules + 13 intervention rule definitions |
+| `causal/causal_discovery.py` | Dual sub-graph architecture, two-stage compression, 8 graphs |
+| `detectors/nesy_defake_detector.py` | Wired dual sub-graph residuals, updated structural loss, DAG penalty, graph divergence |
+| `semantic/causal_intervention.py` | Updated to use identity sub-graph API for do-calculus interventions |
+| `detectors/utils/graph_visualization.py` | Updated for 4 sub-graph pairs per branch |
+| `trainer/trainer.py` | Updated causal warmup EMA reporting for 4 sub-graph pairs |
+| `config/detector/nesy_defake.yaml` | z_dims, dual_subgraph, output_dim updates |

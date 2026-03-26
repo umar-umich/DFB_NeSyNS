@@ -587,16 +587,18 @@ class Trainer(object):
             if name in frozen_params:
                 param.requires_grad = True
 
-        # Report EMA state for the target graphs (per-branch)
+        # Report EMA state for the target graphs (per-branch, per-subgraph)
         if is_main_process() and hasattr(m, 'causal_module'):
-            for branch_name, pair in [
-                ('spatial', m.causal_module.causal_spatial),
-                ('freq', m.causal_module.causal_freq),
-            ]:
+            cm = m.causal_module
+            for pair_name in ('identity_spatial', 'identity_freq',
+                              'forensic_spatial', 'forensic_freq'):
+                pair = getattr(cm, pair_name, None)
+                if pair is None:
+                    continue
                 learner = (pair.causal_learner_real if label_filter == 0
                            else pair.causal_learner_fake)
                 self.logger.info(
-                    f"  Causal warmup ({filter_name}/{branch_name}): "
+                    f"  Causal warmup ({filter_name}/{pair_name}): "
                     f"{n_done} batches. "
                     f"{graph_name} EMA initialized: {learner._ema_initialized}"
                 )

@@ -13,7 +13,7 @@ cd /data/umar/Repos/DFB_NeSyNS
 echo "============================================================"
 echo "Step 1: Augmenting real frames (3 copies for 4:1 balance)"
 echo "============================================================"
-python training/augment_real_frames.py \
+CUDA_VISIBLE_DEVICES=1 python training/augment_real_frames.py \
     --detector_path training/config/detector/nesy_defake.yaml \
     --n_augmentations 3 \
     --workers 16 \
@@ -24,23 +24,23 @@ echo "============================================================"
 echo "Step 2: Precomputing Face-LLaVA features for ALL frames"
 echo "============================================================"
 # This picks up both original and augmented frames from the _augmented JSON
-python preprocessing/precompute_semantic_features.py \
+CUDA_VISIBLE_DEVICES=1 python preprocessing/precompute_semantic_features.py \
     --detector_path training/config/detector/nesy_defake.yaml \
     --batch_size 64 \
     --output_dir facellava_semantic \
     --skip_existing \
-    --device cuda:1
+    --device cuda:0
 
 echo ""
 echo "============================================================"
 echo "Step 3: Precomputing forensic features for ALL frames"
 echo "============================================================"
-python preprocessing/precompute_forensic_features.py \
+CUDA_VISIBLE_DEVICES=1 python preprocessing/precompute_forensic_features.py \
     --detector_path training/config/detector/nesy_defake.yaml \
     --batch_size 256 \
     --output_dir forensic_features \
     --skip_existing \
-    --device cuda:1
+    --device cuda:0
 
 echo ""
 echo "============================================================"

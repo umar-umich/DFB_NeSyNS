@@ -356,48 +356,49 @@ def save_all_causal_graphs(causal_module, log_dir: str, epoch: int,
     save_dir = os.path.join(log_dir, 'graphs', f'epoch_{epoch}')
     os.makedirs(save_dir, exist_ok=True)
 
-    # Use forensic categories for compact graphs, legacy for full graphs
-    is_compact = getattr(causal_module, '_forensic_only', False)
-    categories = FORENSIC_CATEGORIES if is_compact else SEMANTIC_CATEGORIES
+    categories = FORENSIC_CATEGORIES
 
-    z_spatial_dim = causal_module.z_spatial_dim
-    z_freq_dim = causal_module.z_freq_dim
+    z_causal_dim = getattr(causal_module, 'z_causal_dim', 32)
 
     try:
-        # -- Branch graphs (spatial, frequency) ---
-        for branch, z_dim in [('spatial', z_spatial_dim), ('freq', z_freq_dim)]:
-            pair = causal_module.causal_spatial if branch == 'spatial' else causal_module.causal_freq
-            A_real = _to_numpy(pair.causal_learner_real._A_dce_ema)
-            A_fake = _to_numpy(pair.causal_learner_fake._A_dce_ema)
+        # -- Dual sub-graph visualisation (v3: identity + forensic per branch) --
+        for branch in ('spatial', 'freq'):
+            for subgraph in ('identity', 'forensic'):
+                pair = causal_module._get_pair(branch, subgraph)
+                A_real = _to_numpy(pair.causal_learner_real._A_dce_ema)
+                A_fake = _to_numpy(pair.causal_learner_fake._A_dce_ema)
 
-            node_names = causal_module.get_node_names(
-                'spatial' if branch == 'spatial' else 'frequency')
+                node_names = causal_module.get_node_names(
+                    'spatial' if branch == 'spatial' else 'frequency',
+                    subgraph=subgraph)
 
-            # Node-level heatmap (compact graphs only — too large for 387-node)
-            if A_real.shape[0] <= 100:
-                save_node_heatmap(
-                    A_real, A_fake, node_names,
-                    os.path.join(save_dir, f'{branch}_node_heatmap.png'))
+                tag = f'{branch}_{subgraph}'
 
-            # Category heatmap
-            save_category_heatmap(
-                A_real, A_fake, z_dim, categories,
-                os.path.join(save_dir, f'{branch}_category_heatmap.png'))
+                # Node-level heatmap (compact graphs — within DAGMA range)
+                if A_real.shape[0] <= 120:
+                    save_node_heatmap(
+                        A_real, A_fake, node_names,
+                        os.path.join(save_dir, f'{tag}_node_heatmap.png'))
 
-            # Top-K edges for real and fake
-            save_top_k_edges(
-                A_real, node_names, top_k,
-                os.path.join(save_dir, f'{branch}_real_top{top_k}.png'),
-                title=f'{branch.title()} Real: Top-{top_k} Edges')
-            save_top_k_edges(
-                A_fake, node_names, top_k,
-                os.path.join(save_dir, f'{branch}_fake_top{top_k}.png'),
-                title=f'{branch.title()} Fake: Top-{top_k} Edges')
+                # Category heatmap
+                save_category_heatmap(
+                    A_real, A_fake, z_causal_dim, categories,
+                    os.path.join(save_dir, f'{tag}_category_heatmap.png'))
 
-            # Divergence analysis
-            save_divergence_analysis(
-                A_real, A_fake, z_dim, node_names, categories,
-                os.path.join(save_dir, f'{branch}_divergence_analysis.png'))
+                # Top-K edges for real and fake
+                save_top_k_edges(
+                    A_real, node_names, top_k,
+                    os.path.join(save_dir, f'{tag}_real_top{top_k}.png'),
+                    title=f'{branch.title()} {subgraph.title()} Real: Top-{top_k} Edges')
+                save_top_k_edges(
+                    A_fake, node_names, top_k,
+                    os.path.join(save_dir, f'{tag}_fake_top{top_k}.png'),
+                    title=f'{branch.title()} {subgraph.title()} Fake: Top-{top_k} Edges')
+
+                # Divergence analysis
+                save_divergence_analysis(
+                    A_real, A_fake, z_causal_dim, node_names, categories,
+                    os.path.join(save_dir, f'{tag}_divergence_analysis.png'))
 
         logger.info(f"[GraphViz] Saved causal graphs to {save_dir}")
 

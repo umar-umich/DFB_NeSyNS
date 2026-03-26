@@ -112,22 +112,23 @@ class CausalInterventionModule(nn.Module):
     @torch.no_grad()
     def compute_cross_graph_scores(
         causal_out: Dict[str, torch.Tensor],
-        z_spatial_dim: int,
-        z_freq_dim: int,
+        z_causal_dim: int,
+        d_identity: int,
     ) -> torch.Tensor:
         """
         Compare how well each sample fits real vs fake SCMs.
 
         Uses residuals already in causal_out — zero extra SCM forwards.
+        v3: residuals are concatenated [identity(d_identity), forensic(d_forensic)].
 
         Returns:
             (B, 8) cross-graph consistency features.
         """
         feats = []
 
-        for branch, z_dim in [('spatial', z_spatial_dim), ('freq', z_freq_dim)]:
-            res_real = causal_out[f'residuals_{branch}_real']   # (B, d)
-            res_fake = causal_out[f'residuals_{branch}_fake']   # (B, d)
+        for branch in ('spatial', 'freq'):
+            res_real = causal_out[f'residuals_{branch}_real']   # (B, d_identity+d_forensic)
+            res_fake = causal_out[f'residuals_{branch}_fake']
 
             # How well sample fits each SCM (lower residual = better fit)
             real_fit = res_real.pow(2).sum(dim=1)               # (B,)
@@ -136,9 +137,10 @@ class CausalInterventionModule(nn.Module):
             # Consistency: positive = more real-like structure
             consistency = real_fit - fake_fit                    # (B,)
 
-            # Z-feature vs semantic residual ratio
-            z_res_real = res_real[:, :z_dim].pow(2).sum(dim=1)
-            s_res_real = res_real[:, z_dim:].pow(2).sum(dim=1)
+            # Z-feature vs semantic residual ratio (identity sub-graph only)
+            # Identity layout: z_causal(0:32) + s_identity(32:103)
+            z_res_real = res_real[:, :z_causal_dim].pow(2).sum(dim=1)
+            s_res_real = res_real[:, z_causal_dim:d_identity].pow(2).sum(dim=1)
             z_sem_ratio = z_res_real / (s_res_real + 1e-10)     # (B,)
 
             feats.extend([real_fit, fake_fit, consistency, z_sem_ratio])
@@ -171,37 +173,43 @@ class CausalInterventionModule(nn.Module):
         B = augmented_semantic.shape[0]
         device = augmented_semantic.device
 
-        # Build per-branch causal inputs
-        x_spatial = causal_module._build_branch_input(
-            z_spatial, augmented_semantic,
-            causal_module.spatial_selector, causal_module.z_spatial_norm,
-            causal_module.z_spatial_dim)
-        x_freq = causal_module._build_branch_input(
-            z_freq, augmented_semantic,
-            causal_module.freq_selector, causal_module.z_freq_norm,
-            causal_module.z_freq_dim)
+        # Build per-branch identity sub-graph inputs (where semantic nodes live)
+        # v3: two-stage compression, so we need to replicate the forward path
+        z_causal_spatial = causal_module._compress_z(
+            z_spatial, causal_module.spatial_selector,
+            causal_module.spatial_compressor,
+            causal_module.z_feature_spatial_norm,
+            B, device)
+        z_causal_freq = causal_module._compress_z(
+            z_freq, causal_module.freq_selector,
+            causal_module.freq_compressor,
+            causal_module.z_feature_freq_norm,
+            B, device)
+        x_spatial = causal_module._build_identity_input(z_causal_spatial, augmented_semantic)
+        x_freq = causal_module._build_identity_input(z_causal_freq, augmented_semantic)
 
-        s_dim = causal_module.s_dim
-        sem_start = causal_module._sem_slice_start
-        sem_end = causal_module._sem_slice_end
+        # Identity sub-graph semantic dim = curated(51) + tier1(20) = 71
+        s_dim = causal_module._identity_s_dim
+        z_dim = causal_module.z_causal_dim
 
-        # Confidence ranking of forensic nodes
-        sem_portion = augmented_semantic[:, sem_start:sem_end]  # (B, s_dim)
-        confidence = torch.abs(sem_portion - 0.5)               # (B, s_dim)
+        # Confidence ranking of identity semantic nodes
+        # The semantic portion starts after z_causal in the identity input
+        sem_portion = x_spatial[:, z_dim:]  # (B, s_dim=71)
+        confidence = torch.abs(sem_portion - 0.5)  # (B, s_dim)
 
         k = min(self.top_k, s_dim)
         alpha = self.graph_guided_alpha
 
         all_feats = []
 
-        # Process per-branch (spatial, freq) — each branch has real+fake SCMs
+        # Process per-branch — use identity sub-graphs (which have semantic nodes)
         branch_configs = [
-            ('spatial', x_spatial, causal_module.z_spatial_dim,
-             causal_module.causal_spatial.causal_learner_real,
-             causal_module.causal_spatial.causal_learner_fake),
-            ('freq', x_freq, causal_module.z_freq_dim,
-             causal_module.causal_freq.causal_learner_real,
-             causal_module.causal_freq.causal_learner_fake),
+            ('spatial', x_spatial, z_dim,
+             causal_module.identity_spatial.causal_learner_real,
+             causal_module.identity_spatial.causal_learner_fake),
+            ('freq', x_freq, z_dim,
+             causal_module.identity_freq.causal_learner_real,
+             causal_module.identity_freq.causal_learner_fake),
         ]
 
         for branch, x_input, z_dim, learner_real, learner_fake in branch_configs:
@@ -291,7 +299,7 @@ class CausalInterventionModule(nn.Module):
             (B, 28) concatenated cross-graph + intervention + differential.
         """
         cross_graph = self.compute_cross_graph_scores(
-            causal_out, causal_module.z_spatial_dim, causal_module.z_freq_dim)
+            causal_out, causal_module.z_causal_dim, causal_module.d_identity)
         intervention = self.compute_intervention_features(
             causal_module, augmented_semantic, z_spatial, z_freq)
         return torch.cat([cross_graph, intervention], dim=1)

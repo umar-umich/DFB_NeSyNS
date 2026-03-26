@@ -284,7 +284,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self._tier1_dim = 0
         if self.use_consistency_rules:
             self.consistency_rules = CrossAttributeConsistencyRules()
-            self._tier1_dim = cr_cfg.get('output_dim', 18)
+            self._tier1_dim = cr_cfg.get('output_dim', 20)
             actual_dim += self._tier1_dim
             logger.info(f"  Tier 1 (consistency): {self._tier1_dim} features")
 
@@ -320,9 +320,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.sparse_ae = DualBranchSparseAutoencoder(config)
         logger.info(f"  SAE output dim  : {self.sparse_ae.output_dim}")
 
-        # -- Module 3: Per-Branch Dual-Graph Causal Discovery ----------------
+        # -- Module 3: Dual Sub-Graph Causal Discovery (v3) -------------------
         self.use_causal = config['causal_module']['enabled']
-        # Build combined semantic attribute names for interpretable causal graphs
+        # Pass training rule names so causal module can label identity graph nodes
+        if self.use_consistency_rules:
+            config['_training_rule_names'] = self.consistency_rules.get_feature_names()
+        # Build combined semantic attribute names for interpretable graphs
         sem_attr_names = []
         if self.use_semantic_attrs and self.semantic_extractor:
             sem_attr_names.extend(self.semantic_extractor.get_attribute_names())
@@ -334,12 +337,11 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             config, semantic_attr_names=sem_attr_names if sem_attr_names else None)
 
         # -- NeSy Change 1: Causal Violation Attention Fusion ----------------
-        # The fused CLIP features (query) attend over the 4 causal violation
-        # residuals (keys/values), dynamically weighting which violations
-        # are most informative per sample.
-        # Dimensions come from causal module's actual compact graph size.
-        d_spatial = self.causal_module.d_spatial  # 16 + 48 = 64
-        d_freq = self.causal_module.d_freq        # 16 + 48 = 64
+        # The fused CLIP features (query) attend over 4 causal violation
+        # residuals (keys/values) — each is now the concatenation of
+        # identity + forensic sub-graph residuals per branch.
+        d_spatial = self.causal_module.d_spatial  # 103+62 = 165
+        d_freq = self.causal_module.d_freq        # 103+62 = 165
         proj_dim = config['fusion']['projection_dim']  # 1024
 
         attn_cfg = config.get('causal_attention', {})
@@ -395,8 +397,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         # -- Learnable causal gate (controls causal contribution to classifier) -
         # sigmoid(-1.5) ≈ 0.18 → causal delta starts partially active.
-        # With tractable 80-node graphs (z=32 + forensic=48), causal signal
-        # is meaningful earlier than with the previous 1072-node graphs.
+        # With dual sub-graphs (identity=103, forensic=62 nodes), causal signal
+        # captures both identity-constraint violations and pixel-level artifacts.
         self.causal_gate = nn.Parameter(torch.tensor(-1.5))
         logger.info(f"  Causal gate     : scalar (sigmoid, init={torch.sigmoid(torch.tensor(-1.5)).item():.3f})")
 
@@ -909,22 +911,29 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
                 # Structural losses: SCM must reconstruct its target class.
                 # z-feature portion weighted 3x to prevent semantic dominance.
+                # v3: residuals are concatenated [identity(103), forensic(62)].
+                # z_causal(32) is the first portion of each sub-graph's residual.
+                z_c = self.causal_module.z_causal_dim    # 32
+                d_id = self.causal_module.d_identity      # 103
                 for branch in ('spatial', 'freq'):
                     r_real = causal_out.get(f'residuals_{branch}_real')
                     r_fake = causal_out.get(f'residuals_{branch}_fake')
-                    z_dim = (self.causal_module.z_spatial_dim
-                             if branch == 'spatial'
-                             else self.causal_module.z_freq_dim)
 
                     if r_real is not None and real_mask.any():
                         r = r_real[real_mask]
-                        z_loss = r[:, :z_dim].pow(2).mean() * 3.0
-                        s_loss = r[:, z_dim:].pow(2).mean()
+                        # Identity sub-graph: z(0:32) + s(32:103)
+                        z_loss = r[:, :z_c].pow(2).mean() * 3.0
+                        s_loss = r[:, z_c:d_id].pow(2).mean()
+                        # Forensic sub-graph: z(103:135) + s(135:165)
+                        z_loss = z_loss + r[:, d_id:d_id+z_c].pow(2).mean() * 3.0
+                        s_loss = s_loss + r[:, d_id+z_c:].pow(2).mean()
                         causal_loss_real = causal_loss_real + z_loss + s_loss
                     if r_fake is not None and fake_mask.any():
                         r = r_fake[fake_mask]
-                        z_loss = r[:, :z_dim].pow(2).mean() * 3.0
-                        s_loss = r[:, z_dim:].pow(2).mean()
+                        z_loss = r[:, :z_c].pow(2).mean() * 3.0
+                        s_loss = r[:, z_c:d_id].pow(2).mean()
+                        z_loss = z_loss + r[:, d_id:d_id+z_c].pow(2).mean() * 3.0
+                        s_loss = s_loss + r[:, d_id+z_c:].pow(2).mean()
                         causal_loss_fake = causal_loss_fake + z_loss + s_loss
 
                 # Semantic graph structural loss (Part A)
@@ -938,20 +947,22 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
                 # Graph divergence: encourage real≠fake causal graphs.
                 # Negative L1 distance → pushes graphs apart for specialization.
+                # v3: 4 sub-graphs (2 branches × 2 sub-graph types)
                 for branch in ('spatial', 'freq'):
-                    A_r = causal_out.get(f'A_{branch}_real')
-                    A_f = causal_out.get(f'A_{branch}_fake')
-                    if A_r is not None and A_f is not None:
-                        graph_div_loss = graph_div_loss - torch.abs(A_r - A_f).mean()
+                    for subgraph in ('identity', 'forensic'):
+                        A_r = causal_out.get(f'A_{branch}_{subgraph}_real')
+                        A_f = causal_out.get(f'A_{branch}_{subgraph}_fake')
+                        if A_r is not None and A_f is not None:
+                            graph_div_loss = graph_div_loss - torch.abs(A_r - A_f).mean()
 
-                # DAG acyclicity penalties
+                # DAG acyclicity penalties (8 graphs: 2 branches × 2 sub-graphs × 2 dist)
                 cm = self.causal_module
                 branch_pairs_for_dag = [
-                    (cm.causal_spatial, 1.0),
-                    (cm.causal_freq, 1.0),
+                    (cm.identity_spatial, 1.0),
+                    (cm.identity_freq, 1.0),
+                    (cm.forensic_spatial, 1.0),
+                    (cm.forensic_freq, 1.0),
                 ]
-                if cm.use_semantic_graph and cm.causal_semantic is not None:
-                    branch_pairs_for_dag.append((cm.causal_semantic, 0.5))
                 for branch_pair, weight_mult in branch_pairs_for_dag:
                     causal_loss_real = causal_loss_real + (
                         dag_w * weight_mult

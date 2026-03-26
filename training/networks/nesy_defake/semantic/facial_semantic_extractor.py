@@ -210,6 +210,54 @@ FACEBENCH_ATTRIBUTES = [
 assert len(FACEBENCH_ATTRIBUTES) == 211, \
     f"Expected 211 FaceBench attributes, got {len(FACEBENCH_ATTRIBUTES)}"
 
+# ---------------------------------------------------------------------------
+# Curated attributes for the Identity-Causal sub-graph (v5, 2026-03-23)
+# ---------------------------------------------------------------------------
+# These ~51 attributes form natural causal chains that faceswap breaks:
+#   gender → facial_hair/makeup, age → skin/hair, expression → AU activations
+# They enter the causal graph as individual nodes alongside compressed CLIP
+# features. The remaining ~160 attributes stay in the classifier pathway
+# (semantic gate + projection) but NOT in the causal graph.
+#
+# Selection criteria:
+#   1. Forms a causal chain with other attributes (not standalone)
+#   2. CLIP spatial/frequency features can visually verify the attribute
+#   3. Faceswap plausibly disrupts the causal chain
+# ---------------------------------------------------------------------------
+CAUSAL_ATTRIBUTE_NAMES = [
+    # Group A: Gender anchors + gender-linked (11)
+    'male', 'female',
+    'beard', 'mustache', 'goatee', 'sideburns', 'stubble', 'clean_shaven',
+    'heavy_makeup', 'lipstick', 'eyeshadow',
+    # Group B: Age anchors + age-linked (9)
+    'young_looking', 'middle_aged', 'elderly_looking',
+    'smooth_skin', 'wrinkled_skin', 'age_spots', 'forehead_wrinkles',
+    'gray_hair', 'receding_hairline',
+    # Group C: Structural geometry (10)
+    'strong_jaw', 'narrow_jaw',
+    'thick_eyebrows', 'thin_eyebrows', 'bushy_eyebrows',
+    'large_nose', 'small_nose', 'broad_nose',
+    'double_chin', 'pointed_chin',
+    # Group D: Expression-AU coherence (15)
+    'neutral_expression', 'happy', 'sad', 'angry', 'surprised',
+    'AU1_inner_brow_raise', 'AU2_outer_brow_raise', 'AU4_brow_lowerer',
+    'AU5_upper_lid_raise', 'AU6_cheek_raise', 'AU9_nose_wrinkler',
+    'AU12_lip_corner_puller', 'AU14_dimpler', 'AU15_lip_corner_depressor',
+    'mouth_open',
+    # Group E: Skin tone coherence (4)
+    'fair_skin', 'medium_skin', 'dark_skin', 'olive_skin',
+    # Group F: Symmetry (2)
+    'symmetrical_face', 'asymmetrical_face',
+]
+
+# Build index mapping: attribute name → position in the 211-d vector
+_FB_INDEX = {name: idx for idx, name in enumerate(FACEBENCH_ATTRIBUTES)}
+CAUSAL_ATTRIBUTE_INDICES = [_FB_INDEX[name] for name in CAUSAL_ATTRIBUTE_NAMES]
+NUM_CAUSAL_ATTRIBUTES = len(CAUSAL_ATTRIBUTE_NAMES)
+
+assert NUM_CAUSAL_ATTRIBUTES == 51, \
+    f"Expected 51 causal attributes, got {NUM_CAUSAL_ATTRIBUTES}"
+
 
 class FacialSemanticExtractor(nn.Module):
     """
@@ -430,7 +478,7 @@ class FacialSemanticExtractor(nn.Module):
 
         logger.info(f"[FaceBench] Loading vision tower: {vision_tower_name}")
         self.vision_tower = CLIPVisionModel.from_pretrained(
-            vision_tower_name, dtype=dtype)
+            vision_tower_name) # , dtype=dtype
         self.vision_tower.eval()
 
         # --- Build mm_projector (mlp2x_gelu) ----------------------------------
@@ -450,8 +498,9 @@ class FacialSemanticExtractor(nn.Module):
         self.llm = LlamaForCausalLM.from_pretrained(
             str(model_path),
             torch_dtype=dtype,
-            attn_implementation="sdpa",
+            # attn_implementation="sdpa",
             low_cpu_mem_usage=True,
+            device_map={"": "cpu"},  # Force CPU load; .to(device) moves later
         )
 
         # --- Load tokenizer ---------------------------------------------------
@@ -723,8 +772,9 @@ class FacialSemanticExtractor(nn.Module):
                 visual_tokens = hidden_states
             # visual_tokens: (mb, 576, 1024)
 
-            # 2. MM projector
-            projected = self.mm_projector(visual_tokens)
+            # 2. MM projector (cast to projector dtype — vision tower may output BF16)
+            proj_dtype = next(self.mm_projector.parameters()).dtype
+            projected = self.mm_projector(visual_tokens.to(proj_dtype))
             # projected: (mb, 576, 5120)
 
             # 3. Average pool over spatial tokens
@@ -784,8 +834,9 @@ class FacialSemanticExtractor(nn.Module):
                 visual_tokens = hidden_states
             # visual_tokens: (mb, 576, 1024)
 
-            # 2. MM projector
-            projected = self.mm_projector(visual_tokens)
+            # 2. MM projector (cast to projector dtype — vision tower may output BF16)
+            proj_dtype = next(self.mm_projector.parameters()).dtype
+            projected = self.mm_projector(visual_tokens.to(proj_dtype))
             # projected: (mb, 576, 5120)
 
             # 3. Get text embeddings from LLM embedding layer
