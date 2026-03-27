@@ -13,7 +13,7 @@ cd /data/umar/Repos/DFB_NeSyNS
 echo "============================================================"
 echo "Step 1: Augmenting real frames (3 copies for 4:1 balance)"
 echo "============================================================"
-CUDA_VISIBLE_DEVICES=1 python training/augment_real_frames.py \
+CUDA_VISIBLE_DEVICES=1 python preprocessing/augment_real_frames.py \
     --detector_path training/config/detector/nesy_defake.yaml \
     --n_augmentations 3 \
     --workers 16 \
@@ -26,7 +26,7 @@ echo "============================================================"
 # This picks up both original and augmented frames from the _augmented JSON
 CUDA_VISIBLE_DEVICES=1 python preprocessing/precompute_semantic_features.py \
     --detector_path training/config/detector/nesy_defake.yaml \
-    --batch_size 64 \
+    --attr_batch_size 128 \
     --output_dir facellava_semantic \
     --skip_existing \
     --device cuda:0

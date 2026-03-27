@@ -69,16 +69,18 @@ balance_target_ratio: 0.5
 paired_training: true
 
 data_aug:
-  flip_prob:        0.5
-  rotate_prob:      0.3
-  rotate_limit:     [-10, 10]
-  blur_prob:        0.1
-  blur_limit:       [3, 5]
-  brightness_prob:  0.5
-  brightness_limit: [-0.1, 0.1]
-  contrast_limit:   [-0.1, 0.1]
-  quality_lower:    80
-  quality_upper:    100
+  flip_prob:            0.5
+  rotate_limit:         [-10, 10]
+  affine_translate:     [0.1, 0.1]
+  affine_scale:         [0.9, 1.1]
+  blur_prob:            0.1
+  blur_kernel_size:     7
+  blur_sigma:           [0.1, 2.0]
+  brightness_limit:     0.1
+  contrast_limit:       0.1
+  quality_lower:        40
+  quality_upper:        100
+  gaussian_noise_sigma: 0.0
 
 mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]

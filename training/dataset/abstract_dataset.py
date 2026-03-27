@@ -27,9 +27,7 @@ from torch.autograd import Variable
 from torch.utils import data
 from torchvision import transforms as T
 
-import albumentations as A
-
-from .albu import IsotropicResize
+from torchvision.transforms import v2 as Tv2
 
 FFpp_pool=['FaceForensics++','FaceShifter','DeepFakeDetection','FF-DF','FF-F2F','FF-FS','FF-NT']#
 
@@ -113,25 +111,74 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         self.transform = self.init_data_aug_method()
         
     def init_data_aug_method(self):
-        trans = A.Compose([           
-            A.HorizontalFlip(p=self.config['data_aug']['flip_prob']),
-            A.Rotate(limit=self.config['data_aug']['rotate_limit'], p=self.config['data_aug']['rotate_prob']),
-            A.GaussianBlur(blur_limit=self.config['data_aug']['blur_limit'], p=self.config['data_aug']['blur_prob']),
-            A.OneOf([                
-                IsotropicResize(max_side=self.config['resolution'], interpolation_down=cv2.INTER_AREA, interpolation_up=cv2.INTER_CUBIC),
-                IsotropicResize(max_side=self.config['resolution'], interpolation_down=cv2.INTER_AREA, interpolation_up=cv2.INTER_LINEAR),
-                IsotropicResize(max_side=self.config['resolution'], interpolation_down=cv2.INTER_LINEAR, interpolation_up=cv2.INTER_LINEAR),
-            ], p = 0 if self.config['with_landmark'] else 1),
-            A.OneOf([
-                A.RandomBrightnessContrast(brightness_limit=self.config['data_aug']['brightness_limit'], contrast_limit=self.config['data_aug']['contrast_limit']),
-                A.FancyPCA(),
-                A.HueSaturationValue()
-            ], p=0.5),
-            A.ImageCompression(quality_lower=self.config['data_aug']['quality_lower'], quality_upper=self.config['data_aug']['quality_upper'], p=0.2)
-        ], 
-            keypoint_params=A.KeypointParams(format='xy') if self.config['with_landmark'] else None
-        )
-        return trans
+        """Build torchvision v2 augmentation pipeline (GenD-style)."""
+        aug = self.config.get('data_aug', {})
+        transforms = []
+
+        # Horizontal flip
+        flip_p = aug.get('flip_prob', 0.5)
+        if flip_p > 0:
+            transforms.append(Tv2.RandomHorizontalFlip(p=flip_p))
+
+        # Random affine (rotation + translation + scale)
+        degrees = aug.get('rotate_limit', [-10, 10])
+        if isinstance(degrees, list):
+            degrees = max(abs(degrees[0]), abs(degrees[1]))
+        translate = aug.get('affine_translate', [0.1, 0.1])
+        scale = aug.get('affine_scale', [0.9, 1.1])
+        if degrees > 0 or translate is not None or scale is not None:
+            transforms.append(Tv2.RandomAffine(
+                degrees=degrees,
+                translate=tuple(translate) if translate else None,
+                scale=tuple(scale) if scale else None,
+            ))
+
+        # Gaussian blur
+        blur_p = aug.get('blur_prob', 0.1)
+        blur_kernel = aug.get('blur_kernel_size', 7)
+        blur_sigma = aug.get('blur_sigma', [0.1, 2.0])
+        if blur_p > 0:
+            transforms.append(Tv2.RandomApply(
+                [Tv2.GaussianBlur(kernel_size=blur_kernel, sigma=blur_sigma)],
+                p=blur_p,
+            ))
+
+        # Color jitter (brightness + contrast)
+        brightness = aug.get('brightness_limit', 0.1)
+        contrast = aug.get('contrast_limit', 0.1)
+        # Convert from [-x, x] list format to single float if needed
+        if isinstance(brightness, list):
+            brightness = max(abs(brightness[0]), abs(brightness[1]))
+        if isinstance(contrast, list):
+            contrast = max(abs(contrast[0]), abs(contrast[1]))
+        if brightness > 0 or contrast > 0:
+            transforms.append(Tv2.ColorJitter(
+                brightness=brightness,
+                contrast=contrast,
+            ))
+
+        # JPEG compression
+        quality_lower = aug.get('quality_lower', 40)
+        quality_upper = aug.get('quality_upper', 100)
+        if quality_lower < 100:
+            transforms.append(Tv2.JPEG([quality_lower, quality_upper]))
+
+        # Resize to target resolution
+        resolution = self.config.get('resolution', 224)
+        transforms.append(Tv2.Resize((resolution, resolution)))
+
+        # Gaussian noise
+        noise_sigma = aug.get('gaussian_noise_sigma', 0.0)
+        if noise_sigma > 0:
+            transforms.append(Tv2.Compose([
+                Tv2.ToTensor(),
+                Tv2.GaussianNoise(0.0, noise_sigma),
+                Tv2.ToPILImage(),
+            ]))
+
+        if len(transforms) == 0:
+            return None
+        return Tv2.Compose(transforms)
 
     def rescale_landmarks(self, landmarks, original_size=256, new_size=224):
         scale_factor = new_size / original_size
@@ -468,52 +515,39 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
 
     def data_aug(self, img, landmark=None, mask=None, augmentation_seed=None):
         """
-        Apply data augmentation to an image, landmark, and mask.
+        Apply data augmentation to an image (torchvision v2, GenD-style).
 
         Args:
-            img: An Image object containing the image to be augmented.
-            landmark: A numpy array containing the 2D facial landmarks to be augmented.
-            mask: A numpy array containing the binary mask to be augmented.
+            img: A numpy array (H, W, C) or PIL Image to be augmented.
+            landmark: Optional landmarks (passed through unchanged).
+            mask: Optional mask (passed through unchanged).
 
         Returns:
-            The augmented image, landmark, and mask.
+            The augmented image (numpy array), landmark, and mask.
         """
+        if self.transform is None:
+            return img, landmark, mask
 
-        # Set the seed for the random number generator
         if augmentation_seed is not None:
             random.seed(augmentation_seed)
             np.random.seed(augmentation_seed)
-        
-        # Create a dictionary of arguments
-        kwargs = {'image': img}
-        
-        # Check if the landmark and mask are not None
-        if landmark is not None:
-            kwargs['keypoints'] = landmark
-            kwargs['keypoint_params'] = A.KeypointParams(format='xy')
-        if mask is not None:
-            mask = mask.squeeze(2)
-            if mask.max() > 0:
-                kwargs['mask'] = mask
 
-        # Apply data augmentation
-        transformed = self.transform(**kwargs)
-        
-        # Get the augmented image, landmark, and mask
-        augmented_img = transformed['image']
-        augmented_landmark = transformed.get('keypoints')
-        augmented_mask = transformed.get('mask',mask)
+        # torchvision v2 operates on PIL images
+        if isinstance(img, np.ndarray):
+            pil_img = Image.fromarray(img)
+        else:
+            pil_img = img
 
-        # Convert the augmented landmark to a numpy array
-        if augmented_landmark is not None:
-            augmented_landmark = np.array(augmented_landmark)
+        augmented_pil = self.transform(pil_img)
 
-        # Reset the seeds to ensure different transformations for different videos
+        # Convert back to numpy for downstream compatibility
+        augmented_img = np.array(augmented_pil)
+
         if augmentation_seed is not None:
             random.seed()
             np.random.seed()
 
-        return augmented_img, augmented_landmark, augmented_mask
+        return augmented_img, landmark, mask
 
     def __getitem__(self, index, no_norm=False):
         """
