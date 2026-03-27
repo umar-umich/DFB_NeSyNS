@@ -64,10 +64,21 @@ class SemanticPrecomputer:
     """
 
     def __init__(self, config: dict, device: str = 'cuda:0',
-                 attr_batch_size: int = 211,
-                 load_4bit: bool = False, load_8bit: bool = False):
+                 attr_batch_size: int = 112,
+                 load_4bit: bool = False, load_8bit: bool = False,
+                 mode: str = 'combined'):
+        """
+        Args:
+            mode: 'combined' (default) — single structured prompt with all 211
+                      attributes, auto-chunked to fit context window.
+                      ~2 LLM forward passes per image.
+                  'per_attr' — individual yes/no prompt per attribute,
+                      batched together. Original FaceBench-native approach.
+                      ceil(211/attr_batch_size) passes per image.
+        """
         self.device = device
         self.attr_batch_size = attr_batch_size
+        self.mode = mode
         self.attr_names = self._get_attr_names()
 
         model_path = config.get('semantic_attributes', {}).get(
@@ -80,16 +91,20 @@ class SemanticPrecomputer:
          self.process_images_fn) = self._load_model(
             model_path, device, load_4bit, load_8bit)
 
-        # Pre-tokenize all 211 attribute prompts (CPU, done once)
-        (self.yes_ids_list, self.no_ids_list,
-         self.diff_pos_list) = self._pretokenize_prompts()
-
-        # Precompute visual offset (constant for the model)
+        # Visual offset: image token expands to num_patches visual tokens
         image_tower = self.model.get_image_tower()
         self.visual_offset = image_tower.num_patches - 1
-        self.img_tok_pos = (
-            self.yes_ids_list[0] == self.IMAGE_TOKEN_INDEX
-        ).nonzero(as_tuple=True)[0][0].item()
+
+        if mode == 'per_attr':
+            # Pre-tokenize all 211 individual attribute prompts (CPU, done once)
+            (self.yes_ids_list, self.no_ids_list,
+             self.diff_pos_list) = self._pretokenize_prompts()
+            self.img_tok_pos = (
+                self.yes_ids_list[0] == self.IMAGE_TOKEN_INDEX
+            ).nonzero(as_tuple=True)[0][0].item()
+        else:
+            # Combined mode: structured prompt, auto-chunked for context window
+            self._build_combined_prompt()
 
     @staticmethod
     def _get_attr_names():
@@ -220,6 +235,140 @@ class SemanticPrecomputer:
         print(f"[SemanticPrecomputer] Tokenization complete.")
         return yes_ids_list, no_ids_list, diff_pos_list
 
+    # ── Combined-prompt mode ──────────────────────────────────────────
+
+    def _build_combined_prompt(self):
+        """
+        Build combined prompts listing attributes with teacher-forced answers.
+        Auto-chunks into groups that fit within the model's context window
+        (2048 tokens after visual token expansion).
+
+        Prompt structure per chunk (LLaVA-v1 conversation template):
+          USER: <image>
+          For each facial attribute, predict 1 if present or 0 if absent.
+          ASSISTANT: black hair: 1\\nblonde hair: 1\\n...
+        """
+        context_limit = 2048
+
+        attr_display = [a.replace('_', ' ') for a in self.attr_names]
+        question = (
+            "For each facial attribute, predict 1 if present or 0 if "
+            "absent."
+        )
+        qs = self.DEFAULT_IMAGE_TOKEN + '\n' + question
+
+        def _make_chunk_ids(attr_subset):
+            answer_yes = '\n'.join(f' {a}: 1' for a in attr_subset)
+            answer_no = '\n'.join(f' {a}: 0' for a in attr_subset)
+
+            conv_y = self.conv_templates["llava_v1"].copy()
+            conv_y.append_message(conv_y.roles[0], qs)
+            conv_y.append_message(conv_y.roles[1], answer_yes)
+            ids_y = self.tokenizer_image_token_fn(
+                conv_y.get_prompt(), self.tokenizer,
+                self.IMAGE_TOKEN_INDEX, return_tensors='pt')
+
+            conv_n = self.conv_templates["llava_v1"].copy()
+            conv_n.append_message(conv_n.roles[0], qs)
+            conv_n.append_message(conv_n.roles[1], answer_no)
+            ids_n = self.tokenizer_image_token_fn(
+                conv_n.get_prompt(), self.tokenizer,
+                self.IMAGE_TOKEN_INDEX, return_tensors='pt')
+            return ids_y, ids_n
+
+        # Estimate max attrs per chunk that fits context
+        ids_1, _ = _make_chunk_ids(attr_display[:1])
+        ids_10, _ = _make_chunk_ids(attr_display[:10])
+        overhead = len(ids_1) + self.visual_offset
+        tokens_per_attr = (len(ids_10) - len(ids_1)) / 9.0
+        max_per_chunk = max(1, int((context_limit - overhead) / tokens_per_attr))
+
+        # Build chunks
+        self._combined_chunks = []
+        offset = 0
+
+        while offset < len(self.attr_names):
+            size = min(max_per_chunk, len(self.attr_names) - offset)
+            chunk_attrs = attr_display[offset:offset + size]
+            ids_yes, ids_no = _make_chunk_ids(chunk_attrs)
+            expanded = len(ids_yes) + self.visual_offset
+
+            # Shrink if still over limit
+            while expanded > context_limit and size > 1:
+                size = max(1, size - 10)
+                chunk_attrs = attr_display[offset:offset + size]
+                ids_yes, ids_no = _make_chunk_ids(chunk_attrs)
+                expanded = len(ids_yes) + self.visual_offset
+
+            assert len(ids_yes) == len(ids_no)
+
+            answer_positions = [
+                i for i in range(len(ids_yes))
+                if ids_yes[i] != ids_no[i]
+            ]
+            assert len(answer_positions) == size, (
+                f"Found {len(answer_positions)} answer positions, "
+                f"expected {size}")
+
+            img_tok_pos = (
+                ids_yes == self.IMAGE_TOKEN_INDEX
+            ).nonzero(as_tuple=True)[0][0].item()
+
+            self._combined_chunks.append({
+                'ids': ids_yes,
+                'answer_positions': answer_positions,
+                'img_tok_pos': img_tok_pos,
+                'yes_tok': ids_yes[answer_positions[0]].item(),
+                'no_tok': ids_no[answer_positions[0]].item(),
+                'attr_offset': offset,
+                'chunk_size': size,
+            })
+            offset += size
+
+        sizes = [c['chunk_size'] for c in self._combined_chunks]
+        print(f"[SemanticPrecomputer] Combined prompts: "
+              f"{len(self._combined_chunks)} chunk(s) of {sizes} attrs, "
+              f"context_limit={context_limit}")
+
+    def extract_attributes_combined(self, image_tensor) -> np.ndarray:
+        """
+        Combined-prompt extraction: auto-chunked LLM forward passes for
+        all 211 attributes.
+
+        Returns:
+            (211,) float32 numpy array of P(attribute present) in [0, 1].
+        """
+        device = self.model.device
+        scores = np.zeros(len(self.attr_names), dtype=np.float32)
+
+        for chunk in self._combined_chunks:
+            input_ids = chunk['ids'].unsqueeze(0).to(device)
+
+            with torch.inference_mode():
+                outputs = self.model(
+                    input_ids=input_ids,
+                    images=image_tensor,
+                    return_dict=True,
+                    use_cache=False,
+                )
+            logits = outputs.logits[0]  # (seq_len_expanded, vocab)
+
+            for i, pos in enumerate(chunk['answer_positions']):
+                if pos > chunk['img_tok_pos']:
+                    logit_pos = pos + self.visual_offset - 1
+                else:
+                    logit_pos = pos - 1
+                logit_pos = max(0, logit_pos)
+
+                yes_logit = logits[logit_pos, chunk['yes_tok']].float()
+                no_logit = logits[logit_pos, chunk['no_tok']].float()
+                scores[chunk['attr_offset'] + i] = torch.sigmoid(
+                    yes_logit - no_logit).item()
+
+        return scores
+
+    # ── Common helpers ────────────────────────────────────────────────
+
     def _prepare_image_tensor(self, img_pil):
         """Process a PIL image into the Face-LLaVA image tensor list."""
         image_tensor = self.process_images_fn(
@@ -237,15 +386,16 @@ class SemanticPrecomputer:
 
     def extract_attributes(self, image_tensor) -> np.ndarray:
         """
-        Run batched per-attribute teacher-forcing for a single image.
-
-        Args:
-            image_tensor: list of processed image tensors (from
-                          _prepare_image_tensor)
+        Extract 211 attribute scores via teacher-forcing.
+        Dispatches to combined or per-attribute mode based on self.mode.
 
         Returns:
             (211,) float32 numpy array of P(attribute present) in [0, 1].
         """
+        if self.mode == 'combined':
+            return self.extract_attributes_combined(image_tensor)
+
+        # per_attr mode
         n_attrs = len(self.attr_names)
         scores = np.zeros(n_attrs, dtype=np.float32)
         device = self.model.device
@@ -355,7 +505,14 @@ class SemanticPrecomputer:
         print("=" * 70)
         print("  SemanticPrecomputer — Single Image Demo")
         print(f"  Image:      {image_path}")
-        print(f"  Attr batch: {self.attr_batch_size} attrs/pass")
+        print(f"  Mode:       {self.mode}")
+        if self.mode == 'per_attr':
+            print(f"  Attr batch: {self.attr_batch_size} attrs/pass "
+                  f"({-(-len(self.attr_names) // self.attr_batch_size)} "
+                  f"passes)")
+        else:
+            n_chunks = len(self._combined_chunks)
+            print(f"  Chunks:     {n_chunks} pass(es)")
         print("=" * 70)
 
         scores = self.process_single_image(image_path)
@@ -393,6 +550,11 @@ def parse_args():
     parser.add_argument('--compression', type=str, default=None)
     parser.add_argument('--load_4bit', action='store_true')
     parser.add_argument('--load_8bit', action='store_true')
+    parser.add_argument('--mode', type=str, default='combined',
+                        choices=['combined', 'per_attr'],
+                        help='combined: structured prompt auto-chunked '
+                             '(~2 passes/image). '
+                             'per_attr: individual yes/no prompts batched.')
     # Demo mode
     parser.add_argument('--demo', type=str, default=None,
                         help='Single image path for demo/validation mode')
@@ -416,7 +578,8 @@ def main():
         config, device,
         attr_batch_size=args.attr_batch_size,
         load_4bit=args.load_4bit,
-        load_8bit=args.load_8bit)
+        load_8bit=args.load_8bit,
+        mode=args.mode)
 
     # --- Demo mode: single image validation ---
     if args.demo:
