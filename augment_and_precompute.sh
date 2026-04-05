@@ -27,6 +27,7 @@ echo "============================================================"
 CUDA_VISIBLE_DEVICES=1 python preprocessing/precompute_semantic_features.py \
     --detector_path training/config/detector/nesy_defake.yaml \
     --attr_batch_size 128 \
+    --image_batch_size 1 \
     --output_dir facellava_semantic \
     --skip_existing \
     --device cuda:0

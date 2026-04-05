@@ -65,20 +65,18 @@ class SemanticPrecomputer:
 
     def __init__(self, config: dict, device: str = 'cuda:0',
                  attr_batch_size: int = 112,
-                 load_4bit: bool = False, load_8bit: bool = False,
-                 mode: str = 'combined'):
+                 load_4bit: bool = False, load_8bit: bool = False):
         """
-        Args:
-            mode: 'combined' (default) — single structured prompt with all 211
-                      attributes, auto-chunked to fit context window.
-                      ~2 LLM forward passes per image.
-                  'per_attr' — individual yes/no prompt per attribute,
-                      batched together. Original FaceBench-native approach.
-                      ceil(211/attr_batch_size) passes per image.
+        Per-attribute teacher-forcing: each of 211 attributes gets its own
+        FaceBench-native yes/no prompt. Attributes are batched together
+        (attr_batch_size per forward pass). Multiple images can be batched
+        via process_video(image_batch_size=N).
+
+        With attr_batch_size=112: ceil(211/112) = 2 LLM passes per image.
+        With image_batch_size=N: processes N images in each pass.
         """
         self.device = device
         self.attr_batch_size = attr_batch_size
-        self.mode = mode
         self.attr_names = self._get_attr_names()
 
         model_path = config.get('semantic_attributes', {}).get(
@@ -95,16 +93,12 @@ class SemanticPrecomputer:
         image_tower = self.model.get_image_tower()
         self.visual_offset = image_tower.num_patches - 1
 
-        if mode == 'per_attr':
-            # Pre-tokenize all 211 individual attribute prompts (CPU, done once)
-            (self.yes_ids_list, self.no_ids_list,
-             self.diff_pos_list) = self._pretokenize_prompts()
-            self.img_tok_pos = (
-                self.yes_ids_list[0] == self.IMAGE_TOKEN_INDEX
-            ).nonzero(as_tuple=True)[0][0].item()
-        else:
-            # Combined mode: structured prompt, auto-chunked for context window
-            self._build_combined_prompt()
+        # Pre-tokenize all 211 individual attribute prompts (CPU, done once)
+        (self.yes_ids_list, self.no_ids_list,
+         self.diff_pos_list) = self._pretokenize_prompts()
+        self.img_tok_pos = (
+            self.yes_ids_list[0] == self.IMAGE_TOKEN_INDEX
+        ).nonzero(as_tuple=True)[0][0].item()
 
     @staticmethod
     def _get_attr_names():
@@ -235,140 +229,6 @@ class SemanticPrecomputer:
         print(f"[SemanticPrecomputer] Tokenization complete.")
         return yes_ids_list, no_ids_list, diff_pos_list
 
-    # ── Combined-prompt mode ──────────────────────────────────────────
-
-    def _build_combined_prompt(self):
-        """
-        Build combined prompts listing attributes with teacher-forced answers.
-        Auto-chunks into groups that fit within the model's context window
-        (2048 tokens after visual token expansion).
-
-        Prompt structure per chunk (LLaVA-v1 conversation template):
-          USER: <image>
-          For each facial attribute, predict 1 if present or 0 if absent.
-          ASSISTANT: black hair: 1\\nblonde hair: 1\\n...
-        """
-        context_limit = 2048
-
-        attr_display = [a.replace('_', ' ') for a in self.attr_names]
-        question = (
-            "For each facial attribute, predict 1 if present or 0 if "
-            "absent."
-        )
-        qs = self.DEFAULT_IMAGE_TOKEN + '\n' + question
-
-        def _make_chunk_ids(attr_subset):
-            answer_yes = '\n'.join(f' {a}: 1' for a in attr_subset)
-            answer_no = '\n'.join(f' {a}: 0' for a in attr_subset)
-
-            conv_y = self.conv_templates["llava_v1"].copy()
-            conv_y.append_message(conv_y.roles[0], qs)
-            conv_y.append_message(conv_y.roles[1], answer_yes)
-            ids_y = self.tokenizer_image_token_fn(
-                conv_y.get_prompt(), self.tokenizer,
-                self.IMAGE_TOKEN_INDEX, return_tensors='pt')
-
-            conv_n = self.conv_templates["llava_v1"].copy()
-            conv_n.append_message(conv_n.roles[0], qs)
-            conv_n.append_message(conv_n.roles[1], answer_no)
-            ids_n = self.tokenizer_image_token_fn(
-                conv_n.get_prompt(), self.tokenizer,
-                self.IMAGE_TOKEN_INDEX, return_tensors='pt')
-            return ids_y, ids_n
-
-        # Estimate max attrs per chunk that fits context
-        ids_1, _ = _make_chunk_ids(attr_display[:1])
-        ids_10, _ = _make_chunk_ids(attr_display[:10])
-        overhead = len(ids_1) + self.visual_offset
-        tokens_per_attr = (len(ids_10) - len(ids_1)) / 9.0
-        max_per_chunk = max(1, int((context_limit - overhead) / tokens_per_attr))
-
-        # Build chunks
-        self._combined_chunks = []
-        offset = 0
-
-        while offset < len(self.attr_names):
-            size = min(max_per_chunk, len(self.attr_names) - offset)
-            chunk_attrs = attr_display[offset:offset + size]
-            ids_yes, ids_no = _make_chunk_ids(chunk_attrs)
-            expanded = len(ids_yes) + self.visual_offset
-
-            # Shrink if still over limit
-            while expanded > context_limit and size > 1:
-                size = max(1, size - 10)
-                chunk_attrs = attr_display[offset:offset + size]
-                ids_yes, ids_no = _make_chunk_ids(chunk_attrs)
-                expanded = len(ids_yes) + self.visual_offset
-
-            assert len(ids_yes) == len(ids_no)
-
-            answer_positions = [
-                i for i in range(len(ids_yes))
-                if ids_yes[i] != ids_no[i]
-            ]
-            assert len(answer_positions) == size, (
-                f"Found {len(answer_positions)} answer positions, "
-                f"expected {size}")
-
-            img_tok_pos = (
-                ids_yes == self.IMAGE_TOKEN_INDEX
-            ).nonzero(as_tuple=True)[0][0].item()
-
-            self._combined_chunks.append({
-                'ids': ids_yes,
-                'answer_positions': answer_positions,
-                'img_tok_pos': img_tok_pos,
-                'yes_tok': ids_yes[answer_positions[0]].item(),
-                'no_tok': ids_no[answer_positions[0]].item(),
-                'attr_offset': offset,
-                'chunk_size': size,
-            })
-            offset += size
-
-        sizes = [c['chunk_size'] for c in self._combined_chunks]
-        print(f"[SemanticPrecomputer] Combined prompts: "
-              f"{len(self._combined_chunks)} chunk(s) of {sizes} attrs, "
-              f"context_limit={context_limit}")
-
-    def extract_attributes_combined(self, image_tensor) -> np.ndarray:
-        """
-        Combined-prompt extraction: auto-chunked LLM forward passes for
-        all 211 attributes.
-
-        Returns:
-            (211,) float32 numpy array of P(attribute present) in [0, 1].
-        """
-        device = self.model.device
-        scores = np.zeros(len(self.attr_names), dtype=np.float32)
-
-        for chunk in self._combined_chunks:
-            input_ids = chunk['ids'].unsqueeze(0).to(device)
-
-            with torch.inference_mode():
-                outputs = self.model(
-                    input_ids=input_ids,
-                    images=image_tensor,
-                    return_dict=True,
-                    use_cache=False,
-                )
-            logits = outputs.logits[0]  # (seq_len_expanded, vocab)
-
-            for i, pos in enumerate(chunk['answer_positions']):
-                if pos > chunk['img_tok_pos']:
-                    logit_pos = pos + self.visual_offset - 1
-                else:
-                    logit_pos = pos - 1
-                logit_pos = max(0, logit_pos)
-
-                yes_logit = logits[logit_pos, chunk['yes_tok']].float()
-                no_logit = logits[logit_pos, chunk['no_tok']].float()
-                scores[chunk['attr_offset'] + i] = torch.sigmoid(
-                    yes_logit - no_logit).item()
-
-        return scores
-
-    # ── Common helpers ────────────────────────────────────────────────
-
     def _prepare_image_tensor(self, img_pil):
         """Process a PIL image into the Face-LLaVA image tensor list."""
         image_tensor = self.process_images_fn(
@@ -384,18 +244,176 @@ class SemanticPrecomputer:
                     for i in range(image_tensor.shape[0])]
         return [image_tensor.to(self.model.device, dtype=torch.float16)]
 
+    def _encode_image(self, image_tensor_list) -> torch.Tensor:
+        """
+        Run the vision tower ONCE on a single image to get visual embeddings.
+
+        Args:
+            image_tensor_list: list of tensors from _prepare_image_tensor
+                               (typically 1 tensor of shape (3, 336, 336))
+
+        Returns:
+            (num_patches, hidden_dim) visual embeddings, e.g. (576, 4096)
+        """
+        img = image_tensor_list[0]
+        if img.ndim == 3:
+            img = img.unsqueeze(0)  # (1, 3, H, W)
+        with torch.inference_mode():
+            visual_emb = self.model.encode_images(img)  # (1, 576, 4096)
+        return visual_emb[0]  # (576, 4096)
+
+    def _encode_images_batch(self, image_tensor_lists: list) -> list:
+        """
+        Batch-encode multiple images through the vision tower (CLIP ViT-L).
+
+        CLIP ViT-L is small (~400M params) so batching is safe and fast.
+        This avoids N sequential vision tower calls.
+
+        Args:
+            image_tensor_lists: list of N image tensor lists from
+                                _prepare_image_tensor
+
+        Returns:
+            list of N tensors, each (num_patches, hidden_dim)
+        """
+        # Stack all images into (N, 3, H, W)
+        imgs = []
+        for itl in image_tensor_lists:
+            img = itl[0]
+            if img.ndim == 3:
+                img = img.unsqueeze(0)
+            imgs.append(img)
+        batch = torch.cat(imgs, dim=0)  # (N, 3, H, W)
+
+        with torch.inference_mode():
+            visual_embs = self.model.encode_images(batch)  # (N, 576, 4096)
+
+        return [visual_embs[i] for i in range(visual_embs.shape[0])]
+
+    def _build_inputs_embeds(self, input_ids_batch, visual_emb):
+        """
+        Build inputs_embeds by merging text token embeddings with pre-computed
+        visual embeddings. Replicates what prepare_inputs_labels_for_multimodal
+        does, but reuses a single pre-computed visual embedding.
+
+        Args:
+            input_ids_batch: (N, seq_len) padded token IDs with IMAGE_TOKEN_INDEX
+            visual_emb: (num_patches, hidden_dim) from _encode_image
+
+        Returns:
+            inputs_embeds: (N, expanded_seq_len, hidden_dim)
+            attention_mask: (N, expanded_seq_len)
+        """
+        device = self.model.device
+        N, seq_len = input_ids_batch.shape
+        num_patches = visual_emb.shape[0]  # 576
+
+        # Get text embeddings for all non-image tokens
+        embed_fn = self.model.get_model().embed_tokens
+
+        all_embeds = []
+        all_masks = []
+
+        for i in range(N):
+            ids = input_ids_batch[i]
+            # Find where the image token is
+            img_positions = (ids == self.IMAGE_TOKEN_INDEX).nonzero(
+                as_tuple=True)[0]
+
+            if len(img_positions) == 0:
+                # No image token — just embed text
+                text_emb = embed_fn(ids)
+                mask = (ids != (self.tokenizer.pad_token_id or 0)).long()
+                all_embeds.append(text_emb)
+                all_masks.append(mask)
+                continue
+
+            # Split around image token positions (typically just 1 image)
+            segments = []
+            masks = []
+            prev_end = 0
+            pad_id = self.tokenizer.pad_token_id or 0
+
+            for img_pos in img_positions:
+                img_pos = img_pos.item()
+                # Text tokens before image
+                if img_pos > prev_end:
+                    text_ids = ids[prev_end:img_pos]
+                    text_emb = embed_fn(text_ids)
+                    segments.append(text_emb)
+                    masks.append(
+                        (text_ids != pad_id).long())
+
+                # Insert visual embeddings (replacing the single image token)
+                segments.append(visual_emb)
+                masks.append(torch.ones(num_patches, dtype=torch.long,
+                                        device=device))
+                prev_end = img_pos + 1
+
+            # Text tokens after last image token
+            if prev_end < seq_len:
+                text_ids = ids[prev_end:]
+                text_emb = embed_fn(text_ids)
+                segments.append(text_emb)
+                masks.append(
+                    (text_ids != pad_id).long())
+
+            all_embeds.append(torch.cat(segments, dim=0))
+            all_masks.append(torch.cat(masks, dim=0))
+
+        # Pad to same length
+        max_len = max(e.shape[0] for e in all_embeds)
+        hidden_dim = visual_emb.shape[1]
+
+        inputs_embeds = torch.zeros(
+            N, max_len, hidden_dim, dtype=visual_emb.dtype, device=device)
+        attention_mask = torch.zeros(
+            N, max_len, dtype=torch.long, device=device)
+
+        for i, (emb, mask) in enumerate(zip(all_embeds, all_masks)):
+            cur_len = emb.shape[0]
+            inputs_embeds[i, :cur_len] = emb
+            attention_mask[i, :cur_len] = mask
+
+        return inputs_embeds, attention_mask
+
     def extract_attributes(self, image_tensor) -> np.ndarray:
         """
-        Extract 211 attribute scores via teacher-forcing.
-        Dispatches to combined or per-attribute mode based on self.mode.
+        Extract 211 attributes for a single image.
+
+        Encodes image ONCE through vision tower (CLIP ViT-L, small),
+        then runs LLM-only forward passes for attribute batches.
 
         Returns:
             (211,) float32 numpy array of P(attribute present) in [0, 1].
         """
-        if self.mode == 'combined':
-            return self.extract_attributes_combined(image_tensor)
+        visual_emb = self._encode_image(image_tensor)  # (576, 4096)
+        return self._extract_from_visual_emb(visual_emb)
 
-        # per_attr mode
+    def process_single_image(self, image_path: str) -> np.ndarray:
+        """
+        Extract 211 semantic attributes for a single image.
+
+        Returns:
+            (211,) float32 numpy array of attribute probabilities.
+        """
+        img_pil = Image.open(image_path).convert('RGB')
+        image_tensor = self._prepare_image_tensor(img_pil)
+        return self.extract_attributes(image_tensor)
+
+    def _extract_from_visual_emb(self, visual_emb: torch.Tensor) -> np.ndarray:
+        """
+        Run LLM-only attribute extraction using a pre-computed visual embedding.
+
+        This is the core LLM loop — called once per image. The vision tower
+        has already run; this only does LLM forward passes.
+
+        Args:
+            visual_emb: (num_patches, hidden_dim) from _encode_image
+
+        Returns:
+            (211,) float32 numpy array of P(attribute present).
+        """
         n_attrs = len(self.attr_names)
         scores = np.zeros(n_attrs, dtype=np.float32)
         device = self.model.device
@@ -405,36 +423,29 @@ class SemanticPrecomputer:
             batch_ids_yes = self.yes_ids_list[batch_start:batch_end]
             batch_diff = self.diff_pos_list[batch_start:batch_end]
 
-            # Pad to same length within this batch
             max_len = max(len(ids) for ids in batch_ids_yes)
             pad_id = self.tokenizer.pad_token_id or 0
 
             padded = torch.full(
                 (len(batch_ids_yes), max_len), pad_id, dtype=torch.long)
-            attention_mask = torch.zeros_like(padded)
             for bi, ids in enumerate(batch_ids_yes):
                 padded[bi, :len(ids)] = ids
-                attention_mask[bi, :len(ids)] = 1
-
             padded = padded.to(device)
-            attention_mask = attention_mask.to(device)
 
-            # Replicate image tensor for each attribute in this batch
-            batch_images = image_tensor * len(batch_ids_yes)
+            inputs_embeds, attention_mask = self._build_inputs_embeds(
+                padded, visual_emb)
 
             with torch.inference_mode():
                 outputs = self.model(
-                    input_ids=padded,
+                    inputs_embeds=inputs_embeds,
                     attention_mask=attention_mask,
-                    images=batch_images,
+                    images=None,
                     return_dict=True,
                     use_cache=False,
                 )
-            logits = outputs.logits  # (batch, seq_len_expanded, vocab)
+            logits = outputs.logits
 
-            # Extract yes/no logit at each attribute's answer position
             for bi, diff_pos in enumerate(batch_diff):
-                # Map diff_pos from input-ids space to expanded-logits space
                 if diff_pos > self.img_tok_pos:
                     logit_pos = diff_pos + self.visual_offset - 1
                 else:
@@ -452,71 +463,207 @@ class SemanticPrecomputer:
                 scores[batch_start + bi] = torch.sigmoid(
                     yes_logit - no_logit).item()
 
+            del outputs, logits, inputs_embeds, attention_mask
+            torch.cuda.empty_cache()
+
         return scores
 
-    def process_single_image(self, image_path: str) -> np.ndarray:
-        """
-        Extract 211 semantic attributes for a single image.
-
-        Returns:
-            (211,) float32 numpy array of attribute probabilities.
-        """
-        img_pil = Image.open(image_path).convert('RGB')
-        image_tensor = self._prepare_image_tensor(img_pil)
-        return self.extract_attributes(image_tensor)
-
-    def process_video(self, frame_paths: list) -> dict:
+    def process_video(self, frame_paths: list,
+                      image_batch_size: int = 8) -> dict:
         """
         Extract 211 semantic attributes for all frames in a video.
+
+        Two-stage pipeline that respects model sizes:
+          1. Vision tower (CLIP ViT-L, ~400M): batch-encode image_batch_size
+             images at once — fast and memory-safe.
+          2. LLM (LLaMA 13B): loop one image at a time, running
+             attr_batch_size attribute prompts per forward pass.
+
+        image_batch_size controls the CLIP vision tower batch, NOT the
+        LLM batch. The LLM always processes one image's attributes at
+        a time to avoid OOM.
 
         Returns:
             {'features': Tensor(n_frames, 211), 'frame_paths': List[str]}
         """
-        all_scores = []
+        valid_pils = []
         valid_paths = []
-
         for fp in frame_paths:
             if not os.path.exists(fp):
                 continue
             try:
-                scores = self.process_single_image(fp)
-                all_scores.append(scores)
+                img = Image.open(fp).convert('RGB')
+                valid_pils.append(img)
                 valid_paths.append(fp)
             except Exception as e:
-                print(f"  Warning: failed on {fp}: {e}")
+                print(f"  Warning: failed to load {fp}: {e}")
 
-        if not all_scores:
+        if not valid_pils:
             return None
 
-        features = torch.from_numpy(np.stack(all_scores))
+        all_scores = []
+
+        # Process in chunks of image_batch_size
+        for i in range(0, len(valid_pils), image_batch_size):
+            batch_pils = valid_pils[i:i + image_batch_size]
+
+            # Stage 1: Batch-encode through vision tower (CLIP, small model)
+            batch_tensors = [
+                self._prepare_image_tensor(p) for p in batch_pils]
+
+            if len(batch_tensors) == 1:
+                visual_embs = [self._encode_image(batch_tensors[0])]
+            else:
+                visual_embs = self._encode_images_batch(batch_tensors)
+
+            # Stage 2: Loop LLM per image (LLaMA 13B, big model)
+            for visual_emb in visual_embs:
+                scores = self._extract_from_visual_emb(visual_emb)
+                all_scores.append(scores[np.newaxis, :])
+
+        features = torch.from_numpy(np.concatenate(all_scores, axis=0))
         return {
             'features': features,
             'frame_paths': valid_paths,
         }
 
-    def demo(self, image_path: str, save_path: str = None,
-             top_k: int = 30):
+    def demo(self, demo_path: str, save_path: str = None,
+             top_k: int = 30, image_batch_size: int = 8):
         """
-        Run single-image demo using the exact same extraction path as
-        batch precomputation, then generate plots and text report.
+        Demo mode: validates extraction on a single image or a folder of
+        frames (to test batched extraction before full dataset run).
+
+        If demo_path is a directory, uses the two-stage pipeline
+        (batch CLIP, loop LLM per image) — same path as process_video.
+
+        If demo_path is a single image, processes it individually.
         """
         from demo_plot_helpers import report_and_plot
 
+        n_passes = -(-len(self.attr_names) // self.attr_batch_size)
+
+        # ── Folder mode: batch-process all frames ─────────────────────
+        if os.path.isdir(demo_path):
+            exts = {'.png', '.jpg', '.jpeg', '.bmp', '.webp'}
+            frame_paths = sorted([
+                os.path.join(demo_path, f) for f in os.listdir(demo_path)
+                if os.path.splitext(f)[1].lower() in exts
+            ])
+            if not frame_paths:
+                print(f"ERROR: No images found in {demo_path}")
+                return
+
+            print("=" * 70)
+            print("  SemanticPrecomputer — Batched Folder Demo")
+            print(f"  Folder:     {demo_path}")
+            print(f"  Frames:     {len(frame_paths)}")
+            print(f"  Img batch:  {image_batch_size}")
+            print(f"  Attr batch: {self.attr_batch_size} attrs/pass "
+                  f"({n_passes} passes)")
+            print("=" * 70)
+
+            # Load all images
+            pils, valid_paths = [], []
+            for fp in frame_paths:
+                try:
+                    pils.append(Image.open(fp).convert('RGB'))
+                    valid_paths.append(fp)
+                except Exception as e:
+                    print(f"  Warning: skipping {fp}: {e}")
+
+            if not pils:
+                print("ERROR: No valid images loaded.")
+                return
+
+            # Two-stage extraction (same code path as process_video)
+            # Stage 1: batch CLIP vision tower, Stage 2: loop LLM per image
+            import time
+            t0 = time.time()
+            all_scores = []
+            for i in range(0, len(pils), image_batch_size):
+                batch = pils[i:i + image_batch_size]
+                tensors = [self._prepare_image_tensor(p) for p in batch]
+                # Batch-encode through vision tower (CLIP, small)
+                if len(tensors) == 1:
+                    visual_embs = [self._encode_image(tensors[0])]
+                else:
+                    visual_embs = self._encode_images_batch(tensors)
+                # Loop LLM per image (LLaMA 13B, big)
+                for ve in visual_embs:
+                    scores = self._extract_from_visual_emb(ve)
+                    all_scores.append(scores[np.newaxis, :])
+            scores_mat = np.concatenate(all_scores, axis=0)  # (N, 211)
+            elapsed = time.time() - t0
+
+            n_frames = scores_mat.shape[0]
+            print(f"\nProcessed {n_frames} frames in {elapsed:.1f}s "
+                  f"({elapsed/n_frames:.2f}s/frame)")
+
+            # Per-frame summary
+            print(f"\n{'Frame':<45s} {'P>0.5':>6s}  "
+                  f"{'Mean':>6s}  {'Max':>6s}")
+            print("-" * 70)
+            for fi in range(n_frames):
+                fname = os.path.basename(valid_paths[fi])
+                s = scores_mat[fi]
+                print(f"  {fname:<43s} {(s > 0.5).sum():>4d}   "
+                      f"{s.mean():>.3f}  {s.max():>.3f}")
+
+            # Average across frames
+            avg_scores = scores_mat.mean(axis=0)
+            n_present = (avg_scores > 0.5).sum()
+            print(f"\n  Average across {n_frames} frames: "
+                  f"{n_present}/{len(avg_scores)} attrs present (P>0.5)")
+
+            sorted_idx = np.argsort(avg_scores)[::-1]
+            print(f"\n  TOP ATTRIBUTES (avg P > 0.5):")
+            for i in sorted_idx:
+                if avg_scores[i] <= 0.5:
+                    break
+                print(f"    {self.attr_names[i].replace('_', ' '):<35s} "
+                      f"{avg_scores[i]:.3f}")
+
+            # Compare with single-image extraction of first frame
+            print(f"\n  Validation: single-image vs batch for frame 0...")
+            single_scores = self.process_single_image(valid_paths[0])
+            diff = np.abs(single_scores - scores_mat[0])
+            print(f"    Max diff:  {diff.max():.6f}")
+            print(f"    Mean diff: {diff.mean():.6f}")
+            if diff.max() < 1e-4:
+                print(f"    PASS: batch matches single-image extraction")
+            else:
+                print(f"    WARNING: batch/single mismatch > 1e-4")
+
+            # Plot ALL frames
+            base_dir = save_path or demo_path
+            if save_path and not os.path.isdir(save_path):
+                base_dir = os.path.dirname(save_path) or demo_path
+            plot_dir = os.path.join(base_dir, 'demo_plots')
+            os.makedirs(plot_dir, exist_ok=True)
+
+            for fi in range(n_frames):
+                fname = os.path.splitext(
+                    os.path.basename(valid_paths[fi]))[0]
+                frame_save = os.path.join(
+                    plot_dir, f'{fname}_facebench_batch_demo.png')
+                report_and_plot(
+                    pils[fi], scores_mat[fi], self.attr_names,
+                    valid_paths[fi], save_path=frame_save,
+                    top_k=top_k, suffix='batch_demo')
+
+            print(f"\n  All {n_frames} frame plots saved to: {plot_dir}")
+            return
+
+        # ── Single image mode ────────────────────────────────────────
         print("=" * 70)
         print("  SemanticPrecomputer — Single Image Demo")
-        print(f"  Image:      {image_path}")
-        print(f"  Mode:       {self.mode}")
-        if self.mode == 'per_attr':
-            print(f"  Attr batch: {self.attr_batch_size} attrs/pass "
-                  f"({-(-len(self.attr_names) // self.attr_batch_size)} "
-                  f"passes)")
-        else:
-            n_chunks = len(self._combined_chunks)
-            print(f"  Chunks:     {n_chunks} pass(es)")
+        print(f"  Image:      {demo_path}")
+        print(f"  Attr batch: {self.attr_batch_size} attrs/pass "
+              f"({n_passes} passes)")
         print("=" * 70)
 
-        scores = self.process_single_image(image_path)
-        img_pil = Image.open(image_path).convert('RGB')
+        scores = self.process_single_image(demo_path)
+        img_pil = Image.open(demo_path).convert('RGB')
 
         n_present = (scores > 0.5).sum()
         print(f"\nResults: {n_present}/{len(scores)} attributes present "
@@ -533,7 +680,7 @@ class SemanticPrecomputer:
                   f"{scores[i]:.3f}")
 
         report_and_plot(
-            img_pil, scores, self.attr_names, image_path,
+            img_pil, scores, self.attr_names, demo_path,
             save_path=save_path, top_k=top_k, suffix='precomputer')
 
 
@@ -541,7 +688,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Precompute Face-LLaVA semantic features')
     parser.add_argument('--detector_path', type=str, required=True)
-    parser.add_argument('--attr_batch_size', type=int, default=128,
+    parser.add_argument('--attr_batch_size', type=int, default=211,
                         help='Number of attributes per forward pass '
                              '(higher=faster, more VRAM)')
     parser.add_argument('--output_dir', type=str, default='facellava_semantic')
@@ -550,14 +697,15 @@ def parse_args():
     parser.add_argument('--compression', type=str, default=None)
     parser.add_argument('--load_4bit', action='store_true')
     parser.add_argument('--load_8bit', action='store_true')
-    parser.add_argument('--mode', type=str, default='combined',
-                        choices=['combined', 'per_attr'],
-                        help='combined: structured prompt auto-chunked '
-                             '(~2 passes/image). '
-                             'per_attr: individual yes/no prompts batched.')
+    parser.add_argument('--image_batch_size', type=int, default=8,
+                        help='Images batched through CLIP vision tower. '
+                             'LLM always processes one image at a time. '
+                             'Higher = faster vision encoding, safe for '
+                             'VRAM since CLIP is small (~400M params).')
     # Demo mode
     parser.add_argument('--demo', type=str, default=None,
-                        help='Single image path for demo/validation mode')
+                        help='Image path or frames folder for demo. '
+                             'Folder mode tests batched extraction.')
     parser.add_argument('--save_path', type=str, default=None,
                         help='Output path for demo plot (demo mode only)')
     parser.add_argument('--top_k', type=int, default=30,
@@ -578,16 +726,16 @@ def main():
         config, device,
         attr_batch_size=args.attr_batch_size,
         load_4bit=args.load_4bit,
-        load_8bit=args.load_8bit,
-        mode=args.mode)
+        load_8bit=args.load_8bit)
 
-    # --- Demo mode: single image validation ---
+    # --- Demo mode: single image or folder validation ---
     if args.demo:
         if not os.path.exists(args.demo):
-            print(f"ERROR: Image not found: {args.demo}")
+            print(f"ERROR: Path not found: {args.demo}")
             sys.exit(1)
         precomputer.demo(args.demo, save_path=args.save_path,
-                         top_k=args.top_k)
+                         top_k=args.top_k,
+                         image_batch_size=args.image_batch_size)
         return
 
     # --- Batch precomputation mode ---
@@ -601,6 +749,7 @@ def main():
         return
 
     print(f"  Attr batch size: {args.attr_batch_size}")
+    print(f"  Image batch:     {args.image_batch_size}")
     print(f"  Output subdir:   {args.output_dir}")
 
     n_skipped = 0
@@ -619,7 +768,10 @@ def main():
             continue
 
         try:
-            result = precomputer.process_video(vid_info['frames'])
+            result = precomputer.process_video(
+                vid_info['frames'],
+                image_batch_size=args.image_batch_size,
+            )
             if result is None:
                 n_failed += 1
                 continue
