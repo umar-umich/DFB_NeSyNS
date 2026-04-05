@@ -591,10 +591,11 @@ class FrequencyFeatureExtractor(nn.Module):
     def _build_backbone(self, config: dict) -> None:
         name = self.model_name
         builders = {
-            'fad_clip':   self._build_fad_clip,
-            'clip_phase': self._build_clip_phase,
-            'spsl':       self._build_spsl,
-            'srm_resnet': self._build_srm_resnet,
+            'fad_clip':    self._build_fad_clip,
+            'fad_dinov2':  self._build_fad_dinov2,
+            'clip_phase':  self._build_clip_phase,
+            'spsl':        self._build_spsl,
+            'srm_resnet':  self._build_srm_resnet,
         }
         if name not in builders:
             raise ValueError(
@@ -641,6 +642,63 @@ class FrequencyFeatureExtractor(nn.Module):
         logger.info(
             f"[FreqExtractor] FADFrontEnd: {fad_params:,} trainable params, "
             f"mode={self.fad_mode}, learnable={self.fad_learnable}"
+        )
+
+    def _build_fad_dinov2(self, config: dict) -> None:
+        """
+        F3Net FAD front-end + DINOv2 vision encoder.
+
+        Same FAD frequency decomposition as fad_clip, but uses DINOv2 as
+        the backbone instead of CLIP. DINOv2 produces fine-grained spatial
+        features via self-supervised learning — potentially better at
+        detecting subtle frequency artifacts than CLIP's contrastive features.
+
+        DINOv2 uses CLS token from last_hidden_state (no projection head).
+        """
+        # torch.hub load — works with any transformers version.
+        # Maps config model_path to torch.hub model name.
+        hub_names = {
+            'facebook/dinov2-small':  'dinov2_vits14',
+            'facebook/dinov2-base':   'dinov2_vitb14',
+            'facebook/dinov2-large':  'dinov2_vitl14',
+            'facebook/dinov2-giant':  'dinov2_vitg14',
+        }
+        hub_name = hub_names.get(self.model_path)
+        if hub_name is None:
+            raise ValueError(
+                f"[FreqExtractor] Unknown DINOv2 model: '{self.model_path}'. "
+                f"Choose from: {list(hub_names.keys())}"
+            )
+
+        logger.info(f"[FreqExtractor] Loading DINOv2 via torch.hub: {hub_name}")
+        self.backbone = torch.hub.load(
+            'facebookresearch/dinov2', hub_name, pretrained=True)
+
+        dino_dims = {
+            'facebook/dinov2-small':  384,
+            'facebook/dinov2-base':   768,
+            'facebook/dinov2-large':  1024,
+            'facebook/dinov2-giant':  1536,
+        }
+        self.hidden_dim = dino_dims.get(self.model_path, 1024)
+        self.required_size = 224  # DINOv2 default input size (14×14 patches × 16px)
+
+        self.fad_front_end = FADFrontEnd(
+            img_size=self.required_size,
+            mode=self.fad_mode,
+            use_learnable=self.fad_learnable,
+            emphasis_init=self.emphasis_init,
+            clip_mean=self.clip_mean,
+            clip_std=self.clip_std,
+        )
+        self.phase_proj = None
+
+        fad_params = sum(p.numel() for p in self.fad_front_end.parameters()
+                         if p.requires_grad)
+        logger.info(
+            f"[FreqExtractor] FAD+DINOv2: {fad_params:,} FAD params, "
+            f"mode={self.fad_mode}, learnable={self.fad_learnable}, "
+            f"backbone_dim={self.hidden_dim}"
         )
 
     def _build_clip_phase(self, config: dict) -> None:
@@ -883,6 +941,43 @@ class FrequencyFeatureExtractor(nn.Module):
         with torch.cuda.amp.autocast(enabled=False):
             return self.freq_norm(raw.float())
 
+    def _forward_fad_dinov2(self, x):
+        """
+        FAD front-end → DINOv2 → SafeLayerNorm.
+
+        Same 3-stage precision strategy as fad_clip:
+          Stage 1 — FAD in FP32 (DCT precision)
+          Stage 2 — DINOv2 in BF16 (overflow-safe, same speed as FP16)
+          Stage 3 — SafeLayerNorm in FP32
+
+        torch.hub DINOv2 forward() returns CLS token directly: (B, D).
+        """
+        # ── Stage 1: FAD front-end in FP32 ────────────────────────────────
+        with torch.cuda.amp.autocast(enabled=False):
+            x = x.float()
+            _, _, H, W = x.shape
+            if H != self.required_size or W != self.required_size:
+                x = F.interpolate(
+                    x,
+                    size=(self.required_size, self.required_size),
+                    mode='bilinear',
+                    align_corners=False,
+                )
+            dino_input = self.fad_front_end(x)  # (B, 3, H, W) FP32
+
+        # ── Stage 2: DINOv2 backbone in BF16 ─────────────────────────────
+        use_bf16 = torch.cuda.is_bf16_supported()
+        if use_bf16:
+            with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                raw = self.backbone(dino_input)  # (B, D) CLS token
+        else:
+            with torch.cuda.amp.autocast(enabled=False):
+                raw = self.backbone(dino_input.float())  # (B, D)
+
+        # ── Stage 3: SafeLayerNorm in FP32 ────────────────────────────────
+        with torch.cuda.amp.autocast(enabled=False):
+            return self.freq_norm(raw.float())
+
     def _forward_clip_phase(self, x: torch.Tensor) -> torch.Tensor:
         """Legacy CLIP + phase map path."""
         with torch.cuda.amp.autocast(enabled=False):
@@ -933,10 +1028,11 @@ class FrequencyFeatureExtractor(nn.Module):
             (B, output_dim) — freq_norm'd features, NO internal projection.
         """
         dispatch = {
-            'fad_clip':   self._forward_fad_clip,
-            'clip_phase': self._forward_clip_phase,
-            'spsl':       self._forward_spsl,
-            'srm_resnet': self._forward_srm_resnet,
+            'fad_clip':    self._forward_fad_clip,
+            'fad_dinov2':  self._forward_fad_dinov2,
+            'clip_phase':  self._forward_clip_phase,
+            'spsl':        self._forward_spsl,
+            'srm_resnet':  self._forward_srm_resnet,
         }
         if self.model_name not in dispatch:
             raise ValueError(f"[FreqExtractor] Unknown model: {self.model_name}")

@@ -220,6 +220,8 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
         # If JSON file exists, do the following data collection
         # FIXME: ugly, need to be modified here.
         cp = None
+        if dataset_name == 'FaceForensics++_augmented':
+            dataset_name = 'FaceForensics++'
         if dataset_name == 'FaceForensics++_c40':
             dataset_name = 'FaceForensics++'
             cp = 'c40'

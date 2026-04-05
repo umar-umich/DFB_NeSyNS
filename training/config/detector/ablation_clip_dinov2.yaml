@@ -1,21 +1,11 @@
 # =============================================================================
-# NeSyDeFake Hybrid Detector — Configuration (v5 — dual sub-graph causal)
+# Ablation: Spatial (CLIP) + Frequency (FAD-DINOv2) — no NeSy overhead
 # =============================================================================
-# v5 changes (2026-03-23):
-#   - Dual sub-graph causal: identity-causal (103 nodes) + forensic-pixel (62 nodes)
-#   - Two-stage z compression: backbone(1024) → z_feature(128) → z_causal(32)
-#   - Curated 51 FaceBench attributes for identity sub-graph
-#   - Consistency rules: 18→20 training + 13 inference intervention rules
-#   - 8 total causal graphs (2 branches × 2 sub-graphs × 2 distributions)
-# v4 changes:
-#   - Removed dead modules: ViolationScorer, ConceptPredictionHead
-#   - Causal gate init: -3.0 (sigmoid≈0.05, conservative start)
-#   - SAE dict_size: 4096 → 1024 (fix 95% dead features)
-#   - Graph divergence re-added at small weight (0.01)
-#   - Per-tier normalization for semantic feature categories
+# Pure backbone ablation: CLIP for spatial, DINOv2-L for frequency branch.
+# All neuro-symbolic modules disabled (no semantic, causal, forensic, SAE).
 # =============================================================================
 
-log_dir: /data/umar/Repos/DFB_NeSyNS/logs_debug/nesydefake_hybrid
+log_dir: /data/umar/Repos/DFB_NeSyNS/ablation_results/logs_clip_dinov2
 
 model_name: nesydefake_hybrid
 backbone_name: multi_stream
@@ -48,7 +38,7 @@ with_landmark: false
 
 load_semantic_features: false
 
-class_weights: [0.7, 1.3]    # slight fake emphasis to reduce cross-dataset real bias
+class_weights: [0.7, 1.3]
 
 projection_dropout:
   spatial:   0.2
@@ -57,12 +47,12 @@ projection_dropout:
 # -----------------------------------------------------------------------------
 # Data loading & augmentation
 # -----------------------------------------------------------------------------
-train_batchSize: 120
-test_batchSize:  120
+train_batchSize: 180
+test_batchSize:  180
 workers:         12
 
-use_data_augmentation: false
-balance_classes:       false
+use_data_augmentation: true
+balance_classes:       true
 balance_target_ratio: 0.5
 
 # Source-paired training (GenD, WACV 2026)
@@ -132,16 +122,13 @@ uniformity_alignment:
   l2_normalize: true
 
 # -----------------------------------------------------------------------------
-# Semantic Feature Gate (generalization)
+# All NeSy modules DISABLED for clean ablation
 # -----------------------------------------------------------------------------
 semantic_gate:
-  enabled: true
+  enabled: false
 
-# -----------------------------------------------------------------------------
-# Facial Semantic Attributes (precomputed Face-LLaVA)
-# -----------------------------------------------------------------------------
 semantic_attributes:
-  enabled: true
+  enabled: false
   backend: precomputed
   precomputed_dim: 211
   precomputed_dir: facellava_semantic
@@ -151,128 +138,68 @@ semantic_attributes:
   fp16: true
   micro_batch_size: 16
 
-# -----------------------------------------------------------------------------
-# Tier 1: Cross-Attribute Consistency Rules (forensic)
-# -----------------------------------------------------------------------------
-# Differentiable violation scores computed from 211 FaceBench attributes.
-# Captures gender-attribute, expression-AU, and mutually-exclusive conflicts.
 consistency_rules:
-  enabled: true
+  enabled: false
   output_dim: 20
 
-# -----------------------------------------------------------------------------
-# Tier 2: Pixel-Level Forensic Features (precomputed)
-# -----------------------------------------------------------------------------
-# Boundary gradients, regional blur, L/R symmetry, color consistency,
-# frequency anomaly, quality metrics — extracted via SegFormer face parsing.
 forensic_features:
-  enabled: true           # Enable after running precompute_forensic_features.py
+  enabled: false
   output_dim: 30
   precomputed_dir: forensic_features
 
-# -----------------------------------------------------------------------------
-# Tier 3: Causal Intervention Module (train + inference)
-# -----------------------------------------------------------------------------
-# Neuro-symbolic reasoning via cross-graph scoring + do-calculus interventions.
-# 28 features: 8 cross-graph + 16 intervention stats + 4 differential response.
-# Computed under no_grad (no gradient to SCMs); ci_projection trains via cls loss.
 causal_intervention:
   enabled: false
   output_dim: 28
   top_k_interventions: 10
-  graph_guided_alpha: 0.5     # blend confidence (α) + graph importance (1-α)
-  ci_gate_init: -2.0          # sigmoid≈0.12, grows as module learns
+  graph_guided_alpha: 0.5
+  ci_gate_init: -2.0
 
-# -----------------------------------------------------------------------------
-# Semantic Projection (direct semantic → classifier pathway)
-# -----------------------------------------------------------------------------
-# Projects the 261-d gated semantic vector (211 FaceBench + 20 consistency +
-# 30 forensic) directly into the classifier space. This gives the classifier
-# explicit access to facial attribute signals — the causal module captures
-# anomaly patterns, while this pathway captures attribute presence/absence.
 semantic_projection:
   enabled: false
-  hidden_dim: 128          # bottleneck: 261 → 128 → 1024
+  hidden_dim: 128
   dropout: 0.2
-  gate_init: -1.0          # sigmoid≈0.27, grows with training
+  gate_init: -1.0
 
-# -----------------------------------------------------------------------------
-# Causal Attention Fusion
-# -----------------------------------------------------------------------------
-# The fused CLIP features (query) attend over the 4 causal residuals
-# (keys/values), dynamically selecting which are most informative.
 causal_attention:
   attn_dim: 256
 
-# -----------------------------------------------------------------------------
-# Module 3: Causal Discovery
-# -----------------------------------------------------------------------------
 causal_module:
   enabled: false
-  causal_warmup_batches: -1          # -1 = use all training batches
-
-  # z-dimensions: two-stage compression for causal graphs.
-  # Stage 1: SparseFeatureSelector projects 1024-d backbone → z_feature (128).
-  # Stage 2: CausalCompressor projects z_feature (128) → z_causal (32).
-  # Identity sub-graph: z_causal(32) + curated_attrs(51) + rules(20) = 103 nodes.
-  # Forensic sub-graph: z_causal(32) + forensic_feats(30) = 62 nodes.
-  # Both within DAGMA's validated range (20-120 nodes).
+  causal_warmup_batches: -1
   latent_variables:
     z_spatial_dim:    128
     z_frequency_dim:  128
     z_causal_dim:     32
-
-  semantic_dim: 211    # updated by detector at init (211+20+30=261)
-
-  # Dual sub-graph architecture (v3):
-  # - Identity-Causal: curated 51 FaceBench attrs + 20 consistency rules
-  #   (gender→facial_hair, age→skin, expression→AU causal chains)
-  # - Forensic-Pixel: 30 precomputed forensic features
-  #   (blur→boundary→frequency artifact chains)
-  # Total: 8 graphs (2 branches × 2 sub-graphs × 2 distributions)
+  semantic_dim: 211
   dual_subgraph: true
-
   discovery:
     algorithm:              dagma_dce
-    scm_type:               linear   # linear SCM for identifiable structure
+    scm_type:               linear
     max_parents:            3
     sparsity_penalty:       0.01
-    jacobian_every_n:       4        # irrelevant for linear (exact adjacency)
-    enforce_directionality: true     # block latent→forensic edges
-
-  # Semantic-only graph disabled (v2): demographics don't belong in
-  # causal graph; forensic features already capture inter-attribute
-  # relationships via consistency rules.
+    jacobian_every_n:       4
+    enforce_directionality: true
   semantic_graph:
     enabled:    false
     hidden_dim: 64
     num_layers: 2
-
   dag_learning:
     hidden_dim:          128
     num_layers:          2
     learning_rate:       0.001
     dag_penalty_weight:  0.1
 
-# -----------------------------------------------------------------------------
-# Module 4: Sparse Monosemantic Features (SAE)
-# -----------------------------------------------------------------------------
-# v4: Reduced dict_size 4096→1024 to fix 95% dead features.
-# With 1024 features and target_k=128, ~12.5% are active per sample,
-# making it much harder for features to die.
 sparse_features:
   enabled: false
   per_branch: false
-  dict_size: 1024              # was 4096 — 95% dead features
+  dict_size: 1024
   target_k: 128
   dead_feature_window: 200
   aux_loss_coeff: 0.2
   normalize_inputs: true
-
-  # Legacy config (kept for backward compat)
   sparse_autoencoder:
     input_dim:              1024
-    expansion_factor:       1       # updated to match dict_size=1024
+    expansion_factor:       1
     sparsity_penalty:       0.05
     l1_coefficient:         0.001
     target_active_features: 128
@@ -281,7 +208,7 @@ sparse_features:
     top_k_features:       10
 
 # -----------------------------------------------------------------------------
-# Module 5: Classifier (classification only)
+# Classifier (classification only)
 # -----------------------------------------------------------------------------
 classifier:
   type:       multi_task
@@ -294,50 +221,47 @@ classifier:
       loss_weight: 1.0
 
   hidden_dims: [512, 256]
-  dropout:     0.3              # reduced from 0.4
+  dropout:     0.3
 
 # -----------------------------------------------------------------------------
-# Loss function (v4: cleaned up — only active losses)
+# Loss function — classification only for ablation
 # -----------------------------------------------------------------------------
 loss_func:
   classification:         cross_entropy
   sparse_penalty:         l1_norm
   weights:
     classification:     1.0
-    causal:             0.01
-    sparse:             0.01
-    causal_semantic:    0.01
-    graph_divergence:   0.001
+    causal:             0.0
+    sparse:             0.0
+    causal_semantic:    0.0
+    graph_divergence:   0.0
 
-# Loss weight warm-up
-# Causal learning from epoch 0 — raw backbone features are informative
-# enough for graph discovery from the start.
 loss_warmup:
   causal:
     start_epoch: 0
     end_epoch: 15
-    start_weight: 0.001
-    end_weight: 0.1
+    start_weight: 0.0
+    end_weight: 0.0
   causal_fake:
     start_epoch: 0
     end_epoch: 15
-    start_weight: 0.0005
-    end_weight: 0.05
+    start_weight: 0.0
+    end_weight: 0.0
   sparse:
     start_epoch: 0
     end_epoch: 10
-    start_weight: 0.01
-    end_weight: 0.1
+    start_weight: 0.0
+    end_weight: 0.0
   causal_semantic:
     start_epoch: 0
     end_epoch: 15
-    start_weight: 0.001
-    end_weight: 0.05
+    start_weight: 0.0
+    end_weight: 0.0
   graph_divergence:
     start_epoch: 0
     end_epoch: 15
-    start_weight: 0.001
-    end_weight: 0.01
+    start_weight: 0.0
+    end_weight: 0.0
 
 # -----------------------------------------------------------------------------
 # Optimizer
@@ -375,11 +299,6 @@ save_feat:      true
 grad_clip:      1.0
 freq_grad_clip: 2.0
 
-# Single-phase training: all modules train from epoch 0.
-# Backbone LNs are unfrozen at init (GenD-style, see spatial/freq extractor configs).
-# Causal gate init=-3.0 (sigmoid≈0.05) naturally suppresses causal influence early on.
-# Causal warmup runs before epoch 0 to pre-populate EMA buffers.
-
 # -----------------------------------------------------------------------------
 # Metrics & interpretability
 # -----------------------------------------------------------------------------
@@ -387,10 +306,10 @@ metric_scoring:     auc
 additional_metrics: [acc, eer, ap]
 
 interpretability:
-  save_attention_maps:      true
-  save_causal_graphs:       true
-  save_feature_activations: true
-  save_sae_features:        true
+  save_attention_maps:      false
+  save_causal_graphs:       false
+  save_feature_activations: false
+  save_sae_features:        false
   visualization_frequency:  500
   graph_viz_top_k:          20
   graph_viz_every_n_epochs: 5

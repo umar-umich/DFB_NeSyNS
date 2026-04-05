@@ -1,0 +1,92 @@
+'thick_eyelashes', 'sparse_eyelashes',
+'large_eyes', 'small_eyes', 'narrow_eyes', 'wide_set_eyes',
+'hooded_eyes', 'dark_circles', 'puffy_eyes',
+ 'broad_nose','upturned_nose', 'long_nose', 'crooked_nose', 'flat_nose',
+
+
+
+  # -- Appearance: Hair (20) --
+    'black_hair', 'blonde_hair', 'brown_hair',
+    'long_hair' 'short_hair', 'straight_hair', 'wavy_hair', 'curly_hair', 'bangs',
+    'receding_hairline', 'hair_parted', 'ponytail', 
+    # -- Appearance: Forehead (3) --
+    'large_forehead', 'small_forehead', 'forehead_wrinkles',
+    # -- Appearance: Eyebrows (7) --
+    'arched_eyebrows', 'straight_eyebrows', 'thick_eyebrows',
+    'thin_eyebrows', 'bushy_eyebrows', 'unibrow', 'sparse_eyebrows',
+    # -- Appearance: Eyes (15) --
+    'brown_eyes', 'blue_eyes', 'green_eyes', 'hazel_eyes', 'black_eyes',
+    'large_eyes', 'small_eyes', 'narrow_eyes', 'wide_set_eyes',
+    'double_eyelid', 'single_eyelid', 'hooded_eyes',
+    'bags_under_eyes', 'dark_circles', 'puffy_eyes',
+    # -- Appearance: Eyelashes (3) --
+    'long_eyelashes', 'thick_eyelashes', 'sparse_eyelashes',
+    # -- Appearance: Nose (8) --
+    'large_nose', 'small_nose', 'pointed_nose', 'broad_nose',
+    'upturned_nose', 'long_nose', 'crooked_nose', 'flat_nose',
+    # -- Appearance: Mouth & Lips (10) --
+    'full_lips', 'thin_lips', 'wide_mouth', 'small_mouth',
+    'mouth_open', 'mouth_closed', 'smiling', 'frowning',
+    'teeth_visible', 'white_teeth',
+    # -- Appearance: Cheeks (4) --
+    'high_cheekbones', 'round_cheeks', 'hollow_cheeks', 'rosy_cheeks',
+    # -- Appearance: Chin & Jaw (6) --
+    'pointed_chin', 'round_chin', 'double_chin', 'cleft_chin',
+    'strong_jaw', 'narrow_jaw',
+    # -- Appearance: Face Shape (6) --
+    'oval_face', 'round_face', 'square_face', 'heart_shaped_face',
+    'long_face', 'diamond_face',
+    # -- Appearance: Ears (3) --
+    'large_ears', 'small_ears', 'protruding_ears',
+    # -- Appearance: Skin (15) --
+    'fair_skin', 'medium_skin', 'dark_skin', 'olive_skin', 'pale_skin',
+    'smooth_skin', 'wrinkled_skin', 'freckled_skin',
+    'acne', 'moles', 'scars', 'skin_blemishes',
+    'oily_skin', 'dry_skin', 'age_spots',
+    # -- Appearance: Facial Hair (6) --
+    'beard', 'mustache', 'goatee', 'sideburns', 'stubble', 'clean_shaven',
+    # -- Appearance: Neck (2) --
+    'long_neck', 'short_neck',
+    # -- Appearance: Age (5) --
+    'baby_face', 'young_looking', 'middle_aged', 'elderly_looking',
+    'age_ambiguous',
+    # -- Appearance: Other (3) --
+    'attractive', 'symmetrical_face', 'asymmetrical_face',
+    # -- Accessories (30) --
+    'eyeglasses', 'sunglasses', 'reading_glasses',
+    'round_glasses', 'rectangular_glasses', 'rimless_glasses',
+    'thick_frame_glasses',
+    'hat', 'baseball_cap', 'beanie', 'headband', 'turban', 'hood',
+    'stud_earrings', 'hoop_earrings', 'dangling_earrings',
+    'necklace', 'choker', 'pendant_necklace',
+    'nose_piercing', 'lip_piercing', 'ear_piercing',
+    'scarf', 'necktie', 'bowtie',
+    'face_mask', 'headphones', 'hair_clip', 'hair_band', 'veil',
+    # -- Makeup (13) --
+    'heavy_makeup', 'light_makeup', 'no_makeup',
+    'lipstick', 'red_lipstick', 'pink_lipstick', 'nude_lipstick',
+    'eyeshadow', 'eyeliner', 'mascara',
+    'blush', 'foundation', 'contour_makeup',
+    # -- Surrounding (12) --
+    'indoor_background', 'outdoor_background',
+    'plain_background', 'complex_background',
+    'bright_lighting', 'dim_lighting', 'natural_lighting',
+    'artificial_lighting', 'side_lighting',
+    'blurry_image', 'sharp_image', 'bokeh_background',
+    # -- Psychology: Expression (8) --
+    'neutral_expression', 'happy', 'sad', 'angry',
+    'surprised', 'fearful', 'disgusted', 'contemptuous',
+    # -- Psychology: Action Units (25) --
+    'AU1_inner_brow_raise', 'AU2_outer_brow_raise', 'AU4_brow_lowerer',
+    'AU5_upper_lid_raise', 'AU6_cheek_raise', 'AU7_lid_tightener',
+    'AU9_nose_wrinkler', 'AU10_upper_lip_raiser',
+    'AU11_nasolabial_deepener',
+    'AU12_lip_corner_puller', 'AU13_sharp_lip_puller', 'AU14_dimpler',
+    'AU15_lip_corner_depressor', 'AU16_lower_lip_depressor',
+    'AU17_chin_raiser',
+    'AU18_lip_pucker', 'AU20_lip_stretcher', 'AU22_lip_funneler',
+    'AU23_lip_tightener', 'AU24_lip_pressor', 'AU25_lips_part',
+    'AU26_jaw_drop', 'AU28_lip_suck', 'AU43_eyes_closed', 'AU45_blink',
+    # -- Identity (7) --
+    'male', 'female',
+    'east_asian', 'african', 'caucasian', 'hispanic', 'south_asian',

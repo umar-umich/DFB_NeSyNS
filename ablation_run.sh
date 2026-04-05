@@ -29,13 +29,13 @@ set -euo pipefail
 # ── Configurable paths ────────────────────────────────────────────────────────
 DETECTOR_PATH="./training/config/detector/nesy_defake.yaml"
 RESULTS_DIR="./ablation_results"
-LOG_DIR="${RESULTS_DIR}/logs_8_causal_semantic"   # subdir for this ablation set (change if running multiple sets)
+LOG_DIR="${RESULTS_DIR}/logs_genD"   # subdir for this ablation set
 PYTHON="python"          # or "python3"
 TORCHRUN="torchrun"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 MODE="single"            # single | ddp
-GPUS="7"                 # comma-separated GPU IDs
+GPUS="1"                 # comma-separated GPU IDs
 MASTER_PORT="29501"
 ONLY=""                  # if set, run only the experiment with this tag
 SEEDS="42 123 256 512 1024"   # seeds to sweep; override with --seeds "s1 s2 ..."
