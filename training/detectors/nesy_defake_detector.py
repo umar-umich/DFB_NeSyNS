@@ -260,6 +260,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        self.ablation_spatial_only = config.get('ablation_spatial_only', False)
 
         self.build_backbone(config)
         self.fusion = MultiModalFusion(config)
@@ -704,6 +705,34 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
     def forward(self, data_dict: dict, inference: bool = False) -> dict:
         device = data_dict['label'].device
 
+        # -- Ablation 1: Spatial-only shortcut (GenD-exact recipe) -----------
+        # Skips ALL NeSy modules: no fusion, no causal, no SAE, no semantic.
+        # Pipeline: CLIP → spatial_proj → linear classifier
+        if self.ablation_spatial_only:
+            raw_feats = self.extract_raw_features(data_dict)
+            spatial_raw = raw_feats['spatial_raw']
+            projected = self.spatial_proj(spatial_raw)
+            # L2-normalize for UA loss (if enabled)
+            l2_embeddings = F.normalize(projected, p=2, dim=1)
+            task_outputs = self.classifier(projected)
+            cls_logits = task_outputs['classification']
+            prob = torch.softmax(cls_logits, dim=1)[:, 1]
+            return {
+                'cls':            cls_logits,
+                'prob':           prob,
+                'feat':           projected,
+                'l2_embeddings':  l2_embeddings,
+                'spatial_feat':   spatial_raw,
+                'frequency_feat': None,
+                'z_spatial':      None,
+                'z_freq':         None,
+                'causal_out':     None,
+                'causal_primitives': None,
+                'task_outputs':   task_outputs,
+                'sae_loss':       torch.zeros(1, device=device),
+                'sae_info':       {},
+            }
+
         # -- Step 1: Extract raw branch features -----------------------------
         raw_feats = self.extract_raw_features(data_dict)
 
@@ -896,6 +925,22 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         cls_loss = self.cls_loss(pred_dict['cls'], label)
 
+        # -- Ablation 1: pure CE loss only -----------------------------------
+        if self.ablation_spatial_only:
+            def _scalar(t):
+                return t.squeeze() if isinstance(t, torch.Tensor) else t
+            return {
+                'overall':            _scalar(cls_loss),
+                'classification':     _scalar(cls_loss),
+                'causal_real':        torch.zeros(1, device=device).squeeze(),
+                'causal_fake':        torch.zeros(1, device=device).squeeze(),
+                'sparse':             torch.zeros(1, device=device).squeeze(),
+                'ua_alignment':       torch.zeros(1, device=device).squeeze(),
+                'ua_uniformity':      torch.zeros(1, device=device).squeeze(),
+                'causal_semantic':    torch.zeros(1, device=device).squeeze(),
+                'graph_divergence':   torch.zeros(1, device=device).squeeze(),
+            }
+
         # -- Per-branch dual-graph causal structural losses --------------------
         causal_loss_real = torch.zeros(1, device=device)
         causal_loss_fake = torch.zeros(1, device=device)
@@ -1055,6 +1100,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         auc, eer, acc, ap = calculate_metrics_for_train(
             label.detach().float(), pred.detach().float())
         metrics = {'acc': acc, 'auc': auc, 'eer': eer, 'ap': ap}
+
+        if self.ablation_spatial_only:
+            self.video_names = []
+            return metrics
 
         # SAE diagnostics
         sae_info = pred_dict.get('sae_info', {})

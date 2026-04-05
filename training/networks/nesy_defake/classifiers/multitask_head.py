@@ -107,19 +107,27 @@ class MultiTaskHead(nn.Module):
         hidden_dims = cls_cfg['hidden_dims']         # [512, 256]
         dropout     = cls_cfg['dropout']             # 0.4
         tasks_cfg   = cls_cfg['tasks']
+        self.linear_probe = cls_cfg.get('linear_probe', False)
 
         self.task_names = [t['name'] for t in tasks_cfg]
 
-        # One independent TaskMLP per task — no shared parameters
-        self.task_mlps = nn.ModuleDict()
-        for task in tasks_cfg:
-            self.task_mlps[task['name']] = TaskMLP(
-                input_dim=input_dim,
-                hidden_dims=hidden_dims,
-                dropout=dropout,
-                output_dim=task['output_dim'],
-                task_type=task['type'],
-            )
+        if self.linear_probe:
+            # GenD-style: simple Linear(input_dim, output_dim) per task
+            self.task_mlps = nn.ModuleDict()
+            for task in tasks_cfg:
+                self.task_mlps[task['name']] = nn.Linear(
+                    input_dim, task['output_dim'])
+        else:
+            # One independent TaskMLP per task — no shared parameters
+            self.task_mlps = nn.ModuleDict()
+            for task in tasks_cfg:
+                self.task_mlps[task['name']] = TaskMLP(
+                    input_dim=input_dim,
+                    hidden_dims=hidden_dims,
+                    dropout=dropout,
+                    output_dim=task['output_dim'],
+                    task_type=task['type'],
+                )
 
     def forward(self, x: torch.Tensor) -> dict:
         """
