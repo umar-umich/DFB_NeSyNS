@@ -67,6 +67,7 @@ from networks.nesy_defake.classifiers import MultiTaskHead
 from networks.nesy_defake.classifiers.sparse_autoencoder import DualBranchSparseAutoencoder
 from networks.nesy_defake.semantic import FacialSemanticExtractor
 from networks.nesy_defake.semantic.consistency_rules import CrossAttributeConsistencyRules
+from networks.nesy_defake.semantic.consistency_rules_v7 import CrossAttributeConsistencyRulesV7
 from networks.nesy_defake.semantic.forensic_features import (
     FORENSIC_FEATURE_NAMES, get_forensic_feature_names,
 )
@@ -261,6 +262,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         super().__init__()
         self.config = config
         self.ablation_spatial_only = config.get('ablation_spatial_only', False)
+        self.ablation_mode = config.get('ablation_mode', 'spatial_ce')
+        # ablation_mode values:
+        #   'spatial_ce'   → Ablation 1 (GenD baseline, CE loss)
+        #   'spatial_edl'  → Ablation 2 (spatial + EDL loss)
+        #   'concept_edl'  → Ablation 3 (spatial + concept branch + EDL)
+        #   'causal_edl'   → Ablation 4 (spatial + concept + causal + EDL)
+        self._current_epoch = 0
 
         self.build_backbone(config)
         self.fusion = MultiModalFusion(config)
@@ -268,6 +276,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # -- Module: Facial Semantic Attribute Extractor ----------------------
         sem_cfg = config.get('semantic_attributes', {})
         self.use_semantic_attrs = sem_cfg.get('enabled', False)
+        self.use_refined_features = config.get('use_refined_features', False)
+
         if self.use_semantic_attrs:
             self.semantic_extractor = FacialSemanticExtractor(config)
             actual_dim = self.semantic_extractor.output_dim
@@ -278,16 +288,31 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             self.semantic_extractor = None
             actual_dim = config['causal_module'].get('semantic_dim', 211)
 
+        # When using refined features, the dataset provides 122-d combined
+        # [fast(58) || vlm(64)] instead of 211-d FaceBench.
+        if self.use_refined_features:
+            from networks.nesy_defake.semantic.refined_attributes import (
+                NUM_COMBINED_FEATURES, COMBINED_FEATURE_NAMES)
+            actual_dim = NUM_COMBINED_FEATURES  # 122
+            self._combined_feature_names = list(COMBINED_FEATURE_NAMES)
+            logger.info(f"  Refined features: {actual_dim}-d combined "
+                        f"[fast(58) || vlm(64)]")
+
         # -- Tier 1: Cross-Attribute Consistency Rules -------------------------
         cr_cfg = config.get('consistency_rules', {})
         self.use_consistency_rules = (
             cr_cfg.get('enabled', False) and self.use_semantic_attrs)
         self._tier1_dim = 0
         if self.use_consistency_rules:
-            self.consistency_rules = CrossAttributeConsistencyRules()
-            self._tier1_dim = cr_cfg.get('output_dim', 20)
+            if self.use_refined_features:
+                self.consistency_rules = CrossAttributeConsistencyRulesV7()
+                self._tier1_dim = cr_cfg.get('output_dim', 23)
+                logger.info(f"  Tier 1 (consistency v7): {self._tier1_dim} features")
+            else:
+                self.consistency_rules = CrossAttributeConsistencyRules()
+                self._tier1_dim = cr_cfg.get('output_dim', 20)
+                logger.info(f"  Tier 1 (consistency): {self._tier1_dim} features")
             actual_dim += self._tier1_dim
-            logger.info(f"  Tier 1 (consistency): {self._tier1_dim} features")
 
         # -- Tier 2: Pixel-Level Forensic Features (precomputed) ---------------
         ff_cfg = config.get('forensic_features', {})
@@ -300,7 +325,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         # -- Per-tier normalization (prevents single LayerNorm from losing
         #    per-category signal structure across heterogeneous feature tiers) ---
-        base_sem_dim = sem_cfg.get('precomputed_dim', 211) if self.use_semantic_attrs else 0
+        if self.use_refined_features:
+            base_sem_dim = NUM_COMBINED_FEATURES if self.use_semantic_attrs else 0
+        else:
+            base_sem_dim = sem_cfg.get('precomputed_dim', 211) if self.use_semantic_attrs else 0
         if base_sem_dim > 0:
             self.tier0_norm = nn.LayerNorm(base_sem_dim)
         if self._tier1_dim > 0:
@@ -328,7 +356,9 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             config['_training_rule_names'] = self.consistency_rules.get_feature_names()
         # Build combined semantic attribute names for interpretable graphs
         sem_attr_names = []
-        if self.use_semantic_attrs and self.semantic_extractor:
+        if self.use_refined_features:
+            sem_attr_names.extend(self._combined_feature_names)
+        elif self.use_semantic_attrs and self.semantic_extractor:
             sem_attr_names.extend(self.semantic_extractor.get_attribute_names())
         if self.use_consistency_rules:
             sem_attr_names.extend(self.consistency_rules.get_feature_names())
@@ -438,6 +468,54 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         # -- Loss warm-up schedule -------------------------------------------
         self.loss_warmup_cfg = config.get('loss_warmup', {})
+
+        # -- Ablation 2/3/4: EDL loss + concept/causal branches ----------------
+        self._use_edl = self.ablation_mode in ('spatial_edl', 'concept_edl', 'causal_edl')
+        self._use_concept_branch = self.ablation_mode in ('concept_edl', 'causal_edl')
+        self._use_causal_branch = self.ablation_mode == 'causal_edl'
+
+        if self._use_edl:
+            from networks.nesy_defake.losses.edl_loss import EvidentialLoss
+            edl_cfg = config.get('edl', {})
+            self.edl_loss = EvidentialLoss(
+                num_classes=edl_cfg.get('num_classes', 2),
+                annealing_epochs=edl_cfg.get('annealing_epochs', 10),
+                kl_weight=edl_cfg.get('kl_weight', 0.1),
+                avu_weight=edl_cfg.get('avu_weight', 0.0),
+            )
+            logger.info(f"  EDL loss        : annealing={edl_cfg.get('annealing_epochs', 10)} epochs")
+
+        if self._use_concept_branch:
+            from networks.nesy_defake.concept_branch import ConceptBranch
+            cb_cfg = config.get('concept_branch', {})
+            self.concept_branch = ConceptBranch(
+                combined_dim=cb_cfg.get('combined_dim', 122),
+                rules_dim=cb_cfg.get('rules_dim', 23),
+                hidden_dim=cb_cfg.get('hidden_dim', 64),
+                dropout=cb_cfg.get('dropout', 0.2),
+            )
+            gate_cfg = config.get('evidence_gate', {})
+            self.concept_gate = nn.Parameter(
+                torch.tensor(float(gate_cfg.get('concept_init', -3.0))))
+            logger.info(f"  Concept branch  : gate_init={gate_cfg.get('concept_init', -3.0)}")
+
+        if self._use_causal_branch:
+            from networks.nesy_defake.concept_branch import SimplifiedCausalBranch
+            sc_cfg = config.get('causal_branch', {})
+            self.causal_branch = SimplifiedCausalBranch(
+                backbone_dim=sc_cfg.get('backbone_dim', 1024),
+                z_causal_dim=sc_cfg.get('z_causal_dim', 32),
+                curated_dim=sc_cfg.get('curated_dim', 51),
+                rules_dim=sc_cfg.get('rules_dim', 23),
+                forensic_dim=sc_cfg.get('forensic_dim', 30),
+                hidden_dim=sc_cfg.get('hidden_dim', 64),
+                sparsity_penalty=sc_cfg.get('sparsity_penalty', 0.01),
+            )
+            gate_cfg = config.get('evidence_gate', {})
+            self.causal_ev_gate = nn.Parameter(
+                torch.tensor(float(gate_cfg.get('causal_init', -3.0))))
+            self._dag_penalty_weight = sc_cfg.get('dag_penalty_weight', 0.05)
+            logger.info(f"  Causal branch   : gate_init={gate_cfg.get('causal_init', -3.0)}")
 
         # -- torch.compile on frozen backbones (speed optimization) -----------
         # Frozen modules have static graphs — torch.compile fuses ops and
@@ -591,6 +669,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         logger.info("SAE enabled")
 
     def update_loss_warmup(self, epoch: int, total_epochs: int) -> None:
+        self._current_epoch = epoch
         for loss_name, schedule in self.loss_warmup_cfg.items():
             start_epoch = schedule.get('start_epoch', 0)
             end_epoch = schedule.get('end_epoch', 10)
@@ -708,11 +787,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # -- Ablation 1: Spatial-only shortcut (GenD-exact recipe) -----------
         # Skips ALL NeSy modules: no fusion, no causal, no SAE, no semantic.
         # Pipeline: CLIP → spatial_proj → linear classifier
-        if self.ablation_spatial_only:
+        if self.ablation_spatial_only and not self._use_edl:
             raw_feats = self.extract_raw_features(data_dict)
             spatial_raw = raw_feats['spatial_raw']
             projected = self.spatial_proj(spatial_raw)
-            # L2-normalize for UA loss (if enabled)
             l2_embeddings = F.normalize(projected, p=2, dim=1)
             task_outputs = self.classifier(projected)
             cls_logits = task_outputs['classification']
@@ -732,6 +810,83 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 'sae_loss':       torch.zeros(1, device=device),
                 'sae_info':       {},
             }
+
+        # -- Ablation 2/3/4: EDL-based evidence fusion ----------------------
+        if self._use_edl:
+            raw_feats = self.extract_raw_features(data_dict)
+            spatial_raw = raw_feats['spatial_raw']
+            projected = self.spatial_proj(spatial_raw)
+            l2_embeddings = F.normalize(projected, p=2, dim=1)
+
+            # Spatial evidence: linear head → softplus
+            task_outputs = self.classifier(projected)
+            spatial_logits = task_outputs['classification']  # (B, 2)
+            spatial_evidence = F.softplus(spatial_logits.float())  # (B, 2)
+            total_evidence = spatial_evidence
+
+            # Concept evidence (Ablation 3+)
+            concept_out = None
+            if self._use_concept_branch:
+                combined_features = data_dict.get('precomputed_attrs')
+                if combined_features is not None:
+                    combined_features = combined_features.to(device)
+                    concept_out = self.concept_branch(combined_features)
+                    concept_gate = torch.sigmoid(self.concept_gate)
+                    total_evidence = total_evidence + concept_gate * concept_out['evidence']
+
+            # Causal evidence (Ablation 4)
+            causal_out = None
+            if self._use_causal_branch and concept_out is not None:
+                forensic_features = data_dict.get('forensic_features')
+                if forensic_features is not None:
+                    forensic_features = forensic_features.to(device)
+                    causal_out = self.causal_branch(
+                        spatial_raw=spatial_raw,
+                        combined_features=combined_features,
+                        violations=concept_out['violations'],
+                        forensic_features=forensic_features,
+                    )
+                    causal_gate = torch.sigmoid(self.causal_ev_gate)
+                    total_evidence = total_evidence + causal_gate * causal_out['evidence']
+
+            # Dirichlet prediction from fused evidence
+            alpha = total_evidence + 1.0
+            S = alpha.sum(dim=1, keepdim=True)
+            prob = (alpha / S)[:, 1]  # P(fake)
+            uncertainty = 2.0 / S.squeeze(1)
+
+            pred = {
+                'cls':               spatial_logits,
+                'prob':              prob,
+                'total_evidence':    total_evidence,
+                'spatial_evidence':  spatial_evidence,
+                'alpha':             alpha,
+                'uncertainty':       uncertainty,
+                'feat':              projected,
+                'l2_embeddings':     l2_embeddings,
+                'spatial_feat':      spatial_raw,
+                'frequency_feat':    None,
+                'z_spatial':         None,
+                'z_freq':            None,
+                'causal_out':        None,
+                'causal_primitives': None,
+                'task_outputs':      task_outputs,
+                'sae_loss':          torch.zeros(1, device=device),
+                'sae_info':          {},
+            }
+            if concept_out is not None:
+                pred['concept_evidence'] = concept_out['evidence']
+                pred['concept_gate'] = torch.sigmoid(self.concept_gate).detach()
+                pred['violations'] = concept_out['violations']
+            if causal_out is not None:
+                pred['causal_evidence'] = causal_out['evidence']
+                pred['causal_gate'] = torch.sigmoid(self.causal_ev_gate).detach()
+                pred['dag_penalty'] = causal_out['dag_penalty']
+                pred['A_identity_real'] = causal_out['A_identity_real']
+                pred['A_identity_fake'] = causal_out['A_identity_fake']
+                pred['A_forensic_real'] = causal_out['A_forensic_real']
+                pred['A_forensic_fake'] = causal_out['A_forensic_fake']
+            return pred
 
         # -- Step 1: Extract raw branch features -----------------------------
         raw_feats = self.extract_raw_features(data_dict)
@@ -762,8 +917,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         semantic_attrs = None   # initialise so Step 5a can safely reference it
 
         if self.use_causal:
-            # Compute semantic attributes from dedicated face analysis model
-            if self.use_semantic_attrs and self.semantic_extractor is not None:
+            # Compute semantic attributes
+            if self.use_refined_features:
+                # Refined mode: dataset provides 122-d combined [fast||vlm]
+                semantic_attrs = data_dict.get('precomputed_attrs')
+                if semantic_attrs is not None:
+                    semantic_attrs = semantic_attrs.to(device)
+            elif self.use_semantic_attrs and self.semantic_extractor is not None:
                 if self.semantic_extractor.is_precomputed:
                     # Use precomputed Face-LLaVA features from dataset
                     precomputed = data_dict.get('precomputed_attrs')
@@ -924,6 +1084,36 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     device=device, dtype=target_dtype)
 
         cls_loss = self.cls_loss(pred_dict['cls'], label)
+
+        # -- Ablation 2/3/4: EDL loss ----------------------------------------
+        if self._use_edl:
+            edl_out = self.edl_loss(
+                evidence=pred_dict['total_evidence'],
+                target=label,
+                epoch=self._current_epoch,
+            )
+            total_loss = edl_out['loss']
+
+            # Add DAG penalty for Ablation 4
+            dag_penalty = torch.zeros(1, device=device).squeeze()
+            if self._use_causal_branch and 'dag_penalty' in pred_dict:
+                dag_penalty = pred_dict['dag_penalty']
+                total_loss = total_loss + self._dag_penalty_weight * dag_penalty
+
+            return {
+                'overall':          total_loss,
+                'classification':   edl_out['loss'].detach(),
+                'edl_nll':          edl_out['loss_nll'],
+                'edl_kl':           edl_out['loss_kl'],
+                'dag_penalty':      dag_penalty.detach() if isinstance(dag_penalty, torch.Tensor) else dag_penalty,
+                'causal_real':      torch.zeros(1, device=device).squeeze(),
+                'causal_fake':      torch.zeros(1, device=device).squeeze(),
+                'sparse':           torch.zeros(1, device=device).squeeze(),
+                'ua_alignment':     torch.zeros(1, device=device).squeeze(),
+                'ua_uniformity':    torch.zeros(1, device=device).squeeze(),
+                'causal_semantic':  torch.zeros(1, device=device).squeeze(),
+                'graph_divergence': torch.zeros(1, device=device).squeeze(),
+            }
 
         # -- Ablation 1: pure CE loss only -----------------------------------
         if self.ablation_spatial_only:
@@ -1101,7 +1291,19 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             label.detach().float(), pred.detach().float())
         metrics = {'acc': acc, 'auc': auc, 'eer': eer, 'ap': ap}
 
-        if self.ablation_spatial_only:
+        if self.ablation_spatial_only and not self._use_edl:
+            self.video_names = []
+            return metrics
+
+        # EDL ablation metrics
+        if self._use_edl:
+            if 'uncertainty' in pred_dict:
+                metrics['uncertainty_mean'] = float(
+                    pred_dict['uncertainty'].detach().mean().item())
+            if 'concept_gate' in pred_dict:
+                metrics['concept_gate'] = float(pred_dict['concept_gate'].item())
+            if 'causal_gate' in pred_dict:
+                metrics['causal_gate'] = float(pred_dict['causal_gate'].item())
             self.video_names = []
             return metrics
 

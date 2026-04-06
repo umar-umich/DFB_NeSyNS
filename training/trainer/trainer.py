@@ -120,6 +120,7 @@ class Trainer(object):
         scheduler,
         logger,
         metric_scoring='auc',
+        log_dir=None,
         time_now=datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S'),
         swa_model=None
     ):
@@ -204,7 +205,9 @@ class Trainer(object):
         self.speed_up()
 
         self.timenow = time_now
-        if 'task_target' not in config:
+        if log_dir is not None:
+            self.log_dir = log_dir
+        elif 'task_target' not in config:
             self.log_dir = os.path.join(
                 self.config['log_dir'],
                 self.config['model_name'] + '_' + self.timenow
@@ -223,13 +226,13 @@ class Trainer(object):
     # ------------------------------------------------------------------
 
     def get_writer(self, phase, dataset_key, metric_key):
-        """TensorBoard writers are only created/used on rank 0."""
+        """TensorBoard writers — one per phase/dataset (not per metric)."""
         if not is_main_process():
             return None
-        writer_key = f"{phase}-{dataset_key}-{metric_key}"
+        writer_key = f"{phase}-{dataset_key}"
         if writer_key not in self.writers:
             writer_path = os.path.join(
-                self.log_dir, phase, dataset_key, metric_key, "metric_board"
+                self.log_dir, 'tensorboard', f"{phase}_{dataset_key}"
             )
             os.makedirs(writer_path, exist_ok=True)
             self.writers[writer_key] = SummaryWriter(writer_path)
@@ -271,9 +274,8 @@ class Trainer(object):
     def save_ckpt(self, phase, dataset_key, ckpt_info=None):
         if not is_main_process():
             return
-        save_dir = os.path.join(self.log_dir, phase, dataset_key)
-        os.makedirs(save_dir, exist_ok=True)
-        save_path = os.path.join(save_dir, "ckpt_best.pth")
+        save_path = os.path.join(
+            self.log_dir, f"best_{dataset_key}.pth")
         if self.config['ddp']:
             torch.save(self.model.module.state_dict(), save_path)
         else:
@@ -286,7 +288,7 @@ class Trainer(object):
             else:
                 torch.save(self.model.state_dict(), save_path)
         self.logger.info(
-            f"Checkpoint saved to {save_path}, current ckpt is {ckpt_info}")
+            f"Best checkpoint saved to {save_path} (epoch+iter: {ckpt_info})")
 
     def save_swa_ckpt(self):
         if not is_main_process():
@@ -663,17 +665,16 @@ class Trainer(object):
         test_step  = len(train_data_loader) // times_per_epoch
         step_cnt   = epoch * len(train_data_loader)
 
-        if is_main_process():
-            data_dict = train_data_loader.dataset.data_dict
-            self.save_data_dict(
-                'train', data_dict, ','.join(self.config['train_dataset']))
+        # Removed: save_data_dict for training data (large pickle, not needed)
 
         train_recorder_loss   = defaultdict(Recorder)
         train_recorder_metric = defaultdict(Recorder)
 
+        total_epochs = self.config.get('nEpochs', '?')
         for iteration, data_dict in tqdm(
             enumerate(train_data_loader),
             total=len(train_data_loader),
+            desc=f"Epoch {epoch}/{total_epochs}",
             disable=not is_main_process(),
         ):
             self.setTrain()
@@ -853,7 +854,6 @@ class Trainer(object):
 
             if self.config['save_ckpt'] and key not in FFpp_pool:
                 self.save_ckpt('test', key, f"{epoch}+{iteration}")
-            self.save_metrics('test', metric_one_dataset, key)
 
         if losses_one_dataset_recorder is not None:
             loss_str = f"dataset: {key}    step: {step}    "
@@ -894,10 +894,6 @@ class Trainer(object):
         keys = list(test_data_loaders.keys())
 
         for key in keys:
-            if is_main_process():
-                data_dict_meta = test_data_loaders[key].dataset.data_dict
-                self.save_data_dict('test', data_dict_meta, key)
-
             self.logger.info(f"Testing on {key}...")
             (losses_local, preds_local,
              labels_local, feats_local) = self.test_one_dataset(

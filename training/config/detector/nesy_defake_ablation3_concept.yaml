@@ -1,15 +1,25 @@
 # =============================================================================
-# Ablation 1: Spatial-only with GenD-exact settings
+# Ablation 3: Spatial + Concept Evidence Branch + EDL
 # =============================================================================
-# Purpose: Reproduce GenD_CLIP performance (~0.95 video AUROC on CDFv2) using
-# only the spatial branch. This establishes the baseline before adding NeSy
-# modules. Matches GenD settings exactly:
-#   - CLIP ViT-L/14 backbone, frozen, LayerNorms fine-tuned
-#   - Linear probe classifier (1024 → 2), no deep MLP
-#   - Pure CE loss (no auxiliary losses)
-#   - LR 3e-4, no weight decay, cosine annealing with 1 epoch warmup
-#   - Augmentations enabled
-#   - No class weights (balanced CE)
+# Purpose: Add neuro-symbolic concept evidence on top of the spatial branch.
+# The concept branch operates on precomputed semantic features (122-d) and
+# consistency rules (23-d), producing independent evidence that is fused
+# with the spatial branch's evidence via a learnable gate (init ~0.05).
+#
+# Evidence fusion:
+#   spatial_evidence   = softplus(linear_head(CLIP_features))
+#   concept_evidence   = softplus(concept_mlp(combined_features + rules))
+#   total_evidence     = spatial_evidence + gate * concept_evidence
+#   alpha = total_evidence + 1, uncertainty = K / sum(alpha)
+#
+# The concept branch has NO gradient path to CLIP — fully independent.
+# Gate starts near 0, so training begins as pure spatial (Ablation 1).
+#
+# Changes from Ablation 2:
+#   - ablation_mode: concept_edl
+#   - Loads precomputed fast(58) + vlm(64) = 122-d combined features
+#   - ConceptBranch: 145-d -> 64 -> 2 evidence
+#   - Evidence fusion gate (init -3.0, sigmoid ≈ 0.05)
 # =============================================================================
 
 log_dir: /data/umar/Repos/DFB_NeSyNS/logs_training
@@ -17,18 +27,32 @@ log_dir: /data/umar/Repos/DFB_NeSyNS/logs_training
 model_name: nesydefake_hybrid
 backbone_name: multi_stream
 
-# -----------------------------------------------------------------------------
-# Ablation flag: spatial-only mode
-# -----------------------------------------------------------------------------
-# When true, the detector skips ALL NeSy modules (causal, SAE, semantic,
-# fusion) and runs: CLIP → spatial_proj → linear head. Pure GenD recipe.
-ablation_spatial_only: true
+# -- Ablation flags -----------------------------------------------------------
+ablation_spatial_only: false
+ablation_mode: concept_edl
 
-# -----------------------------------------------------------------------------
-# Dataset
-# -----------------------------------------------------------------------------
+# -- EDL config ---------------------------------------------------------------
+edl:
+  num_classes: 2
+  annealing_epochs: 10
+  kl_weight: 0.1
+  avu_weight: 0.0
+
+# -- Concept branch config ----------------------------------------------------
+concept_branch:
+  enabled: true
+  combined_dim: 122
+  rules_dim: 23
+  hidden_dim: 64
+  dropout: 0.2
+
+# -- Evidence gate -------------------------------------------------------------
+evidence_gate:
+  concept_init: -3.0            # sigmoid ≈ 0.05
+
+# -- Dataset ------------------------------------------------------------------
 dataset_type: nesydefake
-active_branches: ['spatial']          # spatial only — no frequency branch
+active_branches: ['spatial']
 
 train_dataset: [FaceForensics++]
 test_dataset:  [FaceForensics++, Celeb-DF-v2]
@@ -38,9 +62,7 @@ all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
 
 compression: c23
 
-# -----------------------------------------------------------------------------
-# Frame configuration
-# -----------------------------------------------------------------------------
+# -- Frame config -------------------------------------------------------------
 video_mode: false
 frame_num:
   train: 32
@@ -49,28 +71,21 @@ frame_num:
 resolution:    224
 with_mask:     false
 with_landmark: false
-
 load_semantic_features: false
 
-# No class weights — GenD uses plain CE
-# class_weights: [0.7, 1.3]
-
 projection_dropout:
-  spatial:   0.0              # GenD: no dropout on projection
+  spatial:   0.0
   frequency: 0.0
 
-# -----------------------------------------------------------------------------
-# Data loading & augmentation — GenD uses augmentations
-# -----------------------------------------------------------------------------
-train_batchSize: 256          # GenD batch size
-test_batchSize:  512          # GenD test batch size (larger for speed)
+# -- Data loading & augmentation (GenD) ---------------------------------------
+train_batchSize: 256
+test_batchSize:  512
 workers:         12
 
-use_data_augmentation: true   # GenD enables augmentations
+use_data_augmentation: true
 balance_classes:       false
 balance_target_ratio: 0.5
-
-paired_training: true         # GenD-style source-paired training
+paired_training: true
 
 data_aug:
   flip_prob:            0.5
@@ -89,22 +104,41 @@ data_aug:
 mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]
 
-# -----------------------------------------------------------------------------
-# Foundation Models — GenD settings
-# -----------------------------------------------------------------------------
-foundation_models:
+# -- Precomputed semantic features (for concept branch) -----------------------
+semantic_attributes:
+  enabled: true
+  backend: precomputed
+  precomputed_dim: 211
+  precomputed_dir: facellava_semantic
+  output_dim: 211
+  model_path: /data/umar/Repos/FaceBench
+  use_llm: true
+  fp16: true
+  micro_batch_size: 16
 
+fast_semantic:
+  enabled: true
+  output_dim: 58
+  precomputed_dir: fast_semantic
+
+use_refined_features: true      # 122-d combined [fast(58) || vlm(64)]
+
+consistency_rules:
+  enabled: true
+  output_dim: 23
+
+# -- Foundation Models (GenD) -------------------------------------------------
+foundation_models:
   spatial:
     name:            clip
     model_path:      openai/clip-vit-large-patch14
     output_dim:      1024
     freeze_backbone: true
-    train_layernorms: true    # GenD fine-tunes LayerNorms!
+    train_layernorms: true
     normalization:
       mean: [0.481, 0.458, 0.408]
       std:  [0.269, 0.261, 0.276]
 
-  # Frequency branch present for config compat but inactive (not in active_branches)
   frequency:
     name:             fad_dinov2
     model_path:       facebook/dinov2-large
@@ -120,58 +154,34 @@ foundation_models:
       mean: [0.481, 0.458, 0.408]
       std:  [0.269, 0.261, 0.276]
 
-# Fusion — not used in spatial-only mode, but needed for config compat
 fusion:
   type:           attention
-  fused_dim:      1024        # single branch → 1024
+  fused_dim:      1024
   projection_dim: 1024
   dropout:        0.0
 
-# -----------------------------------------------------------------------------
-# ALL NeSy modules DISABLED
-# -----------------------------------------------------------------------------
+# -- ALL old NeSy modules DISABLED --------------------------------------------
 uniformity_alignment:
-  enabled: false              # GenD uses UA, but let's start pure CE first
-
+  enabled: false
 semantic_gate:
   enabled: false
-
-semantic_attributes:
-  enabled: false
-  backend: precomputed
-  precomputed_dim: 211
-  precomputed_dir: facellava_semantic
-  output_dim: 211
-  model_path: /data/umar/Repos/FaceBench
-  use_llm: true
-  fp16: true
-  micro_batch_size: 16
-
-consistency_rules:
-  enabled: false
-  output_dim: 20
-
 forensic_features:
   enabled: false
   output_dim: 30
   precomputed_dir: forensic_features
-
 causal_intervention:
   enabled: false
   output_dim: 28
   top_k_interventions: 10
   graph_guided_alpha: 0.5
   ci_gate_init: -2.0
-
 semantic_projection:
   enabled: false
   hidden_dim: 128
   dropout: 0.2
   gate_init: -1.0
-
 causal_attention:
   attn_dim: 256
-
 causal_module:
   enabled: false
   causal_warmup_batches: -1
@@ -179,7 +189,7 @@ causal_module:
     z_spatial_dim:    128
     z_frequency_dim:  128
     z_causal_dim:     32
-  semantic_dim: 211
+  semantic_dim: 122
   dual_subgraph: true
   discovery:
     algorithm:              dagma_dce
@@ -197,7 +207,6 @@ causal_module:
     num_layers:          2
     learning_rate:       0.001
     dag_penalty_weight:  0.1
-
 sparse_features:
   enabled: false
   per_branch: false
@@ -216,26 +225,20 @@ sparse_features:
     save_interpretations: true
     top_k_features:       10
 
-# -----------------------------------------------------------------------------
-# Classifier — LINEAR PROBE (GenD-style)
-# -----------------------------------------------------------------------------
+# -- Classifier (GenD linear probe) ------------------------------------------
 classifier:
   type:         multi_task
   input_dim:    1024
-  linear_probe: true          # Simple Linear(1024, 2) — no deep MLP
-
+  linear_probe: true
   tasks:
     - name:        classification
       type:        binary
       output_dim:  2
       loss_weight: 1.0
+  hidden_dims: [512, 256]
+  dropout:     0.3
 
-  hidden_dims: [512, 256]     # ignored when linear_probe=true
-  dropout:     0.3            # ignored when linear_probe=true
-
-# -----------------------------------------------------------------------------
-# Loss — PURE CE (GenD-style, no auxiliary losses)
-# -----------------------------------------------------------------------------
+# -- Loss (EDL — weights kept for compat) ------------------------------------
 loss_func:
   classification:         cross_entropy
   sparse_penalty:         l1_norm
@@ -248,32 +251,29 @@ loss_func:
 
 loss_warmup: {}
 
-# -----------------------------------------------------------------------------
-# Optimizer — GenD settings: AdamW, lr=3e-4, no weight decay
-# -----------------------------------------------------------------------------
+# -- Optimizer ----------------------------------------------------------------
 optimizer:
   type: adam
   adam:
-    lr: 0.0003                # GenD: 3e-4
+    lr: 0.0003
     beta1: 0.9
     beta2: 0.999
     eps: 0.00000001
-    weight_decay: 0.0         # GenD: no weight decay
+    weight_decay: 0.0
     amsgrad: false
   module_lr:
-    backbone_layernorms: 0.0003   # Same as base lr
+    backbone_layernorms: 0.0003
     always_trainable:    0.0003
     phase_proj:          0.0003
     projection_heads:    0.0003
     fusion:              0.0003
     classifier:          0.0003
+    concept_branch:      0.001   # concept branch learns faster
 
-# -----------------------------------------------------------------------------
-# Training schedule — GenD settings
-# -----------------------------------------------------------------------------
+# -- Schedule (GenD) ----------------------------------------------------------
 lr_scheduler:   cosine_warmup
-warmup_epochs:  1             # GenD: 1 epoch warmup (not 2)
-nEpochs:        50            # GenD: 50 epochs
+warmup_epochs:  1
+nEpochs:        50
 start_epoch:    0
 save_epoch:     1
 rec_iter:       100
@@ -284,9 +284,7 @@ save_feat:      true
 grad_clip:      1.0
 freq_grad_clip: 2.0
 
-# -----------------------------------------------------------------------------
-# Metrics
-# -----------------------------------------------------------------------------
+# -- Metrics ------------------------------------------------------------------
 metric_scoring:     auc
 additional_metrics: [acc, eer, ap]
 
@@ -299,9 +297,7 @@ interpretability:
   graph_viz_top_k:          20
   graph_viz_every_n_epochs: 5
 
-# -----------------------------------------------------------------------------
-# Hardware
-# -----------------------------------------------------------------------------
+# -- Hardware -----------------------------------------------------------------
 cuda:            true
 cudnn:           true
 mixed_precision: true

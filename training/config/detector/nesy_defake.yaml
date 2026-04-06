@@ -152,13 +152,30 @@ semantic_attributes:
   micro_batch_size: 16
 
 # -----------------------------------------------------------------------------
+# Fast Semantic Features (InsightFace + MediaPipe + DeepFace + py-feat)
+# -----------------------------------------------------------------------------
+# 58-d per frame: demographics(3), expression(8), AUs(23), pose(3),
+#   gaze(4), geometry(10), quality(7). Precomputed ~30ms/frame.
+fast_semantic:
+  enabled: true
+  output_dim: 58
+  precomputed_dir: fast_semantic
+
+# Refined features: combine fast(58) + VLM subset(64) = 122-d combined vector.
+# When true, dataset loader selects 64 VLM attrs from 211 FaceBench and
+# concatenates with 58 fast features. Consistency rules v7 operate on this.
+use_refined_features: true
+
+# -----------------------------------------------------------------------------
 # Tier 1: Cross-Attribute Consistency Rules (forensic)
 # -----------------------------------------------------------------------------
-# Differentiable violation scores computed from 211 FaceBench attributes.
-# Captures gender-attribute, expression-AU, and mutually-exclusive conflicts.
+# v7: 23 differentiable violation scores on 122-d combined vector.
+# Expression-AU coherence (9), cross-region identity mismatch (5),
+# VLM conflicts (3), skin/age (2), pose-gaze (1), landmark symmetry (2),
+# image quality (1).
 consistency_rules:
   enabled: true
-  output_dim: 20
+  output_dim: 23
 
 # -----------------------------------------------------------------------------
 # Tier 2: Pixel-Level Forensic Features (precomputed)
@@ -186,7 +203,7 @@ causal_intervention:
 # -----------------------------------------------------------------------------
 # Semantic Projection (direct semantic → classifier pathway)
 # -----------------------------------------------------------------------------
-# Projects the 261-d gated semantic vector (211 FaceBench + 20 consistency +
+# Projects the 175-d gated semantic vector (122 combined + 23 consistency v7 +
 # 30 forensic) directly into the classifier space. This gives the classifier
 # explicit access to facial attribute signals — the causal module captures
 # anomaly patterns, while this pathway captures attribute presence/absence.
@@ -222,11 +239,11 @@ causal_module:
     z_frequency_dim:  128
     z_causal_dim:     32
 
-  semantic_dim: 211    # updated by detector at init (211+20+30=261)
+  semantic_dim: 122    # updated by detector at init (122+23+30=175)
 
-  # Dual sub-graph architecture (v3):
-  # - Identity-Causal: curated 51 FaceBench attrs + 20 consistency rules
-  #   (gender→facial_hair, age→skin, expression→AU causal chains)
+  # Dual sub-graph architecture (v5):
+  # - Identity-Causal: 51 curated attrs from 122-d combined + 23 consistency rules v7
+  #   (gender→facial_hair, age→skin, expression→AU, pose→gaze causal chains)
   # - Forensic-Pixel: 30 precomputed forensic features
   #   (blur→boundary→frequency artifact chains)
   # Total: 8 graphs (2 branches × 2 sub-graphs × 2 distributions)

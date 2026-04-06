@@ -10,3 +10,4 @@
 **pretrained**
 *.onnx
 preprocessing/weights/
+runs/

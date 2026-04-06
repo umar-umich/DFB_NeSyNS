@@ -195,3 +195,21 @@ python preprocessing/analyze_feature_stability.py \
     --detector_path training/config/detector/nesy_defake.yaml \
     --n_videos 2 --top_k 40 50 60 --image_batch_size 8
 ```
+
+
+Test it:
+  # Single image
+  python preprocessing/precompute_semantic_features.py \
+      --detector_path training/config/detector/nesy_defake.yaml \
+      --demo /data/umar/Datasets/preprocessed/FaceForensics++/original_sequences/youtube/c23/frames/000/000.png
+
+  # Folder (32 frames, batch CLIP 8 at a time, loop LLM per image)
+  python preprocessing/precompute_semantic_features.py \
+      --detector_path training/config/detector/nesy_defake.yaml \
+      --demo /data/umar/Datasets/preprocessed/FaceForensics++/original_sequences/youtube/c23/frames/000 \
+      --image_batch_size 8
+
+  # Feature stability analysis (8 videos)
+  python preprocessing/analyze_feature_stability.py \
+      --detector_path training/config/detector/nesy_defake.yaml \
+      --n_videos 2 --top_k 40 50 60

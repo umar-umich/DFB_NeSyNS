@@ -466,3 +466,69 @@ consistency_rules:
 | `detectors/utils/graph_visualization.py` | Updated for 4 sub-graph pairs per branch |
 | `trainer/trainer.py` | Updated causal warmup EMA reporting for 4 sub-graph pairs |
 | `config/detector/nesy_defake.yaml` | z_dims, dual_subgraph, output_dim updates |
+
+Critical Differences Hurting Your Performance
+
+  ┌─────────────────┬─────────────────────────────┬────────────────────────────────┬─────────────────────────────────────┐
+  │     Factor      │          GenD_CLIP          │        Your NeSyDeFake         │               Impact                │
+  ├─────────────────┼─────────────────────────────┼────────────────────────────────┼─────────────────────────────────────┤
+  │ Classifier head │ Linear probe (1024→2)       │ 3-layer MLP (1024→512→256→2) + │ HIGH — deep head with heavy dropout │
+  │                 │                             │  Dropout(0.3)                  │  hurts with frozen features         │
+  ├─────────────────┼─────────────────────────────┼────────────────────────────────┼─────────────────────────────────────┤
+  │ Learning rate   │ 3e-4                        │ 1e-4                           │ MODERATE — lower LR may under-train │
+  │                 │                             │                                │  the head                           │
+  ├─────────────────┼─────────────────────────────┼────────────────────────────────┼─────────────────────────────────────┤
+  │ Weight decay    │ 0.0                         │ 1e-4                           │ MODERATE — unnecessary              │
+  │                 │                             │                                │ regularization on a tiny head       │
+  ├─────────────────┼─────────────────────────────┼────────────────────────────────┼─────────────────────────────────────┤
+  │                 │                             │ CE + 7 auxiliary losses        │ HIGH — auxiliary losses may         │
+  │ Loss function   │ Pure CE                     │ (causal, sparse, UA,           │ distract/destabilize                │
+  │                 │                             │ divergence)                    │                                     │
+  ├─────────────────┼─────────────────────────────┼────────────────────────────────┼─────────────────────────────────────┤
+  │ Augmentations   │ Enabled (flip, affine,      │ Disabled in v6 config          │ MODERATE — augmentation improves    │
+  │                 │ blur, JPEG, color jitter)   │                                │ generalization                      │
+  ├─────────────────┼─────────────────────────────┼────────────────────────────────┼─────────────────────────────────────┤
+  │ Video           │ Explicit mean of softmax    │ Implicit/unclear in eval       │ HIGH — may not be doing proper      │
+  │ aggregation     │ probs (+6% AUROC boost)     │ script                         │ video-level aggregation             │
+  ├─────────────────┼─────────────────────────────┼────────────────────────────────┼─────────────────────────────────────┤
+  │ Face crop       │ 256×256 → CLIP resize to    │ 224×224 directly               │ LOW-MODERATE — slight info loss     │
+  │ resolution      │ 224                         │                                │                                     │
+  ├─────────────────┼─────────────────────────────┼────────────────────────────────┼─────────────────────────────────────┤
+  │                 │ Max-spread deterministic    │                                │ MODERATE — temporal coverage        │
+  │ Frame selection │ (32 frames, maximally       │ May differ                     │ matters                             │
+  │                 │ spaced)                     │                                │                                     │
+  └─────────────────┴─────────────────────────────┴────────────────────────────────┴─────────────────────────────────────┘
+
+  Top Recommendations to Match GenD's Performance
+
+  1. Simplify your spatial-branch classifier head — Replace the deep MLP with a simple linear probe for the spatial branch,
+  matching GenD exactly:
+  # Instead of: Linear(1024,512) → LN → GELU → Drop(0.3) → Linear(512,256) → LN → GELU → Drop(0.3) → Linear(256,2)
+  # Use: Linear(1024, 2)
+
+  2. Disable all auxiliary losses initially — Train with pure CE first to establish a baseline matching GenD, then
+  incrementally add your NeSy losses.
+
+  3. Use GenD's hyperparameters for the spatial branch:
+  - LR: 3e-4 (not 1e-4)
+  - Weight decay: 0.0
+  - Cosine annealing with 1 epoch warmup
+
+  4. Enable augmentations — Your v6 config has use_data_augmentation: false. Turn it on.
+
+  5. Verify video-level aggregation — Make sure your test script averages frame softmax probabilities per video. This alone
+  accounts for ~6% AUROC improvement.
+
+  6. Match the face crop pipeline — Ensure you're using the same RetinaFace + alignment + scale=1.3 + 256×256 crop resolution,
+   then letting CLIP resize to 224.
+
+  Suggested Experiment Plan
+
+  1. Ablation 1: Train your spatial branch alone (disable frequency, causal, semantic) with GenD's exact settings (linear
+  head, lr=3e-4, CE only, augmentations on). This should reproduce ~0.95 AUROC.
+  2. Ablation 2: Add your frequency branch + fusion. Check if AUROC improves or degrades.
+  3. Ablation 3: Add NeSy modules one at a time, monitoring for regression.
+
+                                                             
+                                                                                                                              
+  Want me to implement any of these steps?   

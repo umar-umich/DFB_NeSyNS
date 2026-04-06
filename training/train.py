@@ -288,12 +288,29 @@ def choose_optimizer(model, config):
         if ci_mod is not None:
             _add(list(ci_mod.parameters()), g7)
 
+    # Group 8: Concept branch (Ablation 3+)
+    g8_concept = []
+    if hasattr(m, 'concept_branch'):
+        _add(list(m.concept_branch.parameters()), g8_concept)
+    if hasattr(m, 'concept_gate') and isinstance(m.concept_gate, nn.Parameter):
+        _add([m.concept_gate], g8_concept)
+
+    # Group 9: Causal branch (Ablation 4)
+    g9_causal = []
+    if hasattr(m, 'causal_branch'):
+        _add(list(m.causal_branch.parameters()), g9_causal)
+    if hasattr(m, 'causal_ev_gate') and isinstance(m.causal_ev_gate, nn.Parameter):
+        _add([m.causal_ev_gate], g9_causal)
+
     lr_backbone_ln = lr_cfg.get('backbone_layernorms', 1e-5)
     lr_always      = lr_cfg.get('always_trainable',    base_lr)
     lr_phase_proj  = lr_cfg.get('phase_proj',          base_lr * 3)
     lr_proj_heads  = lr_cfg.get('projection_heads',    base_lr)
     lr_fusion      = lr_cfg.get('fusion',              base_lr * 2)
     lr_classifier  = lr_cfg.get('classifier',          base_lr * 2)
+
+    lr_concept = lr_cfg.get('concept_branch', base_lr)
+    lr_causal_b = lr_cfg.get('causal_branch', base_lr)
 
     group_specs = [
         (g1, lr_backbone_ln, 'backbone_layernorms'),
@@ -303,6 +320,8 @@ def choose_optimizer(model, config):
         (g5, lr_fusion,      'fusion'),
         (g6, lr_classifier,  'classifier'),
         (g7, base_lr,        'optional_modules'),
+        (g8_concept, lr_concept,  'concept_branch'),
+        (g9_causal, lr_causal_b,  'causal_branch'),
     ]
 
     param_groups = []
@@ -465,7 +484,7 @@ def main():
     metric_scoring = choose_metric(config)
 
     trainer = Trainer(config, model, optimizer, scheduler, logger,
-                      metric_scoring, time_now=timenow)
+                      metric_scoring, log_dir=logger_path, time_now=timenow)
 
     best_metric = None
     # Early stopping state
@@ -475,10 +494,6 @@ def main():
     es_min_delta = es_cfg.get('min_delta', 0.001)
     es_best_score = float('-inf')
     es_wait = 0
-
-    # Periodic checkpoint saving
-    ckpt_cfg = config.get('checkpoint', {})
-    save_interval = ckpt_cfg.get('save_interval', 5)
 
     for epoch in range(config['start_epoch'], config['nEpochs'] + 1):
         if config['ddp'] and hasattr(train_data_loader.sampler, 'set_epoch'):
@@ -494,11 +509,7 @@ def main():
                 f"===> Epoch[{epoch}] end with testing "
                 f"{metric_scoring}: {parse_metric_for_print(best_metric)}!")
 
-            # Periodic checkpoint saving (for analysis)
-            if (save_interval > 0 and epoch % save_interval == 0
-                    and config.get('save_ckpt', True)):
-                trainer.save_ckpt('test', f'epoch_{epoch}', f'{epoch}')
-                logger.info(f"  Periodic checkpoint saved at epoch {epoch}")
+            # Periodic checkpoint saving removed — only best checkpoint is saved
 
             # Early stopping check on avg AUC
             if es_enabled and 'avg' in best_metric:
