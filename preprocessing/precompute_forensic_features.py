@@ -29,7 +29,8 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from config_utils import load_config, collect_videos_from_json
-from forensic_helpers import FEATURE_NAMES, extract_forensic_features
+from forensic_helpers import (FEATURE_NAMES, NUM_FORENSIC_FEATURES,
+                              extract_forensic_features)
 
 
 class ForensicPrecomputer:
@@ -62,11 +63,13 @@ class ForensicPrecomputer:
                                   SegformerForSemanticSegmentation)
         print("[ForensicFeatures] Loading SegFormer face parser...")
         model_name = "jonathandinu/face-parsing"
+        # 256×256 input is sufficient for region masks; fp16 for speed
         self._image_processor = SegformerImageProcessor.from_pretrained(
-            model_name)
+            model_name, size={'height': 256, 'width': 256})
         self._face_parser = SegformerForSemanticSegmentation.from_pretrained(
-            model_name).to(self.device).eval()
-        print(f"[ForensicFeatures] SegFormer loaded on {self.device}")
+            model_name).to(self.device).half().eval()
+        print(f"[ForensicFeatures] SegFormer loaded on {self.device} "
+              f"(fp16, 256×256)")
 
     def _init_insightface(self):
         try:
@@ -114,10 +117,13 @@ class ForensicPrecomputer:
     def get_parsing_maps_batch(self, images_rgb: list) -> list:
         pil_imgs = [Image.fromarray(img) for img in images_rgb]
         inputs = self._image_processor(
-            images=pil_imgs, return_tensors="pt").to(self.device)
+            images=pil_imgs, return_tensors="pt")
+        # Cast to fp16 to match model
+        inputs = {k: v.half().to(self.device) if v.dtype == torch.float32
+                  else v.to(self.device) for k, v in inputs.items()}
         with torch.no_grad():
             outputs = self._face_parser(**inputs)
-        logits = outputs.logits
+        logits = outputs.logits.float()  # upsample in fp32
 
         parsing_maps = []
         for i, img in enumerate(images_rgb):
@@ -186,14 +192,22 @@ class ForensicPrecomputer:
     # ------------------------------------------------------------------
 
     def process_video(self, frame_paths: list,
-                      batch_size: int = 32) -> dict:
+                      batch_size: int = 32,
+                      num_workers: int = 4) -> dict:
         """
         Process all frames of a video and return forensic features.
 
+        Pipeline (GPU + CPU overlapped):
+          - GPU: SegFormer parsing in batches
+          - CPU: forensic feature extraction in parallel threads
+                 (overlaps with next GPU batch)
+
         Returns:
-            {'features': Tensor(n_frames, 30), 'frame_paths': List[str],
-             'feature_names': List[str]}
+            {'features': Tensor(n_frames, NUM_FORENSIC_FEATURES),
+             'frame_paths': List[str], 'feature_names': List[str]}
         """
+        from concurrent.futures import ThreadPoolExecutor
+
         loaded = []
         for frame_path in frame_paths:
             try:
@@ -209,57 +223,63 @@ class ForensicPrecomputer:
 
         all_features = [None] * len(frame_paths)
 
-        for batch_start in range(0, len(loaded), batch_size):
-            batch_end = min(batch_start + batch_size, len(loaded))
-
-            batch_indices = []
-            batch_images_rgb = []
-            for i in range(batch_start, batch_end):
-                if loaded[i] is not None:
-                    batch_indices.append(i)
-                    batch_images_rgb.append(loaded[i][0])
-
-            if not batch_images_rgb:
-                for i in range(batch_start, batch_end):
-                    all_features[i] = np.zeros(30, dtype=np.float32)
-                continue
-
+        def _extract_cpu(idx, image_rgb, parsing_map):
+            """CPU forensic feature extraction for one frame."""
             try:
-                parsing_maps = self.get_parsing_maps_batch(batch_images_rgb)
-            except Exception as e:
-                print(f"  [WARNING] Batch parsing failed: {e}, "
-                      f"falling back to zeros")
-                parsing_maps = [
-                    np.zeros(img.shape[:2], dtype=np.int64)
-                    for img in batch_images_rgb
-                ]
+                feats = extract_forensic_features(image_rgb, parsing_map)
+                if self._mediapipe_detector is not None:
+                    feats[28] = self._extract_blendshape_symmetry(image_rgb)
+                all_features[idx] = feats
+            except Exception:
+                all_features[idx] = np.zeros(
+                    NUM_FORENSIC_FEATURES, dtype=np.float32)
 
-            for j, idx in enumerate(batch_indices):
-                image_rgb, image_bgr = loaded[idx]
+        with ThreadPoolExecutor(max_workers=num_workers) as pool:
+            pending_futures = []
+
+            for batch_start in range(0, len(loaded), batch_size):
+                batch_end = min(batch_start + batch_size, len(loaded))
+
+                batch_indices = []
+                batch_images_rgb = []
+                for i in range(batch_start, batch_end):
+                    if loaded[i] is not None:
+                        batch_indices.append(i)
+                        batch_images_rgb.append(loaded[i][0])
+
+                if not batch_images_rgb:
+                    for i in range(batch_start, batch_end):
+                        all_features[i] = np.zeros(
+                            NUM_FORENSIC_FEATURES, dtype=np.float32)
+                    continue
+
+                # GPU: SegFormer batch parsing
                 try:
-                    feats = extract_forensic_features(
-                        image_rgb, parsing_maps[j])
-
-                    if self._insightface_app is not None:
-                        antispoof, det_score = (
-                            self._extract_insightface_quality(image_bgr))
-                        feats[26] = antispoof
-                        feats[27] = det_score
-
-                    if self._mediapipe_detector is not None:
-                        feats[28] = self._extract_blendshape_symmetry(
-                            image_rgb)
-
-                    all_features[idx] = feats
+                    parsing_maps = self.get_parsing_maps_batch(
+                        batch_images_rgb)
                 except Exception as e:
-                    print(f"  [WARNING] Failed on {frame_paths[idx]}: {e}")
-                    all_features[idx] = np.zeros(30, dtype=np.float32)
+                    print(f"  [WARNING] Batch parsing failed: {e}")
+                    parsing_maps = [
+                        np.zeros(img.shape[:2], dtype=np.int64)
+                        for img in batch_images_rgb
+                    ]
 
-            torch.cuda.empty_cache()
+                # CPU: submit forensic extraction to thread pool
+                # (overlaps with next GPU batch)
+                for j, idx in enumerate(batch_indices):
+                    image_rgb = loaded[idx][0]
+                    pending_futures.append(
+                        pool.submit(_extract_cpu, idx,
+                                    image_rgb, parsing_maps[j]))
+
+            # Wait for all CPU work to finish
+            for f in pending_futures:
+                f.result()
 
         for i in range(len(all_features)):
             if all_features[i] is None:
-                all_features[i] = np.zeros(30, dtype=np.float32)
+                all_features[i] = np.zeros(
+                    NUM_FORENSIC_FEATURES, dtype=np.float32)
 
         features_tensor = torch.from_numpy(np.stack(all_features))
         return {
@@ -277,9 +297,18 @@ def parse_args():
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--skip_existing', action='store_true')
     parser.add_argument('--compression', type=str, default=None)
-    parser.add_argument('--no_insightface', action='store_true')
-    parser.add_argument('--no_mediapipe', action='store_true')
-    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--no_insightface', action='store_true', default=True,
+                        help='Disable InsightFace (antispoof=None in buffalo_l,'
+                             ' det_score already in fast_semantic). Default: off')
+    parser.add_argument('--use_insightface', action='store_true',
+                        help='Enable InsightFace (slow, ~182ms/frame)')
+    parser.add_argument('--no_mediapipe', action='store_true', default=True,
+                        help='Disable MediaPipe. Default: off')
+    parser.add_argument('--use_mediapipe', action='store_true')
+    parser.add_argument('--batch_size', type=int, default=128,
+                        help='Frames per SegFormer GPU batch')
+    parser.add_argument('--workers', type=int, default=4,
+                        help='CPU threads for forensic feature extraction')
     parser.add_argument('--max_frames', type=int, default=0)
     return parser.parse_args()
 
@@ -291,13 +320,15 @@ def main():
         config['compression'] = args.compression
 
     print("=" * 60)
-    print("Forensic Feature Precomputation (Tier 2, 30-d)")
+    print(f"Forensic Feature Precomputation ({NUM_FORENSIC_FEATURES}-d)")
     print("=" * 60)
 
+    use_insightface = args.use_insightface and not args.no_insightface
+    use_mediapipe = args.use_mediapipe and not args.no_mediapipe
     precomputer = ForensicPrecomputer(
         device=args.device,
-        use_insightface=not args.no_insightface,
-        use_mediapipe=not args.no_mediapipe,
+        use_insightface=use_insightface,
+        use_mediapipe=use_mediapipe,
     )
 
     videos = collect_videos_from_json(config)
@@ -307,6 +338,7 @@ def main():
 
     print(f"\n  Output subdir: {args.output_dir}")
     print(f"  Batch size: {args.batch_size}")
+    print(f"  Workers: {args.workers} CPU threads")
 
     n_skipped = 0
     n_processed = 0
@@ -329,7 +361,8 @@ def main():
 
         try:
             result = precomputer.process_video(
-                frame_paths, batch_size=args.batch_size)
+                frame_paths, batch_size=args.batch_size,
+                num_workers=args.workers)
 
             os.makedirs(output_dir, exist_ok=True)
             torch.save(result, output_path)

@@ -293,4 +293,5 @@ Here's a summary of the changes:
    'fast_dim':      58,
    'vlm_dim':       64}
 
-  claude --resume 25b31781-3bbc-4e7e-af18-22ab43c328fc                                                 ⧉ In 
+  claude --resume 25b31781-3bbc-4e7e-af18-22ab43c328fc       
+                                                          
