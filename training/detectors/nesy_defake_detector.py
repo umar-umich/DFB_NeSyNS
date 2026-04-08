@@ -483,6 +483,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 annealing_epochs=edl_cfg.get('annealing_epochs', 10),
                 kl_weight=edl_cfg.get('kl_weight', 0.1),
                 avu_weight=edl_cfg.get('avu_weight', 0.0),
+                class_weights=config.get('class_weights', None),
             )
             logger.info(f"  EDL loss        : annealing={edl_cfg.get('annealing_epochs', 10)} epochs")
 
@@ -501,22 +502,55 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             logger.info(f"  Concept branch  : gate_init={gate_cfg.get('concept_init', -3.0)}")
 
         if self._use_causal_branch:
-            from networks.nesy_defake.concept_branch import SimplifiedCausalBranch
             sc_cfg = config.get('causal_branch', {})
-            self.causal_branch = SimplifiedCausalBranch(
-                backbone_dim=sc_cfg.get('backbone_dim', 1024),
-                z_causal_dim=sc_cfg.get('z_causal_dim', 32),
-                curated_dim=sc_cfg.get('curated_dim', 51),
-                rules_dim=sc_cfg.get('rules_dim', 23),
-                forensic_dim=sc_cfg.get('forensic_dim', 83),
-                hidden_dim=sc_cfg.get('hidden_dim', 64),
-                sparsity_penalty=sc_cfg.get('sparsity_penalty', 0.01),
-            )
+            causal_type = sc_cfg.get('type', 'simple')
+            if causal_type == 'ccv':
+                from networks.nesy_defake.ccv_branch import CausalConstraintVerificationBranch
+                self.causal_branch = CausalConstraintVerificationBranch(
+                    combined_dim=sc_cfg.get('combined_dim', 122),
+                    rules_dim=sc_cfg.get('rules_dim', 23),
+                    forensic_dim=sc_cfg.get('forensic_dim', 83),
+                    backbone_dim=sc_cfg.get('backbone_dim', 1024),
+                    num_constraints=sc_cfg.get('num_constraints', 16),
+                    constraint_hidden=sc_cfg.get('constraint_hidden', 48),
+                    forensic_bottleneck=sc_cfg.get('forensic_bottleneck', 8),
+                    cf_z_dim=sc_cfg.get('cf_z_dim', 32),
+                    cf_hidden_dim=sc_cfg.get('cf_hidden_dim', 64),
+                    evidence_hidden=sc_cfg.get('evidence_hidden', 64),
+                    dropout=sc_cfg.get('dropout', 0.2),
+                )
+            elif causal_type == 'improved_scm':
+                from networks.nesy_defake.improved_scm_branch import ImprovedCausalBranch
+                self.causal_branch = ImprovedCausalBranch(
+                    backbone_dim=sc_cfg.get('backbone_dim', 1024),
+                    z_causal_dim=sc_cfg.get('z_causal_dim', 32),
+                    curated_dim=sc_cfg.get('curated_dim', 51),
+                    rules_dim=sc_cfg.get('rules_dim', 23),
+                    forensic_dim=sc_cfg.get('forensic_dim', 83),
+                    scm_hidden_dim=sc_cfg.get('scm_hidden_dim', 64),
+                    summary_dim=sc_cfg.get('summary_dim', 8),
+                    evidence_hidden=sc_cfg.get('evidence_hidden', 64),
+                    sparsity_penalty=sc_cfg.get('sparsity_penalty', 0.01),
+                    divergence_weight=sc_cfg.get('divergence_weight', 0.1),
+                    recon_weight=sc_cfg.get('recon_weight', 0.5),
+                )
+            else:
+                from networks.nesy_defake.concept_branch import SimplifiedCausalBranch
+                self.causal_branch = SimplifiedCausalBranch(
+                    backbone_dim=sc_cfg.get('backbone_dim', 1024),
+                    z_causal_dim=sc_cfg.get('z_causal_dim', 32),
+                    curated_dim=sc_cfg.get('curated_dim', 51),
+                    rules_dim=sc_cfg.get('rules_dim', 23),
+                    forensic_dim=sc_cfg.get('forensic_dim', 83),
+                    hidden_dim=sc_cfg.get('hidden_dim', 64),
+                    sparsity_penalty=sc_cfg.get('sparsity_penalty', 0.01),
+                )
+            self._causal_branch_type = causal_type
             gate_cfg = config.get('evidence_gate', {})
             self.causal_ev_gate = nn.Parameter(
                 torch.tensor(float(gate_cfg.get('causal_init', -3.0))))
             self._dag_penalty_weight = sc_cfg.get('dag_penalty_weight', 0.05)
-            logger.info(f"  Causal branch   : gate_init={gate_cfg.get('causal_init', -3.0)}")
+            logger.info(f"  Causal branch   : type={causal_type}, gate_init={gate_cfg.get('causal_init', -3.0)}")
 
         # -- torch.compile on frozen backbones (speed optimization) -----------
         # Frozen modules have static graphs — torch.compile fuses ops and
@@ -841,11 +875,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 forensic_features = data_dict.get('forensic_features')
                 if forensic_features is not None:
                     forensic_features = forensic_features.to(device)
+                    labels = data_dict.get('label')
+                    if labels is not None:
+                        labels = labels.to(device)
                     causal_out = self.causal_branch(
                         spatial_raw=spatial_raw,
                         combined_features=combined_features,
                         violations=concept_out['violations'],
                         forensic_features=forensic_features,
+                        labels=labels,
                     )
                     causal_gate = torch.sigmoid(self.causal_ev_gate)
                     total_evidence = total_evidence + causal_gate * causal_out['evidence']
@@ -883,10 +921,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 pred['causal_evidence'] = causal_out['evidence']
                 pred['causal_gate'] = torch.sigmoid(self.causal_ev_gate).detach()
                 pred['dag_penalty'] = causal_out['dag_penalty']
-                pred['A_identity_real'] = causal_out['A_identity_real']
-                pred['A_identity_fake'] = causal_out['A_identity_fake']
-                pred['A_forensic_real'] = causal_out['A_forensic_real']
-                pred['A_forensic_fake'] = causal_out['A_forensic_fake']
+                # Copy adjacency matrices (keys vary by branch type)
+                for k, v in causal_out.items():
+                    if k.startswith('A_'):
+                        pred[k] = v
             return pred
 
         # -- Step 1: Extract raw branch features -----------------------------

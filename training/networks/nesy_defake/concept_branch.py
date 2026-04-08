@@ -181,6 +181,7 @@ class SimplifiedCausalBranch(nn.Module):
         combined_features: torch.Tensor,
         violations: torch.Tensor,
         forensic_features: torch.Tensor,
+        labels: torch.Tensor = None,
     ) -> dict:
         """
         Args:
