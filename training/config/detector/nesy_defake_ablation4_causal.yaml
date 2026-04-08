@@ -47,22 +47,27 @@ concept_branch:
   hidden_dim: 64
   dropout: 0.2
 
-# -- Simplified causal branch config ------------------------------------------
+# -- Improved SCM causal branch config (fixes A-D) ---------------------------
 causal_branch:
   enabled: true
+  type: improved_scm              # 'simple', 'improved_scm', or 'ccv'
   backbone_dim: 1024
   z_causal_dim: 32
   curated_dim: 51
   rules_dim: 23
   forensic_dim: 83
-  hidden_dim: 64
+  scm_hidden_dim: 64              # nonlinear SCM hidden layer size
+  summary_dim: 8                  # per-subgraph projected summary dimension
+  evidence_hidden: 64
   sparsity_penalty: 0.01
-  dag_penalty_weight: 0.05       # weight for DAG loss in total loss
+  divergence_weight: 0.1          # weight for graph divergence loss
+  recon_weight: 0.5               # weight for label-conditioned reconstruction
+  dag_penalty_weight: 0.05        # weight for combined penalty in total loss
 
 # -- Evidence gates ------------------------------------------------------------
 evidence_gate:
-  concept_init: -3.0            # sigmoid ≈ 0.05
-  causal_init:  -3.0            # sigmoid ≈ 0.05
+  concept_init: -1.0            # sigmoid ≈ 0.27 — was -3.0 (dead gate)
+  causal_init:  -1.5            # sigmoid ≈ 0.18 — starts cautious, allows gradient flow
 
 # -- Dataset ------------------------------------------------------------------
 dataset_type: nesydefake
@@ -86,6 +91,8 @@ resolution:    224
 with_mask:     false
 with_landmark: false
 load_semantic_features: false
+
+class_weights: [1.4, 0.8]    # [real, fake] — fix fake bias
 
 projection_dropout:
   spatial:   0.0
@@ -111,7 +118,7 @@ data_aug:
   blur_sigma:           [0.1, 2.0]
   brightness_limit:     0.1
   contrast_limit:       0.1
-  quality_lower:        40
+  quality_lower:        65
   quality_upper:        100
   gaussian_noise_sigma: 0.0
 
