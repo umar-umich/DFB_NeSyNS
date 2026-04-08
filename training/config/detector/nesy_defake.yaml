@@ -184,7 +184,7 @@ consistency_rules:
 # frequency anomaly, quality metrics — extracted via SegFormer face parsing.
 forensic_features:
   enabled: true           # Enable after running precompute_forensic_features.py
-  output_dim: 30
+  output_dim: 83
   precomputed_dir: forensic_features
 
 # -----------------------------------------------------------------------------
@@ -232,7 +232,7 @@ causal_module:
   # Stage 1: SparseFeatureSelector projects 1024-d backbone → z_feature (128).
   # Stage 2: CausalCompressor projects z_feature (128) → z_causal (32).
   # Identity sub-graph: z_causal(32) + curated_attrs(51) + rules(20) = 103 nodes.
-  # Forensic sub-graph: z_causal(32) + forensic_feats(30) = 62 nodes.
+  # Forensic sub-graph: z_causal(32) + forensic_feats(83) = 115 nodes.
   # Both within DAGMA's validated range (20-120 nodes).
   latent_variables:
     z_spatial_dim:    128

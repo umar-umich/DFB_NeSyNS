@@ -53,6 +53,10 @@ def parse_args():
                         help='Load LLM in 4-bit quantization')
     parser.add_argument('--load_8bit', action='store_true',
                         help='Load LLM in 8-bit quantization')
+    parser.add_argument('--keyframe_stride', type=int, default=1,
+                        help='Extract every Nth frame, propagate to others. '
+                             'VLM attributes (hair, skin, makeup) are stable '
+                             'across frames. stride=8 → 8x speedup.')
     return parser.parse_args()
 
 
@@ -129,8 +133,27 @@ def main():
             frame_paths = frame_paths[:args.max_frames]
 
         try:
-            result = precomputer.process_video(
-                frame_paths, image_batch_size=args.image_batch_size)
+            stride = args.keyframe_stride
+            if stride > 1 and len(frame_paths) > 1:
+                # Extract from keyframes only, propagate to neighbors
+                keyframe_paths = frame_paths[::stride]
+                result = precomputer.process_video(
+                    keyframe_paths, image_batch_size=args.image_batch_size)
+                if result is not None:
+                    # Propagate keyframe features to all frames via
+                    # nearest-keyframe assignment
+                    kf_feats = result['features']  # (n_keyframes, 64)
+                    n_total = len(frame_paths)
+                    all_feats = torch.zeros(n_total, kf_feats.shape[1])
+                    for fi in range(n_total):
+                        kf_idx = min(fi // stride, kf_feats.shape[0] - 1)
+                        all_feats[fi] = kf_feats[kf_idx]
+                    result['features'] = all_feats
+                    result['frame_paths'] = [
+                        os.path.basename(p) for p in frame_paths]
+            else:
+                result = precomputer.process_video(
+                    frame_paths, image_batch_size=args.image_batch_size)
             if result is None:
                 n_failed += 1
                 continue

@@ -12,7 +12,7 @@
 #   - Logs: uncertainty, evidence_succ/fail metrics
 # =============================================================================
 
-log_dir: /data/umar/Repos/DFB_NeSyNS/logs_training
+log_dir: /data/umar/Repos/DFB_NeSyNS/logs
 
 model_name: nesydefake_hybrid
 backbone_name: multi_stream
@@ -57,7 +57,7 @@ projection_dropout:
 
 # -- Data loading & augmentation (GenD) ---------------------------------------
 train_batchSize: 256
-test_batchSize:  512
+test_batchSize:  256
 workers:         12
 
 use_data_augmentation: true
@@ -135,7 +135,7 @@ consistency_rules:
   output_dim: 23
 forensic_features:
   enabled: false
-  output_dim: 30
+  output_dim: 83
   precomputed_dir: forensic_features
 causal_intervention:
   enabled: false

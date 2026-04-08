@@ -23,7 +23,7 @@
 #   - DAG acyclicity + sparsity penalty in loss
 # =============================================================================
 
-log_dir: /data/umar/Repos/DFB_NeSyNS/logs_training
+log_dir: /data/umar/Repos/DFB_NeSyNS/logs
 
 model_name: nesydefake_hybrid
 backbone_name: multi_stream
@@ -54,7 +54,7 @@ causal_branch:
   z_causal_dim: 32
   curated_dim: 51
   rules_dim: 23
-  forensic_dim: 30
+  forensic_dim: 83
   hidden_dim: 64
   sparsity_penalty: 0.01
   dag_penalty_weight: 0.05       # weight for DAG loss in total loss
@@ -119,8 +119,11 @@ mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]
 
 # -- Precomputed features (for concept + causal branches) ---------------------
+# VLM/facellava_semantic features not yet extracted — disabled for now.
+# When ready, set enabled: true to use [fast(58) || vlm(64)] = 122-d.
+# Until then, VLM portion is zero-filled automatically.
 semantic_attributes:
-  enabled: true
+  enabled: false
   backend: precomputed
   precomputed_dim: 211
   precomputed_dir: facellava_semantic
@@ -143,7 +146,7 @@ consistency_rules:
 
 forensic_features:
   enabled: true
-  output_dim: 30
+  output_dim: 83
   precomputed_dir: forensic_features
 
 # -- Foundation Models (GenD) -------------------------------------------------

@@ -301,7 +301,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # -- Tier 1: Cross-Attribute Consistency Rules -------------------------
         cr_cfg = config.get('consistency_rules', {})
         self.use_consistency_rules = (
-            cr_cfg.get('enabled', False) and self.use_semantic_attrs)
+            cr_cfg.get('enabled', False)
+            and (self.use_semantic_attrs or self.use_refined_features))
         self._tier1_dim = 0
         if self.use_consistency_rules:
             if self.use_refined_features:
@@ -507,7 +508,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 z_causal_dim=sc_cfg.get('z_causal_dim', 32),
                 curated_dim=sc_cfg.get('curated_dim', 51),
                 rules_dim=sc_cfg.get('rules_dim', 23),
-                forensic_dim=sc_cfg.get('forensic_dim', 30),
+                forensic_dim=sc_cfg.get('forensic_dim', 83),
                 hidden_dim=sc_cfg.get('hidden_dim', 64),
                 sparsity_penalty=sc_cfg.get('sparsity_penalty', 0.01),
             )

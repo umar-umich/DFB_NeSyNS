@@ -7,7 +7,7 @@ ConceptBranch (Ablation 3):
   122-d combined features -> consistency rules v7 (23-d) -> MLP -> 2-d evidence
 
 SimplifiedCausalBranch (Ablation 4):
-  Spatial-only linear SCMs, identity (106) + forensic (62) sub-graphs
+  Spatial-only linear SCMs, identity (106) + forensic (115) sub-graphs
   -> differential residuals -> MLP -> 2-d evidence
 
 Both branches produce non-negative evidence vectors that are fused with
@@ -109,7 +109,7 @@ class SimplifiedCausalBranch(nn.Module):
 
     Sub-graphs:
       Identity:  z_causal(32) + curated(51) + rules(23) = 106 nodes
-      Forensic:  z_causal(32) + forensic(30) = 62 nodes
+      Forensic:  z_causal(32) + forensic(83) = 115 nodes
 
     Real/fake SCM pairs learn different causal structures.
     Differential residuals (fake_residual - real_residual) encode what
@@ -118,9 +118,9 @@ class SimplifiedCausalBranch(nn.Module):
     Pipeline:
       spatial_raw (B, 1024) --detach--> compressor -> z (B, 32)
       x_identity = [z || curated || rules]  (B, 106)
-      x_forensic = [z || forensic]          (B, 62)
+      x_forensic = [z || forensic]          (B, 115)
       -> 4 LinearSCMs (id_real, id_fake, for_real, for_fake)
-      -> differential residuals (B, 168)
+      -> differential residuals (B, 221)
       -> MLP -> logits (B, 2) -> softplus -> evidence (B, 2)
     """
 
@@ -130,7 +130,7 @@ class SimplifiedCausalBranch(nn.Module):
         z_causal_dim: int = 32,
         curated_dim: int = 51,
         rules_dim: int = 23,
-        forensic_dim: int = 30,
+        forensic_dim: int = 83,
         hidden_dim: int = 64,
         num_classes: int = 2,
         sparsity_penalty: float = 0.01,
@@ -187,7 +187,7 @@ class SimplifiedCausalBranch(nn.Module):
             spatial_raw:       (B, 1024) CLIP features (will be detached)
             combined_features: (B, 122) precomputed [fast || vlm]
             violations:        (B, 23) consistency rule scores
-            forensic_features: (B, 30) precomputed forensic features
+            forensic_features: (B, 83) precomputed forensic features
         Returns:
             dict with 'logits', 'evidence', 'residuals',
             'A_identity_real/fake', 'A_forensic_real/fake',

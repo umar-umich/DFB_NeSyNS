@@ -101,11 +101,13 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         # the 211-d FaceBench vector and concatenate with fast features.
         self.use_refined_features = config.get('use_refined_features', False)
         self._vlm_indices = None
-        if self.use_refined_features and self.use_precomputed_semantic:
+        self._vlm_dim = 0
+        if self.use_refined_features:
             from networks.nesy_defake.semantic.refined_attributes import (
                 VLM_INDICES_IN_FACEBENCH, NUM_VLM_FEATURES)
-            self._vlm_indices = torch.LongTensor(VLM_INDICES_IN_FACEBENCH)
             self._vlm_dim = NUM_VLM_FEATURES
+            if self.use_precomputed_semantic:
+                self._vlm_indices = torch.LongTensor(VLM_INDICES_IN_FACEBENCH)
 
         # ── Precomputed Tier 2 forensic features ───────────────────────────
         ff_cfg = config.get('forensic_features', {})
@@ -114,7 +116,7 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             and bool(ff_cfg.get('precomputed_dir'))
         )
         self._forensic_subdir = ff_cfg.get('precomputed_dir', 'forensic_features')
-        self._forensic_dim = ff_cfg.get('output_dim', 30)
+        self._forensic_dim = ff_cfg.get('output_dim', 83)
         self._forensic_cache = {} if self.use_forensic_features else None
 
         # ── Parent handles JSON parsing, image_list/label_list ────────────
@@ -558,12 +560,18 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         semantic_attrs = self._load_semantic_for_frame(frame_path, index)
 
         # Precomputed semantic features
-        if self.use_refined_features and self.use_precomputed_semantic and self.use_fast_semantic:
+        if self.use_refined_features and self.use_fast_semantic and self.use_precomputed_semantic:
             # Combined mode: [fast(58) || vlm_subset(64)] = 122-d
             fast_feats = self._load_fast_semantic(frame_path)         # (58,)
             full_vlm = self._load_precomputed_semantic(frame_path)    # (211,)
             vlm_subset = full_vlm[self._vlm_indices]                  # (64,)
             precomputed_attrs = torch.cat([fast_feats, vlm_subset])   # (122,)
+        elif self.use_refined_features and self.use_fast_semantic:
+            # Fast-only mode: [fast(58) || zeros(64)] = 122-d
+            # VLM features not yet available — zero-fill the VLM portion
+            fast_feats = self._load_fast_semantic(frame_path)         # (58,)
+            vlm_zeros = torch.zeros(self._vlm_dim)                    # (64,)
+            precomputed_attrs = torch.cat([fast_feats, vlm_zeros])    # (122,)
         elif self.use_precomputed_semantic:
             precomputed_attrs = self._load_precomputed_semantic(frame_path)
         else:

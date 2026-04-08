@@ -22,7 +22,7 @@
 #   - Evidence fusion gate (init -3.0, sigmoid ≈ 0.05)
 # =============================================================================
 
-log_dir: /data/umar/Repos/DFB_NeSyNS/logs_training
+log_dir: /data/umar/Repos/DFB_NeSyNS/logs
 
 model_name: nesydefake_hybrid
 backbone_name: multi_stream
@@ -105,8 +105,11 @@ mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]
 
 # -- Precomputed semantic features (for concept branch) -----------------------
+# VLM/facellava_semantic features not yet extracted — disabled for now.
+# When ready, set enabled: true to use [fast(58) || vlm(64)] = 122-d.
+# Until then, VLM portion is zero-filled automatically.
 semantic_attributes:
-  enabled: true
+  enabled: false
   backend: precomputed
   precomputed_dim: 211
   precomputed_dir: facellava_semantic
@@ -167,7 +170,7 @@ semantic_gate:
   enabled: false
 forensic_features:
   enabled: false
-  output_dim: 30
+  output_dim: 83
   precomputed_dir: forensic_features
 causal_intervention:
   enabled: false

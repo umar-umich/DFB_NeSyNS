@@ -58,7 +58,7 @@ parser.add_argument('--test_dataset', nargs='+', default=None,
 parser.add_argument('--weights_path', type=str, required=True,
                     help='Path to saved model weights (.pth)')
 parser.add_argument('--output_dir', type=str, default=None,
-                    help='Output directory (default: runs/test/<auto>)')
+                    help='Output directory (default: logs/test/<auto>)')
 parser.add_argument('--batch_size', type=int, default=256,
                     help='Override test batch size')
 args = parser.parse_args()
@@ -428,13 +428,20 @@ def main():
         cudnn.benchmark = True
 
     # Output directory
+    # Derive experiment name from detector config filename
+    config_name = os.path.splitext(os.path.basename(args.detector_path))[0]
     if args.output_dir:
         out_dir = args.output_dir
     else:
-        datasets_str = '-'.join(config['test_dataset'])
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        out_dir = os.path.join('runs', 'test',
-                               f'{config["model_name"]}--{datasets_str}--{timestamp}')
+        # Try to reuse the train experiment folder name from weights_path
+        # Expected: logs/train/<config_name>_<datetime>/best_*.pth
+        weights_parent = os.path.basename(os.path.dirname(args.weights_path))
+        if weights_parent.startswith(config_name):
+            experiment_folder = weights_parent
+        else:
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+            experiment_folder = f'{config_name}_{timestamp}'
+        out_dir = os.path.join('logs', 'test', experiment_folder)
     os.makedirs(out_dir, exist_ok=True)
 
     # Save config snapshot
@@ -464,11 +471,8 @@ def main():
 
         probs, labels, img_names = run_inference(model, data_loader)
 
-        # If multiple datasets, create per-dataset subdirectory
-        if len(test_data_loaders) > 1:
-            ds_out_dir = os.path.join(out_dir, dataset_name)
-        else:
-            ds_out_dir = out_dir
+        # Always create per-dataset subdirectory
+        ds_out_dir = os.path.join(out_dir, dataset_name)
         os.makedirs(ds_out_dir, exist_ok=True)
 
         # --- Frame-level metrics ---

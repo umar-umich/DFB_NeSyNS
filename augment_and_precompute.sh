@@ -38,18 +38,18 @@ CUDA_VISIBLE_DEVICES=$GPU python preprocessing/augment_real_frames.py \
 #     --skip_existing \
 #     --device cuda:0
 
-echo ""
-echo "============================================================"
-echo "Step 2 complete! You can start training now."
-echo ""
-echo "Step 3: Patching DeepFace features (CPU-only, 8 processes)"
-echo "  emotions + ethnicity entropy → indices 2-10"
-echo "============================================================"
-PYTHONWARNINGS=ignore python preprocessing/precompute_deepface_patch.py \
-    --detector_path "$CONFIG" \
-    --output_dir fast_semantic \
-    --workers 16 \
-    --skip_patched
+# echo ""
+# echo "============================================================"
+# echo "Step 2 complete! You can start training now."
+# echo ""
+# echo "Step 3: Patching DeepFace features (CPU-only, 8 processes)"
+# echo "  emotions + ethnicity entropy → indices 2-10"
+# echo "============================================================"
+# PYTHONWARNINGS=ignore python preprocessing/precompute_deepface_patch.py \
+#     --detector_path "$CONFIG" \
+#     --output_dir fast_semantic \
+#     --workers 16 \
+#     --skip_patched
 
 # echo ""
 # echo "============================================================"
@@ -66,12 +66,14 @@ PYTHONWARNINGS=ignore python preprocessing/precompute_deepface_patch.py \
 # echo ""
 # echo "============================================================"
 # echo "Step 5: Precomputing FaceBench VLM features (64-d)"
-# echo "  Face-LLaVA 13B teacher-forced — this is slow (~30s/video)"
+# echo "  Face-LLaVA 13B teacher-forced"
+# echo "  H200 optimized: 8-bit quant, image_batch=16, keyframe_stride=8"
 # echo "============================================================"
-# CUDA_VISIBLE_DEVICES=$GPU python preprocessing/precompute_facebench_semantic.py \
-#     --detector_path "$CONFIG" \
-#     --output_dir facebench_semantic \
-#     --skip_existing \
-#     --device cuda:0 \
-#     --attr_batch_size 64 \
-#     --image_batch_size 1
+CUDA_VISIBLE_DEVICES=$GPU python preprocessing/precompute_facebench_semantic.py \
+    --detector_path "$CONFIG" \
+    --output_dir facebench_semantic \
+    --skip_existing \
+    --device cuda:0 \
+    --attr_batch_size 64 \
+    --image_batch_size 1 \
+    --keyframe_stride 8

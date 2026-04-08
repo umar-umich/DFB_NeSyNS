@@ -144,7 +144,7 @@ consistency_rules:
 
 forensic_features:
   enabled: false
-  output_dim: 30
+  output_dim: 83
   precomputed_dir: forensic_features
 
 causal_intervention:

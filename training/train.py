@@ -427,16 +427,13 @@ def main():
         config['dataset_json_folder'] = 'preprocessing/dataset_json_v3'
 
     timenow  = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-    task_str = (f"_{config['task_target']}"
-                if config.get('task_target', None) else "")
-    branch_str = '_'.join(
-        b[0].upper() for b in sorted(config.get('active_branches',
-                                                 ['spatial', 'frequency'])))
-    task_str = f"{task_str}_branches_{branch_str}"
+
+    # Derive experiment name from detector config filename (e.g. nesy_defake_ablation1)
+    config_name = os.path.splitext(os.path.basename(args.detector_path))[0]
 
     logger_path = os.path.join(
-        config['log_dir'],
-        config['model_name'] + task_str + '_' + timenow)
+        config['log_dir'], 'train',
+        f'{config_name}_{timenow}')
     if not config['ddp'] or dist.get_rank() == 0:
         os.makedirs(logger_path, exist_ok=True)
     if config['ddp']:

@@ -12,7 +12,7 @@
 #   - No class weights (balanced CE)
 # =============================================================================
 
-log_dir: /data/umar/Repos/DFB_NeSyNS/logs_training
+log_dir: /data/umar/Repos/DFB_NeSyNS/logs
 
 model_name: nesydefake_hybrid
 backbone_name: multi_stream
@@ -153,7 +153,7 @@ consistency_rules:
 
 forensic_features:
   enabled: false
-  output_dim: 30
+  output_dim: 83
   precomputed_dir: forensic_features
 
 causal_intervention:
