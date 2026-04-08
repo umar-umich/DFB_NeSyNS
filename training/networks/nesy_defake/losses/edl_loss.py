@@ -32,6 +32,7 @@ class EvidentialLoss(nn.Module):
         annealing_epochs: int = 10,
         kl_weight: float = 0.1,
         avu_weight: float = 0.0,
+        class_weights: list = None,
     ):
         super().__init__()
         self.num_classes = num_classes
@@ -39,6 +40,11 @@ class EvidentialLoss(nn.Module):
         self.kl_weight = kl_weight
         self.avu_weight = avu_weight
         self.eps = 1e-7
+        if class_weights is not None:
+            self.register_buffer(
+                '_class_weights', torch.tensor(class_weights, dtype=torch.float32))
+        else:
+            self._class_weights = None
 
     # ------------------------------------------------------------------
     #  Core EDL quantities
@@ -133,8 +139,13 @@ class EvidentialLoss(nn.Module):
         alpha, S, uncertainty = self.evidence_to_dirichlet(evidence)
         y_onehot = F.one_hot(target, self.num_classes).float().to(evidence.device)
 
-        # 1. Log-likelihood
-        loss_nll = self._log_likelihood(alpha, S, y_onehot).mean()
+        # 1. Log-likelihood (per-sample class-weighted if configured)
+        nll_per_sample = self._log_likelihood(alpha, S, y_onehot)  # (B, 1)
+        if self._class_weights is not None:
+            w = self._class_weights.to(evidence.device)[target]  # (B,)
+            loss_nll = (nll_per_sample.squeeze(1) * w).mean()
+        else:
+            loss_nll = nll_per_sample.mean()
 
         # 2. Annealed KL divergence
         anneal = min(1.0, epoch / max(self.annealing_epochs, 1))
