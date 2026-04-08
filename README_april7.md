@@ -152,3 +152,5 @@ A separate dual-branch ablation using both spatial (CLIP) and frequency (FAD-DIN
 - Deep MLP classifier (512→256→2) instead of linear probe
 - lr=1e-4, weight_decay=1e-4, 30 epochs
 - Train on FaceForensics++_augmented
+
+Session Id: 0383651f-3884-4146-8c0a-5e75139bea13
