@@ -48,7 +48,7 @@ concept_branch:
 
 # -- Evidence gate -------------------------------------------------------------
 evidence_gate:
-  concept_init: -3.0            # sigmoid ≈ 0.05
+  concept_init: -1.0            # sigmoid ≈ 0.27 — was -3.0 (0.047), gate stayed dead
 
 # -- Dataset ------------------------------------------------------------------
 dataset_type: nesydefake
@@ -72,6 +72,8 @@ resolution:    224
 with_mask:     false
 with_landmark: false
 load_semantic_features: false
+
+class_weights: [1.4, 0.8]    # [real, fake] — fix fake bias
 
 projection_dropout:
   spatial:   0.0
@@ -97,7 +99,7 @@ data_aug:
   blur_sigma:           [0.1, 2.0]
   brightness_limit:     0.1
   contrast_limit:       0.1
-  quality_lower:        40
+  quality_lower:        65
   quality_upper:        100
   gaussian_noise_sigma: 0.0
 

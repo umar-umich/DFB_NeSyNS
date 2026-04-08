@@ -51,6 +51,8 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
+class_weights: [1.4, 0.8]    # [real, fake] — fix fake bias
+
 projection_dropout:
   spatial:   0.0
   frequency: 0.0
@@ -75,7 +77,7 @@ data_aug:
   blur_sigma:           [0.1, 2.0]
   brightness_limit:     0.1
   contrast_limit:       0.1
-  quality_lower:        40
+  quality_lower:        65
   quality_upper:        100
   gaussian_noise_sigma: 0.0
 
