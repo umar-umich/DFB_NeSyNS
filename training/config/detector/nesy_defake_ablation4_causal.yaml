@@ -36,8 +36,8 @@ ablation_mode: causal_edl
 edl:
   num_classes: 2
   annealing_epochs: 10
-  kl_weight: 0.1
-  avu_weight: 0.0
+  kl_weight: 0.15
+  avu_weight: 0.1
 
 # -- Concept branch config ----------------------------------------------------
 concept_branch:
@@ -66,8 +66,8 @@ causal_branch:
 
 # -- Evidence gates ------------------------------------------------------------
 evidence_gate:
-  concept_init: -1.0            # sigmoid ≈ 0.27 — was -3.0 (dead gate)
-  causal_init:  -1.5            # sigmoid ≈ 0.18 — starts cautious, allows gradient flow
+  concept_init: -0.5            # sigmoid ≈ 0.27 — was -3.0 (dead gate)
+  causal_init:  -0.8            # sigmoid ≈ 0.18 — starts cautious, allows gradient flow
 
 # -- Dataset ------------------------------------------------------------------
 dataset_type: nesydefake
@@ -92,15 +92,15 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
-class_weights: [1.4, 0.8]    # [real, fake] — fix fake bias
+class_weights: [1.6, 0.8]    # [real, fake] — fix fake bias
 
 projection_dropout:
   spatial:   0.0
   frequency: 0.0
 
 # -- Data loading & augmentation (GenD) ---------------------------------------
-train_batchSize: 256
-test_batchSize:  512
+train_batchSize: 128
+test_batchSize:  128
 workers:         12
 
 use_data_augmentation: true
@@ -299,7 +299,7 @@ optimizer:
 # -- Schedule (GenD) ----------------------------------------------------------
 lr_scheduler:   cosine_warmup
 warmup_epochs:  1
-nEpochs:        50
+nEpochs:        100
 start_epoch:    0
 save_epoch:     1
 rec_iter:       100
@@ -336,5 +336,5 @@ checkpoint:
 
 early_stopping:
   enabled: true
-  patience: 15
+  patience: 10
   min_delta: 0.001

@@ -27,7 +27,7 @@ dataset_type: nesydefake
 active_branches: ['spatial', 'frequency']
 
 train_dataset: [FaceForensics++_augmented]
-test_dataset:  [FaceForensics++, Celeb-DF-v2]
+test_dataset:  [FaceForensics++, Celeb-DF-v2, Celeb-DF-v1]
 all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
                 DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
                 DeeperForensics-1.0, UADFV]
