@@ -1,0 +1,448 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2026
+
+% The authors should use one of these tracks.
+% Before accepting by the NeurIPS conference, select one of the options below.
+% 0. "default" for submission
+% \usepackage{neurips_2026}
+% the "default" option is equal to the "main" option, which is used for the Main Track with double-blind reviewing.
+% 1. "main" option is used for the Main Track
+ \usepackage[main]{neurips_2026}
+% 2. "position" option is used for the Position Paper Track
+%  \usepackage[position]{neurips_2026}
+% 3. "eandd" option is used for the Evaluations & Datasets Track
+ % \usepackage[eandd]{neurips_2026}
+ % if you want to opt-in for a de-anomymized submission (not recommended, but OK):
+ %\usepackage[eandd, nonanonymous]{neurips_2026}
+% 4. "creativeai" option is used for the Creative AI Track
+%  \usepackage[creativeai]{neurips_2026}
+% 5. "sglblindworkshop" option is used for the Workshop with single-blind reviewing
+ % \usepackage[sglblindworkshop]{neurips_2026}
+% 6. "dblblindworkshop" option is used for the Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop]{neurips_2026}
+
+% After being accepted, the authors should add "final" behind the track to compile a camera-ready version.
+% 1. Main Track
+ % \usepackage[main, final]{neurips_2026}
+% 2. Position Paper Track
+%  \usepackage[position, final]{neurips_2026}
+% 3. Evaluations & Datasets Track
+ % \usepackage[eandd, final]{neurips_2026}
+% 4. Creative AI Track
+%  \usepackage[creativeai, final]{neurips_2026}
+% 5. Workshop with single-blind reviewing
+%  \usepackage[sglblindworkshop, final]{neurips_2026}
+% 6. Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop, final]{neurips_2026}
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote.
+% For workshops (5., 6.), the authors should add the name of the workshop, "\workshoptitle" command is used to set the workshop title.
+% \workshoptitle{WORKSHOP TITLE}
+
+% "preprint" option is used for arXiv or other preprint submissions
+ % \usepackage[preprint]{neurips_2026}
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2026}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amsmath}        % math environments
+\usepackage{amssymb}        % math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{graphicx}       % figures
+\usepackage{multirow}       % table multirow
+\usepackage{bm}             % bold math
+
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote. 
+\title{Formatting Instructions For NeurIPS 2026}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  Muhammad Umar Farooq\\
+  College of Innovation and Technology\\
+  University of Michigan\\
+  Flint, MI 48502 \\
+  \texttt{mufarooq@umich.edu} \\
+  % examples of more authors
+  \And
+  Khalid Malik \\
+  College of Innovation and Technology\\
+  University of Michigan\\
+  Flint, MI 48502 \\
+  \texttt{drmalik@umich.edu} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+TODO: Write abstract.
+\end{abstract}
+
+%% TODO: Section 1 — Introduction
+%% TODO: Section 2 — Related Work
+
+% ======================================================================
+\section{Proposed method}
+\label{sec:method}
+% ======================================================================
+
+We present \textbf{NeSyDeFake}, a neuro-symbolic framework for generalizable deepfake detection that fuses neural perception with symbolic reasoning under a principled uncertainty-aware objective.
+The key insight is that face manipulations inevitably violate semantic consistency constraints---relationships between facial attributes that hold for authentic faces but break under synthesis.
+Rather than relying solely on learned visual features that overfit to source-specific artifacts, NeSyDeFake explicitly encodes and verifies these constraints, producing interpretable violation signals that generalize across manipulation methods.
+
+The framework produces three independent evidence streams---\emph{spatial}, \emph{concept}, and \emph{causal}---that are fused via Evidential Deep Learning (EDL) into a Dirichlet distribution over classes, yielding both a prediction and a calibrated epistemic uncertainty estimate.
+We describe each component below and summarize the full pipeline in Figure~\ref{fig:architecture}.
+
+\begin{figure}[t]
+  \centering
+  \fbox{\rule[-.5cm]{0cm}{4cm} \rule[-.5cm]{12cm}{0cm}}
+  \caption{Overview of the NeSyDeFake framework. A frozen CLIP backbone extracts spatial features that produce spatial evidence via a linear head. Precomputed semantic and forensic features are processed by a concept branch (hand-coded consistency rules) and a causal constraint verification branch (learned constraints, forensic anomaly detection, counterfactual prediction). All three evidence streams are fused under Evidential Deep Learning with gated addition and Dirichlet-based uncertainty estimation.}
+  \label{fig:architecture}
+\end{figure}
+
+
+% ------------------------------------------------------------------
+\subsection{Multi-source feature extraction}
+\label{sec:features}
+% ------------------------------------------------------------------
+
+NeSyDeFake operates on three precomputed feature sets extracted from face-cropped frames (scale $1.3{\times}$, capturing hair, ears, and neck context).
+
+\paragraph{Spatial features.}
+A frozen CLIP ViT-L/14 backbone extracts 1024-dimensional visual representations.
+Only the LayerNorm parameters are fine-tuned during training, following the linear probing with LayerNorm tuning protocol~\citep{gend}, which preserves the pretrained feature space while allowing task-specific adaptation.
+
+\paragraph{Semantic features.}
+We construct a 122-dimensional combined semantic vector from two sources:
+(i)~\emph{fast-extracted features} ($\bm{s}_\text{fast} \in \mathbb{R}^{58}$) computed by InsightFace, MediaPipe, and DeepFace at ${\sim}30$ms/frame, covering demographics (continuous gender, age, ethnicity scores), expression probabilities (8 emotions), action unit activations (17 FACS AUs), head pose (pitch, yaw, roll), gaze direction (6D), and landmark geometry (eye/mouth aspect ratios, jaw symmetry); and
+(ii)~\emph{vision-language model features} ($\bm{s}_\text{vlm} \in \mathbb{R}^{64}$) from a FaceBench-finetuned Face-LLaVA 13B model, capturing attributes that require holistic visual reasoning (accessories, hair style, skin texture, lighting, background).
+The combined vector is $\bm{s} = [\bm{s}_\text{fast} \| \bm{s}_\text{vlm}] \in \mathbb{R}^{122}$.
+
+\paragraph{Forensic features.}
+An 83-dimensional forensic vector $\bm{f} \in \mathbb{R}^{83}$ captures pixel-level manipulation traces across five semantic groups:
+\emph{boundary/texture} (12 features: Sobel gradients and Laplacian blur at face parsing boundaries),
+\emph{symmetry/color} (18: left-right intensity asymmetry and cross-region color histogram distances, DCT frequency energy, quality metrics),
+\emph{patch noise} (16: pairwise and cross-channel noise consistency between facial regions),
+\emph{SRM noise} (27: Steganalysis Rich Model residuals---5 kernels $\times$ mean, standard deviation, kurtosis, plus multi-scale noise statistics),
+and \emph{FFT spectral} (10: radial spectral energy in 8 frequency bins, spectral slope, and high-frequency ratio).
+
+
+% ------------------------------------------------------------------
+\subsection{Spatial evidence branch}
+\label{sec:spatial}
+% ------------------------------------------------------------------
+
+The spatial branch provides the base detection signal.
+The frozen CLIP features $\bm{h} \in \mathbb{R}^{1024}$ pass through a learnable projection head $g_\phi$ followed by a linear classification head:
+\begin{equation}
+  \bm{e}_\text{spatial} = \operatorname{softplus}\bigl(W_\text{cls}\, g_\phi(\bm{h}) + \bm{b}_\text{cls}\bigr) \in \mathbb{R}^{2}_{\geq 0},
+  \label{eq:spatial_evidence}
+\end{equation}
+where the softplus activation ensures non-negative evidence suitable for the Dirichlet framework (Section~\ref{sec:edl}).
+This branch alone corresponds to a standard CLIP-based detector and serves as the foundation upon which the neuro-symbolic components build.
+
+
+% ------------------------------------------------------------------
+\subsection{Concept evidence branch}
+\label{sec:concept}
+% ------------------------------------------------------------------
+
+The concept branch encodes domain knowledge about facial attribute relationships as differentiable \emph{consistency rules}.
+We define 23 rules organized into five categories, each producing a scalar violation score $v_j \in [0, 1]$:
+
+\paragraph{Mutual exclusion rules} (3 rules) detect contradictory attributes:
+\begin{equation}
+  v_\text{mouth} = \sigma(\text{mouth\_open}) \cdot \sigma(\text{mouth\_closed}),
+  \label{eq:mutual_excl}
+\end{equation}
+and analogously for lighting-conflict and symmetry-conflict pairs. For authentic faces, at most one attribute in each pair should be active, so $v_j \approx 0$; manipulated faces that paste features from different sources often violate these mutual exclusions.
+
+\paragraph{Expression--action unit coherence rules} (9 rules) enforce the Facial Action Coding System.
+Each emotion should co-occur with specific AUs; violations indicate that the expression was transferred without the corresponding muscle activations:
+\begin{equation}
+  v_\text{happy-AU6} = \bigl|\sigma(\text{expr\_happy}) - \sigma(\text{AU6})\bigr|.
+  \label{eq:au_rule}
+\end{equation}
+
+\paragraph{Cross-region identity rules} (5 rules) capture face/context inconsistencies visible in the $1.3{\times}$ crop, e.g., $v_\text{gender-beard} = \sigma(-\text{gender\_score}) \cdot \sigma(\text{beard})$, which fires when a face classified as female has a visible beard---a common artifact in identity-swapping deepfakes.
+
+\paragraph{Skin-age and structural rules} (6 rules) check physiological consistency (wrinkles should correlate with age, left-right gaze directions should agree, facial landmarks should be bilaterally symmetric).
+
+The 23-dimensional violation vector $\bm{v} = [v_1, \ldots, v_{23}]^\top$ is concatenated with the combined semantic features and mapped to evidence:
+\begin{equation}
+  \bm{e}_\text{concept} = \operatorname{softplus}\bigl(\text{MLP}_\text{concept}([\bm{s} \| \bm{v}])\bigr) \in \mathbb{R}^{2}_{\geq 0},
+  \label{eq:concept_evidence}
+\end{equation}
+where $\text{MLP}_\text{concept}$ is a two-layer network with LayerNorm, GELU activation, and dropout.
+
+
+% ------------------------------------------------------------------
+\subsection{Causal constraint verification branch}
+\label{sec:ccv}
+% ------------------------------------------------------------------
+
+While the 23 hand-coded rules capture known attribute interactions, they cannot cover all consistency patterns that distinguish real from manipulated faces.
+The \emph{Causal Constraint Verification} (CCV) branch extends symbolic reasoning with three learned components that discover additional violation signals from data.
+
+\subsubsection{Learned constraint functions}
+\label{sec:lcf}
+
+We learn $K{=}16$ additional soft constraint functions over the combined semantic space.
+A shared trunk $t(\bm{s}) = \operatorname{GELU}(W_t\,\operatorname{LN}(\bm{s}) + \bm{b}_t)$ maps the 122-dimensional input to a hidden representation, from which $K$ independent sigmoid heads produce violation scores:
+\begin{equation}
+  \bm{c} = \sigma(W_h\, t(\bm{s}) + \bm{b}_h) \in [0, 1]^K.
+  \label{eq:learned_constraints}
+\end{equation}
+Each learned constraint discovers an attribute interaction pattern that the hand-coded rules miss.
+The shared trunk amortizes computation while the independent heads specialize, analogous to multi-task learning with a shared encoder.
+Weights are initialized near zero so that all constraints start at $\bm{c} \approx 0.5$ (maximum uncertainty), allowing the model to learn which interactions are discriminative.
+
+
+\subsubsection{Forensic anomaly detector}
+\label{sec:fad}
+
+Pixel-level forensic features of authentic faces exhibit consistent patterns within semantic regions (e.g., uniform noise characteristics across skin patches), while manipulated faces show anomalous patterns at blending boundaries.
+Rather than learning a single monolithic model over all 83 features, we train five lightweight autoencoders, one per forensic group $g \in \{\text{boundary}, \text{symmetry}, \text{noise}_\text{patch}, \text{noise}_\text{srm}, \text{spectral}\}$:
+\begin{equation}
+  a_g = \frac{1}{d_g}\bigl\|\bm{f}_g - \operatorname{dec}_g(\operatorname{enc}_g(\bm{f}_g))\bigr\|_2^2,
+  \label{eq:anomaly}
+\end{equation}
+where $\bm{f}_g \in \mathbb{R}^{d_g}$ is the forensic feature subvector for group $g$, the encoder maps to an 8-dimensional bottleneck with LayerNorm and GELU, and the decoder reconstructs.
+Real faces, which exhibit internally consistent forensic patterns, are well-reconstructed ($a_g \approx 0$); manipulated faces that introduce inconsistent noise or boundary artifacts produce high reconstruction errors.
+The five per-group anomaly scores $\bm{a} = [a_1, \ldots, a_5]^\top$ provide interpretable, semantically grouped forensic signals.
+
+
+\subsubsection{Counterfactual consistency predictor}
+\label{sec:counterfactual}
+
+The counterfactual predictor poses the question: \emph{``If a face truly possessed these semantic and forensic attributes, what would it look like in the visual feature space?''}
+For authentic faces, the predicted appearance matches the actual CLIP representation; for manipulated faces, the attributes are inconsistent with the visual content, producing a mismatch.
+
+Concretely, we compress the CLIP spatial features $\bm{h}$ to a compact representation $\bm{z} = W_c\, \bm{h} \in \mathbb{R}^{32}$ (with the gradient detached from the backbone).
+A predictor network maps the full semantic context $[\bm{s} \| \bm{v} \| \bm{f}] \in \mathbb{R}^{228}$ to a predicted appearance vector:
+\begin{equation}
+  \hat{\bm{z}} = \text{MLP}_\text{cf}\bigl([\bm{s} \| \bm{v} \| \bm{f}]\bigr) \in \mathbb{R}^{32},
+  \quad\quad
+  m = \|\bm{z} - \hat{\bm{z}}\|_2^2,
+  \label{eq:counterfactual}
+\end{equation}
+where $m \in \mathbb{R}_{\geq 0}$ is the counterfactual mismatch score.
+This formulation directly operationalizes the causal hypothesis: authentic faces are generated by a consistent process where attributes determine appearance, while manipulations break this mapping.
+
+
+\subsubsection{Evidence fusion}
+
+The CCV branch concatenates all verification signals and maps them to evidence:
+\begin{equation}
+  \bm{e}_\text{causal} = \operatorname{softplus}\bigl(\text{MLP}_\text{ccv}([\bm{v} \| \bm{c} \| \bm{a} \| m])\bigr) \in \mathbb{R}^2_{\geq 0},
+  \label{eq:ccv_evidence}
+\end{equation}
+where the input is a 45-dimensional vector (23 hand-coded violations + 16 learned constraints + 5 anomaly scores + 1 counterfactual mismatch).
+The MLP has LayerNorm, GELU, and dropout.
+This entire branch contains approximately 15K trainable parameters, making it lightweight relative to the backbone.
+
+
+% ------------------------------------------------------------------
+\subsection{Evidential deep learning with gated evidence fusion}
+\label{sec:edl}
+% ------------------------------------------------------------------
+
+We fuse the three evidence streams under the Evidential Deep Learning framework~\citep{sensoy2018evidential}, which places a Dirichlet prior over class probabilities to jointly model aleatoric and epistemic uncertainty.
+
+\subsubsection{Gated evidence aggregation}
+
+The total evidence is computed via gated addition:
+\begin{equation}
+  \bm{e}_\text{total} = \bm{e}_\text{spatial} + \sigma(\gamma_1)\,\bm{e}_\text{concept} + \sigma(\gamma_2)\,\bm{e}_\text{causal},
+  \label{eq:gated_fusion}
+\end{equation}
+where $\gamma_1, \gamma_2 \in \mathbb{R}$ are learnable gate parameters.
+The gates are initialized to $\gamma_1{=}{-}0.5$ and $\gamma_2{=}{-}0.8$ (sigmoid values $\approx 0.38$ and $0.31$, respectively), allowing the neuro-symbolic branches to contribute meaningful signal from the start of training while the spatial branch provides the dominant evidence.
+As training progresses, the gates adapt: if the symbolic branches provide useful complementary signal, the gates open further; if not, they close.
+This adaptive mechanism avoids the need to manually tune evidence weights and provides an interpretable measure of each branch's contribution.
+
+
+\subsubsection{Dirichlet prediction and uncertainty}
+
+The fused evidence parameterizes a Dirichlet distribution:
+\begin{equation}
+  \bm{\alpha} = \bm{e}_\text{total} + \bm{1}, \quad
+  S = \textstyle\sum_{k=1}^{K}\alpha_k, \quad
+  \hat{p}_k = \frac{\alpha_k}{S}, \quad
+  u = \frac{K}{S},
+  \label{eq:dirichlet}
+\end{equation}
+where $\bm{\alpha} \in \mathbb{R}^K_{>0}$ are the Dirichlet concentration parameters ($K{=}2$ for binary classification), $\hat{p}_k$ is the expected probability for class $k$, and $u \in (0, 1]$ is the epistemic uncertainty.
+High total evidence ($S \gg K$) yields low uncertainty and confident predictions; low evidence yields $u \to 1$, signaling that the model lacks sufficient information.
+
+
+\subsubsection{Training objective}
+\label{sec:loss}
+
+The training loss combines three terms:
+
+\paragraph{Evidential log-likelihood.}
+The type-II maximum likelihood under the Dirichlet prior:
+\begin{equation}
+  \mathcal{L}_\text{nll} = -\sum_{k=1}^{K} y_k\bigl(\psi(\alpha_k) - \psi(S)\bigr),
+  \label{eq:edl_nll}
+\end{equation}
+where $\bm{y}$ is the one-hot target and $\psi$ is the digamma function.
+We apply per-sample class weights $[w_\text{real}{=}1.8,\, w_\text{fake}{=}0.6]$ to counteract the tendency of CLIP features to bias toward the fake class, ensuring balanced real/fake accuracy.
+
+\paragraph{Annealed KL divergence.}
+A KL penalty between the predicted Dirichlet (with correct-class evidence removed) and the uniform Dirichlet $\text{Dir}(\bm{1})$ regularizes evidence for incorrect classes:
+\begin{equation}
+  \mathcal{L}_\text{kl} = \text{KL}\bigl[\text{Dir}(\tilde{\bm{\alpha}}) \| \text{Dir}(\bm{1})\bigr], \quad
+  \tilde{\alpha}_k = (1 - y_k)(\alpha_k - 1) + 1.
+  \label{eq:kl}
+\end{equation}
+The KL weight is annealed from 0 to $\lambda_\text{kl}{=}0.15$ over the first 10 epochs to prevent premature evidence suppression.
+
+\paragraph{Accuracy-vs-uncertainty calibration.}
+Following~\citet{karandikar2021soft}, we add an AVU term that penalizes confident-but-wrong predictions and rewards uncertain-but-wrong predictions:
+\begin{equation}
+  \mathcal{L}_\text{avu} = \bm{1}_\text{correct}\bigl[-\hat{p}_\text{max}\log(1{-}u)\bigr]
+    + \bm{1}_\text{wrong}\bigl[-(1{-}\hat{p}_\text{max})\log(u)\bigr],
+  \label{eq:avu}
+\end{equation}
+where $\hat{p}_\text{max} = \max_k \hat{p}_k$ is the predicted confidence.
+This term directly calibrates the uncertainty estimate, ensuring that the model ``knows what it doesn't know.''
+
+The total loss is:
+\begin{equation}
+  \mathcal{L} = \mathcal{L}_\text{nll} + \lambda_\text{kl}\,\beta(t)\,\mathcal{L}_\text{kl} + \lambda_\text{avu}\,\mathcal{L}_\text{avu},
+  \label{eq:total_loss}
+\end{equation}
+where $\beta(t) = \min(1, t/T_\text{anneal})$ is the annealing schedule, $\lambda_\text{kl}{=}0.15$, and $\lambda_\text{avu}{=}0.1$.
+
+
+% ------------------------------------------------------------------
+\subsection{Source-paired training}
+\label{sec:paired}
+% ------------------------------------------------------------------
+
+Following~\citet{gend}, we train with source-paired batches where each real face is paired with its corresponding manipulated version from the same source video.
+This ensures that the model cannot exploit dataset-level distributional differences between real and fake sets and must instead learn manipulation-specific signals.
+Combined with class-weighted EDL and the neuro-symbolic consistency verification, this training protocol encourages the model to learn generalizable detection criteria rather than source-specific shortcuts.
+
+\begin{table}[t]
+  \caption{Summary of evidence sources and their dimensionality. The NeSyDeFake framework fuses three evidence streams, each capturing complementary signals for deepfake detection.}
+  \label{tab:evidence_summary}
+  \centering
+  \small
+  \begin{tabular}{llrl}
+    \toprule
+    \textbf{Branch} & \textbf{Input signals} & \textbf{Dim} & \textbf{Nature} \\
+    \midrule
+    Spatial & CLIP ViT-L/14 features & 1024 & Neural (learned visual) \\
+    \midrule
+    \multirow{2}{*}{Concept} & Combined semantic features & 122 & \multirow{2}{*}{Symbolic (rule-based)} \\
+     & Hand-coded consistency rules & 23 & \\
+    \midrule
+    \multirow{4}{*}{Causal (CCV)} & Hand-coded rules (shared) & 23 & Symbolic \\
+     & Learned constraint functions & 16 & Neuro-symbolic \\
+     & Forensic anomaly scores & 5 & Neural (autoencoder) \\
+     & Counterfactual mismatch & 1 & Neuro-symbolic \\
+    \midrule
+    \textbf{Fused evidence} & Gated Dirichlet aggregation & 2 & Evidential \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{ack}
+Use unnumbered first level headings for the acknowledgments. All acknowledgments
+go at the end of the paper before the list of references. Moreover, you are required to declare
+funding (financial activities supporting the submitted work) and competing interests (related financial activities outside the submitted work).
+More information about this disclosure can be found at: \url{https://neurips.cc/Conferences/2026/PaperInformation/FundingDisclosure}.
+
+
+Do {\bf not} include this section in the anonymized submission, only in the final paper. You can use the \texttt{ack} environment provided in the style file to automatically hide this section in the anonymized submission.
+\end{ack}
+
+\section*{References}
+
+
+References follow the acknowledgments in the camera-ready paper. Use unnumbered first-level heading for
+the references. Any choice of citation style is acceptable as long as you are
+consistent. It is permissible to reduce the font size to \verb+small+ (9 point)
+when listing the references.
+Note that the Reference section does not count towards the page limit.
+\medskip
+
+
+{
+\small
+
+
+[1] Alexander, J.A.\ \& Mozer, M.C.\ (1995) Template-based algorithms for
+connectionist rule extraction. In G.\ Tesauro, D.S.\ Touretzky and T.K.\ Leen
+(eds.), {\it Advances in Neural Information Processing Systems 7},
+pp.\ 609--616. Cambridge, MA: MIT Press.
+
+
+[2] Bower, J.M.\ \& Beeman, D.\ (1995) {\it The Book of GENESIS: Exploring
+  Realistic Neural Models with the GEneral NEural SImulation System.}  New York:
+TELOS/Springer--Verlag.
+
+
+[3] Hasselmo, M.E., Schnell, E.\ \& Barkai, E.\ (1995) Dynamics of learning and
+recall at excitatory recurrent synapses and cholinergic modulation in rat
+hippocampal region CA3. {\it Journal of Neuroscience} {\bf 15}(7):5249-5262.
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\appendix
+
+\section{Technical appendices and supplementary material}
+Technical appendices with additional results, figures, graphs, and proofs may be submitted with the paper submission before the full submission deadline (see above). You can upload a ZIP file for videos or code, but do not upload a separate PDF file for the appendix. There is no page limit for the technical appendices. 
+
+Note: Think of the appendix as ``optional reading'' for reviewers. The paper must be able to stand alone without the appendix; for example, adding critical experiments that support the main claims to an appendix is inappropriate. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newpage
+\input{checklist.tex}
+
+
+\end{document}
