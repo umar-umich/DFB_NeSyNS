@@ -301,6 +301,9 @@ def choose_optimizer(model, config):
         _add(list(m.causal_branch.parameters()), g9_causal)
     if hasattr(m, 'causal_ev_gate') and isinstance(m.causal_ev_gate, nn.Parameter):
         _add([m.causal_ev_gate], g9_causal)
+    # CMEF (NeSy-EDL fusion gates + temperature)
+    if hasattr(m, 'cmef'):
+        _add(list(m.cmef.parameters()), g9_causal)
 
     lr_backbone_ln = lr_cfg.get('backbone_layernorms', 1e-5)
     lr_always      = lr_cfg.get('always_trainable',    base_lr)

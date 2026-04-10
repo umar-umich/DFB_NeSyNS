@@ -561,17 +561,22 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
         # Precomputed semantic features
         if self.use_refined_features and self.use_fast_semantic and self.use_precomputed_semantic:
-            # Combined mode: [fast(58) || vlm_subset(64)] = 122-d
+            # Combined mode: [fast(58) || vlm(64)] = 122-d
             fast_feats = self._load_fast_semantic(frame_path)         # (58,)
-            full_vlm = self._load_precomputed_semantic(frame_path)    # (211,)
-            vlm_subset = full_vlm[self._vlm_indices]                  # (64,)
-            precomputed_attrs = torch.cat([fast_feats, vlm_subset])   # (122,)
+            vlm_feats = self._load_precomputed_semantic(frame_path)   # (64,) or (211,)
+            # If precomputed features are full 211-d FaceBench, select VLM subset
+            if self._vlm_indices is not None and vlm_feats.shape[0] > self._vlm_dim:
+                vlm_feats = vlm_feats[self._vlm_indices]              # (64,)
+            precomputed_attrs = torch.cat([fast_feats, vlm_feats])    # (122,)
         elif self.use_refined_features and self.use_fast_semantic:
             # Fast-only mode: [fast(58) || zeros(64)] = 122-d
             # VLM features not yet available — zero-fill the VLM portion
             fast_feats = self._load_fast_semantic(frame_path)         # (58,)
             vlm_zeros = torch.zeros(self._vlm_dim)                    # (64,)
             precomputed_attrs = torch.cat([fast_feats, vlm_zeros])    # (122,)
+        elif self.use_fast_semantic and not self.use_refined_features:
+            # Fast-only mode without VLM: just fast(58)
+            precomputed_attrs = self._load_fast_semantic(frame_path)   # (58,)
         elif self.use_precomputed_semantic:
             precomputed_attrs = self._load_precomputed_semantic(frame_path)
         else:

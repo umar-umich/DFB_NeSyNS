@@ -134,7 +134,7 @@ We describe each component below and summarize the full pipeline in Figure~\ref{
 \begin{figure}[t]
   \centering
   \fbox{\rule[-.5cm]{0cm}{4cm} \rule[-.5cm]{12cm}{0cm}}
-  \caption{Overview of the NeSyDeFake framework. A frozen CLIP backbone extracts spatial features that produce spatial evidence via a linear head. Precomputed semantic and forensic features are processed by a concept branch (hand-coded consistency rules) and a causal constraint verification branch (learned constraints, forensic anomaly detection, counterfactual prediction). All three evidence streams are fused under Evidential Deep Learning with gated addition and Dirichlet-based uncertainty estimation.}
+  \caption{Overview of the NeSyDeFake framework. A frozen CLIP backbone extracts spatial features that produce spatial evidence via a linear head. Precomputed semantic and forensic features are processed by a concept branch (hand-coded consistency rules) and a causal constraint verification branch (learned constraints, forensic anomaly detection, counterfactual prediction). All three evidence streams are fused via Confidence-Modulated Evidence Fusion (CMEF) under a novel Neuro-Symbolic Evidential Deep Learning (NeSy-EDL) objective with per-branch auxiliary supervision and inter-branch disagreement calibration.}
   \label{fig:architecture}
 \end{figure}
 
@@ -281,23 +281,40 @@ This entire branch contains approximately 15K trainable parameters, making it li
 
 
 % ------------------------------------------------------------------
-\subsection{Evidential deep learning with gated evidence fusion}
+\subsection{Neuro-symbolic evidential deep learning (NeSy-EDL)}
 \label{sec:edl}
 % ------------------------------------------------------------------
 
-We fuse the three evidence streams under the Evidential Deep Learning framework~\citep{sensoy2018evidential}, which places a Dirichlet prior over class probabilities to jointly model aleatoric and epistemic uncertainty.
+A central challenge in multi-branch neuro-symbolic detection is \emph{how to fuse heterogeneous evidence sources under uncertainty}.
+Standard EDL~\citep{sensoy2018evidential} assumes a single evidence vector; naively summing evidence from neural and symbolic branches ignores that their reliability varies per sample and fails to reflect reasoning \emph{conflict} in the fused uncertainty.
+We introduce \textbf{NeSy-EDL}, extending EDL with three novel components that make the evidential framework multi-branch-aware.
 
-\subsubsection{Gated evidence aggregation}
 
-The total evidence is computed via gated addition:
+\subsubsection{Confidence-modulated evidence fusion (CMEF)}
+\label{sec:cmef}
+
+Standard gated fusion uses static scalar gates: $\bm{e}_\text{total} = \bm{e}_\text{spatial} + \sigma(\gamma_1)\bm{e}_\text{concept} + \sigma(\gamma_2)\bm{e}_\text{causal}$, where the contribution of each branch is identical across all samples.
+This is suboptimal: a symbolic branch may be highly informative for one sample (e.g., clear rule violations) but uninformative for another (e.g., ambiguous attributes).
+
+CMEF replaces static gates with \emph{per-sample dynamic weighting} based on each branch's own Dirichlet strength:
 \begin{equation}
-  \bm{e}_\text{total} = \bm{e}_\text{spatial} + \sigma(\gamma_1)\,\bm{e}_\text{concept} + \sigma(\gamma_2)\,\bm{e}_\text{causal},
-  \label{eq:gated_fusion}
+  \bm{e}_\text{total} = \bm{e}_\text{spatial}
+    + \sigma(\gamma_1)\,\phi(S_\text{concept})\,\bm{e}_\text{concept}
+    + \sigma(\gamma_2)\,\phi(S_\text{causal})\,\bm{e}_\text{causal},
+  \label{eq:cmef}
 \end{equation}
-where $\gamma_1, \gamma_2 \in \mathbb{R}$ are learnable gate parameters.
-The gates are initialized to $\gamma_1{=}{-}0.5$ and $\gamma_2{=}{-}0.8$ (sigmoid values $\approx 0.38$ and $0.31$, respectively), allowing the neuro-symbolic branches to contribute meaningful signal from the start of training while the spatial branch provides the dominant evidence.
-As training progresses, the gates adapt: if the symbolic branches provide useful complementary signal, the gates open further; if not, they close.
-This adaptive mechanism avoids the need to manually tune evidence weights and provides an interpretable measure of each branch's contribution.
+where $S_b = \sum_k (\bm{e}_b + \bm{1})_k$ is the Dirichlet strength of branch $b$, and the \emph{confidence gate} is:
+\begin{equation}
+  \phi(S_b) = \sigma\!\left(\frac{S_b - K}{\tau}\right), \quad \tau = \exp(\theta_\tau),
+  \label{eq:conf_gate}
+\end{equation}
+with learnable log-temperature $\theta_\tau$ (initialized to 0, so $\tau{=}1$).
+When $S_b = K$ (uniform Dirichlet, maximum epistemic uncertainty), $\phi \approx 0.5$; when $S_b \gg K$ (confident branch), $\phi \to 1$; when $S_b < K$ (degenerate), $\phi < 0.5$.
+The learnable gates $\gamma_1, \gamma_2$ are initialized to $-0.5$ and $-0.8$, respectively.
+
+\paragraph{Key property.}
+On out-of-distribution data where the neural spatial branch becomes uncertain (low $S_\text{spatial}$), the symbolic branches---whose rule-based and constraint-based evidence generalizes across manipulation methods---often retain higher confidence.
+CMEF automatically allocates greater relative weight to these symbolic branches, enabling \emph{dynamic neural-symbolic trust allocation} precisely in the generalization regime that matters.
 
 
 \subsubsection{Dirichlet prediction and uncertainty}
@@ -310,49 +327,79 @@ The fused evidence parameterizes a Dirichlet distribution:
   u = \frac{K}{S},
   \label{eq:dirichlet}
 \end{equation}
-where $\bm{\alpha} \in \mathbb{R}^K_{>0}$ are the Dirichlet concentration parameters ($K{=}2$ for binary classification), $\hat{p}_k$ is the expected probability for class $k$, and $u \in (0, 1]$ is the epistemic uncertainty.
-High total evidence ($S \gg K$) yields low uncertainty and confident predictions; low evidence yields $u \to 1$, signaling that the model lacks sufficient information.
+where $\bm{\alpha} \in \mathbb{R}^K_{>0}$ are Dirichlet concentration parameters ($K{=}2$), $\hat{p}_k$ is the expected class probability, and $u \in (0, 1]$ is the epistemic uncertainty.
 
 
 \subsubsection{Training objective}
 \label{sec:loss}
 
-The training loss combines three terms:
+The NeSy-EDL objective combines five terms, the first three inherited from standard EDL and the last two novel to our multi-branch setting.
 
 \paragraph{Evidential log-likelihood.}
-The type-II maximum likelihood under the Dirichlet prior:
+Type-II maximum likelihood under the Dirichlet prior on the \emph{fused} evidence:
 \begin{equation}
   \mathcal{L}_\text{nll} = -\sum_{k=1}^{K} y_k\bigl(\psi(\alpha_k) - \psi(S)\bigr),
   \label{eq:edl_nll}
 \end{equation}
 where $\bm{y}$ is the one-hot target and $\psi$ is the digamma function.
-We apply per-sample class weights $[w_\text{real}{=}1.8,\, w_\text{fake}{=}0.6]$ to counteract the tendency of CLIP features to bias toward the fake class, ensuring balanced real/fake accuracy.
+Per-sample class weights $[w_\text{real}{=}1.8,\, w_\text{fake}{=}0.6]$ counteract CLIP's bias toward the fake class.
 
 \paragraph{Annealed KL divergence.}
-A KL penalty between the predicted Dirichlet (with correct-class evidence removed) and the uniform Dirichlet $\text{Dir}(\bm{1})$ regularizes evidence for incorrect classes:
+A KL penalty between the predicted Dirichlet (with correct-class evidence removed) and the uniform prior $\text{Dir}(\bm{1})$:
 \begin{equation}
   \mathcal{L}_\text{kl} = \text{KL}\bigl[\text{Dir}(\tilde{\bm{\alpha}}) \| \text{Dir}(\bm{1})\bigr], \quad
-  \tilde{\alpha}_k = (1 - y_k)(\alpha_k - 1) + 1.
+  \tilde{\alpha}_k = (1 - y_k)(\alpha_k - 1) + 1,
   \label{eq:kl}
 \end{equation}
-The KL weight is annealed from 0 to $\lambda_\text{kl}{=}0.15$ over the first 10 epochs to prevent premature evidence suppression.
+annealed from 0 to $\lambda_\text{kl}{=}0.15$ over the first 10 epochs to prevent premature evidence suppression.
 
-\paragraph{Accuracy-vs-uncertainty calibration.}
-Following~\citet{karandikar2021soft}, we add an AVU term that penalizes confident-but-wrong predictions and rewards uncertain-but-wrong predictions:
+\paragraph{Accuracy-vs-uncertainty calibration (AVU).}
+Following~\citet{karandikar2021soft}:
 \begin{equation}
   \mathcal{L}_\text{avu} = \bm{1}_\text{correct}\bigl[-\hat{p}_\text{max}\log(1{-}u)\bigr]
     + \bm{1}_\text{wrong}\bigl[-(1{-}\hat{p}_\text{max})\log(u)\bigr],
   \label{eq:avu}
 \end{equation}
-where $\hat{p}_\text{max} = \max_k \hat{p}_k$ is the predicted confidence.
-This term directly calibrates the uncertainty estimate, ensuring that the model ``knows what it doesn't know.''
+which penalizes confident-but-wrong predictions and rewards uncertainty on misclassified samples.
 
-The total loss is:
+\paragraph{Per-branch auxiliary supervision (PBAS).}
+\emph{Novel.}
+In multi-branch fusion, a dominant branch (here, the CLIP spatial branch with 1024-d features) can suppress gradient flow to weaker symbolic branches, causing them to learn noise rather than meaningful evidence.
+PBAS applies a lightweight standalone EDL loss to \emph{each branch independently}:
 \begin{equation}
-  \mathcal{L} = \mathcal{L}_\text{nll} + \lambda_\text{kl}\,\beta(t)\,\mathcal{L}_\text{kl} + \lambda_\text{avu}\,\mathcal{L}_\text{avu},
+  \mathcal{L}_\text{aux} = \sum_{b \in \mathcal{B}} \mathcal{L}_\text{edl}^{(b)}\bigl(\bm{e}_b,\, \bm{y}\bigr),
+  \label{eq:pbas}
+\end{equation}
+where $\mathcal{B} = \{\text{spatial}, \text{concept}, \text{causal}\}$ and $\mathcal{L}_\text{edl}^{(b)}$ is the standard EDL loss (NLL + annealed KL) applied to branch $b$'s evidence alone.
+This ensures each branch produces independently meaningful evidence before fusion, analogous to auxiliary losses in multi-task learning but operating in the evidential space.
+
+\paragraph{Inter-branch disagreement calibration (IBDC).}
+\emph{Novel.}
+Standard EDL has no mechanism for the fused uncertainty to reflect reasoning \emph{conflict} between evidence sources---it only reflects total evidence magnitude.
+IBDC introduces a calibration loss that ties epistemic uncertainty to inter-branch agreement:
+\begin{equation}
+  d(\bm{x}) = 1 - \cos\bigl(\hat{\bm{p}}_\text{neural}(\bm{x}),\, \hat{\bm{p}}_\text{symbolic}(\bm{x})\bigr),
+  \label{eq:disagreement}
+\end{equation}
+\begin{equation}
+  \mathcal{L}_\text{bdc} = -d\,\log(u) - (1{-}d)\,\log(1{-}u),
+  \label{eq:ibdc}
+\end{equation}
+where $\hat{\bm{p}}_b = \bm{\alpha}_b / S_b$ is the Dirichlet mean of branch $b$, $d \in [0, 1]$ is the cosine disagreement (detached from the computation graph), and $u$ is the fused epistemic uncertainty.
+This binary cross-entropy loss encourages the model to be uncertain when branches \emph{disagree} (e.g., CLIP says real but rules detect violations) and confident when they \emph{agree}.
+The disagreement is averaged over all $\binom{|\mathcal{B}|}{2}$ branch pairs.
+
+\paragraph{Total objective.}
+\begin{equation}
+  \mathcal{L} = \mathcal{L}_\text{nll}
+    + \lambda_\text{kl}\,\beta(t)\,\mathcal{L}_\text{kl}
+    + \lambda_\text{avu}\,\mathcal{L}_\text{avu}
+    + \lambda_\text{aux}\,\mathcal{L}_\text{aux}
+    + \lambda_\text{bdc}\,\mathcal{L}_\text{bdc},
   \label{eq:total_loss}
 \end{equation}
-where $\beta(t) = \min(1, t/T_\text{anneal})$ is the annealing schedule, $\lambda_\text{kl}{=}0.15$, and $\lambda_\text{avu}{=}0.1$.
+where $\beta(t) = \min(1, t/T_\text{anneal})$ is the annealing schedule, $\lambda_\text{kl}{=}0.15$, $\lambda_\text{avu}{=}0.1$, $\lambda_\text{aux}{=}0.1$, and $\lambda_\text{bdc}{=}0.05$.
+The CMEF parameters ($\theta_\tau$, $\gamma_1$, $\gamma_2$) are trained jointly with the detection objective, receiving gradients from all five loss terms.
 
 
 % ------------------------------------------------------------------
@@ -383,7 +430,7 @@ Combined with class-weighted EDL and the neuro-symbolic consistency verification
      & Forensic anomaly scores & 5 & Neural (autoencoder) \\
      & Counterfactual mismatch & 1 & Neuro-symbolic \\
     \midrule
-    \textbf{Fused evidence} & Gated Dirichlet aggregation & 2 & Evidential \\
+    \textbf{Fused evidence} & CMEF Dirichlet aggregation & 2 & NeSy-EDL \\
     \bottomrule
   \end{tabular}
 \end{table}

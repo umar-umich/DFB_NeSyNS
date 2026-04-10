@@ -81,11 +81,19 @@ class ConceptBranch(nn.Module):
     def forward(self, combined_features: torch.Tensor) -> dict:
         """
         Args:
-            combined_features: (B, 122) precomputed [fast(58) || vlm(64)]
+            combined_features: (B, D) precomputed features, D=122 [fast||vlm] or D=58 [fast only]
         Returns:
             dict with 'logits', 'evidence', 'violations', 'concept_input'
         """
-        violations = self.consistency_rules(combined_features)  # (B, 23)
+        # Pad to 122-d if fast-only (58-d) so consistency rules indices work.
+        # VLM-dependent rules will produce ~0 (zero × zero), which is correct.
+        if combined_features.shape[1] < 122:
+            pad = combined_features.new_zeros(
+                combined_features.shape[0], 122 - combined_features.shape[1])
+            rules_input = torch.cat([combined_features, pad], dim=1)
+        else:
+            rules_input = combined_features
+        violations = self.consistency_rules(rules_input)  # (B, 23)
         concept_input = torch.cat(
             [combined_features, violations], dim=1)             # (B, 145)
         logits = self.concept_mlp(concept_input)                # (B, 2)

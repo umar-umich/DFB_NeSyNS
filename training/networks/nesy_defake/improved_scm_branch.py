@@ -169,7 +169,11 @@ class SubGraphPair(nn.Module):
         divergence_loss = -F.l1_loss(A_real, A_fake)
 
         # --- DAG + sparsity penalties ---
-        dag_penalty = dagma_acyclicity(A_real) + dagma_acyclicity(A_fake)
+        # Normalize adjacencies so spectral radius stays < s=1.0 for DAGMA
+        A_real_norm = A_real / (A_real.sum(dim=1, keepdim=True).clamp(min=1.0))
+        A_fake_norm = A_fake / (A_fake.sum(dim=1, keepdim=True).clamp(min=1.0))
+        dag_penalty = (dagma_acyclicity(A_real_norm)
+                       + dagma_acyclicity(A_fake_norm)).clamp(max=100.0)
         sparsity = self.sparsity_penalty * (
             A_real.abs().sum() + A_fake.abs().sum())
 

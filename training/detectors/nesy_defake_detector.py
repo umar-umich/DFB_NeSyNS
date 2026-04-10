@@ -474,17 +474,47 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self._use_edl = self.ablation_mode in ('spatial_edl', 'concept_edl', 'causal_edl')
         self._use_concept_branch = self.ablation_mode in ('concept_edl', 'causal_edl')
         self._use_causal_branch = self.ablation_mode == 'causal_edl'
+        self._use_nesy_edl = False  # default; overridden below if edl.nesy_fusion=true
 
         if self._use_edl:
-            from networks.nesy_defake.losses.edl_loss import EvidentialLoss
             edl_cfg = config.get('edl', {})
-            self.edl_loss = EvidentialLoss(
-                num_classes=edl_cfg.get('num_classes', 2),
-                annealing_epochs=edl_cfg.get('annealing_epochs', 10),
-                kl_weight=edl_cfg.get('kl_weight', 0.1),
-                avu_weight=edl_cfg.get('avu_weight', 0.0),
-                class_weights=config.get('class_weights', None),
-            )
+            use_nesy_edl = edl_cfg.get('nesy_fusion', False)
+            if use_nesy_edl:
+                from networks.nesy_defake.losses.nesy_edl_loss import (
+                    NeSyEvidentialLoss, ConfidenceModulatedEvidenceFusion)
+                self.edl_loss = NeSyEvidentialLoss(
+                    num_classes=edl_cfg.get('num_classes', 2),
+                    annealing_epochs=edl_cfg.get('annealing_epochs', 10),
+                    kl_weight=edl_cfg.get('kl_weight', 0.15),
+                    avu_weight=edl_cfg.get('avu_weight', 0.1),
+                    aux_weight=edl_cfg.get('aux_weight', 0.1),
+                    disagreement_weight=edl_cfg.get('disagreement_weight', 0.05),
+                    class_weights=config.get('class_weights', None),
+                )
+                # CMEF replaces scalar gates
+                gate_cfg = config.get('evidence_gate', {})
+                num_sym = (1 if self._use_concept_branch else 0) + (1 if self._use_causal_branch else 0)
+                gate_inits = []
+                if self._use_concept_branch:
+                    gate_inits.append(gate_cfg.get('concept_init', -0.5))
+                if self._use_causal_branch:
+                    gate_inits.append(gate_cfg.get('causal_init', -0.8))
+                self.cmef = ConfidenceModulatedEvidenceFusion(
+                    num_symbolic_branches=num_sym,
+                    num_classes=edl_cfg.get('num_classes', 2),
+                    gate_inits=gate_inits,
+                )
+                logger.info(f"  NeSy-EDL        : CMEF + PBAS + IBDC enabled")
+            else:
+                from networks.nesy_defake.losses.edl_loss import EvidentialLoss
+                self.edl_loss = EvidentialLoss(
+                    num_classes=edl_cfg.get('num_classes', 2),
+                    annealing_epochs=edl_cfg.get('annealing_epochs', 10),
+                    kl_weight=edl_cfg.get('kl_weight', 0.1),
+                    avu_weight=edl_cfg.get('avu_weight', 0.0),
+                    class_weights=config.get('class_weights', None),
+                )
+            self._use_nesy_edl = use_nesy_edl
             logger.info(f"  EDL loss        : annealing={edl_cfg.get('annealing_epochs', 10)} epochs")
 
         if self._use_concept_branch:
@@ -857,7 +887,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             task_outputs = self.classifier(projected)
             spatial_logits = task_outputs['classification']  # (B, 2)
             spatial_evidence = F.softplus(spatial_logits.float())  # (B, 2)
-            total_evidence = spatial_evidence
 
             # Concept evidence (Ablation 3+)
             concept_out = None
@@ -866,8 +895,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 if combined_features is not None:
                     combined_features = combined_features.to(device)
                     concept_out = self.concept_branch(combined_features)
-                    concept_gate = torch.sigmoid(self.concept_gate)
-                    total_evidence = total_evidence + concept_gate * concept_out['evidence']
 
             # Causal evidence (Ablation 4)
             causal_out = None
@@ -885,8 +912,34 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                         forensic_features=forensic_features,
                         labels=labels,
                     )
+
+            # ── Evidence fusion ────────────────────────────────────────
+            branch_evidences = {}  # for NeSy-EDL per-branch aux losses
+            branch_evidences['spatial'] = spatial_evidence
+
+            if self._use_nesy_edl and hasattr(self, 'cmef'):
+                # Novel: Confidence-Modulated Evidence Fusion (CMEF)
+                symbolic_evs = []
+                if concept_out is not None:
+                    symbolic_evs.append(concept_out['evidence'])
+                    branch_evidences['concept'] = concept_out['evidence']
+                if causal_out is not None:
+                    symbolic_evs.append(causal_out['evidence'])
+                    branch_evidences['causal'] = causal_out['evidence']
+                total_evidence, cmef_diag = self.cmef(
+                    spatial_evidence, symbolic_evs)
+            else:
+                # Standard: static scalar gates
+                total_evidence = spatial_evidence
+                if concept_out is not None:
+                    concept_gate = torch.sigmoid(self.concept_gate)
+                    total_evidence = total_evidence + concept_gate * concept_out['evidence']
+                    branch_evidences['concept'] = concept_out['evidence']
+                if causal_out is not None:
                     causal_gate = torch.sigmoid(self.causal_ev_gate)
                     total_evidence = total_evidence + causal_gate * causal_out['evidence']
+                    branch_evidences['causal'] = causal_out['evidence']
+                cmef_diag = None
 
             # Dirichlet prediction from fused evidence
             alpha = total_evidence + 1.0
@@ -899,6 +952,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 'prob':              prob,
                 'total_evidence':    total_evidence,
                 'spatial_evidence':  spatial_evidence,
+                'branch_evidences':  branch_evidences,
                 'alpha':             alpha,
                 'uncertainty':       uncertainty,
                 'feat':              projected,
@@ -915,16 +969,26 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             }
             if concept_out is not None:
                 pred['concept_evidence'] = concept_out['evidence']
-                pred['concept_gate'] = torch.sigmoid(self.concept_gate).detach()
+                if self._use_nesy_edl and cmef_diag is not None:
+                    pred['concept_gate'] = cmef_diag.get('branch_0_gate', torch.tensor(0.0))
+                    pred['concept_conf'] = cmef_diag.get('branch_0_conf_mean', torch.tensor(0.0))
+                elif hasattr(self, 'concept_gate'):
+                    pred['concept_gate'] = torch.sigmoid(self.concept_gate).detach()
                 pred['violations'] = concept_out['violations']
             if causal_out is not None:
                 pred['causal_evidence'] = causal_out['evidence']
-                pred['causal_gate'] = torch.sigmoid(self.causal_ev_gate).detach()
+                if self._use_nesy_edl and cmef_diag is not None:
+                    idx = 1 if concept_out is not None else 0
+                    pred['causal_gate'] = cmef_diag.get(f'branch_{idx}_gate', torch.tensor(0.0))
+                    pred['causal_conf'] = cmef_diag.get(f'branch_{idx}_conf_mean', torch.tensor(0.0))
+                elif hasattr(self, 'causal_ev_gate'):
+                    pred['causal_gate'] = torch.sigmoid(self.causal_ev_gate).detach()
                 pred['dag_penalty'] = causal_out['dag_penalty']
-                # Copy adjacency matrices (keys vary by branch type)
                 for k, v in causal_out.items():
                     if k.startswith('A_'):
                         pred[k] = v
+            if cmef_diag is not None and 'tau' in cmef_diag:
+                pred['cmef_tau'] = cmef_diag['tau']
             return pred
 
         # -- Step 1: Extract raw branch features -----------------------------
@@ -1126,11 +1190,21 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         # -- Ablation 2/3/4: EDL loss ----------------------------------------
         if self._use_edl:
-            edl_out = self.edl_loss(
-                evidence=pred_dict['total_evidence'],
-                target=label,
-                epoch=self._current_epoch,
-            )
+            # Pass branch evidences for NeSy-EDL (aux + disagreement losses)
+            branch_evs = pred_dict.get('branch_evidences', None)
+            if self._use_nesy_edl and branch_evs is not None:
+                edl_out = self.edl_loss(
+                    fused_evidence=pred_dict['total_evidence'],
+                    target=label,
+                    epoch=self._current_epoch,
+                    branch_evidences=branch_evs,
+                )
+            else:
+                edl_out = self.edl_loss(
+                    evidence=pred_dict['total_evidence'],
+                    target=label,
+                    epoch=self._current_epoch,
+                )
             total_loss = edl_out['loss']
 
             # Add DAG penalty for Ablation 4
@@ -1139,7 +1213,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 dag_penalty = pred_dict['dag_penalty']
                 total_loss = total_loss + self._dag_penalty_weight * dag_penalty
 
-            return {
+            loss_dict = {
                 'overall':          total_loss,
                 'classification':   edl_out['loss'].detach(),
                 'edl_nll':          edl_out['loss_nll'],
@@ -1153,6 +1227,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 'causal_semantic':  torch.zeros(1, device=device).squeeze(),
                 'graph_divergence': torch.zeros(1, device=device).squeeze(),
             }
+            # NeSy-EDL extra loss terms
+            if 'loss_aux' in edl_out:
+                loss_dict['edl_aux'] = edl_out['loss_aux']
+            if 'loss_bdc' in edl_out:
+                loss_dict['edl_bdc'] = edl_out['loss_bdc']
+            return loss_dict
 
         # -- Ablation 1: pure CE loss only -----------------------------------
         if self.ablation_spatial_only:
@@ -1343,6 +1423,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 metrics['concept_gate'] = float(pred_dict['concept_gate'].item())
             if 'causal_gate' in pred_dict:
                 metrics['causal_gate'] = float(pred_dict['causal_gate'].item())
+            # NeSy-EDL: branch confidence and CMEF temperature
+            if 'concept_conf' in pred_dict:
+                metrics['concept_conf'] = float(pred_dict['concept_conf'].item())
+            if 'causal_conf' in pred_dict:
+                metrics['causal_conf'] = float(pred_dict['causal_conf'].item())
+            if 'cmef_tau' in pred_dict:
+                metrics['cmef_tau'] = float(pred_dict['cmef_tau'].item())
             self.video_names = []
             return metrics
 
