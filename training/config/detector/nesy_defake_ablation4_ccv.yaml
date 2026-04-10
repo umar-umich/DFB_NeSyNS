@@ -26,12 +26,15 @@ backbone_name: multi_stream
 ablation_spatial_only: false
 ablation_mode: causal_edl
 
-# -- EDL config ---------------------------------------------------------------
+# -- EDL config (NeSy-EDL: CMEF + PBAS + IBDC) --------------------------------
 edl:
   num_classes: 2
   annealing_epochs: 10
-  kl_weight: 0.15                 # was 0.1 — slightly stronger KL for better calibration
-  avu_weight: 0.1                 # was 0.0 — enable AVU: penalize confident-wrong, reward uncertain-wrong
+  kl_weight: 0.15
+  avu_weight: 0.1
+  nesy_fusion: true               # enable Confidence-Modulated Evidence Fusion
+  aux_weight: 0.1                 # per-branch auxiliary EDL supervision
+  disagreement_weight: 0.05       # inter-branch disagreement calibration
 
 # -- Concept branch config ----------------------------------------------------
 concept_branch:
@@ -120,19 +123,14 @@ mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]
 
 # -- Precomputed features (for concept + causal branches) ---------------------
-# VLM/facellava_semantic features not yet extracted — disabled for now.
-# When ready, set enabled: true to use [fast(58) || vlm(64)] = 122-d.
-# Until then, VLM portion is zero-filled automatically.
+# FaceBench VLM features: 64-d subset precomputed as facebench_semantic/*.pt
+# Combined with fast(58) = [fast(58) || vlm(64)] = 122-d
 semantic_attributes:
-  enabled: false
+  enabled: true
   backend: precomputed
-  precomputed_dim: 211
-  precomputed_dir: facellava_semantic
-  output_dim: 211
-  model_path: /data/umar/Repos/FaceBench
-  use_llm: true
-  fp16: true
-  micro_batch_size: 16
+  precomputed_dim: 64
+  precomputed_dir: facebench_semantic
+  output_dim: 64
 
 fast_semantic:
   enabled: true

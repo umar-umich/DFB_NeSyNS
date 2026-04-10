@@ -1,26 +1,12 @@
 # =============================================================================
-# Ablation 4: Spatial + Concept + Simplified Causal + EDL (Full NeSy)
+# Ablation 4b-noVLM: CCV without FaceBench VLM features
 # =============================================================================
-# Purpose: Full neuro-symbolic pipeline with explainable causal graphs.
-# Builds on Ablation 3 by adding a simplified causal branch that learns
-# structural causal models (SCMs) for identity and forensic sub-graphs.
-#
-# Evidence fusion (3 sources):
-#   spatial_evidence = softplus(linear_head(CLIP_features))
-#   concept_evidence = softplus(concept_mlp(122-d + 23 rules))
-#   causal_evidence  = softplus(residual_mlp(differential SCM residuals))
-#   total = spatial + gate1 * concept + gate2 * causal
-#
-# Causal sub-graphs (spatial-only, linear SCM):
-#   Identity:  z(32) + curated(51) + rules(23) = 106 nodes
-#   Forensic:  z(32) + forensic(30) = 62 nodes
-#   4 SCMs total (real/fake x identity/forensic)
-#
-# Changes from Ablation 3:
-#   - Adds forensic_features (30-d precomputed)
-#   - Adds SimplifiedCausalBranch with 4 linear SCMs
-#   - Adds causal evidence gate (init -3.0)
-#   - DAG acyclicity + sparsity penalty in loss
+# Purpose: Test whether expensive FaceBench VLM features (64-d) improve
+# detection or if fast-only semantic features (58-d) are sufficient.
+# Identical to ablation4_ccv.yaml except:
+#   - semantic_attributes.enabled: false (no VLM)
+#   - combined_dim: 58 (fast only, was 122)
+#   - use_refined_features: false
 # =============================================================================
 
 log_dir: /data/umar/Repos/DFB_NeSyNS/logs
@@ -45,32 +31,32 @@ edl:
 # -- Concept branch config ----------------------------------------------------
 concept_branch:
   enabled: true
-  combined_dim: 122
+  combined_dim: 58                   # fast only (no VLM 64-d)
   rules_dim: 23
   hidden_dim: 64
   dropout: 0.2
 
-# -- Improved SCM causal branch config (fixes A-D) ---------------------------
+# -- CCV causal branch config --------------------------------------------------
 causal_branch:
   enabled: true
-  type: improved_scm              # 'simple', 'improved_scm', or 'ccv'
-  backbone_dim: 1024
-  z_causal_dim: 32
-  curated_dim: 51
+  type: ccv                        # 'simple', 'improved_scm', or 'ccv'
+  combined_dim: 58                   # fast only (no VLM 64-d)
   rules_dim: 23
   forensic_dim: 83
-  scm_hidden_dim: 64              # nonlinear SCM hidden layer size
-  summary_dim: 8                  # per-subgraph projected summary dimension
+  backbone_dim: 1024
+  num_constraints: 16              # K learned constraint functions
+  constraint_hidden: 48            # shared trunk hidden dim
+  forensic_bottleneck: 8           # autoencoder bottleneck per group
+  cf_z_dim: 32                     # counterfactual predictor z dim
+  cf_hidden_dim: 64                # counterfactual predictor hidden dim
   evidence_hidden: 64
-  sparsity_penalty: 0.01
-  divergence_weight: 0.1          # weight for graph divergence loss
-  recon_weight: 0.5               # weight for label-conditioned reconstruction
-  dag_penalty_weight: 0.01        # weight reduced: DAG penalty exploded to billions at 0.05
+  dropout: 0.2
+  dag_penalty_weight: 0.0          # CCV has no DAG penalty
 
 # -- Evidence gates ------------------------------------------------------------
 evidence_gate:
-  concept_init: -0.5            # sigmoid ≈ 0.27 — was -3.0 (dead gate)
-  causal_init:  -0.8            # sigmoid ≈ 0.18 — starts cautious, allows gradient flow
+  concept_init: -0.5            # sigmoid ≈ 0.38 — was -1.0 (gate barely moved from 0.27)
+  causal_init:  -0.8            # sigmoid ≈ 0.31 — was -1.5 (CCV showing useful signal, let it contribute more)
 
 # -- Dataset ------------------------------------------------------------------
 dataset_type: nesydefake
@@ -95,15 +81,15 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
-class_weights: [1.6, 0.8]    # [real, fake] — fix fake bias
+class_weights: [1.8, 0.6]    # [real, fake] — stronger push against fake bias (acc_real was 0.65 at epoch 8)
 
 projection_dropout:
   spatial:   0.0
   frequency: 0.0
 
 # -- Data loading & augmentation (GenD) ---------------------------------------
-train_batchSize: 128
-test_batchSize:  128
+train_batchSize: 300
+test_batchSize:  300
 workers:         12
 
 use_data_augmentation: true
@@ -132,7 +118,7 @@ std:  [0.5, 0.5, 0.5]
 # FaceBench VLM features: 64-d subset precomputed as facebench_semantic/*.pt
 # Combined with fast(58) = [fast(58) || vlm(64)] = 122-d
 semantic_attributes:
-  enabled: true
+  enabled: false                    # VLM DISABLED for this ablation
   backend: precomputed
   precomputed_dim: 64
   precomputed_dir: facebench_semantic
@@ -143,7 +129,7 @@ fast_semantic:
   output_dim: 58
   precomputed_dir: fast_semantic
 
-use_refined_features: true      # 122-d combined [fast(58) || vlm(64)]
+use_refined_features: false         # fast-only 58-d (no VLM concat)
 
 consistency_rules:
   enabled: true
