@@ -35,8 +35,8 @@ ablation_mode: concept_edl
 edl:
   num_classes: 2
   annealing_epochs: 10
-  kl_weight: 0.1
-  avu_weight: 0.0
+  kl_weight: 0.15
+  avu_weight: 0.1                 # AVU calibration: penalize confident-wrong
 
 # -- Concept branch config ----------------------------------------------------
 concept_branch:
@@ -48,7 +48,7 @@ concept_branch:
 
 # -- Evidence gate -------------------------------------------------------------
 evidence_gate:
-  concept_init: -1.0            # sigmoid ≈ 0.27 — was -3.0 (0.047), gate stayed dead
+  concept_init: -0.5            # sigmoid ≈ 0.38 — concept gate barely moved at -1.0
 
 # -- Dataset ------------------------------------------------------------------
 dataset_type: nesydefake
@@ -73,7 +73,7 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
-class_weights: [1.4, 0.8]    # [real, fake] — fix fake bias
+class_weights: [1.8, 0.6]    # [real, fake] — stronger push against fake bias
 
 projection_dropout:
   spatial:   0.0
@@ -107,19 +107,14 @@ mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]
 
 # -- Precomputed semantic features (for concept branch) -----------------------
-# VLM/facellava_semantic features not yet extracted — disabled for now.
-# When ready, set enabled: true to use [fast(58) || vlm(64)] = 122-d.
-# Until then, VLM portion is zero-filled automatically.
+# FaceBench VLM features: 64-d subset precomputed as facebench_semantic/*.pt
+# Combined with fast(58) = [fast(58) || vlm(64)] = 122-d
 semantic_attributes:
-  enabled: false
+  enabled: true
   backend: precomputed
-  precomputed_dim: 211
-  precomputed_dir: facellava_semantic
-  output_dim: 211
-  model_path: /data/umar/Repos/FaceBench
-  use_llm: true
-  fp16: true
-  micro_batch_size: 16
+  precomputed_dim: 64
+  precomputed_dir: facebench_semantic
+  output_dim: 64
 
 fast_semantic:
   enabled: true

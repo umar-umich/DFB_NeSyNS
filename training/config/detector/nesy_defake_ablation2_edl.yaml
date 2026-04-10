@@ -126,7 +126,7 @@ semantic_attributes:
   enabled: false
   backend: precomputed
   precomputed_dim: 211
-  precomputed_dir: facellava_semantic
+  precomputed_dir: facebench_semantic
   output_dim: 211
   model_path: /data/umar/Repos/FaceBench
   use_llm: true
