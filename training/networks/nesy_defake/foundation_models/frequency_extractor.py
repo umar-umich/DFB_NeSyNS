@@ -130,6 +130,55 @@ class _FP32GradBridge(torch.autograd.Function):
 
 
 # ---------------------------------------------------------------------------
+# MAE encoder wrapper — bypasses masking for full-image feature extraction
+# ---------------------------------------------------------------------------
+
+class _MAEEncoderWrapper(nn.Module):
+    """
+    Wraps HuggingFace ViTMAEModel for use as a feature extractor.
+
+    ViTMAEModel always applies random masking in its forward() (designed
+    for pretraining). For downstream feature extraction, we need ALL
+    patches. This wrapper manually:
+      1. Creates patch embeddings (no masking)
+      2. Prepends CLS token + adds position embeddings
+      3. Runs the encoder transformer
+      4. Returns the CLS token output (B, D)
+
+    The wrapper exposes the same nn.Module interface as timm/CLIP models,
+    so freeze/unfreeze and LayerNorm discovery work unchanged.
+    """
+
+    def __init__(self, mae_model):
+        super().__init__()
+        self.patch_embeddings = mae_model.embeddings.patch_embeddings
+        self.cls_token = mae_model.embeddings.cls_token
+        self.position_embeddings = mae_model.embeddings.position_embeddings
+        self.encoder = mae_model.encoder
+        self.layernorm = mae_model.layernorm
+
+    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        """(B, 3, 224, 224) → (B, 1024) CLS token features."""
+        # Patch embed: (B, 3, 224, 224) → (B, num_patches, D)
+        embeddings = self.patch_embeddings(pixel_values)
+        B = embeddings.shape[0]
+
+        # Prepend CLS token
+        cls_tokens = self.cls_token.expand(B, -1, -1)
+        embeddings = torch.cat((cls_tokens, embeddings), dim=1)
+
+        # Add position embeddings
+        embeddings = embeddings + self.position_embeddings
+
+        # Encoder: transformer blocks
+        encoder_out = self.encoder(embeddings)
+        sequence_output = encoder_out.last_hidden_state
+
+        # CLS token → LayerNorm → output
+        return self.layernorm(sequence_output[:, 0])
+
+
+# ---------------------------------------------------------------------------
 # Shared GenD helpers (keep in sync with spatial/temporal or extract to utils)
 # ---------------------------------------------------------------------------
 
@@ -593,6 +642,8 @@ class FrequencyFeatureExtractor(nn.Module):
         builders = {
             'fad_clip':    self._build_fad_clip,
             'fad_dinov2':  self._build_fad_dinov2,
+            'fad_mae':     self._build_fad_mae,
+            'fad_eva02':   self._build_fad_eva02,
             'clip_phase':  self._build_clip_phase,
             'spsl':        self._build_spsl,
             'srm_resnet':  self._build_srm_resnet,
@@ -700,6 +751,109 @@ class FrequencyFeatureExtractor(nn.Module):
             f"mode={self.fad_mode}, learnable={self.fad_learnable}, "
             f"backbone_dim={self.hidden_dim}"
         )
+
+    def _build_fad_mae(self, config: dict) -> None:
+        """
+        F3Net FAD front-end + MAE ViT-L encoder.
+
+        MAE (Masked Autoencoder, He et al. CVPR 2022) was pretrained to
+        reconstruct masked image patches from pixels. Its features encode
+        pixel-level texture, noise patterns, and local structure — the exact
+        low-level signals that CLIP's contrastive pretraining discards.
+
+        With FAD emphasizing frequency artifacts (blending boundaries, GAN
+        upsampling traces), MAE's reconstruction-trained features are
+        maximally sensitive to the enhanced forensic signals.
+
+        Complementarity with CLIP spatial branch:
+          CLIP: "what is this face?" (semantic, contrastive)
+          MAE:  "how do these pixels look?" (perceptual, reconstructive)
+
+        Uses HuggingFace transformers ViTMAEModel with a custom wrapper
+        that bypasses masking for full-image feature extraction.
+        """
+        from transformers import ViTMAEModel
+
+        freq_cfg = config['foundation_models']['frequency']
+        model_path = freq_cfg.get('model_path', 'facebook/vit-mae-large')
+
+        logger.info(f"[FreqExtractor] Loading MAE from: {model_path}")
+        mae_model = ViTMAEModel.from_pretrained(model_path)
+
+        self.backbone = _MAEEncoderWrapper(mae_model)
+        self.hidden_dim = mae_model.config.hidden_size  # 1024
+        self.required_size = mae_model.config.image_size  # 224
+
+        self.fad_front_end = FADFrontEnd(
+            img_size=self.required_size,
+            mode=self.fad_mode,
+            use_learnable=self.fad_learnable,
+            emphasis_init=self.emphasis_init,
+            clip_mean=self.clip_mean,
+            clip_std=self.clip_std,
+        )
+        self.phase_proj = None
+
+        fad_params = sum(p.numel() for p in self.fad_front_end.parameters()
+                         if p.requires_grad)
+        backbone_params = sum(p.numel() for p in self.backbone.parameters())
+        logger.info(
+            f"[FreqExtractor] FAD+MAE: {fad_params:,} FAD params, "
+            f"{backbone_params:,} backbone params, "
+            f"backbone_dim={self.hidden_dim}, input={self.required_size}")
+
+    def _build_fad_eva02(self, config: dict) -> None:
+        """
+        F3Net FAD front-end + EVA-02 ViT-L encoder.
+
+        EVA-02 (Fang et al. CVPR 2024) combines MIM (masked image modeling)
+        with CLIP feature distillation. Its pretraining reconstructs masked
+        patches using CLIP features as targets — giving features that are
+        both semantically aware AND pixel-level sensitive.
+
+        Compared to pure MAE (reconstruction only) or pure CLIP (contrastive
+        only), EVA-02 sits at the intersection: it retains sensitivity to
+        local texture/noise patterns (from MIM) while also encoding semantic
+        structure (from CLIP teacher). This hybrid may be especially powerful
+        for forensics: it can see both the artifact AND the context.
+        """
+        try:
+            import timm
+        except ImportError:
+            raise ImportError(
+                "[FreqExtractor] timm is required for EVA-02 backbone. "
+                "Install with: pip install timm")
+
+        freq_cfg = config['foundation_models']['frequency']
+        timm_model = freq_cfg.get(
+            'timm_model',
+            'eva02_large_patch14_clip_224.merged2b_s4b_b131k')
+
+        logger.info(f"[FreqExtractor] Loading EVA-02 via timm: {timm_model}")
+        self.backbone = timm.create_model(
+            timm_model, pretrained=True, num_classes=0)
+
+        self.hidden_dim = self.backbone.num_features
+        default_cfg = self.backbone.default_cfg
+        input_size = default_cfg.get('input_size', (3, 224, 224))
+        self.required_size = input_size[1] if isinstance(input_size, (tuple, list)) else 224
+
+        self.fad_front_end = FADFrontEnd(
+            img_size=self.required_size,
+            mode=self.fad_mode,
+            use_learnable=self.fad_learnable,
+            emphasis_init=self.emphasis_init,
+            clip_mean=self.clip_mean,
+            clip_std=self.clip_std,
+        )
+        self.phase_proj = None
+
+        fad_params = sum(p.numel() for p in self.fad_front_end.parameters()
+                         if p.requires_grad)
+        logger.info(
+            f"[FreqExtractor] FAD+EVA-02: {fad_params:,} FAD params, "
+            f"backbone_dim={self.hidden_dim}, input={self.required_size}, "
+            f"timm_model={timm_model}")
 
     def _build_clip_phase(self, config: dict) -> None:
         """Legacy CLIP + phase map. Not recommended: phase maps are OOD for CLIP."""
@@ -978,6 +1132,44 @@ class FrequencyFeatureExtractor(nn.Module):
         with torch.cuda.amp.autocast(enabled=False):
             return self.freq_norm(raw.float())
 
+    def _forward_fad_timm(self, x):
+        """
+        Shared FAD + timm backbone forward (MAE, EVA-02, etc.).
+
+        Same 3-stage precision strategy as fad_clip/fad_dinov2:
+          Stage 1 — FAD in FP32 (DCT precision)
+          Stage 2 — timm backbone in BF16 (overflow-safe)
+          Stage 3 — SafeLayerNorm in FP32
+
+        timm models with num_classes=0 return pooled features (B, D)
+        directly — same interface as torch.hub DINOv2.
+        """
+        # ── Stage 1: FAD front-end in FP32 ────────────────────────────────
+        with torch.cuda.amp.autocast(enabled=False):
+            x = x.float()
+            _, _, H, W = x.shape
+            if H != self.required_size or W != self.required_size:
+                x = F.interpolate(
+                    x,
+                    size=(self.required_size, self.required_size),
+                    mode='bilinear',
+                    align_corners=False,
+                )
+            enhanced = self.fad_front_end(x)  # (B, 3, H, W) FP32
+
+        # ── Stage 2: timm backbone in BF16 ───────────────────────────────
+        use_bf16 = torch.cuda.is_bf16_supported()
+        if use_bf16:
+            with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                raw = self.backbone(enhanced)  # (B, D)
+        else:
+            with torch.cuda.amp.autocast(enabled=False):
+                raw = self.backbone(enhanced.float())  # (B, D)
+
+        # ── Stage 3: SafeLayerNorm in FP32 ────────────────────────────────
+        with torch.cuda.amp.autocast(enabled=False):
+            return self.freq_norm(raw.float())
+
     def _forward_clip_phase(self, x: torch.Tensor) -> torch.Tensor:
         """Legacy CLIP + phase map path."""
         with torch.cuda.amp.autocast(enabled=False):
@@ -1030,6 +1222,8 @@ class FrequencyFeatureExtractor(nn.Module):
         dispatch = {
             'fad_clip':    self._forward_fad_clip,
             'fad_dinov2':  self._forward_fad_dinov2,
+            'fad_mae':     self._forward_fad_timm,
+            'fad_eva02':   self._forward_fad_timm,
             'clip_phase':  self._forward_clip_phase,
             'spsl':        self._forward_spsl,
             'srm_resnet':  self._forward_srm_resnet,

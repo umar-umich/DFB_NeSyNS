@@ -880,11 +880,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         if self._use_edl:
             raw_feats = self.extract_raw_features(data_dict)
             spatial_raw = raw_feats['spatial_raw']
-            projected = self.spatial_proj(spatial_raw)
-            l2_embeddings = F.normalize(projected, p=2, dim=1)
+            frequency_raw = raw_feats.get('frequency_raw')
 
-            # Spatial evidence: linear head → softplus
-            task_outputs = self.classifier(projected)
+            # Fuse all active branches (spatial-only → passthrough,
+            # spatial+frequency → concat→linear projection to 1024-d)
+            fused = self.project_and_fuse(raw_feats)
+            l2_embeddings = F.normalize(fused, p=2, dim=1)
+
+            # Backbone evidence: fused features → classifier → softplus
+            task_outputs = self.classifier(fused)
             spatial_logits = task_outputs['classification']  # (B, 2)
             spatial_evidence = F.softplus(spatial_logits.float())  # (B, 2)
 
@@ -906,7 +910,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     if labels is not None:
                         labels = labels.to(device)
                     causal_out = self.causal_branch(
-                        spatial_raw=spatial_raw,
+                        spatial_raw=fused,  # fused backbone features (spatial or spatial+freq)
                         combined_features=combined_features,
                         violations=concept_out['violations'],
                         forensic_features=forensic_features,
@@ -955,10 +959,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 'branch_evidences':  branch_evidences,
                 'alpha':             alpha,
                 'uncertainty':       uncertainty,
-                'feat':              projected,
+                'feat':              fused,
                 'l2_embeddings':     l2_embeddings,
                 'spatial_feat':      spatial_raw,
-                'frequency_feat':    None,
+                'frequency_feat':    frequency_raw,
                 'z_spatial':         None,
                 'z_freq':            None,
                 'causal_out':        None,
@@ -1213,6 +1217,17 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 dag_penalty = pred_dict['dag_penalty']
                 total_loss = total_loss + self._dag_penalty_weight * dag_penalty
 
+            # Uniformity-Alignment loss on L2-normalized embeddings (GenD recipe)
+            ua_align = torch.zeros(1, device=device).squeeze()
+            ua_uniform = torch.zeros(1, device=device).squeeze()
+            if self.use_ua_loss and pred_dict.get('l2_embeddings') is not None:
+                l2_emb = pred_dict['l2_embeddings']
+                ua_align = alignment_loss(l2_emb, label, alpha=2.0)
+                ua_uniform = uniformity_loss(l2_emb, t=2.0)
+                total_loss = (total_loss
+                              + self.ua_alpha * ua_align
+                              + self.ua_beta * ua_uniform)
+
             loss_dict = {
                 'overall':          total_loss,
                 'classification':   edl_out['loss'].detach(),
@@ -1222,8 +1237,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 'causal_real':      torch.zeros(1, device=device).squeeze(),
                 'causal_fake':      torch.zeros(1, device=device).squeeze(),
                 'sparse':           torch.zeros(1, device=device).squeeze(),
-                'ua_alignment':     torch.zeros(1, device=device).squeeze(),
-                'ua_uniformity':    torch.zeros(1, device=device).squeeze(),
+                'ua_alignment':     ua_align.detach(),
+                'ua_uniformity':    ua_uniform.detach(),
                 'causal_semantic':  torch.zeros(1, device=device).squeeze(),
                 'graph_divergence': torch.zeros(1, device=device).squeeze(),
             }

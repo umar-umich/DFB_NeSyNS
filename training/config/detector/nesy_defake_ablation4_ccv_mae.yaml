@@ -1,20 +1,19 @@
 # =============================================================================
-# Ablation 4b: Spatial + Concept + CCV (Causal Constraint Verification) + EDL
+# Ablation 4-CCV-MAE: Full NeSy pipeline + MAE frequency branch
 # =============================================================================
-# Purpose: Neuro-symbolic causal branch using constraint verification instead
-# of structural causal models. Three components:
-#   1. Learned constraint functions (K=16 additional soft constraints)
-#   2. Forensic anomaly detector (5 per-group autoencoder anomaly scores)
-#   3. Counterfactual predictor (mismatch between predicted/actual CLIP features)
+# Purpose: Test FAD+MAE as frequency backbone alongside CLIP spatial.
+# MAE (Masked Autoencoder) was pretrained to RECONSTRUCT masked patches,
+# giving pixel-level features complementary to CLIP's semantic features.
 #
-# Evidence fusion (3 sources):
-#   spatial_evidence = softplus(linear_head(CLIP_features))
-#   concept_evidence = softplus(concept_mlp(122-d + 23 rules))
-#   causal_evidence  = softplus(ccv_mlp(23 rules + 16 learned + 5 anomaly + 1 cf))
-#   total = spatial + gate1 * concept + gate2 * causal
+# Spatial branch:  CLIP ViT-L/14  — "what is this face?" (semantic)
+# Frequency branch: FAD + MAE ViT-L/16 — "how do these pixels look?" (perceptual)
+# Concept branch:  122-d semantic + 23 rules
+# Causal branch:   CCV (16 learned + 5 anomaly + 1 counterfactual)
+# Fusion:          NeSy-EDL (CMEF + PBAS + IBDC)
 #
-# Much lighter than SCM approach (~15K vs ~180K params), shorter gradient path,
-# no DAG constraints needed.
+# Key difference from spatial-only CCV: adding a second backbone that
+# captures low-level pixel artifacts CLIP misses (blending boundaries,
+# noise patterns, compression traces).
 # =============================================================================
 
 log_dir: /data/umar/Repos/DFB_NeSyNS/logs
@@ -68,7 +67,7 @@ evidence_gate:
 
 # -- Dataset ------------------------------------------------------------------
 dataset_type: nesydefake
-active_branches: ['spatial']
+active_branches: ['spatial', 'frequency']
 
 train_dataset: [FaceForensics++]
 test_dataset:  [FaceForensics++, Celeb-DF-v2]
@@ -96,8 +95,8 @@ projection_dropout:
   frequency: 0.0
 
 # -- Data loading & augmentation (GenD) ---------------------------------------
-train_batchSize: 128
-test_batchSize:  128
+train_batchSize: 200              # reduced: two ViT-L backbones in memory
+test_batchSize:  200
 workers:         12
 
 use_data_augmentation: true
@@ -126,7 +125,7 @@ std:  [0.5, 0.5, 0.5]
 # FaceBench VLM features: 64-d subset precomputed as facebench_semantic/*.pt
 # Combined with fast(58) = [fast(58) || vlm(64)] = 122-d
 semantic_attributes:
-  enabled: true
+  enabled: false
   backend: precomputed
   precomputed_dim: 64
   precomputed_dir: facebench_semantic
@@ -161,19 +160,19 @@ foundation_models:
       std:  [0.269, 0.261, 0.276]
 
   frequency:
-    name:             fad_dinov2
-    model_path:       facebook/dinov2-large
+    name:             fad_mae
+    model_path:       facebook/vit-mae-large
     output_dim:       1024
     freeze_backbone:  true
-    train_layernorms: false
+    train_layernorms: true          # adapt MAE's LayerNorms to forensic domain
     fad_mode:         single
     fad_learnable:    true
     freq_emphasis_init: 0.1
     normalization:
       keep_raw:       true
-    clip_normalization:
-      mean: [0.481, 0.458, 0.408]
-      std:  [0.269, 0.261, 0.276]
+    clip_normalization:             # ImageNet normalization for MAE
+      mean: [0.485, 0.456, 0.406]
+      std:  [0.229, 0.224, 0.225]
 
 fusion:
   type:           attention
@@ -184,8 +183,8 @@ fusion:
 # -- ALL old NeSy modules DISABLED --------------------------------------------
 uniformity_alignment:
   enabled: true
-  alignment_weight: 0.1            # pull same-class features together (GenD: 0.1)
-  uniformity_weight: 0.5           # spread features on hypersphere (GenD: 0.5)
+  alignment_weight: 0.1
+  uniformity_weight: 0.5
 semantic_gate:
   enabled: false
 causal_intervention:
