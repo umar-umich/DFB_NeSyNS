@@ -1,0 +1,347 @@
+# =============================================================================
+# Ablation 4c-OTF: Backbone + EDL only — NO precomputed features
+# =============================================================================
+# Purpose: Remove the train/test feature mismatch caused by precomputed
+# fast_semantic (58-d) and forensic (83-d) features being derived from
+# ORIGINAL unaugmented frames while the CLIP backbone sees a different
+# (augmented) version every epoch.
+#
+# Compared to ablation4_ccv_novlm.yaml:
+#   - fast_semantic:     disabled (was 58-d precomputed)
+#   - forensic_features: disabled (was 83-d precomputed)
+#   - ablation_mode:     spatial_edl  (concept/causal branches disabled because
+#                        they require precomputed feature dims as input)
+#   - edl:               aux_weight/disagreement_weight removed (no branches)
+#   - class_weights:     kept the same — real bias fix still needed
+#
+# TO ENABLE CONCEPT/CAUSAL BRANCHES WITH ON-THE-FLY FEATURES:
+#   A code change is required in dataset/nesy_defake_dataset.py
+#   _load_single_frame(): replace _load_fast_semantic() and
+#   _load_forensic_features() calls with live extraction on the AUGMENTED
+#   image using InsightFace + MediaPipe (fast_semantic) and SRM/DCT
+#   (forensic). See preprocessing/precompute_fast_semantic.py and
+#   preprocessing/precompute_forensic_features.py for the extraction logic.
+#   Once implemented, restore ablation_mode: causal_edl and re-enable the
+#   feature configs below.
+# =============================================================================
+
+log_dir: /data/umar/Repos/DFB_NeSyNS/logs
+
+model_name: nesydefake_hybrid
+backbone_name: multi_stream
+
+# -- Ablation flags -----------------------------------------------------------
+ablation_spatial_only: false
+ablation_mode: spatial_edl    # backbone + EDL only; concept/causal require on-the-fly code
+
+# -- EDL config (spatial branch only — no concept/causal aux supervision) -----
+edl:
+  num_classes: 2
+  annealing_epochs: 10
+  kl_weight: 0.15
+  avu_weight: 0.1
+  nesy_fusion: false           # no symbolic branches → standard EDL
+  aux_weight: 0.0              # no per-branch auxiliary EDL (branches disabled)
+  disagreement_weight: 0.0     # no inter-branch disagreement (branches disabled)
+
+# -- Concept branch: DISABLED (needs on-the-fly fast_semantic code first) -----
+concept_branch:
+  enabled: false
+  combined_dim: 58
+  rules_dim: 23
+  hidden_dim: 64
+  dropout: 0.2
+
+# -- CCV causal branch: DISABLED (needs on-the-fly forensic code first) -------
+causal_branch:
+  enabled: false
+  type: ccv
+  combined_dim: 58
+  rules_dim: 23
+  forensic_dim: 83
+  backbone_dim: 1024
+  num_constraints: 16
+  constraint_hidden: 48
+  forensic_bottleneck: 8
+  cf_z_dim: 32
+  cf_hidden_dim: 64
+  evidence_hidden: 64
+  dropout: 0.2
+  dag_penalty_weight: 0.0
+
+# -- Evidence gates (unused when branches are disabled) -----------------------
+evidence_gate:
+  concept_init: -0.5
+  causal_init:  -0.8
+
+# -- Dataset ------------------------------------------------------------------
+dataset_type: nesydefake
+active_branches: ['spatial']
+
+train_dataset: [FaceForensics++]
+test_dataset:  [FaceForensics++, Celeb-DF-v2]
+all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
+                DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
+                DeeperForensics-1.0, UADFV]
+
+compression: c23
+
+# -- Frame config -------------------------------------------------------------
+video_mode: false
+frame_num:
+  train: 32
+  test:  32
+
+resolution:    224
+with_mask:     false
+with_landmark: false
+load_semantic_features: false
+
+class_weights: [1.8, 0.6]    # [real, fake] — same as novlm; real bias fix
+
+projection_dropout:
+  spatial:   0.0
+  frequency: 0.0
+
+# -- Data loading & augmentation (GenD) ---------------------------------------
+# NOTE: Augmentation is applied ON-THE-FLY (dataset._load_single_frame:551).
+# Every epoch each frame sees a new random aug — different from what the
+# (now-disabled) precomputed fast_semantic/forensic features were derived from.
+train_batchSize: 300
+test_batchSize:  300
+workers:         12
+
+use_data_augmentation: true
+balance_classes:       false
+balance_target_ratio: 0.5
+paired_training: true
+
+data_aug:
+  flip_prob:            0.5
+  rotate_limit:         [-10, 10]
+  affine_translate:     [0.1, 0.1]
+  affine_scale:         [0.9, 1.1]
+  blur_prob:            0.15          # slightly higher than novlm for generalization
+  blur_kernel_size:     7
+  blur_sigma:           [0.1, 2.0]
+  brightness_limit:     0.15          # slightly higher for domain robustness
+  contrast_limit:       0.15
+  quality_lower:        50            # lower JPEG floor → harder compression augmentation
+  quality_upper:        100
+  gaussian_noise_sigma: 0.01          # light noise to improve OOD robustness
+
+mean: [0.5, 0.5, 0.5]
+std:  [0.5, 0.5, 0.5]
+
+# -- Precomputed features: ALL DISABLED ---------------------------------------
+# Goal: eliminate train/test mismatch where backbone sees augmented images
+# but semantic/forensic features were extracted from original frames.
+# Re-enable with backend: online (requires code changes) to fix the mismatch.
+semantic_attributes:
+  enabled: false
+  backend: precomputed
+  precomputed_dim: 64
+  precomputed_dir: facebench_semantic
+  output_dim: 64
+
+fast_semantic:
+  enabled: false                    # WAS: true (58-d precomputed)
+  output_dim: 58
+  precomputed_dir: fast_semantic
+  # backend: online                 # enable this + add live extraction code in
+  #                                 # _load_single_frame to restore the branch
+
+use_refined_features: false
+
+consistency_rules:
+  enabled: false                    # WAS: true (depends on fast_semantic)
+  output_dim: 23
+
+forensic_features:
+  enabled: false                    # WAS: true (83-d precomputed from original frames)
+  output_dim: 83
+  precomputed_dir: forensic_features
+  # backend: online                 # enable this + add live SRM/DCT extraction code
+
+# -- Foundation Models (GenD) -------------------------------------------------
+foundation_models:
+  spatial:
+    name:            clip
+    model_path:      openai/clip-vit-large-patch14
+    output_dim:      1024
+    freeze_backbone: true
+    train_layernorms: true
+    normalization:
+      mean: [0.481, 0.458, 0.408]
+      std:  [0.269, 0.261, 0.276]
+
+  frequency:
+    name:             fad_dinov2
+    model_path:       facebook/dinov2-large
+    output_dim:       1024
+    freeze_backbone:  true
+    train_layernorms: false
+    fad_mode:         single
+    fad_learnable:    true
+    freq_emphasis_init: 0.1
+    normalization:
+      keep_raw:       true
+    clip_normalization:
+      mean: [0.481, 0.458, 0.408]
+      std:  [0.269, 0.261, 0.276]
+
+fusion:
+  type:           attention
+  fused_dim:      1024
+  projection_dim: 1024
+  dropout:        0.0
+
+# -- ALL old NeSy modules DISABLED --------------------------------------------
+uniformity_alignment:
+  enabled: false
+semantic_gate:
+  enabled: false
+causal_intervention:
+  enabled: false
+  output_dim: 28
+  top_k_interventions: 10
+  graph_guided_alpha: 0.5
+  ci_gate_init: -2.0
+semantic_projection:
+  enabled: false
+  hidden_dim: 128
+  dropout: 0.2
+  gate_init: -1.0
+causal_attention:
+  attn_dim: 256
+causal_module:
+  enabled: false
+  causal_warmup_batches: -1
+  latent_variables:
+    z_spatial_dim:    128
+    z_frequency_dim:  128
+    z_causal_dim:     32
+  semantic_dim: 58
+  dual_subgraph: true
+  discovery:
+    algorithm:              dagma_dce
+    scm_type:               linear
+    max_parents:            3
+    sparsity_penalty:       0.01
+    jacobian_every_n:       4
+    enforce_directionality: true
+  semantic_graph:
+    enabled:    false
+    hidden_dim: 64
+    num_layers: 2
+  dag_learning:
+    hidden_dim:          128
+    num_layers:          2
+    learning_rate:       0.001
+    dag_penalty_weight:  0.1
+sparse_features:
+  enabled: false
+  per_branch: false
+  dict_size: 1024
+  target_k: 128
+  dead_feature_window: 200
+  aux_loss_coeff: 0.2
+  normalize_inputs: true
+  sparse_autoencoder:
+    input_dim:              1024
+    expansion_factor:       1
+    sparsity_penalty:       0.05
+    l1_coefficient:         0.001
+    target_active_features: 128
+  discovered_features:
+    save_interpretations: true
+    top_k_features:       10
+
+# -- Classifier (GenD linear probe) ------------------------------------------
+classifier:
+  type:         multi_task
+  input_dim:    1024
+  linear_probe: true
+  tasks:
+    - name:        classification
+      type:        binary
+      output_dim:  2
+      loss_weight: 1.0
+  hidden_dims: [512, 256]
+  dropout:     0.3
+
+# -- Loss (EDL only — no DAG penalty, no branch supervision) ------------------
+loss_func:
+  classification:         cross_entropy
+  sparse_penalty:         l1_norm
+  weights:
+    classification:     1.0
+    causal:             0.0
+    sparse:             0.0
+    causal_semantic:    0.0
+    graph_divergence:   0.0
+
+loss_warmup: {}
+
+# -- Optimizer ----------------------------------------------------------------
+optimizer:
+  type: adam
+  adam:
+    lr: 0.0003
+    beta1: 0.9
+    beta2: 0.999
+    eps: 0.00000001
+    weight_decay: 0.0001    # slight L2 to improve generalization (was 0.0)
+    amsgrad: false
+  module_lr:
+    backbone_layernorms: 0.0003
+    always_trainable:    0.0003
+    phase_proj:          0.0003
+    projection_heads:    0.0003
+    fusion:              0.0003
+    classifier:          0.0003
+    concept_branch:      0.001
+    causal_branch:       0.001
+
+# -- Schedule (GenD) ----------------------------------------------------------
+lr_scheduler:   cosine_warmup
+warmup_epochs:  1
+nEpochs:        100
+start_epoch:    0
+save_epoch:     1
+rec_iter:       100
+logdir:         ./logs
+manualSeed:     42            # different seed from novlm (1024) for comparison
+save_ckpt:      true
+save_feat:      true
+grad_clip:      1.0
+freq_grad_clip: 2.0
+
+# -- Metrics ------------------------------------------------------------------
+metric_scoring:     auc
+additional_metrics: [acc, eer, ap]
+
+interpretability:
+  save_attention_maps:      false
+  save_causal_graphs:       false
+  save_feature_activations: false
+  save_sae_features:        false
+  visualization_frequency:  500
+  graph_viz_top_k:          20
+  graph_viz_every_n_epochs: 5
+
+# -- Hardware -----------------------------------------------------------------
+cuda:            true
+cudnn:           true
+mixed_precision: true
+
+checkpoint:
+  save_best_only: false
+  save_interval: 5
+  monitor:        val_auc
+  mode:           max
+
+early_stopping:
+  enabled: true
+  patience: 10
+  min_delta: 0.001

@@ -74,22 +74,46 @@ class MultiModalFusion(nn.Module):
     #  Builder helpers                                                     #
     # ------------------------------------------------------------------ #
 
+    def _build_dim_adapter(self, in_dim: int, out_dim: int) -> nn.Module:
+        """
+        Build the minimal adapter that takes concatenated backbone features
+        (raw, since spatial_proj is now nn.Identity) to projection_dim.
+
+        Design principle: preserve the pretrained feature manifold as much
+        as possible.
+
+        - Same dim, single branch  → nn.LayerNorm only.
+            Zero learned transformation. Pure normalisation. This is the
+            GenD linear-probe ideal: frozen backbone + LN → classifier.
+
+        - Different dims (e.g. SigLIP 1152 → 1024) or multi-branch concat
+            (e.g. [spatial(1024) || freq(1024)] = 2048 → 1024):
+            bias-free Linear + LayerNorm.
+            No activation: a bias-free Linear is a pure rotation/projection
+            in feature space (no direction creation), and avoids introducing
+            a nonlinearity that would distort the pretrained manifold.
+            ReLU is only appropriate when mixing features from multiple
+            independent encoders (multi-branch), not for single-branch
+            dim adaptation.
+        """
+        if in_dim == out_dim:
+            # Same dim: LayerNorm only — no learned linear, no activation
+            return nn.LayerNorm(out_dim)
+        # Dim mismatch: bias-free Linear + LayerNorm, no activation
+        return nn.Sequential(
+            nn.Linear(in_dim, out_dim, bias=False),
+            nn.LayerNorm(out_dim),
+        )
+
     def _build_concat_fusion(self) -> None:
         """
-        Original two-stage MLP:
-          concat(active feats) → fused_dim  →  projection_dim
-        """
-        # Input dim = sum of active branch output dims
-        concat_input_dim = self.projection_dim * len(self.active_branches)
+        Fuse active branches → projection_dim.
 
-        self.fusion = nn.Sequential(
-            nn.Linear(concat_input_dim, self.fused_dim),
-            nn.LayerNorm(self.fused_dim),
-            nn.ReLU(),
-            nn.Dropout(self.dropout_rate),
-            nn.Linear(self.fused_dim, self.projection_dim),
-            nn.LayerNorm(self.projection_dim),
-        )
+        Raw backbone features arrive here (spatial_proj is now nn.Identity).
+        concat_input_dim = sum of active backbone output dims (not post-proj dims).
+        """
+        concat_input_dim = sum(self.active_dims)   # raw backbone dims
+        self.fusion = self._build_dim_adapter(concat_input_dim, self.projection_dim)
 
     def _build_attention_fusion(self) -> None:
         """
@@ -103,13 +127,11 @@ class MultiModalFusion(nn.Module):
             self.fusion = CrossModalAttention(t, s, f, self.projection_dim)
             self._attn_fallback = False
         else:
-            # Fallback: treat as concat → linear for partial-branch runs
+            # Fallback: partial-branch run (single branch or mismatched dims).
+            # spatial_proj is now nn.Identity, so raw backbone features arrive
+            # here. Use sum(active_dims) — the actual backbone output dims.
             concat_input_dim = sum(self.active_dims)
-            self.fusion = nn.Sequential(
-                nn.Linear(concat_input_dim, self.projection_dim),
-                nn.LayerNorm(self.projection_dim),
-                nn.ReLU(),
-            )
+            self.fusion = self._build_dim_adapter(concat_input_dim, self.projection_dim)
             self._attn_fallback = True
 
     def _build_weighted_fusion(self) -> None:

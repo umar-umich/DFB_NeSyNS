@@ -1,0 +1,338 @@
+# =============================================================================
+# Ablation 4b-noVLM-EVA02: EVA-CLIP-02 spatial branch, no FaceBench VLM
+# =============================================================================
+# Purpose: Replace CLIP-ViT-L/14 spatial backbone with EVA-CLIP-02-L/14.
+# Everything else identical to nesy_defake_ablation4_ccv_novlm.yaml so the
+# backbone is the only variable.
+#
+# Why EVA-02 over CLIP:
+#   CLIP objective: contrastive softmax — features are globally comparative
+#     ("this face is more like text-A than text-B in the batch")
+#   EVA-02 objective: MIM (masked patch reconstruction) + CLIP distillation
+#     MIM forces the model to encode HOW pixels look locally (needed to
+#     reconstruct masked regions from context). CLIP distillation keeps
+#     semantic grounding. The dual pretraining gives EVA-02 an inductive
+#     bias toward local pixel structure — exactly where deepfake artifacts
+#     (blending seams, noise residuals, unnatural textures) live.
+#
+# Backbone size: same as CLIP-L/14 (304M params, 224px, patch14, 1024-d)
+#   → batch size unchanged from novlm baseline (300)
+#   → causal_branch.backbone_dim: 1024  (fused projection output, unchanged)
+#   → classifier.input_dim: 1024        (unchanged)
+#
+# Normalization: EVA-CLIP uses CLIP-style normalization (same μ/σ as CLIP-L)
+# =============================================================================
+
+log_dir: /data/umar/Repos/DFB_NeSyNS/logs
+
+model_name: nesydefake_hybrid
+backbone_name: multi_stream
+
+# -- Ablation flags -----------------------------------------------------------
+ablation_spatial_only: false
+ablation_mode: causal_edl
+
+# -- EDL config (NeSy-EDL: CMEF + PBAS + IBDC) --------------------------------
+edl:
+  num_classes: 2
+  annealing_epochs: 10
+  kl_weight: 0.15
+  avu_weight: 0.1
+  nesy_fusion: true
+  aux_weight: 0.1
+  disagreement_weight: 0.05
+
+# -- Concept branch config ----------------------------------------------------
+concept_branch:
+  enabled: true
+  combined_dim: 58                   # fast only (no VLM 64-d)
+  rules_dim: 23
+  hidden_dim: 64
+  dropout: 0.2
+
+# -- CCV causal branch config --------------------------------------------------
+causal_branch:
+  enabled: true
+  type: ccv
+  combined_dim: 58                   # fast only (no VLM 64-d)
+  rules_dim: 23
+  forensic_dim: 83
+  backbone_dim: 1024                 # fused projection output dim (unchanged)
+  num_constraints: 16
+  constraint_hidden: 48
+  forensic_bottleneck: 8
+  cf_z_dim: 32
+  cf_hidden_dim: 64
+  evidence_hidden: 64
+  dropout: 0.2
+  dag_penalty_weight: 0.0
+
+# -- Evidence gates ------------------------------------------------------------
+evidence_gate:
+  concept_init: -0.5
+  causal_init:  -0.8
+
+# -- Dataset ------------------------------------------------------------------
+dataset_type: nesydefake
+active_branches: ['spatial']
+
+train_dataset: [FaceForensics++]
+test_dataset:  [FaceForensics++, Celeb-DF-v2]
+all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
+                DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
+                DeeperForensics-1.0, UADFV]
+
+compression: c23
+
+# -- Frame config -------------------------------------------------------------
+video_mode: false
+frame_num:
+  train: 32
+  test:  32
+
+resolution:    224
+with_mask:     false
+with_landmark: false
+load_semantic_features: false
+
+class_weights: [1.8, 0.6]
+
+projection_dropout:
+  spatial:   0.0
+  frequency: 0.0
+
+# -- Data loading & augmentation (GenD) ---------------------------------------
+# EVA-02-L is same parameter count as CLIP-L/14 → batch size unchanged
+train_batchSize: 300
+test_batchSize:  300
+workers:         12
+
+use_data_augmentation: true
+balance_classes:       false
+balance_target_ratio: 0.5
+paired_training: true
+
+data_aug:
+  flip_prob:            0.5
+  rotate_limit:         [-10, 10]
+  affine_translate:     [0.1, 0.1]
+  affine_scale:         [0.9, 1.1]
+  blur_prob:            0.1
+  blur_kernel_size:     7
+  blur_sigma:           [0.1, 2.0]
+  brightness_limit:     0.1
+  contrast_limit:       0.1
+  quality_lower:        65
+  quality_upper:        100
+  gaussian_noise_sigma: 0.0
+
+mean: [0.5, 0.5, 0.5]
+std:  [0.5, 0.5, 0.5]
+
+# -- Precomputed features (same as novlm baseline) ----------------------------
+semantic_attributes:
+  enabled: false
+  backend: precomputed
+  precomputed_dim: 64
+  precomputed_dir: facebench_semantic
+  output_dim: 64
+
+fast_semantic:
+  enabled: true
+  output_dim: 58
+  precomputed_dir: fast_semantic
+
+use_refined_features: false
+
+consistency_rules:
+  enabled: true
+  output_dim: 23
+
+forensic_features:
+  enabled: true
+  output_dim: 83
+  precomputed_dir: forensic_features
+
+# -- Foundation Models --------------------------------------------------------
+foundation_models:
+  spatial:
+    name:            eva_clip                      # EVA-CLIP-02 via timm
+    timm_model:      eva02_large_patch14_clip_224  # MIM + CLIP distillation
+    model_path:      ''                            # unused for timm backbones
+    output_dim:      1024                          # ViT-L hidden dim
+    freeze_backbone: true
+    train_layernorms: true
+    normalization:
+      mean: [0.481, 0.458, 0.408]                 # EVA-CLIP uses CLIP-style norms
+      std:  [0.269, 0.261, 0.276]
+
+  frequency:
+    name:             fad_dinov2
+    model_path:       facebook/dinov2-large
+    output_dim:       1024
+    freeze_backbone:  true
+    train_layernorms: false
+    fad_mode:         single
+    fad_learnable:    true
+    freq_emphasis_init: 0.1
+    normalization:
+      keep_raw:       true
+    clip_normalization:
+      mean: [0.481, 0.458, 0.408]
+      std:  [0.269, 0.261, 0.276]
+
+fusion:
+  type:           attention
+  fused_dim:      1024
+  projection_dim: 1024
+  dropout:        0.0
+
+# -- ALL old NeSy modules DISABLED --------------------------------------------
+uniformity_alignment:
+  enabled: false
+semantic_gate:
+  enabled: false
+causal_intervention:
+  enabled: false
+  output_dim: 28
+  top_k_interventions: 10
+  graph_guided_alpha: 0.5
+  ci_gate_init: -2.0
+semantic_projection:
+  enabled: false
+  hidden_dim: 128
+  dropout: 0.2
+  gate_init: -1.0
+causal_attention:
+  attn_dim: 256
+causal_module:
+  enabled: false
+  causal_warmup_batches: -1
+  latent_variables:
+    z_spatial_dim:    128
+    z_frequency_dim:  128
+    z_causal_dim:     32
+  semantic_dim: 58
+  dual_subgraph: true
+  discovery:
+    algorithm:              dagma_dce
+    scm_type:               linear
+    max_parents:            3
+    sparsity_penalty:       0.01
+    jacobian_every_n:       4
+    enforce_directionality: true
+  semantic_graph:
+    enabled:    false
+    hidden_dim: 64
+    num_layers: 2
+  dag_learning:
+    hidden_dim:          128
+    num_layers:          2
+    learning_rate:       0.001
+    dag_penalty_weight:  0.1
+sparse_features:
+  enabled: false
+  per_branch: false
+  dict_size: 1024
+  target_k: 128
+  dead_feature_window: 200
+  aux_loss_coeff: 0.2
+  normalize_inputs: true
+  sparse_autoencoder:
+    input_dim:              1024
+    expansion_factor:       1
+    sparsity_penalty:       0.05
+    l1_coefficient:         0.001
+    target_active_features: 128
+  discovered_features:
+    save_interpretations: true
+    top_k_features:       10
+
+# -- Classifier (GenD linear probe) ------------------------------------------
+classifier:
+  type:         multi_task
+  input_dim:    1024
+  linear_probe: true
+  tasks:
+    - name:        classification
+      type:        binary
+      output_dim:  2
+      loss_weight: 1.0
+  hidden_dims: [512, 256]
+  dropout:     0.3
+
+# -- Loss ---------------------------------------------------------------------
+loss_func:
+  classification:         cross_entropy
+  sparse_penalty:         l1_norm
+  weights:
+    classification:     1.0
+    causal:             0.0
+    sparse:             0.0
+    causal_semantic:    0.0
+    graph_divergence:   0.0
+
+loss_warmup: {}
+
+# -- Optimizer ----------------------------------------------------------------
+optimizer:
+  type: adam
+  adam:
+    lr: 0.0003
+    beta1: 0.9
+    beta2: 0.999
+    eps: 0.00000001
+    weight_decay: 0.0
+    amsgrad: false
+  module_lr:
+    backbone_layernorms: 0.0003
+    always_trainable:    0.0003
+    phase_proj:          0.0003
+    projection_heads:    0.0003
+    fusion:              0.0003
+    classifier:          0.0003
+    concept_branch:      0.001
+    causal_branch:       0.001
+
+# -- Schedule -----------------------------------------------------------------
+lr_scheduler:   cosine_warmup
+warmup_epochs:  1
+nEpochs:        100
+start_epoch:    0
+save_epoch:     1
+rec_iter:       100
+logdir:         ./logs
+manualSeed:     1024
+save_ckpt:      true
+save_feat:      true
+grad_clip:      1.0
+freq_grad_clip: 2.0
+
+# -- Metrics ------------------------------------------------------------------
+metric_scoring:     auc
+additional_metrics: [acc, eer, ap]
+
+interpretability:
+  save_attention_maps:      false
+  save_causal_graphs:       true
+  save_feature_activations: false
+  save_sae_features:        false
+  visualization_frequency:  500
+  graph_viz_top_k:          20
+  graph_viz_every_n_epochs: 5
+
+# -- Hardware -----------------------------------------------------------------
+cuda:            true
+cudnn:           true
+mixed_precision: true
+
+checkpoint:
+  save_best_only: false
+  save_interval: 5
+  monitor:        val_auc
+  mode:           max
+
+early_stopping:
+  enabled: true
+  patience: 10
+  min_delta: 0.001

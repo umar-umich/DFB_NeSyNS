@@ -144,11 +144,13 @@ class SpatialFeatureExtractor(nn.Module):
         super().__init__()
 
         spatial_cfg = config['foundation_models']['spatial']
-        self.model_name      = spatial_cfg.get('name', 'clip')
-        self.model_path      = spatial_cfg['model_path']
-        self.output_dim      = spatial_cfg['output_dim']
-        self.freeze_backbone = spatial_cfg.get('freeze_backbone', True)
+        self.model_name       = spatial_cfg.get('name', 'clip')
+        self.model_path       = spatial_cfg.get('model_path', '')
+        self.output_dim       = spatial_cfg['output_dim']
+        self.freeze_backbone  = spatial_cfg.get('freeze_backbone', True)
         self.train_layernorms = spatial_cfg.get('train_layernorms', True)
+        # timm-based backbones (e.g. EVA-02) use timm_model instead of model_path
+        self._timm_model_name = spatial_cfg.get('timm_model', '')
 
         # ------------------------------------------------------------------
         # Build backbone (raw pretrained weights only)
@@ -217,17 +219,31 @@ class SpatialFeatureExtractor(nn.Module):
 
     def _get_required_input_size(self) -> int:
         size_map = {
+            # CLIP (HuggingFace)
             'openai/clip-vit-base-patch16':           224,
             'openai/clip-vit-base-patch32':           224,
             'openai/clip-vit-large-patch14':          224,
             'openai/clip-vit-large-patch14-336':      336,
             'laion/CLIP-ViT-H-14-laion2B-s32B-b79K': 224,
+            # DINOv2 (HuggingFace)
             'facebook/dinov2-small':                  224,
             'facebook/dinov2-base':                   224,
             'facebook/dinov2-large':                  224,
             'facebook/dinov2-giant':                  224,
+            # SigLIP (HuggingFace)
+            'google/siglip-large-patch16-224':        224,
+            'google/siglip-large-patch16-256':        256,
+            'google/siglip-so400m-patch14-224':       224,
+            'google/siglip-so400m-patch14-384':       384,
+            # EVA-CLIP-02 (timm) — keyed by timm model name
+            'eva02_large_patch14_clip_224':            224,
+            'eva02_large_patch14_clip_336':            336,
+            'eva02_base_patch14_clip_224':             224,
+            'eva02_large_patch14_224':                 224,
         }
-        return size_map.get(self.model_path, 224)
+        # timm models are looked up by timm_model_name, HF by model_path
+        key = self._timm_model_name if self._timm_model_name else self.model_path
+        return size_map.get(key, 224)
 
     # ------------------------------------------------------------------
     # Backbone builders — raw pretrained weights ONLY
@@ -243,10 +259,14 @@ class SpatialFeatureExtractor(nn.Module):
             self._build_clip()
         elif name == 'dinov2':
             self._build_dinov2()
+        elif name == 'eva_clip':
+            self._build_eva_clip()
+        elif name == 'siglip':
+            self._build_siglip()
         else:
             raise ValueError(
                 f"[SpatialExtractor] Unknown backbone name: '{name}'. "
-                f"Choose from: clip, dinov2, gend"
+                f"Choose from: clip, dinov2, gend, eva_clip, siglip"
             )
 
     def _build_clip(self):
@@ -288,6 +308,66 @@ class SpatialFeatureExtractor(nn.Module):
         }
         self.backbone_dim  = dino_dims.get(self.model_path, 1024)
         self._forward_fn   = self._forward_dinov2
+
+    def _build_eva_clip(self):
+        """
+        Load EVA-CLIP-02 via timm.
+
+        EVA-02 combines masked image modelling (MIM) pretraining with CLIP
+        distillation: MIM forces sensitivity to local pixel structure while
+        CLIP distillation keeps semantic grounding. Together this makes
+        EVA-02 better at detecting local manipulation artifacts than plain CLIP.
+
+        Config keys used (under foundation_models.spatial):
+            timm_model: eva02_large_patch14_clip_224  # timm model name
+            output_dim: 1024                          # backbone_dim for ViT-L
+
+        num_classes=0 returns the global-pooled feature vector (no classifier head).
+        """
+        import timm
+
+        timm_name = self._timm_model_name or 'eva02_large_patch14_clip_224'
+        logger.info(f"[SpatialExtractor] Loading EVA-CLIP-02 from timm: {timm_name}")
+        self.backbone = timm.create_model(timm_name, pretrained=True, num_classes=0)
+
+        eva_dims = {
+            'eva02_large_patch14_clip_224': 1024,
+            'eva02_large_patch14_clip_336': 1024,
+            'eva02_base_patch14_clip_224':   768,
+            'eva02_large_patch14_224':       1024,
+        }
+        self.backbone_dim = eva_dims.get(timm_name, 1024)
+        self._forward_fn  = self._forward_timm
+
+    def _build_siglip(self):
+        """
+        Load SigLIP vision encoder from HuggingFace.
+
+        SigLIP replaces CLIP's InfoNCE softmax loss with a per-pair sigmoid
+        binary loss (no global batch normalisation). This encourages more
+        fine-grained, locally self-sufficient features — useful for detecting
+        local manipulation artifacts. The SO400M variant (877M params) is
+        substantially larger than CLIP-L/14 and uses 384px input.
+
+        Config keys used (under foundation_models.spatial):
+            model_path: google/siglip-so400m-patch14-384
+            output_dim: 1152  # SO400M hidden dim
+
+        Normalization: mean=[0.5,0.5,0.5] / std=[0.5,0.5,0.5]  (not CLIP norms)
+        """
+        from transformers import SiglipVisionModel
+
+        logger.info(f"[SpatialExtractor] Loading SigLIP from: {self.model_path}")
+        self.backbone = SiglipVisionModel.from_pretrained(self.model_path)
+
+        siglip_dims = {
+            'google/siglip-large-patch16-224':  1024,
+            'google/siglip-large-patch16-256':  1024,
+            'google/siglip-so400m-patch14-224': 1152,
+            'google/siglip-so400m-patch14-384': 1152,
+        }
+        self.backbone_dim = siglip_dims.get(self.model_path, 1024)
+        self._forward_fn  = self._forward_siglip
 
     # ------------------------------------------------------------------
     # Trainable parameter helpers
@@ -345,6 +425,19 @@ class SpatialFeatureExtractor(nn.Module):
         """DINOv2 CLS token from last hidden state. Shape: (B, D)"""
         outputs = self.backbone(pixel_values=x)
         return outputs.last_hidden_state[:, 0]  # (B, backbone_dim)
+
+    def _forward_timm(self, x: torch.Tensor) -> torch.Tensor:
+        """timm model (num_classes=0) — global-pooled features. Shape: (B, D)"""
+        return self.backbone(x)  # (B, backbone_dim)
+
+    def _forward_siglip(self, x: torch.Tensor) -> torch.Tensor:
+        """SigLIP attention-pooled output. Shape: (B, D)"""
+        outputs = self.backbone(pixel_values=x)
+        # SiglipVisionModel exposes pooler_output from its attention pooling head.
+        # Fall back to mean pooling if the head is absent (e.g. custom checkpoints).
+        if outputs.pooler_output is not None:
+            return outputs.pooler_output   # (B, backbone_dim)
+        return outputs.last_hidden_state.mean(dim=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
