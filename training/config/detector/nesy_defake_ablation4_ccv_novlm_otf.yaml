@@ -1,28 +1,34 @@
 # =============================================================================
-# Ablation 4c-OTF: Backbone + EDL only — NO precomputed features
+# Ablation 4c-OTF: CLIP + concept + CCV causal, HYBRID forensic extraction
 # =============================================================================
-# Purpose: Remove the train/test feature mismatch caused by precomputed
-# fast_semantic (58-d) and forensic (83-d) features being derived from
-# ORIGINAL unaugmented frames while the CLIP backbone sees a different
-# (augmented) version every epoch.
+# Purpose: Kill the pixel-level train/test mismatch caused by the backbone
+# seeing an augmented frame every epoch while precomputed forensic features
+# were derived from the ORIGINAL unaugmented frame.
 #
-# Compared to ablation4_ccv_novlm.yaml:
-#   - fast_semantic:     disabled (was 58-d precomputed)
-#   - forensic_features: disabled (was 83-d precomputed)
-#   - ablation_mode:     spatial_edl  (concept/causal branches disabled because
-#                        they require precomputed feature dims as input)
-#   - edl:               aux_weight/disagreement_weight removed (no branches)
-#   - class_weights:     kept the same — real bias fix still needed
+# Strategy (see dataset/pixel_forensic_extractor.py for the rationale):
 #
-# TO ENABLE CONCEPT/CAUSAL BRANCHES WITH ON-THE-FLY FEATURES:
-#   A code change is required in dataset/nesy_defake_dataset.py
-#   _load_single_frame(): replace _load_fast_semantic() and
-#   _load_forensic_features() calls with live extraction on the AUGMENTED
-#   image using InsightFace + MediaPipe (fast_semantic) and SRM/DCT
-#   (forensic). See preprocessing/precompute_fast_semantic.py and
-#   preprocessing/precompute_forensic_features.py for the extraction logic.
-#   Once implemented, restore ablation_mode: causal_edl and re-enable the
-#   feature configs below.
+#   fast_semantic (58-d)  — precomputed, kept as-is.
+#     These are face-level semantic invariants (gender, age, pose, emotion,
+#     AUs, landmarks). They are augmentation-robust in practice: a flipped,
+#     blurred, JPEG-60 face is still the same gender/age/emotion.
+#     Running InsightFace + DeepFace + LibreFace + MediaPipe in DataLoader
+#     workers is infeasible (multi-GB GPU duplication × 12 workers, TF-fork
+#     breakage, ~300ms/image). The mismatch here is small; the cost is huge.
+#
+#   forensic_features (83-d) — HYBRID:
+#     - Indices 0..29  loaded from precomputed .pt (SegFormer parsing +
+#       InsightFace/MediaPipe quality scores; not cheap enough for OTF).
+#     - Indices 30..82 recomputed LIVE on the augmented numpy image by
+#       PixelForensicExtractor (PPNC / CCNC / SRM / multi-scale noise / FFT).
+#       Pure cv2/numpy/scipy, ~15-20ms/image in each DataLoader worker.
+#       These are the features the augmentation (blur, JPEG, brightness,
+#       noise) actually destroys, so matching them to the augmented view is
+#       where the generalisation gain lives.
+#
+# Class weights: [1.0, 1.0] — the previous [1.8, 0.6] was compensating for
+# missing fake-specific signal in spatial_edl. With concept + CCV back on we
+# get that signal from the symbolic branches, so the weight tilt overshoots
+# and hurts fake accuracy (acc_fake collapses on CDF in spatial_edl OTF run).
 # =============================================================================
 
 log_dir: /data/umar/Repos/DFB_NeSyNS/logs
@@ -32,29 +38,29 @@ backbone_name: multi_stream
 
 # -- Ablation flags -----------------------------------------------------------
 ablation_spatial_only: false
-ablation_mode: spatial_edl    # backbone + EDL only; concept/causal require on-the-fly code
+ablation_mode: causal_edl    # concept + CCV causal branches ON (hybrid OTF forensic)
 
-# -- EDL config (spatial branch only — no concept/causal aux supervision) -----
+# -- EDL config (NeSy-EDL: CMEF + PBAS + IBDC) --------------------------------
 edl:
   num_classes: 2
   annealing_epochs: 10
   kl_weight: 0.15
   avu_weight: 0.1
-  nesy_fusion: false           # no symbolic branches → standard EDL
-  aux_weight: 0.0              # no per-branch auxiliary EDL (branches disabled)
-  disagreement_weight: 0.0     # no inter-branch disagreement (branches disabled)
+  nesy_fusion: true
+  aux_weight: 0.1
+  disagreement_weight: 0.05
 
-# -- Concept branch: DISABLED (needs on-the-fly fast_semantic code first) -----
+# -- Concept branch -----------------------------------------------------------
 concept_branch:
-  enabled: false
-  combined_dim: 58
+  enabled: true
+  combined_dim: 58                   # fast only (no VLM 64-d)
   rules_dim: 23
   hidden_dim: 64
   dropout: 0.2
 
-# -- CCV causal branch: DISABLED (needs on-the-fly forensic code first) -------
+# -- CCV causal branch --------------------------------------------------------
 causal_branch:
-  enabled: false
+  enabled: true
   type: ccv
   combined_dim: 58
   rules_dim: 23
@@ -97,18 +103,20 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
-class_weights: [1.8, 0.6]    # [real, fake] — same as novlm; real bias fix
+class_weights: [1.0, 1.0]    # neutral — symbolic branches supply fake signal
 
 projection_dropout:
   spatial:   0.0
   frequency: 0.0
 
 # -- Data loading & augmentation (GenD) ---------------------------------------
-# NOTE: Augmentation is applied ON-THE-FLY (dataset._load_single_frame:551).
-# Every epoch each frame sees a new random aug — different from what the
-# (now-disabled) precomputed fast_semantic/forensic features were derived from.
-train_batchSize: 300
-test_batchSize:  300
+# Image augmentation is applied ON-THE-FLY (dataset._load_single_frame:551).
+# Every epoch each frame sees a new random aug. The pixel-level slice of the
+# forensic vector (indices 30..82) is recomputed from the augmented image in
+# the worker, so those features match the view the backbone sees.
+# fast_semantic (58-d) and forensic indices 0..29 stay precomputed.
+train_batchSize: 172
+test_batchSize:  172
 workers:         12
 
 use_data_augmentation: true
@@ -133,10 +141,8 @@ data_aug:
 mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]
 
-# -- Precomputed features: ALL DISABLED ---------------------------------------
-# Goal: eliminate train/test mismatch where backbone sees augmented images
-# but semantic/forensic features were extracted from original frames.
-# Re-enable with backend: online (requires code changes) to fix the mismatch.
+# -- Features: fast_semantic precomputed, forensic HYBRID (OTF pixel slice) ---
+# semantic_attributes (FaceBench VLM) stays OFF — this is the novlm variant.
 semantic_attributes:
   enabled: false
   backend: precomputed
@@ -144,24 +150,30 @@ semantic_attributes:
   precomputed_dir: facebench_semantic
   output_dim: 64
 
+# fast_semantic: precomputed. Face semantic attributes are augmentation-robust
+# (gender, age, pose, emotion, AUs) so the precomputed→augmented-view mismatch
+# is small. Running InsightFace+DeepFace+LibreFace+MediaPipe in DataLoader
+# workers is not feasible (see header).
 fast_semantic:
-  enabled: false                    # WAS: true (58-d precomputed)
+  enabled: true
   output_dim: 58
   precomputed_dir: fast_semantic
-  # backend: online                 # enable this + add live extraction code in
-  #                                 # _load_single_frame to restore the branch
 
 use_refined_features: false
 
 consistency_rules:
-  enabled: false                    # WAS: true (depends on fast_semantic)
+  enabled: true
   output_dim: 23
 
+# forensic_features: HYBRID. pixel_otf=True tells the dataset to keep
+# indices 0..29 from the .pt file (SegFormer-dependent region features) and
+# recompute indices 30..82 (PPNC/CCNC/SRM/noise/FFT) live on the augmented
+# image via training/dataset/pixel_forensic_extractor.py.
 forensic_features:
-  enabled: false                    # WAS: true (83-d precomputed from original frames)
+  enabled: true
   output_dim: 83
   precomputed_dir: forensic_features
-  # backend: online                 # enable this + add live SRM/DCT extraction code
+  pixel_otf: true
 
 # -- Foundation Models (GenD) -------------------------------------------------
 foundation_models:

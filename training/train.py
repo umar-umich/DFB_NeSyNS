@@ -8,6 +8,7 @@
 import os
 os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
 
+import shutil
 import argparse
 from os.path import join
 import cv2
@@ -439,6 +440,19 @@ def main():
         f'{config_name}_{timenow}')
     if not config['ddp'] or dist.get_rank() == 0:
         os.makedirs(logger_path, exist_ok=True)
+        # Snapshot the detector config alongside logs/weights for reproducibility.
+        # - detector_config.yaml:          exact as-authored file (preserves comments)
+        # - detector_config_resolved.yaml: resolved dict after runtime overrides
+        #                                  (e.g. fused_dim recomputed from active_branches)
+        try:
+            shutil.copy2(
+                args.detector_path,
+                os.path.join(logger_path, 'detector_config.yaml'),
+            )
+            with open(os.path.join(logger_path, 'detector_config_resolved.yaml'), 'w') as f:
+                yaml.safe_dump(config, f, sort_keys=False)
+        except Exception as e:
+            print(f"[warn] failed to snapshot detector config: {e}")
     if config['ddp']:
         dist.barrier()
 

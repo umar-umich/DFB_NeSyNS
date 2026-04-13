@@ -119,6 +119,26 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         self._forensic_dim = ff_cfg.get('output_dim', 83)
         self._forensic_cache = {} if self.use_forensic_features else None
 
+        # Hybrid OTF mode: keep indices 0..29 from the precomputed .pt (region
+        # boundaries, regional blur, symmetry, color, DCT-by-region, quality
+        # scores) but recompute indices 30..82 (PPNC / CCNC / SRM / noise /
+        # FFT — all pixel-level, augmentation-sensitive) live on the augmented
+        # image. Only meaningful when use_forensic_features is True. Requires
+        # _forensic_dim == 83 to make the index layout match forensic_helpers.
+        self.pixel_forensic_otf = (
+            self.use_forensic_features
+            and bool(ff_cfg.get('pixel_otf', False))
+            and self._forensic_dim == 83
+        )
+        self._pixel_forensic_extractor = None
+        if self.pixel_forensic_otf:
+            from .pixel_forensic_extractor import (
+                PixelForensicExtractor,
+                PIXEL_SLICE,
+            )
+            self._pixel_forensic_extractor = PixelForensicExtractor()
+            self._pixel_forensic_slice = PIXEL_SLICE
+
         # ── Parent handles JSON parsing, image_list/label_list ────────────
         super().__init__(config, mode)
 
@@ -582,9 +602,19 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         else:
             precomputed_attrs = torch.zeros(1)  # placeholder
 
-        # Precomputed Tier 2 forensic features
+        # Tier 2 forensic features
+        # Hybrid path (pixel_forensic_otf=True): load 83-d from precomputed
+        # .pt, then overwrite indices 30..82 with features recomputed live on
+        # the AUGMENTED numpy image. This matches the pixel-level forensic
+        # signals (SRM / noise / FFT / PPNC / CCNC) to what the backbone
+        # actually sees, while keeping the expensive region-based features
+        # (0..29) from precompute since they need SegFormer parsing maps.
         if self.use_forensic_features:
             forensic_features = self._load_forensic_features(frame_path)
+            if self.pixel_forensic_otf and forensic_features.shape[0] == 83:
+                pixel_np = self._pixel_forensic_extractor(image)
+                forensic_features = forensic_features.clone()
+                forensic_features[self._pixel_forensic_slice] = torch.from_numpy(pixel_np)
         else:
             forensic_features = torch.zeros(self._forensic_dim)
 
