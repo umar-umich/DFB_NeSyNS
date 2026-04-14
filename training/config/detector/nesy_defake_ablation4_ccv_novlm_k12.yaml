@@ -74,7 +74,7 @@ evidence_gate:
 dataset_type: nesydefake
 active_branches: ['spatial']
 
-train_dataset: [FaceForensics++]
+train_dataset: [FaceForensics++_augmented]
 test_dataset:  [FaceForensics++, Celeb-DF-v2]
 all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
                 DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
@@ -110,8 +110,8 @@ test_batchSize:  128
 workers:         12
 
 k_augment: 0                          # not using K-augment sampling
-use_data_augmentation: true            # OTF augmentation ON
-balance_classes:       true
+use_data_augmentation: false            # OTF augmentation ON
+balance_classes:       false
 balance_target_ratio: 0.5
 paired_training: true
 
