@@ -248,26 +248,11 @@ class SemanticProjection(nn.Module):
         return self.net(semantic_attrs)
 
 
-def _make_adapter(in_dim: int, out_dim: int, dropout: float = 0.0) -> nn.Module:
-    """
-    Minimal backbone adapter — preserves the pretrained feature manifold.
-
-    The old _make_projection (Linear → LayerNorm → GELU) was a full non-linear
-    transformation sitting between the frozen backbone and the fusion module.
-    That distorts the pretrained features and partially defeats the GenD
-    generalisation principle (frozen backbone + trainable LayerNorms = preserve
-    the pretrained manifold).
-
-    New design: always return Identity here. The fusion module is responsible
-    for any dimension adaptation that is actually required (e.g. SigLIP 1152-d
-    → common projection dim). The fusion module uses a bias-free Linear with no
-    activation for the single-branch dim-mismatch case, so the only non-linearity
-    in the pipeline is the classifier's final linear probe — exactly the GenD
-    setup.
-
-    dropout is kept as a parameter for API compatibility but is not applied.
-    """
-    return nn.Identity()
+def _make_projection(in_dim: int, out_dim: int, dropout: float = 0.0) -> nn.Sequential:
+    layers = [nn.Linear(in_dim, out_dim), nn.LayerNorm(out_dim), nn.GELU()]
+    if dropout > 0.0:
+        layers.append(nn.Dropout(dropout))
+    return nn.Sequential(*layers)
 
 
 @DETECTOR.register_module(module_name='nesydefake_hybrid')
@@ -659,12 +644,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         }
 
         dropout_cfg = config.get('projection_dropout', {})
-        self.spatial_proj = _make_adapter(
+        self.spatial_proj = _make_projection(
             branch_dims['spatial'], proj_dim,
-            dropout=dropout_cfg.get('spatial', 0.0))
-        self.frequency_proj = _make_adapter(
+            dropout=dropout_cfg.get('spatial', 0.2))
+        self.frequency_proj = _make_projection(
             branch_dims['frequency'], proj_dim,
-            dropout=dropout_cfg.get('frequency', 0.0))
+            dropout=dropout_cfg.get('frequency', 0.1))
 
         fused_dim = proj_dim * sum(1 for b in ALL_BRANCHES if b in active)
         config['fusion']['fused_dim'] = fused_dim
