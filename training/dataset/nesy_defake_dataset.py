@@ -34,6 +34,7 @@ Collated batch shapes (for batch_size N frames):
 """
 
 import os
+import random
 from collections import defaultdict
 from typing import Optional
 
@@ -142,6 +143,15 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         # ── Parent handles JSON parsing, image_list/label_list ────────────
         super().__init__(config, mode)
 
+        # ── K-augment: pre-augmented variant sampling ─────────────────────
+        # When k_augment > 0 (train mode), each real frame randomly loads one
+        # of K pre-augmented variants (image + matched precomputed features).
+        # This replaces OTF augmentation with zero-mismatch precomputed views.
+        self._k_augment = config.get('k_augment', 0) if mode == 'train' else 0
+        self._augment_variant_paths = {}  # index → [path_aug1, ..., path_augK]
+        if self._k_augment > 0:
+            self._build_augment_variant_map()
+
         # ── GenD-style source/video UID maps ──────────────────────────────
         self.paired_training = (
             mode == 'train'
@@ -178,7 +188,7 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             f"\n  Sources with R+F    : {n_sources_with_both}"
             f"\n  Unique videos       : {len(self._video_to_uid)}"
             f"\n  Resolution          : {self.resolution}x{self.resolution}"
-            f"\n  Augmentation        : {'ON' if aug_active else 'OFF'}"
+            f"\n  Augmentation        : {'K-augment (K=' + str(self._k_augment) + ')' if self._k_augment > 0 else ('ON (OTF)' if aug_active else 'OFF')}"
             f"\n  Balanced sampling   : {'ON' if balance_active else 'OFF'}"
             f"\n  Semantic features   : {'ON' if self.use_semantic else 'OFF'}"
             f"\n  Precomputed sem.    : {'ON (' + self._precomputed_subdir + ')' if self.use_precomputed_semantic else 'OFF'}"
@@ -186,6 +196,49 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             f"\n  Active branches     : spatial, frequency (no temporal)"
             f"\n{'='*60}\n"
         )
+
+    # ------------------------------------------------------------------ #
+    #  K-augment: pre-augmented variant mapping                            #
+    # ------------------------------------------------------------------ #
+
+    def _build_augment_variant_map(self):
+        """Build per-sample mapping to K pre-augmented variant frame paths.
+
+        For each real frame in image_list, generates K alternative paths by
+        replacing 'frames/' with 'frames_aug_{k}/' (k=1..K). Only includes
+        variants whose augmented image file actually exists on disk.
+
+        Fake frames and frames with no existing augmented variants are skipped
+        (they will not be augmented at training time).
+        """
+        K = self._k_augment
+        n_with_variants = 0
+
+        for idx, (path, label) in enumerate(
+                zip(self.image_list, self.label_list)):
+            if isinstance(path, list):
+                path = path[0]
+
+            # Only real frames get augmented variants
+            if label != 0:
+                continue
+
+            # Only original frames (not already-augmented ones)
+            if '/frames_aug_' in path or '\\frames_aug_' in path:
+                continue
+
+            variants = []
+            for k in range(1, K + 1):
+                aug_path = path.replace('/frames/', f'/frames_aug_{k}/')
+                if os.path.exists(aug_path):
+                    variants.append(aug_path)
+
+            if variants:
+                self._augment_variant_paths[idx] = variants
+                n_with_variants += 1
+
+        print(f"[K-augment] K={K}, {n_with_variants} real frames have "
+              f"pre-augmented variants (avg {sum(len(v) for v in self._augment_variant_paths.values()) / max(n_with_variants, 1):.1f} per frame)")
 
     # ------------------------------------------------------------------ #
     #  GenD-style source/video UID maps                                   #
@@ -317,6 +370,49 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
                   f"frames have source-matched real frames in training set")
 
     # ------------------------------------------------------------------ #
+    #  Path helpers for precomputed feature loading                        #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _parse_frame_path(frame_path: str):
+        """Parse a frame path into (base_dir, pt_video_name, frame_filename, sep).
+
+        For original frames:
+          .../c23/frames/001/0000.png → base=.../c23, pt_name=001
+        For augmented frames:
+          .../c23/frames_aug_4/001/0000.png → base=.../c23, pt_name=001_aug4
+
+        The pt_video_name matches the .pt file naming convention used by the
+        precompute pipeline (e.g. fast_semantic/001_aug4.pt).
+        """
+        sep = "/" if "/" in frame_path else "\\"
+        parts = frame_path.split(sep)
+
+        frames_idx = None
+        for pi, part in enumerate(parts):
+            if part == 'frames' or part.startswith('frames_aug_'):
+                frames_idx = pi
+                break
+        if frames_idx is None or frames_idx + 1 >= len(parts):
+            return None, None, None, sep
+
+        frames_dir = parts[frames_idx]       # 'frames' or 'frames_aug_4'
+        video_name = parts[frames_idx + 1]   # '001'
+        base_dir = sep.join(parts[:frames_idx])
+        frame_filename = parts[-1]
+
+        # Build the .pt video name: for frames_aug_N dirs, append _augN
+        if frames_dir.startswith('frames_aug_'):
+            aug_suffix = frames_dir.replace('frames_', '')  # 'aug_4'
+            # Normalise to match JSON convention: '001_aug4' (no underscore before number)
+            aug_suffix = aug_suffix.replace('_', '', 1)     # 'aug4'
+            pt_video_name = f"{video_name}_{aug_suffix}"
+        else:
+            pt_video_name = video_name
+
+        return base_dir, pt_video_name, frame_filename, sep
+
+    # ------------------------------------------------------------------ #
     #  Semantic feature loading                                            #
     # ------------------------------------------------------------------ #
 
@@ -373,26 +469,15 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         Returns (precomputed_dim,) tensor. Zero-vector on any failure.
         """
         try:
-            sep = "/" if "/" in frame_path else "\\"
-            parts = frame_path.split(sep)
-
-            # Find the frames directory (handles 'frames' and 'frames_aug_N')
-            frames_idx = None
-            for pi, part in enumerate(parts):
-                if part == 'frames' or part.startswith('frames_aug_'):
-                    frames_idx = pi
-                    break
-            if frames_idx is None:
+            base_dir, pt_video_name, frame_filename, sep = \
+                self._parse_frame_path(frame_path)
+            if base_dir is None:
                 return torch.zeros(self._precomputed_dim)
 
-            video_name = parts[frames_idx + 1]
-            base_dir = sep.join(parts[:frames_idx])
-
-            # Cache key
-            cache_key = f"{base_dir}/{video_name}"
+            cache_key = f"{base_dir}/{pt_video_name}"
             if cache_key not in self._precomputed_cache:
                 pt_path = os.path.join(
-                    base_dir, self._precomputed_subdir, f'{video_name}.pt')
+                    base_dir, self._precomputed_subdir, f'{pt_video_name}.pt')
                 if os.path.exists(pt_path):
                     data = torch.load(pt_path, map_location='cpu',
                                       weights_only=False)
@@ -409,13 +494,12 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
             # Try to find exact frame match
             if frame_paths:
-                frame_filename = parts[-1]
                 for idx, fp in enumerate(frame_paths):
                     if fp.endswith(frame_filename):
                         return features[idx]
 
             # Fallback: index by frame number
-            frame_filename = parts[-1]
+            frame_filename = frame_filename
             frame_num = int(os.path.splitext(frame_filename)[0])
             if frame_num < features.shape[0]:
                 return features[frame_num]
@@ -431,30 +515,20 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
     def _load_forensic_features(self, frame_path: str) -> torch.Tensor:
         """
-        Load precomputed forensic features (30-d) from .pt file.
+        Load precomputed forensic features from .pt file.
         Same caching pattern as _load_precomputed_semantic.
         Returns (forensic_dim,) tensor. Zero-vector on any failure.
         """
         try:
-            sep = "/" if "/" in frame_path else "\\"
-            parts = frame_path.split(sep)
-
-            # Find the frames directory (handles 'frames' and 'frames_aug_N')
-            frames_idx = None
-            for pi, part in enumerate(parts):
-                if part == 'frames' or part.startswith('frames_aug_'):
-                    frames_idx = pi
-                    break
-            if frames_idx is None:
+            base_dir, pt_video_name, frame_filename, sep = \
+                self._parse_frame_path(frame_path)
+            if base_dir is None:
                 return torch.zeros(self._forensic_dim)
 
-            video_name = parts[frames_idx + 1]
-            base_dir = sep.join(parts[:frames_idx])
-
-            cache_key = f"{base_dir}/{video_name}"
+            cache_key = f"{base_dir}/{pt_video_name}"
             if cache_key not in self._forensic_cache:
                 pt_path = os.path.join(
-                    base_dir, self._forensic_subdir, f'{video_name}.pt')
+                    base_dir, self._forensic_subdir, f'{pt_video_name}.pt')
                 if os.path.exists(pt_path):
                     data = torch.load(pt_path, map_location='cpu',
                                       weights_only=False)
@@ -466,18 +540,16 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             if cached is None:
                 return torch.zeros(self._forensic_dim)
 
-            features = cached['features']  # (n_frames, 30)
-            frame_paths = cached.get('frame_paths', [])
+            features = cached['features']  # (n_frames, D)
+            frame_paths_cached = cached.get('frame_paths', [])
 
             # Try exact frame match
-            if frame_paths:
-                frame_filename = parts[-1]
-                for idx, fp in enumerate(frame_paths):
+            if frame_paths_cached:
+                for idx, fp in enumerate(frame_paths_cached):
                     if fp.endswith(frame_filename):
                         return features[idx]
 
             # Fallback: index by frame number
-            frame_filename = parts[-1]
             frame_num = int(os.path.splitext(frame_filename)[0])
             if frame_num < features.shape[0]:
                 return features[frame_num]
@@ -498,25 +570,15 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         Returns (fast_semantic_dim,) tensor. Zero-vector on any failure.
         """
         try:
-            sep = "/" if "/" in frame_path else "\\"
-            parts = frame_path.split(sep)
-
-            # Find the frames directory (handles 'frames' and 'frames_aug_N')
-            frames_idx = None
-            for pi, part in enumerate(parts):
-                if part == 'frames' or part.startswith('frames_aug_'):
-                    frames_idx = pi
-                    break
-            if frames_idx is None:
+            base_dir, pt_video_name, frame_filename, sep = \
+                self._parse_frame_path(frame_path)
+            if base_dir is None:
                 return torch.zeros(self._fast_semantic_dim)
 
-            video_name = parts[frames_idx + 1]
-            base_dir = sep.join(parts[:frames_idx])
-
-            cache_key = f"{base_dir}/{video_name}"
+            cache_key = f"{base_dir}/{pt_video_name}"
             if cache_key not in self._fast_semantic_cache:
                 pt_path = os.path.join(
-                    base_dir, self._fast_semantic_subdir, f'{video_name}.pt')
+                    base_dir, self._fast_semantic_subdir, f'{pt_video_name}.pt')
                 if os.path.exists(pt_path):
                     data = torch.load(pt_path, map_location='cpu',
                                       weights_only=False)
@@ -529,17 +591,15 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
                 return torch.zeros(self._fast_semantic_dim)
 
             features = cached['features']  # (n_frames, 58)
-            frame_paths = cached.get('frame_paths', [])
+            frame_paths_cached = cached.get('frame_paths', [])
 
             # Try exact frame match
-            if frame_paths:
-                frame_filename = parts[-1]
-                for idx, fp in enumerate(frame_paths):
+            if frame_paths_cached:
+                for idx, fp in enumerate(frame_paths_cached):
                     if fp.endswith(frame_filename):
                         return features[idx]
 
             # Fallback: index by frame number
-            frame_filename = parts[-1]
             frame_num = int(os.path.splitext(frame_filename)[0])
             if frame_num < features.shape[0]:
                 return features[frame_num]
@@ -561,6 +621,21 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         if isinstance(frame_path, list):
             frame_path = frame_path[0]
 
+        # K-augment: for real frames with pre-augmented variants, randomly
+        # pick one variant. The augmented image + its precomputed features
+        # are perfectly matched, so OTF augmentation is disabled entirely.
+        # When K-augment is active, OTF aug is off for ALL frames (real
+        # frames use pre-augmented variants; fake frames stay unaugmented
+        # as is standard in deepfake detection).
+        use_otf_aug = (
+            self.mode == 'train'
+            and self._k_augment == 0
+            and self.config.get('use_data_augmentation', False)
+        )
+        if self._k_augment > 0 and index in self._augment_variant_paths:
+            variants = self._augment_variant_paths[index]
+            frame_path = random.choice(variants)
+
         try:
             image = self.load_rgb(frame_path)
         except Exception as e:
@@ -568,7 +643,7 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             return self._load_single_frame(0)
         image = np.array(image)
 
-        if self.mode == 'train' and self.config.get('use_data_augmentation', False):
+        if use_otf_aug:
             image, _, _ = self.data_aug(image, None, None)
 
         img_tensor = self.to_tensor(image)
@@ -609,9 +684,11 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         # signals (SRM / noise / FFT / PPNC / CCNC) to what the backbone
         # actually sees, while keeping the expensive region-based features
         # (0..29) from precompute since they need SegFormer parsing maps.
+        # When K-augment is active, all 83 features are precomputed on the
+        # augmented view, so skip OTF recompute (use_otf_aug is False).
         if self.use_forensic_features:
             forensic_features = self._load_forensic_features(frame_path)
-            if self.pixel_forensic_otf and forensic_features.shape[0] == 83:
+            if self.pixel_forensic_otf and use_otf_aug and forensic_features.shape[0] == 83:
                 pixel_np = self._pixel_forensic_extractor(image)
                 forensic_features = forensic_features.clone()
                 forensic_features[self._pixel_forensic_slice] = torch.from_numpy(pixel_np)
