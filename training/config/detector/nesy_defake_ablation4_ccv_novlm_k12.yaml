@@ -74,7 +74,7 @@ evidence_gate:
 dataset_type: nesydefake
 active_branches: ['spatial']
 
-train_dataset: [FaceForensics++_augmented]
+train_dataset: [FaceForensics++]
 test_dataset:  [FaceForensics++, Celeb-DF-v2]
 all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
                 DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
@@ -99,22 +99,22 @@ projection_dropout:
   spatial:   0.0
   frequency: 0.0
 
-# -- Data loading & K=12 pre-augmented sampling (GenD) -----------------------
-# K=12 pre-augmented variants per real frame. Each variant has ALL features
-# (fast_semantic + forensic) precomputed on the augmented view. At training
-# time, one variant is randomly sampled per frame per epoch — zero mismatch.
-# OTF augmentation is disabled (k_augment > 0 turns it off in the dataset).
+# -- Data loading & augmentation (GenD) -----------------------------------------
+# Augmented real frames (aug1-3) in the _augmented JSON provide class balance:
+#   ~23K original + ~69K augmented = ~92K real ≈ 92K fake.
+# OTF augmentation is ON — backbone sees diverse augmented views while
+# precomputed features provide clean semantic/forensic signal from the original.
+# This is the setup that achieved 94% AUC on CelebDF.
 train_batchSize: 128
 test_batchSize:  128
 workers:         12
 
-k_augment: 0                          # 0 = augmented JSON entries provide class balance directly
-use_data_augmentation: false           # disabled — precomputed augmented views replace OTF aug
-balance_classes:       false
+k_augment: 0                          # not using K-augment sampling
+use_data_augmentation: true            # OTF augmentation ON
+balance_classes:       true
 balance_target_ratio: 0.5
 paired_training: true
 
-# data_aug params kept for reference (used by augment_k12.sh preprocessing)
 data_aug:
   flip_prob:            0.5
   rotate_limit:         [-10, 10]

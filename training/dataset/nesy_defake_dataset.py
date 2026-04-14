@@ -401,14 +401,11 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         base_dir = sep.join(parts[:frames_idx])
         frame_filename = parts[-1]
 
-        # Build the .pt video name: for frames_aug_N dirs, append _augN
-        if frames_dir.startswith('frames_aug_'):
-            aug_suffix = frames_dir.replace('frames_', '')  # 'aug_4'
-            # Normalise to match JSON convention: '001_aug4' (no underscore before number)
-            aug_suffix = aug_suffix.replace('_', '', 1)     # 'aug4'
-            pt_video_name = f"{video_name}_{aug_suffix}"
-        else:
-            pt_video_name = video_name
+        # Always load features from the ORIGINAL video's .pt file.
+        # Augmented frames (frames_aug_N/) intentionally share the original's
+        # precomputed features — the backbone learns augmentation-invariant
+        # representations while features provide clean semantic/forensic signal.
+        pt_video_name = video_name
 
         return base_dir, pt_video_name, frame_filename, sep
 
