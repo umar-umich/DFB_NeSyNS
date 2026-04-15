@@ -91,6 +91,20 @@ load_semantic_features: false
 
 class_weights: [1.8, 0.6]    # [real, fake] — stronger push against fake bias (acc_real was 0.65 at epoch 8)
 
+# -- Projection head type -------------------------------------------------------
+projection_head:
+  type: houlsby               # standard | residual | bottleneck | houlsby
+  # residual options (only when type=residual):
+  #   alpha_init: 0.1          # learnable mixing scalar init
+  # bottleneck options (only when type=bottleneck):
+  #   bottleneck_ratio: 4      # compression ratio (1024→256 when ratio=4)
+  # houlsby options (only when type=houlsby, combines residual + bottleneck):
+  bottleneck_ratio: 4
+  alpha_init: 0.1
+
+# -- Skip fusion (EDL path bypasses fusion, so this saves ~1M unused params) ---
+skip_fusion: false             # set true to remove fusion module entirely
+
 projection_dropout:
   spatial:   0.0
   frequency: 0.0
