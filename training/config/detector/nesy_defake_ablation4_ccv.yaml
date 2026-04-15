@@ -63,8 +63,16 @@ causal_branch:
 
 # -- Evidence gates ------------------------------------------------------------
 evidence_gate:
-  concept_init: -0.5            # sigmoid ≈ 0.38 — was -1.0 (gate barely moved from 0.27)
-  causal_init:  -0.8            # sigmoid ≈ 0.31 — was -1.5 (CCV showing useful signal, let it contribute more)
+  concept_init: -0.5            # sigmoid ≈ 0.38
+  causal_init:  -0.8            # sigmoid ≈ 0.31
+  conditioned: false            # true: per-image gates via Linear(1024→2)→Sigmoid
+                                # false: static scalar gates (default)
+
+# -- EDL classifier dropout override ------------------------------------------
+# Dropout before EDL evidence computation adds noise to deterministic uncertainty
+# estimates. Set this to 0.0 to disable dropout in the classifier for EDL mode.
+# Only takes effect when linear_probe: false (linear_probe has no dropout anyway).
+# edl_classifier_dropout: 0.0
 
 # -- Dataset ------------------------------------------------------------------
 dataset_type: nesydefake

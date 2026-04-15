@@ -255,6 +255,102 @@ def _make_projection(in_dim: int, out_dim: int, dropout: float = 0.0) -> nn.Sequ
     return nn.Sequential(*layers)
 
 
+class ResidualProjection(nn.Module):
+    """Option 1: Residual projection with learnable mixing scalar.
+
+    output = input + alpha * projection(input)
+
+    Alpha is initialized small so early training behaves like a linear probe,
+    then the model learns how much task-specific correction to apply.
+    """
+
+    def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0,
+                 alpha_init: float = 0.1):
+        super().__init__()
+        self.proj = _make_projection(in_dim, out_dim, dropout)
+        self.alpha = nn.Parameter(torch.tensor(alpha_init))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.alpha * self.proj(x)
+
+
+class BottleneckAdapter(nn.Module):
+    """Option 2: Bottleneck adapter with skip connection.
+
+    output = LayerNorm(input + Linear_up(GELU(Linear_down(input))))
+
+    Forces the adapter to learn a low-rank correction (Houlsby et al., 2019).
+    """
+
+    def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0,
+                 bottleneck_ratio: int = 4):
+        super().__init__()
+        neck_dim = in_dim // bottleneck_ratio
+        self.down = nn.Linear(in_dim, neck_dim)
+        self.act = nn.GELU()
+        self.up = nn.Linear(neck_dim, out_dim)
+        self.norm = nn.LayerNorm(out_dim)
+        self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.norm(x + self.dropout(self.up(self.act(self.down(x)))))
+
+
+class HoulsbyAdapter(nn.Module):
+    """Combined Option 1+2: Bottleneck with learnable residual scaling.
+
+    output = LayerNorm(input + alpha * Linear_up(GELU(Linear_down(input))))
+
+    Standard Houlsby Adapter (ICML 2019): bottleneck forces low-rank correction,
+    learnable alpha controls injection strength. Starts near identity (alpha_init),
+    model learns how much adaptation to apply.
+    """
+
+    def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0,
+                 bottleneck_ratio: int = 4, alpha_init: float = 0.1):
+        super().__init__()
+        neck_dim = in_dim // bottleneck_ratio
+        self.down = nn.Linear(in_dim, neck_dim)
+        self.act = nn.GELU()
+        self.up = nn.Linear(neck_dim, out_dim)
+        self.norm = nn.LayerNorm(out_dim)
+        self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
+        self.alpha = nn.Parameter(torch.tensor(alpha_init))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        adapted = self.dropout(self.up(self.act(self.down(x))))
+        return self.norm(x + self.alpha * adapted)
+
+
+class FeatureConditionedGate(nn.Module):
+    """Per-image gating for evidence branches, conditioned on backbone features.
+
+    Instead of static scalar gates (same weight for every image), this produces
+    per-image gate values via a lightweight linear layer on backbone features.
+    Allows the model to trust the causal branch more on compressed images, and
+    the concept branch more on clear frontal faces.
+
+    gate_values = sigmoid(Linear(spatial_raw))  # (B, num_gates)
+    """
+
+    def __init__(self, input_dim: int, num_gates: int, gate_inits: list = None):
+        super().__init__()
+        self.linear = nn.Linear(input_dim, num_gates)
+        # Initialize bias to match the static gate init values so early
+        # training behaves similarly to the scalar gate baseline.
+        with torch.no_grad():
+            nn.init.zeros_(self.linear.weight)
+            if gate_inits is not None:
+                for i, val in enumerate(gate_inits):
+                    self.linear.bias[i] = val
+            else:
+                nn.init.constant_(self.linear.bias, -1.0)
+
+    def forward(self, spatial_raw: torch.Tensor) -> torch.Tensor:
+        """Returns (B, num_gates) gate values in [0, 1]."""
+        return torch.sigmoid(self.linear(spatial_raw))
+
+
 @DETECTOR.register_module(module_name='nesydefake_hybrid')
 class NeSyDeFakeHybridDetector(AbstractDetector):
 
@@ -271,7 +367,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self._current_epoch = 0
 
         self.build_backbone(config)
-        self.fusion = MultiModalFusion(config)
+        # Fusion is only used in the non-EDL forward path. In EDL mode
+        # (ablation_mode: *_edl), spatial_proj feeds directly to the classifier.
+        # skip_fusion=true saves ~1M params and cleans up the optimizer.
+        self._skip_fusion = config.get('skip_fusion', False)
+        if not self._skip_fusion:
+            self.fusion = MultiModalFusion(config)
+        else:
+            self.fusion = None
+            logger.info("  Fusion module   : SKIPPED (skip_fusion=true, EDL path bypasses it)")
 
         # -- Module: Facial Semantic Attribute Extractor ----------------------
         sem_cfg = config.get('semantic_attributes', {})
@@ -462,6 +566,14 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             logger.info(f"  UA loss         : alpha={self.ua_alpha}, beta={self.ua_beta}")
 
         # -- Module 5: Classifier --------------------------------------------
+        # EDL maps features to Dirichlet parameters deterministically.
+        # Dropout before evidence computation adds noise to uncertainty
+        # estimates. edl_classifier_dropout overrides classifier dropout
+        # when in EDL mode (set to 0.0 to disable).
+        if self._use_edl and 'edl_classifier_dropout' in config:
+            config['classifier']['dropout'] = config['edl_classifier_dropout']
+            logger.info(f"  EDL dropout     : classifier dropout overridden to "
+                        f"{config['edl_classifier_dropout']}")
         self.multitaskhead = MultiTaskHead(config)
         self.loss_weights = config['loss_func']['weights']
         self._base_loss_weights = dict(config['loss_func']['weights'])
@@ -582,6 +694,32 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             self._dag_penalty_weight = sc_cfg.get('dag_penalty_weight', 0.05)
             logger.info(f"  Causal branch   : type={causal_type}, gate_init={gate_cfg.get('causal_init', -3.0)}")
 
+        # -- Feature-conditioned evidence gates --------------------------------
+        # When evidence_gate.conditioned=true, replace static scalar gates with
+        # a lightweight Linear(backbone_dim→num_gates)→Sigmoid that produces
+        # per-image gate values. This lets the model dynamically weight branches
+        # based on image content (e.g., trust causal more on compressed images).
+        gate_cfg = config.get('evidence_gate', {})
+        self._conditioned_gates = gate_cfg.get('conditioned', False)
+        if self._conditioned_gates and (self._use_concept_branch or self._use_causal_branch):
+            gate_inits = []
+            self._gate_names = []
+            if self._use_concept_branch:
+                gate_inits.append(float(gate_cfg.get('concept_init', -0.5)))
+                self._gate_names.append('concept')
+            if self._use_causal_branch:
+                gate_inits.append(float(gate_cfg.get('causal_init', -0.8)))
+                self._gate_names.append('causal')
+            backbone_dim = config['foundation_models']['spatial']['output_dim']
+            self.conditioned_gate = FeatureConditionedGate(
+                input_dim=backbone_dim,
+                num_gates=len(gate_inits),
+                gate_inits=gate_inits,
+            )
+            logger.info(f"  Evidence gates  : feature-conditioned "
+                        f"({backbone_dim}→{len(gate_inits)}), "
+                        f"init={dict(zip(self._gate_names, gate_inits))}")
+
         # -- torch.compile on frozen backbones (speed optimization) -----------
         # Frozen modules have static graphs — torch.compile fuses ops and
         # eliminates Python overhead. Only applied to inference-only modules.
@@ -644,12 +782,32 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         }
 
         dropout_cfg = config.get('projection_dropout', {})
-        self.spatial_proj = _make_projection(
+        proj_cfg = config.get('projection_head', {})
+        proj_type = proj_cfg.get('type', 'standard')  # standard, residual, bottleneck, houlsby
+
+        def _build_proj(in_dim, out_dim, dropout):
+            if proj_type == 'residual':
+                alpha_init = proj_cfg.get('alpha_init', 0.1)
+                return ResidualProjection(in_dim, out_dim, dropout, alpha_init)
+            elif proj_type == 'bottleneck':
+                ratio = proj_cfg.get('bottleneck_ratio', 4)
+                return BottleneckAdapter(in_dim, out_dim, dropout, ratio)
+            elif proj_type == 'houlsby':
+                ratio = proj_cfg.get('bottleneck_ratio', 4)
+                alpha_init = proj_cfg.get('alpha_init', 0.1)
+                return HoulsbyAdapter(in_dim, out_dim, dropout, ratio, alpha_init)
+            else:
+                return _make_projection(in_dim, out_dim, dropout)
+
+        self.spatial_proj = _build_proj(
             branch_dims['spatial'], proj_dim,
-            dropout=dropout_cfg.get('spatial', 0.2))
-        self.frequency_proj = _make_projection(
+            dropout_cfg.get('spatial', 0.2))
+        self.frequency_proj = _build_proj(
             branch_dims['frequency'], proj_dim,
-            dropout=dropout_cfg.get('frequency', 0.1))
+            dropout_cfg.get('frequency', 0.1))
+        if proj_type != 'standard':
+            extra = {k: v for k, v in proj_cfg.items() if k != 'type'}
+            logger.info(f"  Projection head : type={proj_type}, {extra}")
 
         fused_dim = proj_dim * sum(1 for b in ALL_BRANCHES if b in active)
         config['fusion']['fused_dim'] = fused_dim
@@ -837,7 +995,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             self.frequency_proj(raw_feats['frequency_raw'])
             if 'frequency_raw' in raw_feats else None
         )
-        return self.fusion(spatial_proj, freq_proj)
+        if self.fusion is not None:
+            return self.fusion(spatial_proj, freq_proj)
+        # skip_fusion: return spatial projection directly (EDL path)
+        return spatial_proj if spatial_proj is not None else freq_proj
 
     def classifier(self, features: torch.Tensor) -> dict:
         return self.multitaskhead(features)
@@ -928,6 +1089,21 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     branch_evidences['causal'] = causal_out['evidence']
                 total_evidence, cmef_diag = self.cmef(
                     spatial_evidence, symbolic_evs)
+            elif self._conditioned_gates and hasattr(self, 'conditioned_gate'):
+                # Feature-conditioned gates: per-image weighting from backbone
+                gate_vals = self.conditioned_gate(spatial_raw)  # (B, num_gates)
+                total_evidence = spatial_evidence
+                gi = 0
+                if concept_out is not None:
+                    concept_gate = gate_vals[:, gi].unsqueeze(1)  # (B, 1)
+                    total_evidence = total_evidence + concept_gate * concept_out['evidence']
+                    branch_evidences['concept'] = concept_out['evidence']
+                    gi += 1
+                if causal_out is not None:
+                    causal_gate = gate_vals[:, gi].unsqueeze(1)  # (B, 1)
+                    total_evidence = total_evidence + causal_gate * causal_out['evidence']
+                    branch_evidences['causal'] = causal_out['evidence']
+                cmef_diag = None
             else:
                 # Standard: static scalar gates
                 total_evidence = spatial_evidence
@@ -972,6 +1148,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 if self._use_nesy_edl and cmef_diag is not None:
                     pred['concept_gate'] = cmef_diag.get('branch_0_gate', torch.tensor(0.0))
                     pred['concept_conf'] = cmef_diag.get('branch_0_conf_mean', torch.tensor(0.0))
+                elif self._conditioned_gates and hasattr(self, 'conditioned_gate'):
+                    pred['concept_gate'] = concept_gate.mean().detach()
                 elif hasattr(self, 'concept_gate'):
                     pred['concept_gate'] = torch.sigmoid(self.concept_gate).detach()
                 pred['violations'] = concept_out['violations']
@@ -981,6 +1159,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     idx = 1 if concept_out is not None else 0
                     pred['causal_gate'] = cmef_diag.get(f'branch_{idx}_gate', torch.tensor(0.0))
                     pred['causal_conf'] = cmef_diag.get(f'branch_{idx}_conf_mean', torch.tensor(0.0))
+                elif self._conditioned_gates and hasattr(self, 'conditioned_gate'):
+                    pred['causal_gate'] = causal_gate.mean().detach()
                 elif hasattr(self, 'causal_ev_gate'):
                     pred['causal_gate'] = torch.sigmoid(self.causal_ev_gate).detach()
                 pred['dag_penalty'] = causal_out['dag_penalty']
