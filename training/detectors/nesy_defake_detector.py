@@ -570,7 +570,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # Dropout before evidence computation adds noise to uncertainty
         # estimates. edl_classifier_dropout overrides classifier dropout
         # when in EDL mode (set to 0.0 to disable).
-        if self._use_edl and 'edl_classifier_dropout' in config:
+        _edl_active = self.ablation_mode in ('spatial_edl', 'concept_edl', 'causal_edl')
+        if _edl_active and 'edl_classifier_dropout' in config:
             config['classifier']['dropout'] = config['edl_classifier_dropout']
             logger.info(f"  EDL dropout     : classifier dropout overridden to "
                         f"{config['edl_classifier_dropout']}")

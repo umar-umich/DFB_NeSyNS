@@ -269,3 +269,4 @@ The Fix: Upgrade these scalars to very lightweight, feature-conditioned gates. P
 | `nesy_defake_ablation4_ccv_novlm.yaml` | No VLM (58-d fast only), matches April 11 run |
 | `nesy_defake_ablation4_ccv_novlm_otf.yaml` | No VLM + OTF forensic hybrid (experimental) |
 | `nesy_defake_ablation4_ccv_novlm_k12.yaml` | K=12 pre-augmented (abandoned — feature mismatch) |
+
