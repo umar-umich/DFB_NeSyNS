@@ -8,6 +8,7 @@
 import os
 os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
 
+import shutil
 import argparse
 from os.path import join
 import cv2
@@ -439,6 +440,12 @@ def main():
         f'{config_name}_{timenow}')
     if not config['ddp'] or dist.get_rank() == 0:
         os.makedirs(logger_path, exist_ok=True)
+        # Save detector config for reproducibility
+        try:
+            shutil.copy2(args.detector_path,
+                         os.path.join(logger_path, 'detector_config.yaml'))
+        except Exception as e:
+            print(f"[warn] failed to save detector config: {e}")
     if config['ddp']:
         dist.barrier()
 
