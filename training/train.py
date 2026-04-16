@@ -67,6 +67,14 @@ parser.add_argument(
     default=None,
     help='Override manualSeed. E.g. --seed 123'
 )
+parser.add_argument(
+    '--resume',
+    type=str,
+    default=None,
+    help='Resume from a last_checkpoint.pth. Accepts either the checkpoint '
+         'path or the log folder containing it. Training continues in the '
+         'same folder (same logs, same best_*.pth).'
+)
 
 args = parser.parse_args()
 
@@ -430,22 +438,41 @@ def main():
     if config['lmdb']:
         config['dataset_json_folder'] = 'preprocessing/dataset_json_v3'
 
-    timenow  = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    # ---- Resolve --resume: path can be a .pth file or a log folder ----
+    resume_ckpt_path = None
+    if args.resume:
+        r = os.path.abspath(args.resume)
+        if os.path.isdir(r):
+            resume_ckpt_path = os.path.join(r, 'last_checkpoint.pth')
+        else:
+            resume_ckpt_path = r
+        if not os.path.isfile(resume_ckpt_path):
+            raise FileNotFoundError(
+                f"--resume: checkpoint not found at {resume_ckpt_path}")
 
     # Derive experiment name from detector config filename (e.g. nesy_defake_ablation1)
     config_name = os.path.splitext(os.path.basename(args.detector_path))[0]
 
-    logger_path = os.path.join(
-        config['log_dir'], 'train',
-        f'{config_name}_{timenow}')
+    if resume_ckpt_path is not None:
+        # Reuse the existing log folder so logs, TB events, and best_*.pth continue in place
+        logger_path = os.path.dirname(resume_ckpt_path)
+        timenow = os.path.basename(logger_path).replace(f'{config_name}_', '') \
+            or datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    else:
+        timenow = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        logger_path = os.path.join(
+            config['log_dir'], 'train',
+            f'{config_name}_{timenow}')
+
     if not config['ddp'] or dist.get_rank() == 0:
         os.makedirs(logger_path, exist_ok=True)
-        # Save detector config for reproducibility
-        try:
-            shutil.copy2(args.detector_path,
-                         os.path.join(logger_path, 'detector_config.yaml'))
-        except Exception as e:
-            print(f"[warn] failed to save detector config: {e}")
+        # Save detector config for reproducibility (skip on resume — it's already there)
+        if resume_ckpt_path is None:
+            try:
+                shutil.copy2(args.detector_path,
+                             os.path.join(logger_path, 'detector_config.yaml'))
+            except Exception as e:
+                print(f"[warn] failed to save detector config: {e}")
     if config['ddp']:
         dist.barrier()
 
@@ -502,6 +529,16 @@ def main():
     es_best_score = float('-inf')
     es_wait = 0
 
+    # ---- Resume from checkpoint (after trainer + optimizer are fully built) ----
+    if resume_ckpt_path is not None:
+        completed_epoch, extra = trainer.load_resume_state(resume_ckpt_path)
+        config['start_epoch'] = completed_epoch + 1
+        es_best_score = extra.get('es_best_score', float('-inf'))
+        es_wait = extra.get('es_wait', 0)
+        logger.info(
+            f"Resuming training at epoch {config['start_epoch']} "
+            f"(es_best_score={es_best_score:.6f}, es_wait={es_wait})")
+
     for epoch in range(config['start_epoch'], config['nEpochs'] + 1):
         if config['ddp'] and hasattr(train_data_loader.sampler, 'set_epoch'):
             train_data_loader.sampler.set_epoch(epoch)
@@ -531,7 +568,15 @@ def main():
                         f"(best={es_best_score:.6f}, current={current_score:.6f})")
                     if es_wait >= es_patience:
                         logger.info(f"  Early stopping triggered at epoch {epoch}")
+                        trainer.save_resume_state(
+                            epoch,
+                            {'es_best_score': es_best_score, 'es_wait': es_wait})
                         break
+
+        # Save resume checkpoint at end of every epoch (atomic — safe if killed)
+        trainer.save_resume_state(
+            epoch,
+            {'es_best_score': es_best_score, 'es_wait': es_wait})
 
     logger.info("Stop Training on best Testing metric {}".format(
         parse_metric_for_print(best_metric)))
