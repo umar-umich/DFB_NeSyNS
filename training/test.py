@@ -138,18 +138,26 @@ def compute_wasserstein1(probs, labels):
 
 
 def compute_video_predictions(img_names, probs, labels):
-    """Aggregate frame predictions to video level by averaging."""
+    """Aggregate frame predictions to video level by averaging.
+
+    Returns video_probs, video_labels, video_ids, video_frames where the
+    four arrays are aligned: entry i corresponds to video_ids[i], and
+    video_frames[i] lists every frame path that was averaged into it.
+    """
     video_dict = {}
     for name, prob, label in zip(img_names, probs, labels):
         parts = name.replace('\\', '/').split('/')
         video_id = parts[-2]
         if video_id not in video_dict:
-            video_dict[video_id] = {'probs': [], 'label': int(label)}
+            video_dict[video_id] = {'probs': [], 'label': int(label), 'frames': []}
         video_dict[video_id]['probs'].append(prob)
+        video_dict[video_id]['frames'].append(name)
 
-    video_probs = np.array([np.mean(v['probs'], axis=0) for v in video_dict.values()])
-    video_labels = np.array([v['label'] for v in video_dict.values()])
-    return video_probs, video_labels
+    video_ids    = list(video_dict.keys())
+    video_probs  = np.array([np.mean(video_dict[v]['probs'], axis=0) for v in video_ids])
+    video_labels = np.array([video_dict[v]['label'] for v in video_ids])
+    video_frames = [video_dict[v]['frames'] for v in video_ids]
+    return video_probs, video_labels, video_ids, video_frames
 
 
 def compute_all_metrics(labels, probs, level):
@@ -480,7 +488,8 @@ def main():
             compute_all_metrics(labels, probs, 'frame')
 
         # --- Video-level metrics ---
-        video_probs, video_labels = compute_video_predictions(img_names, probs, labels)
+        video_probs, video_labels, video_ids, video_frames = \
+            compute_video_predictions(img_names, probs, labels)
         video_metrics, v_fprs, v_tprs, v_ths, v_precs, v_recs, v_pr_ths, v_eer, v_preds = \
             compute_all_metrics(video_labels, video_probs, 'video')
 
@@ -502,6 +511,44 @@ def main():
             writer.writerow(['files', 'labels', 'prob_class_0', 'prob_class_1'])
             for name, label, p in zip(img_names, labels, probs):
                 writer.writerow([name, int(label), f'{p[0]:.4f}', f'{p[1]:.4f}'])
+
+        # --- Save misclassified entries (for error analysis) ---
+        # Frame-level wrong predictions: one row per misclassified frame.
+        # `f_preds` uses the EER threshold computed inside compute_all_metrics.
+        frame_wrong_path = os.path.join(ds_out_dir, 'misclassified_frames.csv')
+        with open(frame_wrong_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['file', 'video_id', 'label', 'pred', 'prob_fake', 'error_type'])
+            for name, label, pred, p in zip(img_names, labels, f_preds, probs):
+                if int(pred) != int(label):
+                    video_id = name.replace('\\', '/').split('/')[-2]
+                    err = 'FP' if int(label) == 0 else 'FN'  # real->fake / fake->real
+                    writer.writerow([name, video_id, int(label), int(pred),
+                                     f'{p[1]:.4f}', err])
+
+        # Video-level wrong predictions: one row per misclassified video,
+        # plus the list of frame paths so we can inspect them later.
+        video_wrong_path = os.path.join(ds_out_dir, 'misclassified_videos.csv')
+        with open(video_wrong_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['video_id', 'label', 'pred', 'mean_prob_fake',
+                             'num_frames', 'frame_files', 'error_type'])
+            for vid, vlabel, vpred, vp, vframes in zip(
+                    video_ids, video_labels, v_preds, video_probs, video_frames):
+                if int(vpred) != int(vlabel):
+                    err = 'FP' if int(vlabel) == 0 else 'FN'
+                    writer.writerow([
+                        vid, int(vlabel), int(vpred),
+                        f'{vp[1]:.4f}', len(vframes),
+                        ';'.join(vframes), err,
+                    ])
+
+        num_frame_wrong = int((f_preds != labels).sum())
+        num_video_wrong = int((v_preds != video_labels).sum())
+        print(f'  Misclassified frames: {num_frame_wrong}/{len(labels)} '
+              f'→ {frame_wrong_path}')
+        print(f'  Misclassified videos: {num_video_wrong}/{len(video_labels)} '
+              f'→ {video_wrong_path}')
 
         # --- Generate plots ---
         print('Generating frame-level plots...')
