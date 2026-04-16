@@ -1168,6 +1168,11 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 for k, v in causal_out.items():
                     if k.startswith('A_'):
                         pred[k] = v
+                # Propagate CCV-specific keys for interpretability
+                for ccv_key in ('violation_scores', 'anomaly_scores',
+                                'counterfactual_residual'):
+                    if ccv_key in causal_out:
+                        pred[ccv_key] = causal_out[ccv_key]
             if cmef_diag is not None and 'tau' in cmef_diag:
                 pred['cmef_tau'] = cmef_diag['tau']
             return pred

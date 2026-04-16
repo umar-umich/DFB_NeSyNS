@@ -202,6 +202,14 @@ class Trainer(object):
             f"Frequency branch gradient clipping — max_norm={self.freq_grad_clip}"
         )
 
+        # ── Interpretability ──────────────────────────────────────────────
+        interp_cfg = config.get('interpretability', {})
+        self._interp_enabled = interp_cfg.get('enabled', False)
+        self._interp_every_n = interp_cfg.get('graph_viz_every_n_epochs', 5)
+        # Causal branch type for selecting CCV vs SCM analyzers
+        causal_cfg = config.get('causal_branch', {})
+        self._causal_branch_type = causal_cfg.get('type', '')
+
         self.speed_up()
 
         self.timenow = time_now
@@ -289,6 +297,59 @@ class Trainer(object):
                 torch.save(self.model.state_dict(), save_path)
         self.logger.info(
             f"Best checkpoint saved to {save_path} (epoch+iter: {ckpt_info})")
+
+    def save_resume_state(self, epoch, extra_state=None):
+        """Write a full training-state snapshot for crash-recovery resume.
+
+        Saved atomically to `{log_dir}/last_checkpoint.pth` (tmp file + rename)
+        so a SIGKILL mid-write cannot leave a half-written checkpoint.
+        """
+        if not is_main_process():
+            return
+        model_sd = (self.model.module.state_dict()
+                    if self.config['ddp'] else self.model.state_dict())
+        state = {
+            'epoch':        int(epoch),
+            'model':        model_sd,
+            'optimizer':    self.optimizer.state_dict(),
+            'scheduler':    (self.scheduler.state_dict()
+                             if self.scheduler is not None else None),
+            'scaler':       self.scaler.state_dict() if self.use_amp else None,
+            'best_metrics': {k: dict(v) for k, v in self.best_metrics_all_time.items()},
+            'extra':        extra_state or {},
+        }
+        final_path = os.path.join(self.log_dir, 'last_checkpoint.pth')
+        tmp_path   = final_path + '.tmp'
+        torch.save(state, tmp_path)
+        os.replace(tmp_path, final_path)
+        self.logger.info(f"Resume checkpoint saved to {final_path} (epoch={epoch})")
+
+    def load_resume_state(self, ckpt_path):
+        """Restore training state written by `save_resume_state`.
+
+        Returns a tuple `(completed_epoch, extra_state_dict)` so the caller
+        can set `start_epoch = completed_epoch + 1` and restore its own
+        bookkeeping (early-stopping counters etc.).
+        """
+        if not os.path.isfile(ckpt_path):
+            raise FileNotFoundError(f"Resume checkpoint not found: {ckpt_path}")
+        ck = torch.load(ckpt_path, map_location='cpu')
+        if self.config['ddp']:
+            self.model.module.load_state_dict(ck['model'])
+        else:
+            self.model.load_state_dict(ck['model'])
+        self.optimizer.load_state_dict(ck['optimizer'])
+        if ck.get('scheduler') is not None and self.scheduler is not None:
+            self.scheduler.load_state_dict(ck['scheduler'])
+        if ck.get('scaler') is not None and self.use_amp:
+            self.scaler.load_state_dict(ck['scaler'])
+        for k, v in (ck.get('best_metrics') or {}).items():
+            for mk, mv in v.items():
+                self.best_metrics_all_time[k][mk] = mv
+        completed_epoch = int(ck['epoch'])
+        self.logger.info(
+            f"Resumed from {ckpt_path} (last completed epoch={completed_epoch})")
+        return completed_epoch, (ck.get('extra') or {})
 
     def save_swa_ckpt(self):
         if not is_main_process():
@@ -759,11 +820,15 @@ class Trainer(object):
         acc_fake = np.count_nonzero(judge[fake_idx]) / len(fake_idx)
         return acc_real, acc_fake
 
-    def test_one_dataset(self, data_loader, desc="Testing"):
+    def test_one_dataset(self, data_loader, desc="Testing",
+                         interp_engine=None):
         """
         Each rank processes its own shard (via DistributedSampler).
         Returns local numpy arrays; caller gathers across ranks.
         Inference also runs under autocast for consistency + speed.
+
+        If *interp_engine* is provided, intermediate prediction outputs are
+        fed to it each batch for interpretability analysis.
         """
         test_recorder_loss = defaultdict(Recorder)
         prediction_lists   = []
@@ -790,6 +855,10 @@ class Trainer(object):
             label_lists      += list(data_dict['label'].cpu().detach().numpy())
             prediction_lists += list(predictions['prob'].cpu().detach().numpy())
             feature_lists    += list(predictions['feat'].cpu().detach().numpy())
+
+            # Collect interpretability data (detached, per-batch)
+            if interp_engine is not None:
+                interp_engine.collect_batch(predictions, data_dict['label'])
 
             if not isinstance(self.model, AveragedModel):
                 if isinstance(self.model, DDP):
@@ -891,13 +960,33 @@ class Trainer(object):
             'video_auc': 0, 'dataset_dict': {}
         }
 
+        # ── Interpretability engine (created once, per-dataset) ──────────
+        run_interp = (
+            self._interp_enabled
+            and is_main_process()
+            and epoch % self._interp_every_n == 0
+        )
+
         keys = list(test_data_loaders.keys())
 
         for key in keys:
             self.logger.info(f"Testing on {key}...")
+
+            # Create a fresh engine per dataset if interpretability is on
+            interp_engine = None
+            if run_interp:
+                try:
+                    from interpretability.engine import InterpretabilityEngine
+                    interp_engine = InterpretabilityEngine(
+                        self.config, causal_type=self._causal_branch_type)
+                except Exception as e:
+                    self.logger.warning(
+                        f"InterpretabilityEngine init failed: {e}")
+
             (losses_local, preds_local,
              labels_local, feats_local) = self.test_one_dataset(
-                test_data_loaders[key], desc=key)
+                test_data_loaders[key], desc=key,
+                interp_engine=interp_engine)
 
             preds_all, labels_all, _ = self._gather_test_results(
                 preds_local, labels_local, feats_local)
@@ -924,6 +1013,20 @@ class Trainer(object):
                 else:
                     self.save_best(epoch, iteration, step,
                                    losses_local, key, metric_one_dataset)
+
+                # ── Finalize interpretability for this dataset ───────────
+                if interp_engine is not None:
+                    try:
+                        m = (self.model.module
+                             if isinstance(self.model, DDP) else self.model)
+                        interp_engine.collect_model_params(m)
+                        interp_dir = os.path.join(
+                            self.log_dir, 'interpretability',
+                            f'epoch_{epoch}', key)
+                        interp_engine.finalize(interp_dir)
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Interpretability finalize failed for {key}: {e}")
 
             synchronize()
 
