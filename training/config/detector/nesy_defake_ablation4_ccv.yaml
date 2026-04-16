@@ -65,7 +65,7 @@ causal_branch:
 evidence_gate:
   concept_init: -0.5            # sigmoid ≈ 0.38
   causal_init:  -0.8            # sigmoid ≈ 0.31
-  conditioned: true            # true: per-image gates via Linear(1024→2)→Sigmoid
+  conditioned: false            # true: per-image gates via Linear(1024→2)→Sigmoid
                                 # false: static scalar gates (default)
 
 # -- EDL classifier dropout override ------------------------------------------
@@ -79,7 +79,7 @@ dataset_type: nesydefake
 active_branches: ['spatial']
 
 train_dataset: [FaceForensics++]
-test_dataset:  [FaceForensics++, Celeb-DF-v2]
+test_dataset:  [FaceForensics++, DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDC, DFDCP, UADFV]
 all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
                 DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
                 DeeperForensics-1.0, UADFV]
@@ -97,11 +97,11 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
-class_weights: [1.6, 0.8]    # [real, fake] — stronger push against fake bias (acc_real was 0.65 at epoch 8)
+class_weights: [1.2, 0.8]    # [real, fake] — stronger push against fake bias (acc_real was 0.65 at epoch 8)
 
 # -- Projection head type -------------------------------------------------------
 projection_head:
-  type: residual               # standard | residual | bottleneck | houlsby
+  type: standard               # standard | residual | bottleneck | houlsby
   # residual options (only when type=residual):
   alpha_init: 0.1          # learnable mixing scalar init
   # bottleneck options (only when type=bottleneck):
@@ -329,6 +329,7 @@ metric_scoring:     auc
 additional_metrics: [acc, eer, ap]
 
 interpretability:
+  enabled: true
   save_attention_maps:      false
   save_causal_graphs:       true  # Enable for explainability
   save_feature_activations: false
@@ -350,5 +351,5 @@ checkpoint:
 
 early_stopping:
   enabled: true
-  patience: 10
+  patience: 15
   min_delta: 0.001

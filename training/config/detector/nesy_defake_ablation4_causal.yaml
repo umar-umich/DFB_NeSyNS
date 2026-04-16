@@ -69,15 +69,17 @@ causal_branch:
 
 # -- Evidence gates ------------------------------------------------------------
 evidence_gate:
-  concept_init: -0.5            # sigmoid ≈ 0.27 — was -3.0 (dead gate)
-  causal_init:  -0.8            # sigmoid ≈ 0.18 — starts cautious, allows gradient flow
+  concept_init: -0.5            # sigmoid ≈ 0.38
+  causal_init:  -0.8            # sigmoid ≈ 0.31 — starts cautious, allows gradient flow
+  conditioned: false            # true: per-image gates via Linear(1024→2)→Sigmoid
+                                # false: static scalar gates (default)
 
 # -- Dataset ------------------------------------------------------------------
 dataset_type: nesydefake
 active_branches: ['spatial']
 
 train_dataset: [FaceForensics++]
-test_dataset:  [FaceForensics++, Celeb-DF-v2]
+test_dataset:  [FaceForensics++, DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDC, DFDCP, UADFV]
 all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
                 DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
                 DeeperForensics-1.0, UADFV]
@@ -96,6 +98,20 @@ with_landmark: false
 load_semantic_features: false
 
 class_weights: [1.6, 0.8]    # [real, fake] — fix fake bias
+
+# -- Projection head type -------------------------------------------------------
+projection_head:
+  type: standard               # standard | residual | bottleneck | houlsby
+  # residual options (only when type=residual):
+  alpha_init: 0.1          # learnable mixing scalar init
+  # bottleneck options (only when type=bottleneck):
+  #   bottleneck_ratio: 4      # compression ratio (1024→256 when ratio=4)
+  # houlsby options (only when type=houlsby, combines residual + bottleneck):
+  bottleneck_ratio: 4
+  # alpha_init: 0.1
+
+# -- Skip fusion (EDL path bypasses fusion, so this saves ~1M unused params) ---
+skip_fusion: false             # set true to remove fusion module entirely
 
 projection_dropout:
   spatial:   0.0
@@ -313,6 +329,7 @@ metric_scoring:     auc
 additional_metrics: [acc, eer, ap]
 
 interpretability:
+  enabled: true
   save_attention_maps:      false
   save_causal_graphs:       true  # Enable for explainability
   save_feature_activations: false
