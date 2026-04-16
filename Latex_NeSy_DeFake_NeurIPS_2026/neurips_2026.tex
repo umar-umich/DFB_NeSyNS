@@ -63,7 +63,7 @@
 \usepackage{bm}             % bold math
 
 % Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote. 
-\title{Formatting Instructions For NeurIPS 2026}
+\title{NeSyDeFake: Neuro-Symbolic Evidential Reasoning for\\ Generalizable Deepfake Detection}
 
 
 % The \author macro works with any number of authors. There are two commands
@@ -113,10 +113,36 @@
 
 
 \begin{abstract}
-TODO: Write abstract.
+Generalizing deepfake detectors across unseen manipulations remains an open problem: purely neural classifiers readily overfit to source-specific artifacts~\citep{rossler2019faceforensics,li2020face,shiohara2022detecting}, while hand-crafted forensic cues are brittle under post-processing and compression~\citep{luo2021generalizing,qian2020thinking}. We argue that the missing ingredient is \emph{explicit semantic reasoning}: face manipulations inevitably break relationships between facial attributes that hold for authentic faces, producing violation signals that are orthogonal to the visual shortcuts a neural backbone learns. We propose \textbf{NeSyDeFake}, a neuro-symbolic framework that fuses a frozen CLIP~\citep{radford2021clip} spatial branch with two symbolic evidence streams---a \emph{concept branch} of 23 differentiable consistency rules grounded in the Facial Action Coding System~\citep{ekman1978facial} and cross-region identity priors, and a \emph{Causal Constraint Verification} (CCV) branch that learns soft constraints, detects per-region forensic anomalies with lightweight autoencoders, and verifies a counterfactual appearance predictor against compressed CLIP embeddings. To combine these heterogeneous streams under uncertainty, we introduce \textbf{NeSy-EDL}, extending Evidential Deep Learning~\citep{sensoy2018evidential} with three components: Confidence-Modulated Evidence Fusion (CMEF) that dynamically reallocates trust to symbolic branches when the neural branch becomes uncertain; per-branch auxiliary supervision that prevents gradient starvation of weak branches; and inter-branch disagreement calibration that ties fused epistemic uncertainty to reasoning \emph{conflict} between branches rather than to evidence magnitude alone. Trained with source-paired batches on FaceForensics++~\citep{rossler2019faceforensics}, NeSyDeFake produces interpretable violation traces, per-sample uncertainty estimates, and improved cross-dataset generalization to Celeb-DF-v2~\citep{li2020celeb}.
 \end{abstract}
 
-%% TODO: Section 1 — Introduction
+% ======================================================================
+\section{Introduction}
+\label{sec:intro}
+% ======================================================================
+
+Modern generative models have made face manipulation nearly indistinguishable from authentic imagery, and the resulting deepfakes pose increasingly serious risks to trust in visual media~\citep{rossler2019faceforensics,dolhansky2020dfdc}. A growing body of work has pushed in-distribution detection to near-saturation: binary classifiers trained on Xception~\citep{chollet2017xception} or strong frequency backbones~\citep{qian2020thinking,luo2021generalizing} report AUCs above $0.99$ when train and test manipulations are drawn from the same distribution. Yet the moment the test set shifts---new identities, new compression, or, most damagingly, unseen manipulation methods---these detectors collapse, often falling below $0.75$ AUC on cross-dataset evaluation~\citep{li2020celeb,shiohara2022detecting,cheng2024prodet}. The gap between controlled benchmarks and deployment is the central bottleneck of the field.
+
+\paragraph{What prior work optimizes---and what it misses.}
+Two dominant lines of research attack this generalization gap from opposite ends. The first \emph{enlarges the forgery distribution} by synthesizing pseudo-fake images. Face X-ray~\citep{li2020face}, SBI~\citep{shiohara2022detecting}, and FreqBlender~\citep{li2024freqblender} augment training with blended samples so that the detector learns generic blending cues rather than method-specific ones; ProDet~\citep{cheng2024prodet} further organizes real/blendfake/deepfake as a progressive latent-space anchor. The second line \emph{mines low-level forensic signatures}---SRM noise residuals~\citep{luo2021generalizing,fridrich2012rich}, frequency anomalies~\citep{qian2020thinking}, and facial source-feature inconsistencies~\citep{zhao2021multi}---in the hope that such traces survive across manipulation families. Both strategies remain fundamentally \emph{data-space} or \emph{feature-space} interventions: they change what the model sees, but the decision rule is still a black-box classifier with no notion of why a face looks wrong. Consequently, (i) the learned features remain entangled with nuisance factors (lighting, compression, identity), (ii) the detector provides no human-interpretable rationale for its decision, and (iii) out-of-distribution uncertainty is unavailable for downstream triage.
+
+\paragraph{Key insight: manipulations violate semantic consistency.}
+We start from a different premise. Authentic faces obey a web of constraints: the muscle activations predicted by an expression must match the action units that produce it~\citep{ekman1978facial}; mutually exclusive attributes (mouth open vs.\ closed, directional lighting) cannot both be active; gender-correlated features (beard, jawline) must agree with the classified gender; left-right gaze and facial landmarks must be bilaterally consistent; and pixel-level forensic statistics must be uniform within semantic regions of real skin. Face manipulations---whether identity swaps, expression reenactments, or full synthesis---break a subset of these constraints almost by construction, because each manipulation pipeline composes content drawn from different distributions. The key observation is that these violations are \emph{stable across manipulation methods} in a way that low-level artifacts are not: a pasted identity will violate the gender--beard rule regardless of whether it was produced by DeepFakes, FaceSwap, or a diffusion model. Explicit reasoning over such constraints is, we argue, what neural detectors are missing.
+
+\paragraph{Our approach: three evidence streams under an evidential objective.}
+Realizing this insight requires three capabilities simultaneously: (a) the ability to \emph{encode} symbolic consistency rules in a differentiable form so they can be trained end-to-end with a neural backbone, (b) the ability to \emph{discover} additional constraints that escape hand design, and (c) a principled way to \emph{fuse} these heterogeneous signals with the visual branch under uncertainty, since any single branch can be unreliable on a given sample. We instantiate these in \textbf{NeSyDeFake}, a neuro-symbolic framework with three parallel evidence streams (Figure~\ref{fig:architecture}): a \emph{spatial} branch that linearly probes a frozen CLIP ViT-L/14~\citep{radford2021clip} with LayerNorm-only fine-tuning~\citep{gend}; a \emph{concept} branch that evaluates 23 hand-coded consistency rules over a 122-dimensional semantic vector combining fast biometric features (InsightFace, MediaPipe, DeepFace) and Face-LLaVA~\citep{faceLLaVA} vision-language attributes finetuned on FaceBench~\citep{facebench}; and a \emph{Causal Constraint Verification} branch that augments the rules with 16 learned soft constraints, five per-group forensic anomaly autoencoders (boundary, symmetry, patch/SRM noise, FFT spectral), and a counterfactual predictor that asks whether the semantic and forensic attributes of a face are consistent with its CLIP embedding.
+
+\paragraph{NeSy-EDL: fusing heterogeneous evidence under uncertainty.}
+A naive way to combine these streams is to concatenate features or to average softmax scores---both approaches discard the per-sample reliability of each branch and provide no calibrated uncertainty. Evidential Deep Learning~\citep{sensoy2018evidential} replaces the softmax with a Dirichlet posterior over class probabilities and yields a principled epistemic-uncertainty estimate, but it assumes a single evidence vector and offers no mechanism to express \emph{conflict} between reasoning sources. We extend EDL to the multi-branch neuro-symbolic setting with three novel components. \emph{Confidence-Modulated Evidence Fusion} (CMEF) replaces static scalar gates with per-sample modulation based on each branch's own Dirichlet strength, so that a symbolic branch with high confidence automatically receives more weight when the neural branch is uncertain---precisely the regime where generalization matters. \emph{Per-branch auxiliary supervision} (PBAS) applies a standalone EDL loss to each branch so that the 1024-dimensional CLIP branch cannot dominate the gradient and starve the lightweight symbolic branches. \emph{Inter-branch disagreement calibration} (IBDC) introduces a novel loss that ties the fused epistemic uncertainty to the cosine disagreement between branch Dirichlet means, so that the model reports high uncertainty exactly when CLIP says ``real'' but the rules detect violations (or vice versa)---a reasoning conflict that classical EDL cannot express.
+
+\paragraph{Contributions.}
+In summary, our contributions are three-fold:
+\begin{enumerate}
+  \item We propose \textbf{NeSyDeFake}, the first neuro-symbolic deepfake detector that explicitly encodes facial consistency constraints as differentiable evidence, complemented by a \emph{Causal Constraint Verification} branch combining learned soft constraints, per-region forensic anomaly detection, and counterfactual appearance prediction. The symbolic branches produce human-interpretable violation traces and remain stable across manipulation methods.
+  \item We introduce \textbf{NeSy-EDL}, a generalization of evidential deep learning to multi-branch neuro-symbolic fusion, comprising (i) Confidence-Modulated Evidence Fusion for per-sample dynamic neural--symbolic trust allocation, (ii) per-branch auxiliary supervision that prevents dominant-branch gradient suppression, and (iii) an inter-branch disagreement calibration loss that is, to our knowledge, the first mechanism to bind evidential uncertainty to reasoning conflict.
+  \item Trained end-to-end with source-paired batches~\citep{gend} on FaceForensics++~\citep{rossler2019faceforensics}, NeSyDeFake delivers improved cross-dataset generalization to Celeb-DF-v2~\citep{li2020celeb} while producing calibrated per-sample uncertainty and concept-level explanations; extensive ablations attribute the gains to the symbolic branches and to each NeSy-EDL component.
+\end{enumerate}
+
 %% TODO: Section 2 — Related Work
 
 % ======================================================================
@@ -124,12 +150,9 @@ TODO: Write abstract.
 \label{sec:method}
 % ======================================================================
 
-We present \textbf{NeSyDeFake}, a neuro-symbolic framework for generalizable deepfake detection that fuses neural perception with symbolic reasoning under a principled uncertainty-aware objective.
-The key insight is that face manipulations inevitably violate semantic consistency constraints---relationships between facial attributes that hold for authentic faces but break under synthesis.
-Rather than relying solely on learned visual features that overfit to source-specific artifacts, NeSyDeFake explicitly encodes and verifies these constraints, producing interpretable violation signals that generalize across manipulation methods.
+We now present \textbf{NeSyDeFake} in detail. The framework is designed around the three capabilities motivated in Section~\ref{sec:intro}: encoding symbolic consistency rules in a differentiable form, discovering additional data-driven constraints, and fusing the resulting heterogeneous evidence under a principled uncertainty-aware objective. Concretely, NeSyDeFake is organized as three parallel evidence streams---\emph{spatial}, \emph{concept}, and \emph{causal}---each producing non-negative evidence that parameterizes a Dirichlet posterior over the binary real/fake label~\citep{sensoy2018evidential}. The spatial branch provides the visual base signal from a frozen CLIP backbone~\citep{radford2021clip} so that NeSyDeFake subsumes, rather than replaces, strong neural detectors. The concept branch contributes human-authored rules that remain stable across manipulation methods~\citep{ekman1978facial}. The Causal Constraint Verification (CCV) branch complements these hand-designed rules with learned soft constraints, per-region forensic anomaly detectors, and a counterfactual consistency check. A novel fusion module, \textbf{NeSy-EDL}, combines the three evidence streams and is trained end-to-end with source-paired batches~\citep{gend}.
 
-The framework produces three independent evidence streams---\emph{spatial}, \emph{concept}, and \emph{causal}---that are fused via Evidential Deep Learning (EDL) into a Dirichlet distribution over classes, yielding both a prediction and a calibrated epistemic uncertainty estimate.
-We describe each component below and summarize the full pipeline in Figure~\ref{fig:architecture}.
+Figure~\ref{fig:architecture} summarizes the full pipeline. We describe each component in turn, emphasizing the design rationale behind its structure.
 
 \begin{figure}[t]
   \centering
@@ -144,25 +167,16 @@ We describe each component below and summarize the full pipeline in Figure~\ref{
 \label{sec:features}
 % ------------------------------------------------------------------
 
-NeSyDeFake operates on three precomputed feature sets extracted from face-cropped frames (scale $1.3{\times}$, capturing hair, ears, and neck context).
+NeSyDeFake operates on three precomputed feature sets extracted from face-cropped frames. We use a $1.3{\times}$ face crop (as opposed to a tight facial bounding box) so that hair, ears, and neck context remain visible---these peripheral regions are where many identity-swap artifacts manifest (inconsistent skin tone at the hairline, mismatched neck texture)~\citep{li2020face,zhao2021multi}, and they are discarded by tighter crops.
 
 \paragraph{Spatial features.}
-A frozen CLIP ViT-L/14 backbone extracts 1024-dimensional visual representations.
-Only the LayerNorm parameters are fine-tuned during training, following the linear probing with LayerNorm tuning protocol~\citep{gend}, which preserves the pretrained feature space while allowing task-specific adaptation.
+A frozen CLIP ViT-L/14~\citep{radford2021clip} backbone extracts 1024-dimensional visual representations. Full fine-tuning on a binary deepfake objective has been repeatedly shown to distort CLIP's broadly useful feature space and to cause the detector to latch onto source-specific artifacts~\citep{gend,ojha2023towards}. We therefore adopt the linear-probing-with-LayerNorm-tuning protocol of \citet{gend}: only LayerNorm parameters and downstream heads receive gradient updates, preserving the pretrained manifold while admitting task-specific adaptation.
 
 \paragraph{Semantic features.}
-We construct a 122-dimensional combined semantic vector from two sources:
-(i)~\emph{fast-extracted features} ($\bm{s}_\text{fast} \in \mathbb{R}^{58}$) computed by InsightFace, MediaPipe, and DeepFace at ${\sim}30$ms/frame, covering demographics (continuous gender, age, ethnicity scores), expression probabilities (8 emotions), action unit activations (17 FACS AUs), head pose (pitch, yaw, roll), gaze direction (6D), and landmark geometry (eye/mouth aspect ratios, jaw symmetry); and
-(ii)~\emph{vision-language model features} ($\bm{s}_\text{vlm} \in \mathbb{R}^{64}$) from a FaceBench-finetuned Face-LLaVA 13B model, capturing attributes that require holistic visual reasoning (accessories, hair style, skin texture, lighting, background).
-The combined vector is $\bm{s} = [\bm{s}_\text{fast} \| \bm{s}_\text{vlm}] \in \mathbb{R}^{122}$.
+Symbolic reasoning over facial attributes requires a feature vector whose dimensions are \emph{named}, stable, and human-interpretable---the opposite of the dense CLIP embedding. We construct a 122-dimensional combined semantic vector from two complementary sources. First, $\bm{s}_\text{fast} \in \mathbb{R}^{58}$ collects fast biometric outputs from InsightFace, MediaPipe, and DeepFace (${\sim}30$ms/frame) covering demographics (continuous gender, age, ethnicity scores), expression probabilities (8 emotions), action unit activations (17 FACS AUs)~\citep{ekman1978facial}, head pose (pitch, yaw, roll), 6D gaze direction, and landmark geometry (eye/mouth aspect ratios, jaw symmetry). These are exactly the quantities that the hand-coded consistency rules of Section~\ref{sec:concept} need to reference. Second, $\bm{s}_\text{vlm} \in \mathbb{R}^{64}$ is a projection of a Face-LLaVA-13B~\citep{faceLLaVA} model finetuned on FaceBench~\citep{facebench}, which captures attributes requiring holistic visual reasoning beyond the reach of classical face toolkits (accessories, hair style, skin texture, lighting direction, background coherence). The combined vector is $\bm{s} = [\bm{s}_\text{fast} \| \bm{s}_\text{vlm}] \in \mathbb{R}^{122}$.
 
 \paragraph{Forensic features.}
-An 83-dimensional forensic vector $\bm{f} \in \mathbb{R}^{83}$ captures pixel-level manipulation traces across five semantic groups:
-\emph{boundary/texture} (12 features: Sobel gradients and Laplacian blur at face parsing boundaries),
-\emph{symmetry/color} (18: left-right intensity asymmetry and cross-region color histogram distances, DCT frequency energy, quality metrics),
-\emph{patch noise} (16: pairwise and cross-channel noise consistency between facial regions),
-\emph{SRM noise} (27: Steganalysis Rich Model residuals---5 kernels $\times$ mean, standard deviation, kurtosis, plus multi-scale noise statistics),
-and \emph{FFT spectral} (10: radial spectral energy in 8 frequency bins, spectral slope, and high-frequency ratio).
+Pixel-level traces of manipulation are complementary to semantic attributes: where a semantic feature captures \emph{what} is depicted, a forensic feature captures \emph{how} it was imaged. We assemble an 83-dimensional forensic vector $\bm{f} \in \mathbb{R}^{83}$ partitioned into five physically meaningful groups, following the rich literature on forensic priors~\citep{fridrich2012rich,luo2021generalizing,qian2020thinking}: \emph{boundary/texture} (12 features: Sobel gradients and Laplacian blur sampled at face-parsing boundaries, which are where pasted regions leave the sharpest residuals); \emph{symmetry/color} (18: left--right intensity asymmetry, cross-region color histogram distances, DCT energy, quality metrics); \emph{patch noise} (16: pairwise and cross-channel noise consistency between facial regions, capturing the fact that real skin has internally consistent sensor noise while blended patches do not); \emph{SRM noise} (27: Steganalysis Rich Model residuals~\citep{fridrich2012rich}---5 kernels $\times$ \{mean, standard deviation, kurtosis\}, plus multi-scale noise statistics); and \emph{FFT spectral} (10: radial spectral energy in 8 frequency bins, spectral slope, and high-frequency ratio, motivated by the frequency-domain disparities documented in~\citealp{qian2020thinking,li2024freqblender}). The group structure is crucial: rather than treating $\bm{f}$ as an unstructured 83-d vector, the CCV branch of Section~\ref{sec:ccv} allocates one anomaly detector per group.
 
 
 % ------------------------------------------------------------------
@@ -170,14 +184,12 @@ and \emph{FFT spectral} (10: radial spectral energy in 8 frequency bins, spectra
 \label{sec:spatial}
 % ------------------------------------------------------------------
 
-The spatial branch provides the base detection signal.
-The frozen CLIP features $\bm{h} \in \mathbb{R}^{1024}$ pass through a learnable projection head $g_\phi$ followed by a linear classification head:
+The spatial branch provides the visual base signal and ensures that NeSyDeFake is strictly additive over a competitive neural backbone: when the symbolic branches are ablated, the framework reduces to a strong CLIP-based detector~\citep{gend,ojha2023towards}. The frozen CLIP features $\bm{h} \in \mathbb{R}^{1024}$ pass through a lightweight learnable projection $g_\phi$ followed by a linear classification head:
 \begin{equation}
   \bm{e}_\text{spatial} = \operatorname{softplus}\bigl(W_\text{cls}\, g_\phi(\bm{h}) + \bm{b}_\text{cls}\bigr) \in \mathbb{R}^{2}_{\geq 0},
   \label{eq:spatial_evidence}
 \end{equation}
-where the softplus activation ensures non-negative evidence suitable for the Dirichlet framework (Section~\ref{sec:edl}).
-This branch alone corresponds to a standard CLIP-based detector and serves as the foundation upon which the neuro-symbolic components build.
+where the softplus nonlinearity ensures non-negative evidence and smooth gradients, as required by the Dirichlet formulation we adopt in Section~\ref{sec:edl}.
 
 
 % ------------------------------------------------------------------
@@ -185,8 +197,7 @@ This branch alone corresponds to a standard CLIP-based detector and serves as th
 \label{sec:concept}
 % ------------------------------------------------------------------
 
-The concept branch encodes domain knowledge about facial attribute relationships as differentiable \emph{consistency rules}.
-We define 23 rules organized into five categories, each producing a scalar violation score $v_j \in [0, 1]$:
+The concept branch injects domain knowledge about facial attribute relationships directly into the model. Rather than asking the network to rediscover these relationships from data---a process that is slow, sample-inefficient, and prone to shortcut learning~\citep{geirhos2020shortcut}---we encode them as \emph{differentiable consistency rules} whose outputs are bounded violation scores. Each rule is a simple closed-form expression over the semantic vector $\bm{s}$ and produces a scalar $v_j \in [0, 1]$ that approaches $0$ for authentic faces and grows toward $1$ when the rule is violated. We define 23 such rules organized into five categories:
 
 \paragraph{Mutual exclusion rules} (3 rules) detect contradictory attributes:
 \begin{equation}
@@ -195,23 +206,22 @@ We define 23 rules organized into five categories, each producing a scalar viola
 \end{equation}
 and analogously for lighting-conflict and symmetry-conflict pairs. For authentic faces, at most one attribute in each pair should be active, so $v_j \approx 0$; manipulated faces that paste features from different sources often violate these mutual exclusions.
 
-\paragraph{Expression--action unit coherence rules} (9 rules) enforce the Facial Action Coding System.
-Each emotion should co-occur with specific AUs; violations indicate that the expression was transferred without the corresponding muscle activations:
+\paragraph{Expression--action unit coherence rules} (9 rules) enforce the Facial Action Coding System (FACS)~\citep{ekman1978facial}. Each basic emotion is known to co-activate a specific set of action units (e.g., \emph{happy} requires AU6 ``cheek raiser'' and AU12 ``lip corner puller''); expression-swap deepfakes routinely transfer the apparent expression without reproducing the corresponding muscle activations, causing a measurable mismatch:
 \begin{equation}
   v_\text{happy-AU6} = \bigl|\sigma(\text{expr\_happy}) - \sigma(\text{AU6})\bigr|.
   \label{eq:au_rule}
 \end{equation}
 
-\paragraph{Cross-region identity rules} (5 rules) capture face/context inconsistencies visible in the $1.3{\times}$ crop, e.g., $v_\text{gender-beard} = \sigma(-\text{gender\_score}) \cdot \sigma(\text{beard})$, which fires when a face classified as female has a visible beard---a common artifact in identity-swapping deepfakes.
+\paragraph{Cross-region identity rules} (5 rules) exploit the $1.3{\times}$ crop to detect face--context inconsistencies that are invisible to tighter crops, e.g., $v_\text{gender-beard} = \sigma(-\text{gender\_score}) \cdot \sigma(\text{beard})$, which fires when a face classified as female has a visible beard---an archetypal failure mode of identity swaps~\citep{zhao2021multi}.
 
-\paragraph{Skin-age and structural rules} (6 rules) check physiological consistency (wrinkles should correlate with age, left-right gaze directions should agree, facial landmarks should be bilaterally symmetric).
+\paragraph{Skin-age and structural rules} (6 rules) enforce physiological priors that hold for a single human subject: wrinkle density should correlate with age, left and right gaze directions should agree, and facial landmarks should be bilaterally symmetric to within measurement noise.
 
-The 23-dimensional violation vector $\bm{v} = [v_1, \ldots, v_{23}]^\top$ is concatenated with the combined semantic features and mapped to evidence:
+Concatenating all 23 scores yields a violation vector $\bm{v} = [v_1, \ldots, v_{23}]^\top$. We fuse it with the raw semantic features to produce concept evidence:
 \begin{equation}
   \bm{e}_\text{concept} = \operatorname{softplus}\bigl(\text{MLP}_\text{concept}([\bm{s} \| \bm{v}])\bigr) \in \mathbb{R}^{2}_{\geq 0},
   \label{eq:concept_evidence}
 \end{equation}
-where $\text{MLP}_\text{concept}$ is a two-layer network with LayerNorm, GELU activation, and dropout.
+where $\text{MLP}_\text{concept}$ is a two-layer network with LayerNorm, GELU activation, and dropout. Passing both $\bm{s}$ and $\bm{v}$ lets the MLP contextualize a violation score by the attribute values that produced it, which is important because the \emph{same} rule firing can carry different evidential weight depending on the surrounding attributes (e.g., an expression-AU mismatch is more informative on a high-resolution frontal face than on a blurred profile).
 
 
 % ------------------------------------------------------------------
@@ -219,65 +229,55 @@ where $\text{MLP}_\text{concept}$ is a two-layer network with LayerNorm, GELU ac
 \label{sec:ccv}
 % ------------------------------------------------------------------
 
-While the 23 hand-coded rules capture known attribute interactions, they cannot cover all consistency patterns that distinguish real from manipulated faces.
-The \emph{Causal Constraint Verification} (CCV) branch extends symbolic reasoning with three learned components that discover additional violation signals from data.
+Hand-coded rules have two limitations: (i) they depend on what a human expert thought to encode, so they will inevitably miss interactions whose relevance only becomes apparent from data, and (ii) they only touch the semantic vector $\bm{s}$, leaving the pixel-level forensic cues in $\bm{f}$ unused. The \emph{Causal Constraint Verification} (CCV) branch closes both gaps by coupling the rule set with three learned components that discover additional violation signals from data. We call the branch ``causal'' because each of its components implements a different facet of the underlying causal hypothesis: an authentic face is produced by a single generative process in which semantic attributes, forensic statistics, and visual appearance are mutually consistent, while a manipulation breaks at least one of these relationships~\citep{scholkopf2021toward}.
 
 \subsubsection{Learned constraint functions}
 \label{sec:lcf}
 
-We learn $K{=}16$ additional soft constraint functions over the combined semantic space.
-A shared trunk $t(\bm{s}) = \operatorname{GELU}(W_t\,\operatorname{LN}(\bm{s}) + \bm{b}_t)$ maps the 122-dimensional input to a hidden representation, from which $K$ independent sigmoid heads produce violation scores:
+To recover attribute interactions missed by the hand-coded rules, we learn $K{=}16$ additional soft constraint functions over the combined semantic space. A shared trunk $t(\bm{s}) = \operatorname{GELU}(W_t\,\operatorname{LN}(\bm{s}) + \bm{b}_t)$ maps the 122-dimensional input to a hidden representation, from which $K$ independent sigmoid heads produce violation scores:
 \begin{equation}
   \bm{c} = \sigma(W_h\, t(\bm{s}) + \bm{b}_h) \in [0, 1]^K.
   \label{eq:learned_constraints}
 \end{equation}
-Each learned constraint discovers an attribute interaction pattern that the hand-coded rules miss.
-The shared trunk amortizes computation while the independent heads specialize, analogous to multi-task learning with a shared encoder.
-Weights are initialized near zero so that all constraints start at $\bm{c} \approx 0.5$ (maximum uncertainty), allowing the model to learn which interactions are discriminative.
+The shared trunk amortizes computation, while the independent heads are free to specialize on distinct interaction patterns, analogous to multi-task learning with a shared encoder~\citep{caruana1997multitask}. We initialize $W_h \approx 0$ so that every constraint starts at the maximum-entropy point $\bm{c} \approx 0.5$; the model therefore begins with no strong prior and must earn each constraint's discriminative power from gradients supplied by the downstream evidential loss.
 
 
 \subsubsection{Forensic anomaly detector}
 \label{sec:fad}
 
-Pixel-level forensic features of authentic faces exhibit consistent patterns within semantic regions (e.g., uniform noise characteristics across skin patches), while manipulated faces show anomalous patterns at blending boundaries.
-Rather than learning a single monolithic model over all 83 features, we train five lightweight autoencoders, one per forensic group $g \in \{\text{boundary}, \text{symmetry}, \text{noise}_\text{patch}, \text{noise}_\text{srm}, \text{spectral}\}$:
+Pixel-level forensic features of authentic faces exhibit \emph{internally consistent} patterns within semantic regions---uniform sensor noise across skin patches, continuous spectral slopes, symmetric color distributions---whereas manipulated faces show anomalous patterns at blending boundaries and across composited regions~\citep{fridrich2012rich,qian2020thinking,luo2021generalizing}. A natural way to exploit this is one-class anomaly detection~\citep{an2015variational,zong2018deep}: fit a reconstructor on the structure that real faces exhibit, and use reconstruction error as a signal.
+
+Rather than learning a single monolithic autoencoder over the full 83-d vector, we train five lightweight autoencoders, one per forensic group $g \in \{\text{boundary}, \text{symmetry}, \text{noise}_\text{patch}, \text{noise}_\text{srm}, \text{spectral}\}$. This group-wise factorization has two advantages: (a) each autoencoder only has to model the low-dimensional statistics of a single forensic modality, which is sample-efficient with a lightweight model, and (b) the resulting per-group anomaly scores are themselves semantically meaningful---they tell us \emph{which} forensic channel was violated, which later feeds the interpretability of the fused prediction.
 \begin{equation}
   a_g = \frac{1}{d_g}\bigl\|\bm{f}_g - \operatorname{dec}_g(\operatorname{enc}_g(\bm{f}_g))\bigr\|_2^2,
   \label{eq:anomaly}
 \end{equation}
-where $\bm{f}_g \in \mathbb{R}^{d_g}$ is the forensic feature subvector for group $g$, the encoder maps to an 8-dimensional bottleneck with LayerNorm and GELU, and the decoder reconstructs.
-Real faces, which exhibit internally consistent forensic patterns, are well-reconstructed ($a_g \approx 0$); manipulated faces that introduce inconsistent noise or boundary artifacts produce high reconstruction errors.
-The five per-group anomaly scores $\bm{a} = [a_1, \ldots, a_5]^\top$ provide interpretable, semantically grouped forensic signals.
+where $\bm{f}_g \in \mathbb{R}^{d_g}$ is the forensic feature subvector for group $g$, each encoder maps to an 8-dimensional bottleneck with LayerNorm and GELU, and each decoder reconstructs. Real faces, which exhibit internally consistent forensic patterns, are well reconstructed ($a_g \approx 0$); manipulated faces that introduce inconsistent noise or boundary artifacts produce high reconstruction errors. Stacking yields $\bm{a} = [a_1, \ldots, a_5]^\top$, a five-dimensional, semantically grouped forensic signal that is directly inspectable.
 
 
 \subsubsection{Counterfactual consistency predictor}
 \label{sec:counterfactual}
 
-The counterfactual predictor poses the question: \emph{``If a face truly possessed these semantic and forensic attributes, what would it look like in the visual feature space?''}
-For authentic faces, the predicted appearance matches the actual CLIP representation; for manipulated faces, the attributes are inconsistent with the visual content, producing a mismatch.
+The learned constraints and forensic anomalies each reason within a single modality (semantic or forensic); neither directly connects the symbolic attributes to the visual embedding. The counterfactual predictor closes this loop by asking a causal-style question~\citep{scholkopf2021toward,pearl2009causality}: \emph{``If a face truly possessed these semantic and forensic attributes, what would it look like in CLIP feature space?''} For authentic faces, attributes and appearance are generated by the same underlying process and the predicted appearance matches the observed CLIP embedding; for manipulated faces, attributes drawn from one identity or expression are grafted onto appearance drawn from another, breaking the mapping and producing a measurable mismatch.
 
-Concretely, we compress the CLIP spatial features $\bm{h}$ to a compact representation $\bm{z} = W_c\, \bm{h} \in \mathbb{R}^{32}$ (with the gradient detached from the backbone).
-A predictor network maps the full semantic context $[\bm{s} \| \bm{v} \| \bm{f}] \in \mathbb{R}^{228}$ to a predicted appearance vector:
+Concretely, we compress the CLIP features $\bm{h}$ to a compact $\bm{z} = W_c\, \bm{h} \in \mathbb{R}^{32}$, detaching the gradient from the backbone so that this branch does not corrupt the spatial representation. A predictor then maps the full semantic-and-forensic context $[\bm{s} \| \bm{v} \| \bm{f}] \in \mathbb{R}^{228}$ to a predicted appearance vector, and we measure the squared mismatch:
 \begin{equation}
   \hat{\bm{z}} = \text{MLP}_\text{cf}\bigl([\bm{s} \| \bm{v} \| \bm{f}]\bigr) \in \mathbb{R}^{32},
   \quad\quad
-  m = \|\bm{z} - \hat{\bm{z}}\|_2^2,
+  m = \|\bm{z} - \hat{\bm{z}}\|_2^2.
   \label{eq:counterfactual}
 \end{equation}
-where $m \in \mathbb{R}_{\geq 0}$ is the counterfactual mismatch score.
-This formulation directly operationalizes the causal hypothesis: authentic faces are generated by a consistent process where attributes determine appearance, while manipulations break this mapping.
+The scalar $m \in \mathbb{R}_{\geq 0}$ directly operationalizes the causal hypothesis and, because it is trained on real faces with a predictive loss, remains valid even when individual rules do not fire.
 
 
 \subsubsection{Evidence fusion}
 
-The CCV branch concatenates all verification signals and maps them to evidence:
+The CCV branch concatenates all verification signals---hand-coded violations, learned constraints, per-group forensic anomalies, and the counterfactual mismatch---and maps them to evidence:
 \begin{equation}
   \bm{e}_\text{causal} = \operatorname{softplus}\bigl(\text{MLP}_\text{ccv}([\bm{v} \| \bm{c} \| \bm{a} \| m])\bigr) \in \mathbb{R}^2_{\geq 0},
   \label{eq:ccv_evidence}
 \end{equation}
-where the input is a 45-dimensional vector (23 hand-coded violations + 16 learned constraints + 5 anomaly scores + 1 counterfactual mismatch).
-The MLP has LayerNorm, GELU, and dropout.
-This entire branch contains approximately 15K trainable parameters, making it lightweight relative to the backbone.
+where the input is a 45-dimensional vector (23 hand-coded violations + 16 learned constraints + 5 anomaly scores + 1 counterfactual mismatch) and $\text{MLP}_\text{ccv}$ uses LayerNorm, GELU, and dropout. The entire CCV branch has roughly 15K trainable parameters---three orders of magnitude smaller than the CLIP backbone---so adding it incurs negligible compute cost while introducing a rich, interpretable evidence channel.
 
 
 % ------------------------------------------------------------------
@@ -285,16 +285,13 @@ This entire branch contains approximately 15K trainable parameters, making it li
 \label{sec:edl}
 % ------------------------------------------------------------------
 
-A central challenge in multi-branch neuro-symbolic detection is \emph{how to fuse heterogeneous evidence sources under uncertainty}.
-Standard EDL~\citep{sensoy2018evidential} assumes a single evidence vector; naively summing evidence from neural and symbolic branches ignores that their reliability varies per sample and fails to reflect reasoning \emph{conflict} in the fused uncertainty.
-We introduce \textbf{NeSy-EDL}, extending EDL with three novel components that make the evidential framework multi-branch-aware.
+We now have three heterogeneous evidence vectors $\bm{e}_\text{spatial}, \bm{e}_\text{concept}, \bm{e}_\text{causal}$, and we must combine them into a single prediction while retaining a calibrated notion of uncertainty. Standard Evidential Deep Learning~\citep{sensoy2018evidential,amini2020deep} addresses the uncertainty side of this problem---it replaces softmax with a Dirichlet posterior whose concentration parameters encode total evidence, and uncertainty decreases monotonically with evidence magnitude. However, EDL was designed for a single evidence source and is therefore insufficient for our setting in two ways. \emph{First}, naively summing evidence across branches assumes every branch is reliable on every sample, which is precisely what fails on out-of-distribution deepfakes. \emph{Second}, EDL uncertainty is a function of \emph{total evidence}, not of \emph{agreement}: if two branches confidently disagree, their sum is still confident. We therefore introduce \textbf{NeSy-EDL}, which extends EDL with three components tailored to multi-branch neuro-symbolic reasoning.
 
 
 \subsubsection{Confidence-modulated evidence fusion (CMEF)}
 \label{sec:cmef}
 
-Standard gated fusion uses static scalar gates: $\bm{e}_\text{total} = \bm{e}_\text{spatial} + \sigma(\gamma_1)\bm{e}_\text{concept} + \sigma(\gamma_2)\bm{e}_\text{causal}$, where the contribution of each branch is identical across all samples.
-This is suboptimal: a symbolic branch may be highly informative for one sample (e.g., clear rule violations) but uninformative for another (e.g., ambiguous attributes).
+The simplest learned fusion uses static scalar gates: $\bm{e}_\text{total} = \bm{e}_\text{spatial} + \sigma(\gamma_1)\bm{e}_\text{concept} + \sigma(\gamma_2)\bm{e}_\text{causal}$, where each branch contributes with the same weight on every sample. This is suboptimal because the informativeness of a symbolic branch is intrinsically sample-dependent: clear rule violations should be trusted, ambiguous attributes should be down-weighted. What we want is a gate that respects each branch's \emph{self-reported} confidence.
 
 CMEF replaces static gates with \emph{per-sample dynamic weighting} based on each branch's own Dirichlet strength:
 \begin{equation}
@@ -313,8 +310,7 @@ When $S_b = K$ (uniform Dirichlet, maximum epistemic uncertainty), $\phi \approx
 The learnable gates $\gamma_1, \gamma_2$ are initialized to $-0.5$ and $-0.8$, respectively.
 
 \paragraph{Key property.}
-On out-of-distribution data where the neural spatial branch becomes uncertain (low $S_\text{spatial}$), the symbolic branches---whose rule-based and constraint-based evidence generalizes across manipulation methods---often retain higher confidence.
-CMEF automatically allocates greater relative weight to these symbolic branches, enabling \emph{dynamic neural-symbolic trust allocation} precisely in the generalization regime that matters.
+On out-of-distribution data where the neural spatial branch becomes uncertain (low $S_\text{spatial}$), the symbolic branches---whose rule-based and constraint-based evidence generalizes across manipulation methods---typically retain higher Dirichlet strength. CMEF therefore automatically reallocates weight toward the symbolic branches in exactly the regime where neural generalization fails, implementing a form of \emph{dynamic neural--symbolic trust allocation} without any explicit out-of-distribution detector.
 
 
 \subsubsection{Dirichlet prediction and uncertainty}
@@ -333,7 +329,7 @@ where $\bm{\alpha} \in \mathbb{R}^K_{>0}$ are Dirichlet concentration parameters
 \subsubsection{Training objective}
 \label{sec:loss}
 
-The NeSy-EDL objective combines five terms, the first three inherited from standard EDL and the last two novel to our multi-branch setting.
+The NeSy-EDL objective combines five terms. The first three are inherited from standard EDL~\citep{sensoy2018evidential,karandikar2021soft} and operate on the fused evidence; the last two are specific to our multi-branch setting and address the two failure modes identified above---weak-branch gradient starvation and uncertainty blind to reasoning conflict.
 
 \paragraph{Evidential log-likelihood.}
 Type-II maximum likelihood under the Dirichlet prior on the \emph{fused} evidence:
@@ -363,20 +359,15 @@ Following~\citet{karandikar2021soft}:
 which penalizes confident-but-wrong predictions and rewards uncertainty on misclassified samples.
 
 \paragraph{Per-branch auxiliary supervision (PBAS).}
-\emph{Novel.}
-In multi-branch fusion, a dominant branch (here, the CLIP spatial branch with 1024-d features) can suppress gradient flow to weaker symbolic branches, causing them to learn noise rather than meaningful evidence.
-PBAS applies a lightweight standalone EDL loss to \emph{each branch independently}:
+\emph{Novel.} In any multi-branch fusion architecture, a dominant branch can suppress gradient flow to weaker branches and starve them of learning signal. In NeSyDeFake this risk is concrete: the CLIP spatial branch operates on a 1024-d representation and can easily reach near-zero training loss on its own, at which point the fused loss delivers almost no gradient to the 45-d CCV branch. PBAS counteracts this by applying a lightweight standalone EDL loss to \emph{each} branch independently:
 \begin{equation}
   \mathcal{L}_\text{aux} = \sum_{b \in \mathcal{B}} \mathcal{L}_\text{edl}^{(b)}\bigl(\bm{e}_b,\, \bm{y}\bigr),
   \label{eq:pbas}
 \end{equation}
-where $\mathcal{B} = \{\text{spatial}, \text{concept}, \text{causal}\}$ and $\mathcal{L}_\text{edl}^{(b)}$ is the standard EDL loss (NLL + annealed KL) applied to branch $b$'s evidence alone.
-This ensures each branch produces independently meaningful evidence before fusion, analogous to auxiliary losses in multi-task learning but operating in the evidential space.
+where $\mathcal{B} = \{\text{spatial}, \text{concept}, \text{causal}\}$ and $\mathcal{L}_\text{edl}^{(b)}$ is the standard EDL loss (NLL + annealed KL) applied to branch $b$'s evidence alone. This forces each branch to produce independently meaningful evidence \emph{before} fusion, in the spirit of auxiliary classification heads in multi-task learning~\citep{szegedy2015going,caruana1997multitask} but operating in the evidential space rather than on logits.
 
 \paragraph{Inter-branch disagreement calibration (IBDC).}
-\emph{Novel.}
-Standard EDL has no mechanism for the fused uncertainty to reflect reasoning \emph{conflict} between evidence sources---it only reflects total evidence magnitude.
-IBDC introduces a calibration loss that ties epistemic uncertainty to inter-branch agreement:
+\emph{Novel.} Standard EDL provides no mechanism for the fused uncertainty to reflect reasoning \emph{conflict} between evidence sources---it only reflects total evidence magnitude. Yet a confidently-disagreeing prediction (e.g., CLIP says ``real'' while the FACS and gender--beard rules both fire) is exactly where downstream users most need to see high uncertainty. IBDC introduces a calibration loss that directly ties epistemic uncertainty to inter-branch agreement:
 \begin{equation}
   d(\bm{x}) = 1 - \cos\bigl(\hat{\bm{p}}_\text{neural}(\bm{x}),\, \hat{\bm{p}}_\text{symbolic}(\bm{x})\bigr),
   \label{eq:disagreement}
@@ -386,8 +377,7 @@ IBDC introduces a calibration loss that ties epistemic uncertainty to inter-bran
   \label{eq:ibdc}
 \end{equation}
 where $\hat{\bm{p}}_b = \bm{\alpha}_b / S_b$ is the Dirichlet mean of branch $b$, $d \in [0, 1]$ is the cosine disagreement (detached from the computation graph), and $u$ is the fused epistemic uncertainty.
-This binary cross-entropy loss encourages the model to be uncertain when branches \emph{disagree} (e.g., CLIP says real but rules detect violations) and confident when they \emph{agree}.
-The disagreement is averaged over all $\binom{|\mathcal{B}|}{2}$ branch pairs.
+This is a binary cross-entropy loss with the (detached) disagreement $d$ as a soft target for the fused uncertainty $u$: the model is pushed to be uncertain when branches disagree and confident when they agree. The disagreement is averaged over all $\binom{|\mathcal{B}|}{2}$ branch pairs, so the loss scales naturally to any number of evidence streams. To our knowledge, IBDC is the first evidential-learning term that explicitly couples epistemic uncertainty to reasoning conflict between neuro-symbolic branches.
 
 \paragraph{Total objective.}
 \begin{equation}
@@ -407,9 +397,7 @@ The CMEF parameters ($\theta_\tau$, $\gamma_1$, $\gamma_2$) are trained jointly 
 \label{sec:paired}
 % ------------------------------------------------------------------
 
-Following~\citet{gend}, we train with source-paired batches where each real face is paired with its corresponding manipulated version from the same source video.
-This ensures that the model cannot exploit dataset-level distributional differences between real and fake sets and must instead learn manipulation-specific signals.
-Combined with class-weighted EDL and the neuro-symbolic consistency verification, this training protocol encourages the model to learn generalizable detection criteria rather than source-specific shortcuts.
+Dataset-level shortcuts---compression differences between the real and fake splits, identity distribution mismatch, background statistics---are the single biggest source of spurious in-distribution performance in deepfake detection~\citep{yan2023deepfakebench,gend}. Following~\citet{gend}, we therefore train with \emph{source-paired batches}: each real face is paired with the manipulated version generated from the \emph{same} source video, so that within a minibatch the real and fake samples share identity, pose, lighting, and compression, and differ only in the manipulation itself. This forces gradients to carry manipulation-specific signal rather than nuisance covariates. Combined with the class-weighted EDL loss (which counteracts CLIP's residual bias toward the fake class) and the neuro-symbolic consistency verification, source-paired training steers the model toward detection criteria that transfer across datasets.
 
 \begin{table}[t]
   \caption{Summary of evidence sources and their dimensionality. The NeSyDeFake framework fuses three evidence streams, each capturing complementary signals for deepfake detection.}
