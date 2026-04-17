@@ -1,54 +1,26 @@
 """
-detectors/nesy_defake_hybrid_detector.py
-=========================================
-END-TO-END PER-BRANCH DUAL-GRAPH CAUSAL DISCOVERY (v4 — cleaned up)
+detectors/nesy_defake_detector.py
+=================================
+NeSy-DeFake hybrid detector (EDL evidence fusion).
 
-Data flow:
-  spatial_frames --> SpatialExtractor --> raw_spatial (1024-d) --+-> spatial_proj -> fused -> classifier
-                                                                  +-> SAE.spatial -> z_spatial --+
-  freq_frames ----> FreqExtractor ----> raw_freq (1024-d) ------+-> freq_proj -> fused -> classifier
-                                                                  +-> SAE.freq -> z_freq --------+
-  raw_frames -----> FacialSemanticExtractor (FaceBench precomputed)                              |
-                      -> semantic_attrs (211-d) -------------------------------------------------+
-                                                                                                  |
-                            CausalModule (per-branch + semantic, from epoch 0)                    v
-                              Spatial: SCM_real/fake -> residuals_s_real/fake
-                              Freq:    SCM_real/fake -> residuals_f_real/fake
-                              Semantic: SCM_real/fake -> residuals_sem_real/fake
-                                                |
-                         CausalViolationAttentionFusion (fused attends 4 residuals)
-                                                |
-                         classifier_input = fused + gate * causal_delta
-                                                |
-                         MultiTaskHead -> cls (2)
+Forward paths:
+  1. Ablation 1 (ablation_spatial_only=True, ablation_mode='spatial_ce')
+       CLIP spatial backbone -> spatial_proj -> MultiTaskHead (CE).
+  2. Ablation 2/3/4 (ablation_mode in {spatial_edl, concept_edl, causal_edl})
+       spatial_proj -> softplus evidence
+       + optional concept_branch evidence (Ablation 3+)
+       + optional causal_branch evidence (Ablation 4: CCV / ImprovedSCM / Simple)
+       fused via NeSy-EDL (CMEF + PBAS + IBDC) or static scalar gates.
 
-v4 changes (cleanup):
-  - Removed ViolationScorer (dead: 1e-30 outputs, no training signal)
-  - Removed ConceptPredictionHead (circular self-supervision)
-  - Removed contrastive loss (saturated at margin)
-  - Removed uncertainty head (weight=0, conflicts with classification)
-
-v5 changes (causal graph quality + performance):
-  - Feed raw backbone features to causal module when SAE disabled (was zeros!)
-  - Causal gate init: -3.0 (sigmoid≈0.05, conservative start)
-  - Causal loss warmup delayed to epoch 5, extended to epoch 25
-  - Graph divergence loss re-added at small weight (pushes real≠fake)
-  - Z-feature reconstruction weighted 3x vs semantic in SCM loss
-  - Per-tier normalization (LayerNorm) before semantic concatenation
-  - Single-phase training: all modules train from epoch 0 (causal gate suppresses early)
-  - Class weights [0.8, 1.2] to reduce cross-dataset real bias
-
-v6 changes (tractable causal + semantic projection):
-  - z_dim: 1024→32 (SparseFeatureSelector compresses backbone features)
-    → causal graph: 32+48=80 nodes (was 1072!) — within DAGMA validated range
-  - SemanticProjection: direct 259-d gated semantic → classifier pathway
-    → 259→128→1024, gated, provides explicit attribute signal for classification
-  - Causal gate: -3.0→-1.5 (sigmoid=0.18) — causal signal usable earlier
-    with properly-sized 80-node graphs
+Dead pipelines removed (frequency branch, MSCAN CausalDiscoveryModule,
+DualBranchSparseAutoencoder, CausalViolationAttentionFusion, SemanticProjection,
+FacialSemanticExtractor in-detector, CausalInterventionModule, MultiModalFusion,
+per-tier norms, semantic gate, consistency-rule detector member). Precomputed
+semantic/forensic features arrive via `data_dict['precomputed_attrs']` and
+`data_dict['forensic_features']`; the dataset produces them.
 """
 
 import logging
-import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -57,25 +29,11 @@ from metrics.base_metrics_class import calculate_metrics_for_train
 from .base_detector import AbstractDetector
 from detectors import DETECTOR
 
-from networks.nesy_defake.foundation_models import (
-    FrequencyFeatureExtractor,
-    SpatialFeatureExtractor,
-)
-from networks.nesy_defake.fusion import MultiModalFusion
-from networks.nesy_defake.causal import CausalDiscoveryModule
+from networks.nesy_defake.foundation_models import SpatialFeatureExtractor
 from networks.nesy_defake.classifiers import MultiTaskHead
-from networks.nesy_defake.classifiers.sparse_autoencoder import DualBranchSparseAutoencoder
-from networks.nesy_defake.semantic import FacialSemanticExtractor
-from networks.nesy_defake.semantic.consistency_rules import CrossAttributeConsistencyRules
-from networks.nesy_defake.semantic.consistency_rules_v7 import CrossAttributeConsistencyRulesV7
-from networks.nesy_defake.semantic.forensic_features import (
-    FORENSIC_FEATURE_NAMES, get_forensic_feature_names,
-)
-from networks.nesy_defake.semantic.causal_intervention import CausalInterventionModule
 from networks.nesy_defake.losses import alignment, uniformity
 
 logger = logging.getLogger(__name__)
-ALL_BRANCHES = ('spatial', 'frequency')
 
 
 def _zero_grad_anchor(module: nn.Module, device: torch.device) -> torch.Tensor:
@@ -86,134 +44,9 @@ def _zero_grad_anchor(module: nn.Module, device: torch.device) -> torch.Tensor:
     return anchor
 
 
-# ---------------------------------------------------------------------------
-# NeSy Change 1: Causal Violation Attention Fusion
-# ---------------------------------------------------------------------------
-
-class CausalViolationAttentionFusion(nn.Module):
-    """
-    Attention-based fusion of per-branch causal violation residuals.
-
-    The fused CLIP features (query) attend over the 4 causal violation
-    residuals (keys/values), dynamically selecting which violations are
-    most informative for each sample. This replaces both:
-      - the original zero-init direct projections (4×d→proj_dim)
-      - the 32-d bottleneck that was too lossy
-
-    Benefits:
-      - Full residual information preserved (values project to proj_dim)
-      - Dynamic per-sample weighting — not a static compress
-      - Interpretable: attention weights show which violation type matters
-      - Cross-branch interaction: spatial_real can suppress freq_fake, etc.
-      - Gated: if no violations exist, model learns to zero-out the delta
-
-    Forward returns both the causal delta and the (B, 4) attention weights
-    for interpretability logging.
-    """
-
-    RESIDUAL_KEYS = ('spatial_real', 'spatial_fake', 'freq_real', 'freq_fake')
-
-    def __init__(self, fused_dim: int, d_spatial: int, d_freq: int,
-                 attn_dim: int = 256):
-        super().__init__()
-        self.attn_dim = attn_dim
-        self.scale = math.sqrt(attn_dim)
-
-        d_map = {
-            'spatial_real': d_spatial, 'spatial_fake': d_spatial,
-            'freq_real':    d_freq,    'freq_fake':    d_freq,
-        }
-
-        # Query: fused features decide what to attend to
-        self.q_proj = nn.Linear(fused_dim, attn_dim, bias=False)
-
-        # Keys: each residual type contributes a key for attention scoring
-        self.k_proj = nn.ModuleDict({
-            k: nn.Linear(d, attn_dim, bias=False) for k, d in d_map.items()
-        })
-
-        # Values: each residual type is projected to full fused_dim
-        self.v_proj = nn.ModuleDict({
-            k: nn.Linear(d, fused_dim, bias=False) for k, d in d_map.items()
-        })
-
-        # LayerNorm on the weighted output for training stability
-        self.out_norm = nn.LayerNorm(fused_dim)
-
-        # Small init: causal delta starts near-zero, grows with training
-        nn.init.normal_(self.q_proj.weight, std=0.01)
-        for proj in list(self.k_proj.values()) + list(self.v_proj.values()):
-            nn.init.normal_(proj.weight, std=0.01)
-
-    def forward(self, fused_features: torch.Tensor,
-                residuals: dict) -> tuple:
-        """
-        Args:
-            fused_features: (B, fused_dim) main CLIP feature stream
-            residuals: dict[str → (B, d)] causal residuals per violation type
-
-        Returns:
-            causal_delta: (B, fused_dim) to add to classifier_input
-            attn_weights: (B, 4) attention weights (for interpretability)
-        """
-        q = self.q_proj(fused_features)                      # (B, attn_dim)
-
-        keys = self.RESIDUAL_KEYS
-        k_list = [self.k_proj[k](residuals[k]) for k in keys]   # 4×(B, attn_dim)
-        v_list = [self.v_proj[k](residuals[k]) for k in keys]   # 4×(B, fused_dim)
-
-        # Scaled dot-product attention over 4 violation types
-        K = torch.stack(k_list, dim=1)                       # (B, 4, attn_dim)
-        scores = (q.unsqueeze(1) * K).sum(-1) / self.scale   # (B, 4)
-        attn_weights = torch.softmax(scores, dim=-1)          # (B, 4)
-
-        # Weighted sum of values
-        V = torch.stack(v_list, dim=1)                        # (B, 4, fused_dim)
-        causal_delta = (attn_weights.unsqueeze(-1) * V).sum(1)  # (B, fused_dim)
-
-        return self.out_norm(causal_delta), attn_weights
-
-
-# ---------------------------------------------------------------------------
-# NeSy Change 2: Semantic Projection (direct semantic → classifier pathway)
-# ---------------------------------------------------------------------------
-
-class SemanticProjection(nn.Module):
-    """
-    Projects gated semantic attributes directly into the classifier space.
-
-    This gives the classifier explicit access to facial attribute signals:
-      - The causal module captures anomaly patterns via SCM residuals
-      - This pathway captures attribute presence/absence for classification
-
-    Architecture: sem_attrs (259) → LayerNorm → Linear → GELU → Dropout
-                  → Linear → LayerNorm → output (proj_dim)
-
-    The bottleneck (hidden_dim=128) forces the model to learn a compact,
-    discriminative representation of the semantic space rather than
-    memorizing all 259 raw features.
-    """
-
-    def __init__(self, sem_dim: int, proj_dim: int, hidden_dim: int = 128,
-                 dropout: float = 0.2):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.LayerNorm(sem_dim),
-            nn.Linear(sem_dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, proj_dim),
-            nn.LayerNorm(proj_dim),
-        )
-        # Small init so the projection starts near-zero
-        nn.init.normal_(self.net[1].weight, std=0.02)
-        nn.init.zeros_(self.net[1].bias)
-        nn.init.normal_(self.net[4].weight, std=0.01)
-        nn.init.zeros_(self.net[4].bias)
-
-    def forward(self, semantic_attrs: torch.Tensor) -> torch.Tensor:
-        return self.net(semantic_attrs)
-
+# --------------------------------------------------------------------------- #
+# Projection-head variants (selected via config['projection_head']['type'])    #
+# --------------------------------------------------------------------------- #
 
 def _make_projection(in_dim: int, out_dim: int, dropout: float = 0.0) -> nn.Sequential:
     layers = [nn.Linear(in_dim, out_dim), nn.LayerNorm(out_dim), nn.GELU()]
@@ -223,12 +56,10 @@ def _make_projection(in_dim: int, out_dim: int, dropout: float = 0.0) -> nn.Sequ
 
 
 class ResidualProjection(nn.Module):
-    """Option 1: Residual projection with learnable mixing scalar.
+    """output = x + alpha * projection(x). Alpha learnable, small-init.
 
-    output = input + alpha * projection(input)
-
-    Alpha is initialized small so early training behaves like a linear probe,
-    then the model learns how much task-specific correction to apply.
+    Early training behaves like a linear probe; model learns how much
+    task-specific correction to apply via alpha.
     """
 
     def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0,
@@ -242,12 +73,7 @@ class ResidualProjection(nn.Module):
 
 
 class BottleneckAdapter(nn.Module):
-    """Option 2: Bottleneck adapter with skip connection.
-
-    output = LayerNorm(input + Linear_up(GELU(Linear_down(input))))
-
-    Forces the adapter to learn a low-rank correction (Houlsby et al., 2019).
-    """
+    """Down -> act -> up, skip-connected (Houlsby et al., 2019 — no alpha)."""
 
     def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0,
                  bottleneck_ratio: int = 4):
@@ -264,14 +90,7 @@ class BottleneckAdapter(nn.Module):
 
 
 class HoulsbyAdapter(nn.Module):
-    """Combined Option 1+2: Bottleneck with learnable residual scaling.
-
-    output = LayerNorm(input + alpha * Linear_up(GELU(Linear_down(input))))
-
-    Standard Houlsby Adapter (ICML 2019): bottleneck forces low-rank correction,
-    learnable alpha controls injection strength. Starts near identity (alpha_init),
-    model learns how much adaptation to apply.
-    """
+    """Bottleneck + learnable residual scale (Houlsby et al., ICML 2019)."""
 
     def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0,
                  bottleneck_ratio: int = 4, alpha_init: float = 0.1):
@@ -290,21 +109,18 @@ class HoulsbyAdapter(nn.Module):
 
 
 class FeatureConditionedGate(nn.Module):
-    """Per-image gating for evidence branches, conditioned on backbone features.
-
-    Instead of static scalar gates (same weight for every image), this produces
-    per-image gate values via a lightweight linear layer on backbone features.
-    Allows the model to trust the causal branch more on compressed images, and
-    the concept branch more on clear frontal faces.
+    """Per-image evidence-branch gating via Linear(backbone) -> Sigmoid.
 
     gate_values = sigmoid(Linear(spatial_raw))  # (B, num_gates)
+
+    Replaces static scalar gates when evidence_gate.conditioned=true —
+    lets the model trust the causal branch more on compressed images,
+    concept branch more on clear frontal faces, etc.
     """
 
     def __init__(self, input_dim: int, num_gates: int, gate_inits: list = None):
         super().__init__()
         self.linear = nn.Linear(input_dim, num_gates)
-        # Initialize bias to match the static gate init values so early
-        # training behaves similarly to the scalar gate baseline.
         with torch.no_grad():
             nn.init.zeros_(self.linear.weight)
             if gate_inits is not None:
@@ -314,12 +130,12 @@ class FeatureConditionedGate(nn.Module):
                 nn.init.constant_(self.linear.bias, -1.0)
 
     def forward(self, spatial_raw: torch.Tensor) -> torch.Tensor:
-        """Returns (B, num_gates) gate values in [0, 1]."""
         return torch.sigmoid(self.linear(spatial_raw))
 
 
 @DETECTOR.register_module(module_name='nesydefake_hybrid')
 class NeSyDeFakeHybridDetector(AbstractDetector):
+    """Spatial-only NeSy-DeFake detector with EDL evidence fusion."""
 
     def __init__(self, config):
         super().__init__()
@@ -327,206 +143,27 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.ablation_spatial_only = config.get('ablation_spatial_only', False)
         self.ablation_mode = config.get('ablation_mode', 'spatial_ce')
         # ablation_mode values:
-        #   'spatial_ce'   → Ablation 1 (GenD baseline, CE loss)
-        #   'spatial_edl'  → Ablation 2 (spatial + EDL loss)
-        #   'concept_edl'  → Ablation 3 (spatial + concept branch + EDL)
-        #   'causal_edl'   → Ablation 4 (spatial + concept + causal + EDL)
+        #   'spatial_ce'   -> Ablation 1 (GenD baseline, CE loss)
+        #   'spatial_edl'  -> Ablation 2 (spatial + EDL loss)
+        #   'concept_edl'  -> Ablation 3 (spatial + concept branch + EDL)
+        #   'causal_edl'   -> Ablation 4 (spatial + concept + causal + EDL)
         self._current_epoch = 0
 
+        self._use_edl = self.ablation_mode in (
+            'spatial_edl', 'concept_edl', 'causal_edl')
+        self._use_concept_branch = self.ablation_mode in (
+            'concept_edl', 'causal_edl')
+        self._use_causal_branch = self.ablation_mode == 'causal_edl'
+        self._use_nesy_edl = False  # overridden below if edl.nesy_fusion=true
+
+        # -- Backbone + projection head -------------------------------------
         self.build_backbone(config)
-        # Fusion is only used in the non-EDL forward path. In EDL mode
-        # (ablation_mode: *_edl), spatial_proj feeds directly to the classifier.
-        # skip_fusion=true saves ~1M params and cleans up the optimizer.
-        self._skip_fusion = config.get('skip_fusion', False)
-        if not self._skip_fusion:
-            self.fusion = MultiModalFusion(config)
-        else:
-            self.fusion = None
-            logger.info("  Fusion module   : SKIPPED (skip_fusion=true, EDL path bypasses it)")
+        proj_dim = config['foundation_models']['spatial']['output_dim']
 
-        # -- Module: Facial Semantic Attribute Extractor ----------------------
-        sem_cfg = config.get('semantic_attributes', {})
-        self.use_semantic_attrs = sem_cfg.get('enabled', False)
-        self.use_refined_features = config.get('use_refined_features', False)
-
-        if self.use_semantic_attrs:
-            self.semantic_extractor = FacialSemanticExtractor(config)
-            actual_dim = self.semantic_extractor.output_dim
-            config['causal_module']['semantic_dim'] = actual_dim
-            logger.info(f"  Semantic dim    : {actual_dim} "
-                        f"(backend={sem_cfg.get('backend', 'farl')})")
-        else:
-            self.semantic_extractor = None
-            actual_dim = config['causal_module'].get('semantic_dim', 211)
-
-        # When using refined features, the dataset provides 122-d combined
-        # [fast(58) || vlm(64)] instead of 211-d FaceBench.
-        if self.use_refined_features:
-            from networks.nesy_defake.semantic.refined_attributes import (
-                NUM_COMBINED_FEATURES, COMBINED_FEATURE_NAMES)
-            actual_dim = NUM_COMBINED_FEATURES  # 122
-            self._combined_feature_names = list(COMBINED_FEATURE_NAMES)
-            logger.info(f"  Refined features: {actual_dim}-d combined "
-                        f"[fast(58) || vlm(64)]")
-
-        # -- Tier 1: Cross-Attribute Consistency Rules -------------------------
-        cr_cfg = config.get('consistency_rules', {})
-        self.use_consistency_rules = (
-            cr_cfg.get('enabled', False)
-            and (self.use_semantic_attrs or self.use_refined_features))
-        self._tier1_dim = 0
-        if self.use_consistency_rules:
-            if self.use_refined_features:
-                self.consistency_rules = CrossAttributeConsistencyRulesV7()
-                self._tier1_dim = cr_cfg.get('output_dim', 23)
-                logger.info(f"  Tier 1 (consistency v7): {self._tier1_dim} features")
-            else:
-                self.consistency_rules = CrossAttributeConsistencyRules()
-                self._tier1_dim = cr_cfg.get('output_dim', 20)
-                logger.info(f"  Tier 1 (consistency): {self._tier1_dim} features")
-            actual_dim += self._tier1_dim
-
-        # -- Tier 2: Pixel-Level Forensic Features (precomputed) ---------------
-        ff_cfg = config.get('forensic_features', {})
-        self.use_forensic_features = ff_cfg.get('enabled', False)
-        self._tier2_dim = 0
-        if self.use_forensic_features:
-            self._tier2_dim = ff_cfg.get('output_dim', 30)
-            actual_dim += self._tier2_dim
-            logger.info(f"  Tier 2 (forensic)  : {self._tier2_dim} features")
-
-        # -- Per-tier normalization (prevents single LayerNorm from losing
-        #    per-category signal structure across heterogeneous feature tiers) ---
-        if self.use_refined_features:
-            base_sem_dim = NUM_COMBINED_FEATURES if self.use_semantic_attrs else 0
-        else:
-            base_sem_dim = sem_cfg.get('precomputed_dim', 211) if self.use_semantic_attrs else 0
-        if base_sem_dim > 0:
-            self.tier0_norm = nn.LayerNorm(base_sem_dim)
-        if self._tier1_dim > 0:
-            self.tier1_norm = nn.LayerNorm(self._tier1_dim)
-        if self._tier2_dim > 0:
-            self.tier2_norm = nn.LayerNorm(self._tier2_dim)
-        self._base_sem_dim = base_sem_dim
-        logger.info(f"  Per-tier norms   : base={base_sem_dim}, "
-                    f"tier1={self._tier1_dim}, tier2={self._tier2_dim}")
-
-        # Update semantic_dim with augmented dimensions
-        config['causal_module']['semantic_dim'] = actual_dim
-        logger.info(f"  Augmented sem dim: {actual_dim} "
-                    f"(base + {self._tier1_dim} tier1 + {self._tier2_dim} tier2)")
-
-        # -- Module 4: Sparse Autoencoder ------------------------------------
-        self.use_sparse = config['sparse_features']['enabled']
-        self.sparse_ae = DualBranchSparseAutoencoder(config)
-        logger.info(f"  SAE output dim  : {self.sparse_ae.output_dim}")
-
-        # -- Module 3: Dual Sub-Graph Causal Discovery (v3) -------------------
-        self.use_causal = config['causal_module']['enabled']
-        # Pass training rule names so causal module can label identity graph nodes
-        if self.use_consistency_rules:
-            config['_training_rule_names'] = self.consistency_rules.get_feature_names()
-        # Build combined semantic attribute names for interpretable graphs
-        sem_attr_names = []
-        if self.use_refined_features:
-            sem_attr_names.extend(self._combined_feature_names)
-        elif self.use_semantic_attrs and self.semantic_extractor:
-            sem_attr_names.extend(self.semantic_extractor.get_attribute_names())
-        if self.use_consistency_rules:
-            sem_attr_names.extend(self.consistency_rules.get_feature_names())
-        if self.use_forensic_features:
-            sem_attr_names.extend(get_forensic_feature_names())
-        self.causal_module = CausalDiscoveryModule(
-            config, semantic_attr_names=sem_attr_names if sem_attr_names else None)
-
-        # -- NeSy Change 1: Causal Violation Attention Fusion ----------------
-        # The fused CLIP features (query) attend over 4 causal violation
-        # residuals (keys/values) — each is now the concatenation of
-        # identity + forensic sub-graph residuals per branch.
-        d_spatial = self.causal_module.d_spatial  # 103+62 = 165
-        d_freq = self.causal_module.d_freq        # 103+62 = 165
-        proj_dim = config['fusion']['projection_dim']  # 1024
-
-        attn_cfg = config.get('causal_attention', {})
-        attn_dim = attn_cfg.get('attn_dim', 256)
-
-        self.causal_attn_fusion = CausalViolationAttentionFusion(
-            fused_dim=proj_dim,
-            d_spatial=d_spatial,
-            d_freq=d_freq,
-            attn_dim=attn_dim,
-        )
-        n_attn_params = sum(p.numel() for p in self.causal_attn_fusion.parameters())
-        logger.info(f"  Causal attn fusion: q({proj_dim}→{attn_dim}) × "
-                    f"4×k/v({d_spatial}/{d_freq}→{attn_dim}/{proj_dim}) "
-                    f"(params: {n_attn_params:,})")
-
-        # -- (Removed) Concept Prediction Head — circular self-supervision -----
-        # -- (Removed) Graph Divergence — adversarial minimax destabilizes -----
-        self.use_concept_pred = False
-        self.use_graph_div = False
-
-        # -- Semantic Feature Gating (generalization) --------------------------
-        # Trainable sigmoid gate on semantic attributes: learns which of the
-        # 211 attributes carry universal (cross-dataset) signal vs
-        # dataset-specific noise. Initialized to 0 (sigmoid(0) = 0.5 = neutral).
-        sem_gate_cfg = config.get('semantic_gate', {})
-        self.use_semantic_gate = sem_gate_cfg.get('enabled', True) and self.use_semantic_attrs
-        if self.use_semantic_gate:
-            gate_dim = config['causal_module']['semantic_dim']
-            self.semantic_gate = nn.Parameter(torch.zeros(gate_dim))
-            logger.info(f"  Semantic gate   : {gate_dim}-d (sigmoid, init=0.5)")
-
-        # -- NeSy Change 2: Semantic Projection (direct sem → classifier) ------
-        sp_cfg = config.get('semantic_projection', {})
-        self.use_semantic_proj = (
-            sp_cfg.get('enabled', False) and self.use_semantic_attrs)
-        if self.use_semantic_proj:
-            sem_proj_dim = config['causal_module']['semantic_dim']
-            sp_hidden = sp_cfg.get('hidden_dim', 128)
-            sp_dropout = sp_cfg.get('dropout', 0.2)
-            self.semantic_proj = SemanticProjection(
-                sem_dim=sem_proj_dim, proj_dim=proj_dim,
-                hidden_dim=sp_hidden, dropout=sp_dropout)
-            sp_gate_init = sp_cfg.get('gate_init', -1.0)
-            self.semantic_proj_gate = nn.Parameter(
-                torch.tensor(float(sp_gate_init)))
-            n_sp_params = sum(p.numel() for p in self.semantic_proj.parameters())
-            logger.info(
-                f"  Semantic proj   : {sem_proj_dim}→{sp_hidden}→{proj_dim}, "
-                f"gate_init={sp_gate_init} "
-                f"(sigmoid={torch.sigmoid(torch.tensor(sp_gate_init)).item():.3f}), "
-                f"params={n_sp_params:,}")
-
-        # -- Learnable causal gate (controls causal contribution to classifier) -
-        # sigmoid(-1.5) ≈ 0.18 → causal delta starts partially active.
-        # With dual sub-graphs (identity=103, forensic=62 nodes), causal signal
-        # captures both identity-constraint violations and pixel-level artifacts.
-        self.causal_gate = nn.Parameter(torch.tensor(-1.5))
-        logger.info(f"  Causal gate     : scalar (sigmoid, init={torch.sigmoid(torch.tensor(-1.5)).item():.3f})")
-
-        # -- Tier 3: Causal Intervention (train + inference) --------------------
-        ci_cfg = config.get('causal_intervention', {})
-        self.use_causal_intervention = ci_cfg.get('enabled', False)
-        if self.use_causal_intervention:
-            self.causal_intervention = CausalInterventionModule(ci_cfg)
-            ci_dim = ci_cfg.get('output_dim', 28)
-            self.ci_norm = nn.LayerNorm(ci_dim)
-            self.ci_projection = nn.Linear(ci_dim, proj_dim)
-            ci_gate_init = ci_cfg.get('ci_gate_init', -2.0)
-            self.ci_gate = nn.Parameter(torch.tensor(float(ci_gate_init)))
-            # Init near zero — gate suppresses contribution early
-            nn.init.normal_(self.ci_projection.weight, std=0.01)
-            nn.init.zeros_(self.ci_projection.bias)
-            logger.info(
-                f"  Tier 3 (intervention): {ci_dim}→{proj_dim}, "
-                f"gate_init={ci_gate_init} (sigmoid={torch.sigmoid(torch.tensor(ci_gate_init)).item():.3f})"
-            )
-
-        # -- Uniformity-Alignment auxiliary regularizer (GenD recipe) ---------
+        # -- Uniformity-Alignment regularizer (GenD recipe) ------------------
         # Applied on `pred['l2_embeddings']` = F.normalize(projected, p=2, dim=1).
-        # Gradient flows only through spatial_proj + backbone LNs — does NOT
-        # touch concept_branch, causal_branch (CCV/SCM), CMEF, or IBDC.
+        # Gradient flows only through spatial_proj + backbone LayerNorms; does
+        # NOT touch concept_branch, causal_branch (CCV/SCM), CMEF, or IBDC.
         ua_cfg = config.get('uniformity_alignment', {})
         self.use_ua_loss = bool(ua_cfg.get('enabled', False))
         self.ua_alpha = float(ua_cfg.get('alignment_weight', 1.0))
@@ -535,33 +172,26 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.ua_uniform_t = float(ua_cfg.get('uniformity_t', 2.0))
         if self.use_ua_loss:
             logger.info(
-                f"  UA loss         : alignment={self.ua_alpha} (pow={self.ua_align_power}), "
+                f"  UA loss         : alignment={self.ua_alpha} "
+                f"(pow={self.ua_align_power}), "
                 f"uniformity={self.ua_beta} (t={self.ua_uniform_t})")
 
-        # -- Module 5: Classifier --------------------------------------------
-        # EDL maps features to Dirichlet parameters deterministically.
-        # Dropout before evidence computation adds noise to uncertainty
-        # estimates. edl_classifier_dropout overrides classifier dropout
-        # when in EDL mode (set to 0.0 to disable).
-        _edl_active = self.ablation_mode in ('spatial_edl', 'concept_edl', 'causal_edl')
-        if _edl_active and 'edl_classifier_dropout' in config:
+        # -- Classifier ------------------------------------------------------
+        # EDL maps features to Dirichlet parameters deterministically — dropout
+        # before evidence computation adds noise to uncertainty estimates, so
+        # edl_classifier_dropout overrides classifier dropout in EDL mode.
+        if self._use_edl and 'edl_classifier_dropout' in config:
             config['classifier']['dropout'] = config['edl_classifier_dropout']
-            logger.info(f"  EDL dropout     : classifier dropout overridden to "
-                        f"{config['edl_classifier_dropout']}")
+            logger.info(
+                f"  EDL dropout     : classifier dropout overridden to "
+                f"{config['edl_classifier_dropout']}")
         self.multitaskhead = MultiTaskHead(config)
         self.loss_weights = config['loss_func']['weights']
         self._base_loss_weights = dict(config['loss_func']['weights'])
         self.build_loss(config)
-
-        # -- Loss warm-up schedule -------------------------------------------
         self.loss_warmup_cfg = config.get('loss_warmup', {})
 
-        # -- Ablation 2/3/4: EDL loss + concept/causal branches ----------------
-        self._use_edl = self.ablation_mode in ('spatial_edl', 'concept_edl', 'causal_edl')
-        self._use_concept_branch = self.ablation_mode in ('concept_edl', 'causal_edl')
-        self._use_causal_branch = self.ablation_mode == 'causal_edl'
-        self._use_nesy_edl = False  # default; overridden below if edl.nesy_fusion=true
-
+        # -- EDL evidence loss (Ablation 2/3/4) ------------------------------
         if self._use_edl:
             edl_cfg = config.get('edl', {})
             use_nesy_edl = edl_cfg.get('nesy_fusion', False)
@@ -577,9 +207,9 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     disagreement_weight=edl_cfg.get('disagreement_weight', 0.05),
                     class_weights=config.get('class_weights', None),
                 )
-                # CMEF replaces scalar gates
                 gate_cfg = config.get('evidence_gate', {})
-                num_sym = (1 if self._use_concept_branch else 0) + (1 if self._use_causal_branch else 0)
+                num_sym = (1 if self._use_concept_branch else 0) \
+                        + (1 if self._use_causal_branch else 0)
                 gate_inits = []
                 if self._use_concept_branch:
                     gate_inits.append(gate_cfg.get('concept_init', -0.5))
@@ -590,7 +220,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     num_classes=edl_cfg.get('num_classes', 2),
                     gate_inits=gate_inits,
                 )
-                logger.info(f"  NeSy-EDL        : CMEF + PBAS + IBDC enabled")
+                logger.info("  NeSy-EDL        : CMEF + PBAS + IBDC enabled")
             else:
                 from networks.nesy_defake.losses.edl_loss import EvidentialLoss
                 self.edl_loss = EvidentialLoss(
@@ -601,8 +231,11 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     class_weights=config.get('class_weights', None),
                 )
             self._use_nesy_edl = use_nesy_edl
-            logger.info(f"  EDL loss        : annealing={edl_cfg.get('annealing_epochs', 10)} epochs")
+            logger.info(
+                f"  EDL loss        : annealing="
+                f"{edl_cfg.get('annealing_epochs', 10)} epochs")
 
+        # -- Concept branch (Ablation 3+) ------------------------------------
         if self._use_concept_branch:
             from networks.nesy_defake.concept_branch import ConceptBranch
             cb_cfg = config.get('concept_branch', {})
@@ -615,13 +248,17 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             gate_cfg = config.get('evidence_gate', {})
             self.concept_gate = nn.Parameter(
                 torch.tensor(float(gate_cfg.get('concept_init', -3.0))))
-            logger.info(f"  Concept branch  : gate_init={gate_cfg.get('concept_init', -3.0)}")
+            logger.info(
+                f"  Concept branch  : gate_init="
+                f"{gate_cfg.get('concept_init', -3.0)}")
 
+        # -- Causal branch (Ablation 4: CCV / ImprovedSCM / Simple) ----------
         if self._use_causal_branch:
             sc_cfg = config.get('causal_branch', {})
             causal_type = sc_cfg.get('type', 'simple')
             if causal_type == 'ccv':
-                from networks.nesy_defake.ccv_branch import CausalConstraintVerificationBranch
+                from networks.nesy_defake.ccv_branch import (
+                    CausalConstraintVerificationBranch)
                 self.causal_branch = CausalConstraintVerificationBranch(
                     combined_dim=sc_cfg.get('combined_dim', 122),
                     rules_dim=sc_cfg.get('rules_dim', 23),
@@ -636,7 +273,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     dropout=sc_cfg.get('dropout', 0.2),
                 )
             elif causal_type == 'improved_scm':
-                from networks.nesy_defake.improved_scm_branch import ImprovedCausalBranch
+                from networks.nesy_defake.improved_scm_branch import (
+                    ImprovedCausalBranch)
                 self.causal_branch = ImprovedCausalBranch(
                     backbone_dim=sc_cfg.get('backbone_dim', 1024),
                     z_causal_dim=sc_cfg.get('z_causal_dim', 32),
@@ -651,7 +289,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     recon_weight=sc_cfg.get('recon_weight', 0.5),
                 )
             else:
-                from networks.nesy_defake.concept_branch import SimplifiedCausalBranch
+                from networks.nesy_defake.concept_branch import (
+                    SimplifiedCausalBranch)
                 self.causal_branch = SimplifiedCausalBranch(
                     backbone_dim=sc_cfg.get('backbone_dim', 1024),
                     z_causal_dim=sc_cfg.get('z_causal_dim', 32),
@@ -666,16 +305,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             self.causal_ev_gate = nn.Parameter(
                 torch.tensor(float(gate_cfg.get('causal_init', -3.0))))
             self._dag_penalty_weight = sc_cfg.get('dag_penalty_weight', 0.05)
-            logger.info(f"  Causal branch   : type={causal_type}, gate_init={gate_cfg.get('causal_init', -3.0)}")
+            logger.info(
+                f"  Causal branch   : type={causal_type}, "
+                f"gate_init={gate_cfg.get('causal_init', -3.0)}")
 
-        # -- Feature-conditioned evidence gates --------------------------------
-        # When evidence_gate.conditioned=true, replace static scalar gates with
-        # a lightweight Linear(backbone_dim→num_gates)→Sigmoid that produces
-        # per-image gate values. This lets the model dynamically weight branches
-        # based on image content (e.g., trust causal more on compressed images).
+        # -- Feature-conditioned evidence gates ------------------------------
         gate_cfg = config.get('evidence_gate', {})
         self._conditioned_gates = gate_cfg.get('conditioned', False)
-        if self._conditioned_gates and (self._use_concept_branch or self._use_causal_branch):
+        if self._conditioned_gates and (
+                self._use_concept_branch or self._use_causal_branch):
             gate_inits = []
             self._gate_names = []
             if self._use_concept_branch:
@@ -690,180 +328,71 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 num_gates=len(gate_inits),
                 gate_inits=gate_inits,
             )
-            logger.info(f"  Evidence gates  : feature-conditioned "
-                        f"({backbone_dim}→{len(gate_inits)}), "
-                        f"init={dict(zip(self._gate_names, gate_inits))}")
+            logger.info(
+                f"  Evidence gates  : feature-conditioned "
+                f"({backbone_dim}->{len(gate_inits)}), "
+                f"init={dict(zip(self._gate_names, gate_inits))}")
 
-        # -- torch.compile on frozen backbones (speed optimization) -----------
-        # Frozen modules have static graphs — torch.compile fuses ops and
-        # eliminates Python overhead. Only applied to inference-only modules.
         self._try_compile_frozen_modules()
 
-        logger.info("NeSyDeFake Hybrid Detector initialised (v6 — tractable causal + semantic proj)")
-        logger.info(f"  Active branches : {sorted(self.active_branches)}")
-        logger.info(f"  Fused dim       : {config['fusion']['fused_dim']}")
+        logger.info("NeSyDeFake detector initialised (spatial + EDL)")
+        logger.info(f"  Ablation mode   : {self.ablation_mode}")
+        logger.info(f"  EDL enabled     : {self._use_edl}")
         logger.info(f"  Projection dim  : {proj_dim}")
-        logger.info(f"  Causal d_spatial: {d_spatial}, d_freq: {d_freq}")
-        logger.info(f"  SAE enabled     : {self.use_sparse}")
-        logger.info(f"  Causal enabled  : {self.use_causal}")
-        logger.info(f"  Semantic attrs  : {self.use_semantic_attrs}")
-        logger.info(f"  Causal attn fusion: attn_dim={attn_dim}")
-
-        # All modules train from epoch 0. Causal gate init=-3.0 (sigmoid≈0.05)
-        # naturally suppresses causal influence until the module learns.
 
     # ------------------------------------------------------------------ #
-    #  Construction helpers                                                #
+    #  Construction                                                        #
     # ------------------------------------------------------------------ #
 
     def build_backbone(self, config: dict) -> None:
         self.spatial_extractor = SpatialFeatureExtractor(config)
-        self.frequency_extractor = FrequencyFeatureExtractor(config)
 
-        active = set(config.get('active_branches', list(ALL_BRANCHES)))
-        active = active & set(ALL_BRANCHES)
-        self.active_branches = active
-
-        # -- Share CLIP backbone between spatial and frequency branches --------
-        # Both load the same openai/clip-vit-large-patch14 weights. Sharing
-        # saves ~600MB VRAM and enables batched forward (2x backbone speed).
-        # Each branch keeps its own pre/post processing (FAD front-end,
-        # SafeLayerNorm, projection heads). Phase 2 shared LayerNorms adapt
-        # to both input distributions simultaneously — beneficial for
-        # generalization (see GenD: LN adaptation is distribution-agnostic).
-        self._shared_backbone = False
-        fm = config['foundation_models']
-        spatial_path = fm.get('spatial', {}).get('model_path', '')
-        freq_path = fm.get('frequency', {}).get('model_path', '')
-        freq_name = fm.get('frequency', {}).get('name', '')
-        if (spatial_path == freq_path
-                and freq_name == 'fad_clip'
-                and 'spatial' in active and 'frequency' in active):
-            # Point freq extractor to spatial's backbone (shared weights)
-            self.frequency_extractor.backbone = self.spatial_extractor.backbone
-            self._shared_backbone = True
-            n_saved = sum(p.numel() for p in self.spatial_extractor.backbone.parameters())
-            logger.info(
-                f"  Shared backbone : spatial & frequency share CLIP "
-                f"({n_saved:,} params, ~{n_saved * 2 / 1e6:.0f}MB BF16 saved)")
-
-        proj_dim = fm['spatial']['output_dim']
-        proj_dim = config['fusion']['projection_dim']
-
-        branch_dims = {
-            'spatial': fm['spatial']['output_dim'],
-            'frequency': self.frequency_extractor.output_dim,
-        }
-
+        proj_dim = config['foundation_models']['spatial']['output_dim']
         dropout_cfg = config.get('projection_dropout', {})
         proj_cfg = config.get('projection_head', {})
-        proj_type = proj_cfg.get('type', 'standard')  # standard, residual, bottleneck, houlsby
+        proj_type = proj_cfg.get('type', 'standard')
+        dropout = dropout_cfg.get('spatial', 0.2)
 
-        def _build_proj(in_dim, out_dim, dropout):
-            if proj_type == 'residual':
-                alpha_init = proj_cfg.get('alpha_init', 0.1)
-                return ResidualProjection(in_dim, out_dim, dropout, alpha_init)
-            elif proj_type == 'bottleneck':
-                ratio = proj_cfg.get('bottleneck_ratio', 4)
-                return BottleneckAdapter(in_dim, out_dim, dropout, ratio)
-            elif proj_type == 'houlsby':
-                ratio = proj_cfg.get('bottleneck_ratio', 4)
-                alpha_init = proj_cfg.get('alpha_init', 0.1)
-                return HoulsbyAdapter(in_dim, out_dim, dropout, ratio, alpha_init)
-            else:
-                return _make_projection(in_dim, out_dim, dropout)
+        if proj_type == 'residual':
+            alpha_init = proj_cfg.get('alpha_init', 0.1)
+            self.spatial_proj = ResidualProjection(
+                proj_dim, proj_dim, dropout, alpha_init)
+        elif proj_type == 'bottleneck':
+            ratio = proj_cfg.get('bottleneck_ratio', 4)
+            self.spatial_proj = BottleneckAdapter(
+                proj_dim, proj_dim, dropout, ratio)
+        elif proj_type == 'houlsby':
+            ratio = proj_cfg.get('bottleneck_ratio', 4)
+            alpha_init = proj_cfg.get('alpha_init', 0.1)
+            self.spatial_proj = HoulsbyAdapter(
+                proj_dim, proj_dim, dropout, ratio, alpha_init)
+        else:
+            self.spatial_proj = _make_projection(proj_dim, proj_dim, dropout)
 
-        self.spatial_proj = _build_proj(
-            branch_dims['spatial'], proj_dim,
-            dropout_cfg.get('spatial', 0.2))
-        self.frequency_proj = _build_proj(
-            branch_dims['frequency'], proj_dim,
-            dropout_cfg.get('frequency', 0.1))
         if proj_type != 'standard':
             extra = {k: v for k, v in proj_cfg.items() if k != 'type'}
             logger.info(f"  Projection head : type={proj_type}, {extra}")
 
-        fused_dim = proj_dim * sum(1 for b in ALL_BRANCHES if b in active)
-        config['fusion']['fused_dim'] = fused_dim
-
-        for name in ALL_BRANCHES:
-            if name not in active:
-                self._freeze_module(getattr(self, f'{name}_extractor'), name)
-
-    def _freeze_module(self, module: nn.Module, name: str) -> None:
-        for p in module.parameters():
-            p.requires_grad = False
-        logger.info(f"  Frozen branch   : {name}")
-
     def _try_compile_frozen_modules(self) -> None:
-        """
-        Apply torch.compile to frozen backbone modules for faster inference.
+        """torch.compile on the frozen CLIP vision backbone (speed optimization).
 
-        Uses default mode (inductor) — NOT reduce-overhead, which uses CUDA
-        graphs that overwrite output tensors on replay, breaking downstream
-        consumers outside the compiled region.
-
-        Catches errors gracefully — compile is a pure speed optimization.
+        Uses default (inductor) mode, NOT reduce-overhead — the latter uses
+        CUDA graphs that overwrite output tensors on replay, breaking
+        downstream consumers outside the compiled region.
         """
         if not hasattr(torch, 'compile'):
             return
-
-        compiled = []
-        compiled_backbone_ids = set()
-        # Compile frozen CLIP vision backbones
-        for attr in ('spatial_extractor', 'frequency_extractor'):
-            ext = getattr(self, attr, None)
-            if ext is None:
-                continue
-            backbone = getattr(ext, 'backbone', None)
-            if backbone is None or id(backbone) in compiled_backbone_ids:
-                continue  # skip shared backbone (already compiled via other branch)
-            if not any(p.requires_grad for p in backbone.parameters()):
-                try:
-                    ext.backbone = torch.compile(backbone, fullgraph=False)
-                    compiled_backbone_ids.add(id(ext.backbone))
-                    compiled.append(f'{attr}.backbone'
-                                    + (' (shared)' if self._shared_backbone else ''))
-                except Exception as e:
-                    logger.warning(f"  torch.compile failed for {attr}: {e}")
-
-        # Compile frozen semantic extractor components
-        if self.use_semantic_attrs and self.semantic_extractor is not None:
-            sem = self.semantic_extractor
-            # Vision tower
-            vt = getattr(sem, 'vision_tower', None)
-            if vt is not None and not any(
-                    p.requires_grad for p in vt.parameters()):
-                try:
-                    sem.vision_tower = torch.compile(vt, fullgraph=False)
-                    compiled.append('semantic.vision_tower')
-                except Exception as e:
-                    logger.warning(
-                        f"  torch.compile failed for semantic vision_tower: {e}")
-            # LLM (13B frozen)
-            llm = getattr(sem, 'llm', None)
-            if llm is not None and not any(
-                    p.requires_grad for p in llm.parameters()):
-                try:
-                    sem.llm = torch.compile(llm, fullgraph=False)
-                    compiled.append('semantic.llm')
-                except Exception as e:
-                    logger.warning(
-                        f"  torch.compile failed for semantic LLM: {e}")
-
-        if compiled:
-            logger.info(f"  torch.compile   : {', '.join(compiled)}")
-        else:
-            logger.info("  torch.compile   : no eligible frozen modules")
-
-    def enable_causal(self) -> None:
-        self.use_causal = True
-        logger.info("Per-branch dual-graph causal module enabled")
-
-
-    def enable_sparse(self) -> None:
-        self.use_sparse = True
-        logger.info("SAE enabled")
+        backbone = getattr(self.spatial_extractor, 'backbone', None)
+        if backbone is None:
+            return
+        if any(p.requires_grad for p in backbone.parameters()):
+            return
+        try:
+            self.spatial_extractor.backbone = torch.compile(
+                backbone, fullgraph=False)
+            logger.info("  torch.compile   : spatial_extractor.backbone")
+        except Exception as e:
+            logger.warning(f"  torch.compile failed for spatial backbone: {e}")
 
     def update_loss_warmup(self, epoch: int, total_epochs: int) -> None:
         self._current_epoch = epoch
@@ -872,7 +401,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             end_epoch = schedule.get('end_epoch', 10)
             start_w = schedule.get('start_weight', 0.01)
             end_w = schedule.get('end_weight', 0.3)
-
             if epoch < start_epoch:
                 w = start_w
             elif epoch >= end_epoch:
@@ -880,7 +408,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             else:
                 progress = (epoch - start_epoch) / max(end_epoch - start_epoch, 1)
                 w = start_w + progress * (end_w - start_w)
-
             self.loss_weights[loss_name] = w
 
     def build_loss(self, config: dict) -> None:
@@ -899,96 +426,29 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
     # ------------------------------------------------------------------ #
 
     def extract_raw_features(self, data_dict: dict) -> dict:
-        raw = {}
-        both_active = ('spatial' in self.active_branches
-                       and 'frequency' in self.active_branches)
+        spatial_input = data_dict['spatial_frames']
+        if self.spatial_extractor.needs_resize:
+            spatial_input = F.interpolate(
+                spatial_input,
+                size=(self.spatial_extractor.required_size,
+                      self.spatial_extractor.required_size),
+                mode='bilinear', align_corners=False)
+        return {'spatial_raw': self.spatial_extractor(spatial_input)}
 
-        if both_active and self._shared_backbone:
-            # -- Batched forward through shared CLIP backbone ------------------
-            # 1. Prepare spatial input (already CLIP-normalized by dataset)
-            spatial_input = data_dict['spatial_frames']
-            if self.spatial_extractor.needs_resize:
-                spatial_input = F.interpolate(
-                    spatial_input,
-                    size=(self.spatial_extractor.required_size,
-                          self.spatial_extractor.required_size),
-                    mode='bilinear', align_corners=False)
-
-            # 2. Prepare frequency input (FAD front-end in FP32, then
-            #    CLIP-normalize — produces images CLIP can process)
-            freq_ext = self.frequency_extractor
-            with torch.cuda.amp.autocast(enabled=False):
-                freq_input_raw = data_dict['freq_frames'].float()
-                _, _, H, W = freq_input_raw.shape
-                if H != freq_ext.required_size or W != freq_ext.required_size:
-                    freq_input_raw = F.interpolate(
-                        freq_input_raw,
-                        size=(freq_ext.required_size, freq_ext.required_size),
-                        mode='bilinear', align_corners=False)
-                freq_input = freq_ext.fad_front_end(freq_input_raw)
-
-            B = spatial_input.shape[0]
-
-            # 3. Concatenate along batch dim and run single CLIP forward
-            #    Both inputs are CLIP-ready: spatial is pre-normalized,
-            #    freq is FAD-enhanced + CLIP-normalized by FADFrontEnd
-            batched = torch.cat([spatial_input, freq_input], dim=0)
-
-            use_bf16 = torch.cuda.is_bf16_supported()
-            if use_bf16:
-                with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
-                    outputs = self.spatial_extractor.backbone(pixel_values=batched)
-                    pooled = outputs.pooler_output
-            else:
-                with torch.cuda.amp.autocast(enabled=False):
-                    outputs = self.spatial_extractor.backbone(
-                        pixel_values=batched.float())
-                    pooled = outputs.pooler_output
-
-            # 4. Split back into spatial and frequency features
-            raw['spatial_raw'] = pooled[:B]
-            with torch.cuda.amp.autocast(enabled=False):
-                raw['frequency_raw'] = freq_ext.freq_norm(pooled[B:].float())
-        else:
-            # -- Standard separate forward (single branch or non-shared) ------
-            if 'spatial' in self.active_branches:
-                raw['spatial_raw'] = self.spatial_extractor(
-                    data_dict['spatial_frames'])
-            if 'frequency' in self.active_branches:
-                raw['frequency_raw'] = self.frequency_extractor(
-                    data_dict['freq_frames'])
-        return raw
-
-    def features(self):
-        pass
-
-    def project_and_fuse(self, raw_feats: dict) -> torch.Tensor:
-        spatial_proj = (
-            self.spatial_proj(raw_feats['spatial_raw'])
-            if 'spatial_raw' in raw_feats else None
-        )
-        freq_proj = (
-            self.frequency_proj(raw_feats['frequency_raw'])
-            if 'frequency_raw' in raw_feats else None
-        )
-        if self.fusion is not None:
-            return self.fusion(spatial_proj, freq_proj)
-        # skip_fusion: return spatial projection directly (EDL path)
-        return spatial_proj if spatial_proj is not None else freq_proj
+    def features(self, data_dict: dict) -> torch.Tensor:
+        return self.spatial_proj(self.extract_raw_features(data_dict)['spatial_raw'])
 
     def classifier(self, features: torch.Tensor) -> dict:
         return self.multitaskhead(features)
 
     # ------------------------------------------------------------------ #
-    #  Forward pass                                                        #
+    #  Forward                                                             #
     # ------------------------------------------------------------------ #
 
     def forward(self, data_dict: dict, inference: bool = False) -> dict:
         device = data_dict['label'].device
 
-        # -- Ablation 1: Spatial-only shortcut (GenD-exact recipe) -----------
-        # Skips ALL NeSy modules: no fusion, no causal, no SAE, no semantic.
-        # Pipeline: CLIP → spatial_proj → linear classifier
+        # -- Ablation 1: spatial + CE ---------------------------------------
         if self.ablation_spatial_only and not self._use_edl:
             raw_feats = self.extract_raw_features(data_dict)
             spatial_raw = raw_feats['spatial_raw']
@@ -1003,27 +463,19 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 'feat':           projected,
                 'l2_embeddings':  l2_embeddings,
                 'spatial_feat':   spatial_raw,
-                'frequency_feat': None,
-                'z_spatial':      None,
-                'z_freq':         None,
-                'causal_out':     None,
-                'causal_primitives': None,
                 'task_outputs':   task_outputs,
-                'sae_loss':       torch.zeros(1, device=device),
-                'sae_info':       {},
             }
 
-        # -- Ablation 2/3/4: EDL-based evidence fusion ----------------------
+        # -- Ablation 2/3/4: spatial + (concept + causal) + EDL -------------
         if self._use_edl:
             raw_feats = self.extract_raw_features(data_dict)
             spatial_raw = raw_feats['spatial_raw']
             projected = self.spatial_proj(spatial_raw)
             l2_embeddings = F.normalize(projected, p=2, dim=1)
 
-            # Spatial evidence: linear head → softplus
             task_outputs = self.classifier(projected)
-            spatial_logits = task_outputs['classification']  # (B, 2)
-            spatial_evidence = F.softplus(spatial_logits.float())  # (B, 2)
+            spatial_logits = task_outputs['classification']         # (B, 2)
+            spatial_evidence = F.softplus(spatial_logits.float())   # (B, 2)
 
             # Concept evidence (Ablation 3+)
             concept_out = None
@@ -1050,12 +502,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                         labels=labels,
                     )
 
-            # ── Evidence fusion ────────────────────────────────────────
-            branch_evidences = {}  # for NeSy-EDL per-branch aux losses
-            branch_evidences['spatial'] = spatial_evidence
+            # -- Evidence fusion --------------------------------------------
+            branch_evidences = {'spatial': spatial_evidence}
 
             if self._use_nesy_edl and hasattr(self, 'cmef'):
-                # Novel: Confidence-Modulated Evidence Fusion (CMEF)
+                # Novel: Confidence-Modulated Evidence Fusion (replaces CMEF's
+                # predecessor CausalViolationAttentionFusion — same per-sample
+                # "pick which signal to trust" idea, placed in EDL space).
                 symbolic_evs = []
                 if concept_out is not None:
                     symbolic_evs.append(concept_out['evidence'])
@@ -1071,12 +524,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 total_evidence = spatial_evidence
                 gi = 0
                 if concept_out is not None:
-                    concept_gate = gate_vals[:, gi].unsqueeze(1)  # (B, 1)
+                    concept_gate = gate_vals[:, gi].unsqueeze(1)
                     total_evidence = total_evidence + concept_gate * concept_out['evidence']
                     branch_evidences['concept'] = concept_out['evidence']
                     gi += 1
                 if causal_out is not None:
-                    causal_gate = gate_vals[:, gi].unsqueeze(1)  # (B, 1)
+                    causal_gate = gate_vals[:, gi].unsqueeze(1)
                     total_evidence = total_evidence + causal_gate * causal_out['evidence']
                     branch_evidences['causal'] = causal_out['evidence']
                 cmef_diag = None
@@ -1096,7 +549,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             # Dirichlet prediction from fused evidence
             alpha = total_evidence + 1.0
             S = alpha.sum(dim=1, keepdim=True)
-            prob = (alpha / S)[:, 1]  # P(fake)
+            prob = (alpha / S)[:, 1]                 # P(fake)
             uncertainty = 2.0 / S.squeeze(1)
 
             pred = {
@@ -1110,20 +563,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 'feat':              projected,
                 'l2_embeddings':     l2_embeddings,
                 'spatial_feat':      spatial_raw,
-                'frequency_feat':    None,
-                'z_spatial':         None,
-                'z_freq':            None,
-                'causal_out':        None,
-                'causal_primitives': None,
                 'task_outputs':      task_outputs,
-                'sae_loss':          torch.zeros(1, device=device),
-                'sae_info':          {},
             }
             if concept_out is not None:
                 pred['concept_evidence'] = concept_out['evidence']
                 if self._use_nesy_edl and cmef_diag is not None:
-                    pred['concept_gate'] = cmef_diag.get('branch_0_gate', torch.tensor(0.0))
-                    pred['concept_conf'] = cmef_diag.get('branch_0_conf_mean', torch.tensor(0.0))
+                    pred['concept_gate'] = cmef_diag.get(
+                        'branch_0_gate', torch.tensor(0.0))
+                    pred['concept_conf'] = cmef_diag.get(
+                        'branch_0_conf_mean', torch.tensor(0.0))
                 elif self._conditioned_gates and hasattr(self, 'conditioned_gate'):
                     pred['concept_gate'] = concept_gate.mean().detach()
                 elif hasattr(self, 'concept_gate'):
@@ -1133,8 +581,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 pred['causal_evidence'] = causal_out['evidence']
                 if self._use_nesy_edl and cmef_diag is not None:
                     idx = 1 if concept_out is not None else 0
-                    pred['causal_gate'] = cmef_diag.get(f'branch_{idx}_gate', torch.tensor(0.0))
-                    pred['causal_conf'] = cmef_diag.get(f'branch_{idx}_conf_mean', torch.tensor(0.0))
+                    pred['causal_gate'] = cmef_diag.get(
+                        f'branch_{idx}_gate', torch.tensor(0.0))
+                    pred['causal_conf'] = cmef_diag.get(
+                        f'branch_{idx}_conf_mean', torch.tensor(0.0))
                 elif self._conditioned_gates and hasattr(self, 'conditioned_gate'):
                     pred['causal_gate'] = causal_gate.mean().detach()
                 elif hasattr(self, 'causal_ev_gate'):
@@ -1143,7 +593,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 for k, v in causal_out.items():
                     if k.startswith('A_'):
                         pred[k] = v
-                # Propagate CCV-specific keys for interpretability
                 for ccv_key in ('violation_scores', 'anomaly_scores',
                                 'counterfactual_residual'):
                     if ccv_key in causal_out:
@@ -1152,187 +601,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 pred['cmef_tau'] = cmef_diag['tau']
             return pred
 
-        # -- Step 1: Extract raw branch features -----------------------------
-        raw_feats = self.extract_raw_features(data_dict)
-
-        # -- Step 2: Project and fuse for classifier -------------------------
-        fused_features = self.project_and_fuse(raw_feats)
-
-        # -- Step 3: SAE on raw features (parallel path) ---------------------
-        z_spatial = None
-        z_freq = None
-        sae_loss = torch.zeros(1, device=device)
-        sae_info = {}
-
-        if self.use_sparse:
-            z_spatial, z_freq, sae_loss, sae_info = self.sparse_ae(
-                spatial_feat=raw_feats.get('spatial_raw'),
-                frequency_feat=raw_feats.get('frequency_raw'),
-            )
-        else:
-            # When SAE is disabled, feed raw backbone features to causal module
-            # so it has actual visual features instead of zeros. The
-            # SparseFeatureSelector (Linear 1024→128) will project them.
-            z_spatial = raw_feats.get('spatial_raw')
-            z_freq = raw_feats.get('frequency_raw')
-
-        # -- Step 4: Per-branch dual-graph causal module ---------------------
-        causal_out = None
-        semantic_attrs = None   # initialise so Step 5a can safely reference it
-
-        if self.use_causal:
-            # Compute semantic attributes
-            if self.use_refined_features:
-                # Refined mode: dataset provides 122-d combined [fast||vlm]
-                semantic_attrs = data_dict.get('precomputed_attrs')
-                if semantic_attrs is not None:
-                    semantic_attrs = semantic_attrs.to(device)
-            elif self.use_semantic_attrs and self.semantic_extractor is not None:
-                if self.semantic_extractor.is_precomputed:
-                    # Use precomputed Face-LLaVA features from dataset
-                    precomputed = data_dict.get('precomputed_attrs')
-                    if precomputed is None:
-                        precomputed = data_dict.get('semantic_attrs')
-                    semantic_attrs = self.semantic_extractor(
-                        precomputed_attrs=precomputed)
-                else:
-                    semantic_attrs = self.semantic_extractor(
-                        raw_images=data_dict.get('raw_frames'))
-            else:
-                semantic_attrs = data_dict.get('semantic_attrs', None)
-
-            # -- Augment semantic vector with Tier 1 + Tier 2 ------------------
-            # Per-tier normalization: each category is LayerNorm'd independently
-            # before concatenation. This prevents a single downstream LayerNorm
-            # from losing per-category signal structure (e.g., consistency rules
-            # are mostly near 0, forensic features have different variance).
-            if semantic_attrs is not None:
-                # Tier 0: base FaceBench attributes (B, 211)
-                # Compute consistency rules BEFORE normalizing base attrs
-                consistency_feats = None
-                if self.use_consistency_rules:
-                    consistency_feats = self.consistency_rules(semantic_attrs)
-
-                # Now normalize each tier independently
-                sem_parts = []
-                if self._base_sem_dim > 0 and hasattr(self, 'tier0_norm'):
-                    sem_parts.append(self.tier0_norm(semantic_attrs))
-                else:
-                    sem_parts.append(semantic_attrs)
-
-                # Tier 1: cross-attribute consistency rules (differentiable)
-                if self.use_consistency_rules and consistency_feats is not None:
-                    sem_parts.append(self.tier1_norm(consistency_feats))
-
-                # Tier 2: precomputed forensic features
-                if self.use_forensic_features:
-                    forensic_feats = data_dict.get('forensic_features')
-                    if forensic_feats is not None:
-                        sem_parts.append(
-                            self.tier2_norm(forensic_feats.to(semantic_attrs.device)))
-                    else:
-                        # Zero-fill if not available (graceful fallback)
-                        B = semantic_attrs.shape[0]
-                        sem_parts.append(torch.zeros(
-                            B, self._tier2_dim, device=semantic_attrs.device))
-
-                # Concatenate: (B, 211 + tier1 + tier2) = (B, 259)
-                if len(sem_parts) > 1:
-                    semantic_attrs = torch.cat(sem_parts, dim=1)
-
-            # Apply semantic feature gate on full augmented vector
-            if (self.use_semantic_gate and semantic_attrs is not None
-                    and hasattr(self, 'semantic_gate')):
-                gate = torch.sigmoid(self.semantic_gate)  # (augmented_dim,)
-                semantic_attrs = semantic_attrs * gate.unsqueeze(0)
-
-            label = data_dict.get('label', None) if not inference else None
-
-            # Detach SAE features: causal graphs learn on stable features,
-            # preventing the moving-target problem where DAGMA-DCE tries to
-            # discover structure in a non-stationary distribution.
-            # Gradients still flow from causal_delta → attention fusion → classifier.
-            causal_out = self.causal_module(
-                z_spatial=z_spatial.detach() if z_spatial is not None else None,
-                z_freq=z_freq.detach() if z_freq is not None else None,
-                semantic_attrs=semantic_attrs,
-                label=label,
-                return_graph=True,
-            )
-
-        # -- Step 5: Causal attention fusion + Classification -------------------
-        # Query = fused_features attends over 4 causal residuals (keys/values).
-        # Returns causal_delta (B, proj_dim) and attention weights (B, 4).
-        classifier_input = fused_features
-        causal_primitives = None
-        if self.use_causal and causal_out is not None:
-            residuals = {
-                'spatial_real': causal_out['residuals_spatial_real'],
-                'spatial_fake': causal_out['residuals_spatial_fake'],
-                'freq_real':    causal_out['residuals_freq_real'],
-                'freq_fake':    causal_out['residuals_freq_fake'],
-            }
-            causal_delta, attn_weights = self.causal_attn_fusion(
-                fused_features, residuals)
-            causal_primitives = attn_weights   # (B, 4) for interpretability
-            gate_value = torch.sigmoid(self.causal_gate)
-            classifier_input = fused_features + gate_value * causal_delta
-
-        # -- Tier 3: Causal Intervention (train + inference) --------------------
-        # 28 features computed under no_grad (no gradient to SCMs).
-        # ci_projection trains via classification loss backprop.
-        if (self.use_causal_intervention and self.use_causal
-                and semantic_attrs is not None and causal_out is not None):
-            with torch.no_grad():
-                ci_feats = self.causal_intervention(
-                    causal_module=self.causal_module,
-                    causal_out=causal_out,
-                    augmented_semantic=semantic_attrs,
-                    z_spatial=z_spatial.detach() if z_spatial is not None else None,
-                    z_freq=z_freq.detach() if z_freq is not None else None,
-                )  # (B, 28)
-            ci_delta = self.ci_projection(self.ci_norm(ci_feats))
-            ci_gate_value = torch.sigmoid(self.ci_gate)
-            classifier_input = classifier_input + ci_gate_value * ci_delta
-
-        # -- Step 5b: Semantic Projection (direct sem → classifier) -------------
-        # Projects the gated 259-d semantic vector into classifier space.
-        # Provides explicit attribute signal that the causal residual pathway
-        # cannot capture (residuals = reconstruction error, not presence/absence).
-        if self.use_semantic_proj and semantic_attrs is not None:
-            sem_delta = self.semantic_proj(semantic_attrs)
-            sem_gate_value = torch.sigmoid(self.semantic_proj_gate)
-            classifier_input = classifier_input + sem_gate_value * sem_delta
-
-        # L2-normalize for hyperspherical representation (GenD recipe)
-        l2_embeddings = F.normalize(classifier_input, p=2, dim=1)
-
-        # Classify on un-normalized features (GenD: normalize for UA loss only)
-        task_outputs = self.classifier(classifier_input)
-        cls_logits = task_outputs['classification']
-        prob = torch.softmax(cls_logits, dim=1)[:, 1]
-
-        pred_dict = {
-            'cls':            cls_logits,
-            'prob':           prob,
-            'feat':           fused_features,
-            'l2_embeddings':  l2_embeddings,
-            'spatial_feat':   raw_feats.get('spatial_raw'),
-            'frequency_feat': raw_feats.get('frequency_raw'),
-            'z_spatial':      z_spatial,
-            'z_freq':         z_freq,
-            # Per-branch causal outputs
-            'causal_out':     causal_out,
-            'causal_primitives':  causal_primitives,    # (B, 4) attn weights
-            # SAE
-            'task_outputs':   task_outputs,
-            'sae_loss':       sae_loss,
-            'sae_info':       sae_info,
-        }
-        return pred_dict
+        raise RuntimeError(
+            f"No active forward path for ablation_mode={self.ablation_mode!r}, "
+            f"ablation_spatial_only={self.ablation_spatial_only}")
 
     # ------------------------------------------------------------------ #
-    #  Loss computation                                                    #
+    #  Loss                                                                #
     # ------------------------------------------------------------------ #
 
     def _compute_ua_loss(self, pred_dict: dict, label: torch.Tensor,
@@ -1359,7 +633,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         label = data_dict['label']
         device = label.device
 
-        # Move class weights to correct device
+        # Move class weights to correct device/dtype
         if hasattr(self.cls_loss, 'weight') and self.cls_loss.weight is not None:
             target_dtype = pred_dict['cls'].dtype
             if (self.cls_loss.weight.device != device
@@ -1371,9 +645,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         ua_align, ua_uniform, ua_weighted = self._compute_ua_loss(
             pred_dict, label, device)
 
-        # -- Ablation 2/3/4: EDL loss ----------------------------------------
+        # -- Ablation 2/3/4: EDL loss ---------------------------------------
         if self._use_edl:
-            # Pass branch evidences for NeSy-EDL (aux + disagreement losses)
             branch_evs = pred_dict.get('branch_evidences', None)
             if self._use_nesy_edl and branch_evs is not None:
                 edl_out = self.edl_loss(
@@ -1390,7 +663,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 )
             total_loss = edl_out['loss']
 
-            # Add DAG penalty for Ablation 4
+            # DAG penalty for Ablation 4
             dag_penalty = torch.zeros(1, device=device).squeeze()
             if self._use_causal_branch and 'dag_penalty' in pred_dict:
                 dag_penalty = pred_dict['dag_penalty']
@@ -1404,177 +677,28 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 'classification':   edl_out['loss'].detach(),
                 'edl_nll':          edl_out['loss_nll'],
                 'edl_kl':           edl_out['loss_kl'],
-                'dag_penalty':      dag_penalty.detach() if isinstance(dag_penalty, torch.Tensor) else dag_penalty,
+                'dag_penalty':      dag_penalty.detach()
+                                    if isinstance(dag_penalty, torch.Tensor)
+                                    else dag_penalty,
                 'ua_alignment':     ua_align.detach(),
                 'ua_uniformity':    ua_uniform.detach(),
-                'causal_real':      torch.zeros(1, device=device).squeeze(),
-                'causal_fake':      torch.zeros(1, device=device).squeeze(),
-                'sparse':           torch.zeros(1, device=device).squeeze(),
-                'causal_semantic':  torch.zeros(1, device=device).squeeze(),
-                'graph_divergence': torch.zeros(1, device=device).squeeze(),
             }
-            # NeSy-EDL extra loss terms
             if 'loss_aux' in edl_out:
                 loss_dict['edl_aux'] = edl_out['loss_aux']
             if 'loss_bdc' in edl_out:
                 loss_dict['edl_bdc'] = edl_out['loss_bdc']
             return loss_dict
 
-        # -- Ablation 1: pure CE loss only -----------------------------------
-        if self.ablation_spatial_only:
-            def _scalar(t):
-                return t.squeeze() if isinstance(t, torch.Tensor) else t
-            overall = cls_loss + ua_weighted
-            return {
-                'overall':            _scalar(overall),
-                'classification':     _scalar(cls_loss),
-                'ua_alignment':       _scalar(ua_align.detach()),
-                'ua_uniformity':      _scalar(ua_uniform.detach()),
-                'causal_real':        torch.zeros(1, device=device).squeeze(),
-                'causal_fake':        torch.zeros(1, device=device).squeeze(),
-                'sparse':             torch.zeros(1, device=device).squeeze(),
-                'causal_semantic':    torch.zeros(1, device=device).squeeze(),
-                'graph_divergence':   torch.zeros(1, device=device).squeeze(),
-            }
-
-        # -- Per-branch dual-graph causal structural losses --------------------
-        causal_loss_real = torch.zeros(1, device=device)
-        causal_loss_fake = torch.zeros(1, device=device)
-        causal_semantic_loss = torch.zeros(1, device=device)
-        graph_div_loss = torch.zeros(1, device=device)
-
-        if self.use_causal:
-            causal_out = pred_dict.get('causal_out')
-            if causal_out is not None:
-                real_mask = (label == 0)
-                fake_mask = (label == 1)
-                dag_w = self.config['causal_module']['dag_learning']['dag_penalty_weight']
-
-                # Structural losses: SCM must reconstruct its target class.
-                # z-feature portion weighted 3x to prevent semantic dominance.
-                # v3: residuals are concatenated [identity(103), forensic(62)].
-                # z_causal(32) is the first portion of each sub-graph's residual.
-                z_c = self.causal_module.z_causal_dim    # 32
-                d_id = self.causal_module.d_identity      # 103
-                for branch in ('spatial', 'freq'):
-                    r_real = causal_out.get(f'residuals_{branch}_real')
-                    r_fake = causal_out.get(f'residuals_{branch}_fake')
-
-                    if r_real is not None and real_mask.any():
-                        r = r_real[real_mask]
-                        # Identity sub-graph: z(0:32) + s(32:103)
-                        z_loss = r[:, :z_c].pow(2).mean() * 3.0
-                        s_loss = r[:, z_c:d_id].pow(2).mean()
-                        # Forensic sub-graph: z(103:135) + s(135:165)
-                        z_loss = z_loss + r[:, d_id:d_id+z_c].pow(2).mean() * 3.0
-                        s_loss = s_loss + r[:, d_id+z_c:].pow(2).mean()
-                        causal_loss_real = causal_loss_real + z_loss + s_loss
-                    if r_fake is not None and fake_mask.any():
-                        r = r_fake[fake_mask]
-                        z_loss = r[:, :z_c].pow(2).mean() * 3.0
-                        s_loss = r[:, z_c:d_id].pow(2).mean()
-                        z_loss = z_loss + r[:, d_id:d_id+z_c].pow(2).mean() * 3.0
-                        s_loss = s_loss + r[:, d_id+z_c:].pow(2).mean()
-                        causal_loss_fake = causal_loss_fake + z_loss + s_loss
-
-                # Semantic graph structural loss (Part A)
-                if self.causal_module.use_semantic_graph:
-                    r_sem_real = causal_out.get('residuals_sem_real')
-                    r_sem_fake = causal_out.get('residuals_sem_fake')
-                    if r_sem_real is not None and real_mask.any():
-                        causal_semantic_loss = causal_semantic_loss + r_sem_real[real_mask].pow(2).mean()
-                    if r_sem_fake is not None and fake_mask.any():
-                        causal_semantic_loss = causal_semantic_loss + r_sem_fake[fake_mask].pow(2).mean()
-
-                # Graph divergence: encourage real≠fake causal graphs.
-                # Negative L1 distance → pushes graphs apart for specialization.
-                # v3: 4 sub-graphs (2 branches × 2 sub-graph types)
-                for branch in ('spatial', 'freq'):
-                    for subgraph in ('identity', 'forensic'):
-                        A_r = causal_out.get(f'A_{branch}_{subgraph}_real')
-                        A_f = causal_out.get(f'A_{branch}_{subgraph}_fake')
-                        if A_r is not None and A_f is not None:
-                            graph_div_loss = graph_div_loss - torch.abs(A_r - A_f).mean()
-
-                # DAG acyclicity penalties (8 graphs: 2 branches × 2 sub-graphs × 2 dist)
-                cm = self.causal_module
-                branch_pairs_for_dag = [
-                    (cm.identity_spatial, 1.0),
-                    (cm.identity_freq, 1.0),
-                    (cm.forensic_spatial, 1.0),
-                    (cm.forensic_freq, 1.0),
-                ]
-                for branch_pair, weight_mult in branch_pairs_for_dag:
-                    causal_loss_real = causal_loss_real + (
-                        dag_w * weight_mult
-                        * branch_pair.causal_learner_real.compute_dag_penalty()
-                    )
-                    causal_loss_fake = causal_loss_fake + (
-                        0.5 * dag_w * weight_mult
-                        * branch_pair.causal_learner_fake.compute_dag_penalty()
-                    )
-
-        # SAE loss
-        sae_loss = pred_dict.get('sae_loss', torch.zeros(1, device=device))
-        if not isinstance(sae_loss, torch.Tensor):
-            sae_loss = torch.zeros(1, device=device)
-
-        # DDP anchor: ensures all params get a gradient even when not used
-        ddp_anchor = torch.zeros(1, device=device)
-        branch_pairs = {
-            'spatial':   (self.spatial_extractor, self.spatial_proj),
-            'frequency': (self.frequency_extractor, self.frequency_proj),
-        }
-        for name, (extractor, proj) in branch_pairs.items():
-            if name not in self.active_branches:
-                ddp_anchor = ddp_anchor + _zero_grad_anchor(extractor, device)
-                ddp_anchor = ddp_anchor + _zero_grad_anchor(proj, device)
-
-        # Tier 3 ci_projection/ci_gate/ci_norm now train via classification loss
-        # (no DDP anchor needed — they get real gradients every step)
-
-        for attr in ('causal_module', 'sparse_ae', 'multitaskhead',
-                     'semantic_extractor', 'causal_attn_fusion',
-                     'semantic_proj'):
-            mod = getattr(self, attr, None)
-            if mod is not None:
-                ddp_anchor = ddp_anchor + _zero_grad_anchor(mod, device)
-        for gate_name in ('semantic_gate', 'causal_gate', 'semantic_proj_gate'):
-            gate = getattr(self, gate_name, None)
-            if gate is not None and isinstance(gate, nn.Parameter):
-                ddp_anchor = ddp_anchor + gate.sum() * 0.0
-
-        # Loss weights
-        w = self.loss_weights
-        w_causal      = w.get('causal', 0.0)
-        w_causal_fake = w.get('causal_fake', w_causal * 0.5)
-        w_causal_sem  = w.get('causal_semantic', 0.0)
-        w_graph_div   = w.get('graph_divergence', 0.0)
-
-        total_loss = (
-            w.get('classification', 1.0) * cls_loss
-            + w_causal                   * causal_loss_real
-            + w_causal_fake              * causal_loss_fake
-            + w.get('sparse', 0.0)       * sae_loss
-            + w_causal_sem               * causal_semantic_loss
-            + w_graph_div                * graph_div_loss
-            + ua_weighted
-            + ddp_anchor
-        )
-
+        # -- Ablation 1: pure CE + UA ---------------------------------------
         def _scalar(t):
             return t.squeeze() if isinstance(t, torch.Tensor) else t
 
+        overall = cls_loss + ua_weighted
         return {
-            'overall':            _scalar(total_loss),
-            'classification':     _scalar(cls_loss),
-            'ua_alignment':       _scalar(ua_align.detach()),
-            'ua_uniformity':      _scalar(ua_uniform.detach()),
-            'causal_real':        _scalar(causal_loss_real),
-            'causal_fake':        _scalar(causal_loss_fake),
-            'sparse':             _scalar(sae_loss),
-            'causal_semantic':    _scalar(causal_semantic_loss),
-            'graph_divergence':   _scalar(graph_div_loss),
+            'overall':        _scalar(overall),
+            'classification': _scalar(cls_loss),
+            'ua_alignment':   _scalar(ua_align.detach()),
+            'ua_uniformity':  _scalar(ua_uniform.detach()),
         }
 
     # ------------------------------------------------------------------ #
@@ -1588,11 +712,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             label.detach().float(), pred.detach().float())
         metrics = {'acc': acc, 'auc': auc, 'eer': eer, 'ap': ap}
 
-        if self.ablation_spatial_only and not self._use_edl:
-            self.video_names = []
-            return metrics
-
-        # EDL ablation metrics
         if self._use_edl:
             if 'uncertainty' in pred_dict:
                 metrics['uncertainty_mean'] = float(
@@ -1601,37 +720,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 metrics['concept_gate'] = float(pred_dict['concept_gate'].item())
             if 'causal_gate' in pred_dict:
                 metrics['causal_gate'] = float(pred_dict['causal_gate'].item())
-            # NeSy-EDL: branch confidence and CMEF temperature
             if 'concept_conf' in pred_dict:
                 metrics['concept_conf'] = float(pred_dict['concept_conf'].item())
             if 'causal_conf' in pred_dict:
                 metrics['causal_conf'] = float(pred_dict['causal_conf'].item())
             if 'cmef_tau' in pred_dict:
                 metrics['cmef_tau'] = float(pred_dict['cmef_tau'].item())
-            self.video_names = []
-            return metrics
-
-        # SAE diagnostics
-        sae_info = pred_dict.get('sae_info', {})
-        for branch_name, branch_info in sae_info.items():
-            if isinstance(branch_info, dict):
-                metrics[f'sae_{branch_name}_l0']   = float(branch_info.get('l0', 0))
-                metrics[f'sae_{branch_name}_fvu']  = float(branch_info.get('fvu', 0))
-                metrics[f'sae_{branch_name}_dead'] = int(branch_info.get('n_dead', 0))
-
-        # Causal attention weights (interpretability)
-        causal_primitives = pred_dict.get('causal_primitives')
-        if causal_primitives is not None:
-            aw = causal_primitives.detach().float().mean(0)  # (4,)
-            for i, name in enumerate(CausalViolationAttentionFusion.RESIDUAL_KEYS):
-                metrics[f'attn_{name}'] = float(aw[i])
-
-        # Gate values (monitor how much each pathway contributes)
-        if hasattr(self, 'causal_gate'):
-            metrics['causal_gate'] = float(torch.sigmoid(self.causal_gate).item())
-        if hasattr(self, 'semantic_proj_gate') and self.semantic_proj_gate is not None:
-            metrics['sem_proj_gate'] = float(
-                torch.sigmoid(self.semantic_proj_gate).item())
 
         self.video_names = []
         return metrics

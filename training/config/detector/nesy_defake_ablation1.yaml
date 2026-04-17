@@ -140,9 +140,6 @@ fusion:
 # -----------------------------------------------------------------------------
 # ALL NeSy modules DISABLED
 # -----------------------------------------------------------------------------
-semantic_gate:
-  enabled: false
-
 semantic_attributes:
   enabled: false
   backend: precomputed
@@ -162,66 +159,6 @@ forensic_features:
   enabled: false
   output_dim: 83
   precomputed_dir: forensic_features
-
-causal_intervention:
-  enabled: false
-  output_dim: 28
-  top_k_interventions: 10
-  graph_guided_alpha: 0.5
-  ci_gate_init: -2.0
-
-semantic_projection:
-  enabled: false
-  hidden_dim: 128
-  dropout: 0.2
-  gate_init: -1.0
-
-causal_attention:
-  attn_dim: 256
-
-causal_module:
-  enabled: false
-  causal_warmup_batches: -1
-  latent_variables:
-    z_spatial_dim:    128
-    z_frequency_dim:  128
-    z_causal_dim:     32
-  semantic_dim: 211
-  dual_subgraph: true
-  discovery:
-    algorithm:              dagma_dce
-    scm_type:               linear
-    max_parents:            3
-    sparsity_penalty:       0.01
-    jacobian_every_n:       4
-    enforce_directionality: true
-  semantic_graph:
-    enabled:    false
-    hidden_dim: 64
-    num_layers: 2
-  dag_learning:
-    hidden_dim:          128
-    num_layers:          2
-    learning_rate:       0.001
-    dag_penalty_weight:  0.1
-
-sparse_features:
-  enabled: false
-  per_branch: false
-  dict_size: 1024
-  target_k: 128
-  dead_feature_window: 200
-  aux_loss_coeff: 0.2
-  normalize_inputs: true
-  sparse_autoencoder:
-    input_dim:              1024
-    expansion_factor:       1
-    sparsity_penalty:       0.05
-    l1_coefficient:         0.001
-    target_active_features: 128
-  discovered_features:
-    save_interpretations: true
-    top_k_features:       10
 
 # -----------------------------------------------------------------------------
 # Classifier — LINEAR PROBE (GenD-style)
@@ -248,10 +185,6 @@ loss_func:
   sparse_penalty:         l1_norm
   weights:
     classification:     1.0
-    causal:             0.0
-    sparse:             0.0
-    causal_semantic:    0.0
-    graph_divergence:   0.0
 
 loss_warmup: {}
 
