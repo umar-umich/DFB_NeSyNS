@@ -61,6 +61,20 @@ parser.add_argument('--output_dir', type=str, default=None,
                     help='Output directory (default: logs/test/<auto>)')
 parser.add_argument('--batch_size', type=int, default=256,
                     help='Override test batch size')
+# ── Interpretability / t-SNE ────────────────────────────────────────────
+parser.add_argument('--tsne_mode', type=str, default=None,
+                    choices=['best', 'worst', 'random', 'all'],
+                    help='If set, generate a t-SNE plot per test dataset on '
+                         'the top-K samples selected by this mode. '
+                         '"best"=highest-confidence correct, '
+                         '"worst"=highest-confidence wrong, '
+                         '"random"=uniform sample, '
+                         '"all"=produce all three.')
+parser.add_argument('--tsne_top_k', type=int, default=500,
+                    help='Sample budget for t-SNE (default: 500).')
+parser.add_argument('--tsne_feature_key', type=str, default='feat',
+                    help='Prediction-dict key used as embedding '
+                         '(e.g. feat, l2_embeddings).')
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -377,8 +391,12 @@ def prepare_testing_data(config):
 
 
 @torch.no_grad()
-def run_inference(model, data_loader):
-    """Run inference on a single dataset, returns predictions, labels, file names."""
+def run_inference(model, data_loader, interp_engine=None):
+    """Run inference on a single dataset, returns predictions, labels, file names.
+
+    If *interp_engine* is provided, each batch's prediction dict is forwarded
+    to the engine so analyzers (e.g. t-SNE) can accumulate their signals.
+    """
     prediction_lists = []
     label_lists = []
 
@@ -393,6 +411,9 @@ def run_inference(model, data_loader):
 
         predictions = model(data_dict, inference=True)
         prob = predictions['prob'].cpu().numpy()  # shape: (B,)
+
+        if interp_engine is not None:
+            interp_engine.collect_batch(predictions, data_dict['label'])
 
         label_lists.append(data_dict['label'].cpu().numpy())
         prediction_lists.append(prob)
@@ -477,11 +498,51 @@ def main():
         print(f'Evaluating: {dataset_name}')
         print(f'{"="*60}')
 
-        probs, labels, img_names = run_inference(model, data_loader)
-
         # Always create per-dataset subdirectory
         ds_out_dir = os.path.join(out_dir, dataset_name)
         os.makedirs(ds_out_dir, exist_ok=True)
+
+        # Build an interpretability engine for this dataset if --tsne_mode
+        # was supplied. The engine is kept minimal (only the tsne analyzer
+        # is activated here, since other analyzers depend on training-time
+        # signals that may not be present at test time).
+        interp_engine = None
+        if args.tsne_mode is not None:
+            try:
+                from interpretability.engine import InterpretabilityEngine
+                interp_cfg = {
+                    'levels': {
+                        'edl_uncertainty': False,
+                        'branch_evidence': False,
+                        'consistency_rules': False,
+                        'ccv_analysis': False,
+                        'scm_analysis': False,
+                        'gate_analysis': False,
+                        'disagreement': False,
+                        'tsne': True,
+                    },
+                    'tsne': {
+                        'enabled': True,
+                        'mode': args.tsne_mode,
+                        'top_k': args.tsne_top_k,
+                        'feature_key': args.tsne_feature_key,
+                    },
+                }
+                engine_cfg = {**config, 'interpretability': interp_cfg}
+                interp_engine = InterpretabilityEngine(
+                    engine_cfg, causal_type=config.get('causal_branch_type', ''))
+            except Exception as e:
+                print(f'[warn] Interpretability engine init failed: {e}')
+                interp_engine = None
+
+        probs, labels, img_names = run_inference(
+            model, data_loader, interp_engine=interp_engine)
+
+        if interp_engine is not None:
+            try:
+                interp_engine.finalize(os.path.join(ds_out_dir, 'interpretability'))
+            except Exception as e:
+                print(f'[warn] Interpretability finalize failed: {e}')
 
         # --- Frame-level metrics ---
         frame_metrics, f_fprs, f_tprs, f_ths, f_precs, f_recs, f_pr_ths, f_eer, f_preds = \

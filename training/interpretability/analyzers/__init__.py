@@ -10,6 +10,7 @@ from .ccv_analysis import CCVAnalyzer
 from .scm_analysis import SCMAnalyzer
 from .gate_analysis import GateAnalyzer
 from .disagreement import DisagreementAnalyzer
+from .tsne_analyzer import TSNEEmbeddingAnalyzer
 
 __all__ = [
     'BaseAnalyzer',
@@ -20,4 +21,5 @@ __all__ = [
     'SCMAnalyzer',
     'GateAnalyzer',
     'DisagreementAnalyzer',
+    'TSNEEmbeddingAnalyzer',
 ]

@@ -21,6 +21,7 @@ from .analyzers import (
     EDLUncertaintyAnalyzer,
     GateAnalyzer,
     SCMAnalyzer,
+    TSNEEmbeddingAnalyzer,
 )
 from . import visualization as viz
 
@@ -35,6 +36,9 @@ _DEFAULT_LEVELS = {
     'scm_analysis': True,
     'gate_analysis': True,
     'disagreement': True,
+    # t-SNE is opt-in — disabled by default because sklearn.manifold.TSNE
+    # is O(n^2) and adds a few seconds per test dataset.
+    'tsne': False,
 }
 
 
@@ -86,6 +90,20 @@ class InterpretabilityEngine:
 
         if levels.get('disagreement', True):
             self.analyzers['disagreement'] = DisagreementAnalyzer()
+
+        # ── t-SNE embedding plot (opt-in) ────────────────────────────────
+        tsne_cfg = interp_cfg.get('tsne', {})
+        tsne_enabled = (
+            levels.get('tsne', False) or tsne_cfg.get('enabled', False))
+        if tsne_enabled:
+            self.analyzers['tsne'] = TSNEEmbeddingAnalyzer(
+                mode=tsne_cfg.get('mode', 'worst'),
+                top_k=tsne_cfg.get('top_k', 500),
+                perplexity=tsne_cfg.get('perplexity', 30),
+                n_iter=tsne_cfg.get('n_iter', 1000),
+                feature_key=tsne_cfg.get('feature_key', 'feat'),
+                seed=tsne_cfg.get('seed', 42),
+            )
 
         # Build the set of keys we need from prediction dicts
         self._required_keys = set()
