@@ -99,6 +99,15 @@ load_semantic_features: false
 
 class_weights: [1.6, 0.8]    # [real, fake] — fix fake bias
 
+# -- Cross-dataset regularizers (GenD recipe) --------------------------------
+label_smoothing: 0.0
+uniformity_alignment:
+  enabled: false
+  alignment_weight:  1.0
+  uniformity_weight: 1.0
+  alignment_power:   2.0
+  uniformity_t:      2.0
+
 # -- Projection head type -------------------------------------------------------
 projection_head:
   type: standard               # standard | residual | bottleneck | houlsby
@@ -204,8 +213,6 @@ fusion:
   dropout:        0.0
 
 # -- ALL old NeSy modules DISABLED --------------------------------------------
-uniformity_alignment:
-  enabled: false
 semantic_gate:
   enabled: false
 causal_intervention:

@@ -56,6 +56,15 @@ load_semantic_features: false
 # Without this, model converges with acc_real ~60% / acc_fake ~95%.
 class_weights: [1.4, 0.8]    # [real, fake] — upweight real class
 
+# -- Cross-dataset regularizers (GenD recipe) --------------------------------
+label_smoothing: 0.0
+uniformity_alignment:
+  enabled: false
+  alignment_weight:  1.0
+  uniformity_weight: 1.0
+  alignment_power:   2.0
+  uniformity_t:      2.0
+
 projection_dropout:
   spatial:   0.0              # GenD: no dropout on projection
   frequency: 0.0
@@ -131,9 +140,6 @@ fusion:
 # -----------------------------------------------------------------------------
 # ALL NeSy modules DISABLED
 # -----------------------------------------------------------------------------
-uniformity_alignment:
-  enabled: false              # GenD uses UA, but let's start pure CE first
-
 semantic_gate:
   enabled: false
 

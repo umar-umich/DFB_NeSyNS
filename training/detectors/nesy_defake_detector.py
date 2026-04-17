@@ -72,43 +72,10 @@ from networks.nesy_defake.semantic.forensic_features import (
     FORENSIC_FEATURE_NAMES, get_forensic_feature_names,
 )
 from networks.nesy_defake.semantic.causal_intervention import CausalInterventionModule
+from networks.nesy_defake.losses import alignment, uniformity
 
 logger = logging.getLogger(__name__)
 ALL_BRANCHES = ('spatial', 'frequency')
-
-
-# ---------------------------------------------------------------------------
-# Uniformity-Alignment loss (Wang & Isola, 2020)
-# ---------------------------------------------------------------------------
-
-def uniformity_loss(x: torch.Tensor, t: float = 2.0) -> torch.Tensor:
-    """
-    Uniformity loss on the unit hypersphere.
-    Encourages features to spread evenly, preventing representation collapse.
-    """
-    pdist = torch.pdist(x, p=2).pow(2)
-    return pdist.mul(-t).exp().mean().clamp(min=1e-6).log()
-
-
-def alignment_loss(x: torch.Tensor, labels: torch.Tensor,
-                   alpha: float = 2.0) -> torch.Tensor:
-    """Alignment loss: pull same-class features together on the hypersphere."""
-    device = x.device
-    total = torch.zeros(1, device=device)
-    count = 0
-
-    for c in labels.unique():
-        mask = (labels == c)
-        if mask.sum() < 2:
-            continue
-        x_c = x[mask]
-        dists = torch.pdist(x_c, p=2).pow(alpha)
-        total = total + dists.sum()
-        count += len(dists)
-
-    if count == 0:
-        return torch.zeros(1, device=device)
-    return total / count
 
 
 def _zero_grad_anchor(module: nn.Module, device: torch.device) -> torch.Tensor:
@@ -556,14 +523,20 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 f"gate_init={ci_gate_init} (sigmoid={torch.sigmoid(torch.tensor(ci_gate_init)).item():.3f})"
             )
 
-        # -- L2 normalization + Uniformity-Alignment loss (GenD recipe) ------
+        # -- Uniformity-Alignment auxiliary regularizer (GenD recipe) ---------
+        # Applied on `pred['l2_embeddings']` = F.normalize(projected, p=2, dim=1).
+        # Gradient flows only through spatial_proj + backbone LNs — does NOT
+        # touch concept_branch, causal_branch (CCV/SCM), CMEF, or IBDC.
         ua_cfg = config.get('uniformity_alignment', {})
-        self.use_ua_loss = ua_cfg.get('enabled', True)
-        self.ua_alpha = ua_cfg.get('alignment_weight', 0.1)
-        self.ua_beta = ua_cfg.get('uniformity_weight', 0.5)
-        self.use_l2_norm = ua_cfg.get('l2_normalize', True)
+        self.use_ua_loss = bool(ua_cfg.get('enabled', False))
+        self.ua_alpha = float(ua_cfg.get('alignment_weight', 1.0))
+        self.ua_beta = float(ua_cfg.get('uniformity_weight', 1.0))
+        self.ua_align_power = float(ua_cfg.get('alignment_power', 2.0))
+        self.ua_uniform_t = float(ua_cfg.get('uniformity_t', 2.0))
         if self.use_ua_loss:
-            logger.info(f"  UA loss         : alpha={self.ua_alpha}, beta={self.ua_beta}")
+            logger.info(
+                f"  UA loss         : alignment={self.ua_alpha} (pow={self.ua_align_power}), "
+                f"uniformity={self.ua_beta} (t={self.ua_uniform_t})")
 
         # -- Module 5: Classifier --------------------------------------------
         # EDL maps features to Dirichlet parameters deterministically.
@@ -912,11 +885,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
     def build_loss(self, config: dict) -> None:
         cw = config.get('class_weights', None)
-        if cw is not None:
-            weight = torch.tensor(cw, dtype=torch.float32)
-            self.cls_loss = nn.CrossEntropyLoss(weight=weight)
-        else:
-            self.cls_loss = nn.CrossEntropyLoss()
+        # Label smoothing is load-bearing when UA loss is on: without it,
+        # CE drives logits to infinity and alignment cannot shape the sphere.
+        ls = float(config.get('label_smoothing', 0.0))
+        weight = torch.tensor(cw, dtype=torch.float32) if cw is not None else None
+        self.cls_loss = nn.CrossEntropyLoss(weight=weight, label_smoothing=ls)
+        if ls > 0:
+            logger.info(f"  CE label_smoothing : {ls}")
         self.reg_loss = nn.MSELoss()
 
     # ------------------------------------------------------------------ #
@@ -1360,6 +1335,26 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
     #  Loss computation                                                    #
     # ------------------------------------------------------------------ #
 
+    def _compute_ua_loss(self, pred_dict: dict, label: torch.Tensor,
+                         device: torch.device) -> tuple:
+        """Uniformity-Alignment auxiliary loss (GenD recipe).
+
+        Returns (ua_align, ua_uniform, ua_weighted_sum). All three are
+        scalar tensors on *device*; zeros if UA is disabled or embeddings
+        are missing.
+        """
+        zero = torch.zeros((), device=device)
+        if not self.use_ua_loss:
+            return zero, zero, zero
+        l2_emb = pred_dict.get('l2_embeddings')
+        if l2_emb is None:
+            return zero, zero, zero
+        l2_emb = l2_emb.float()
+        ua_align = alignment(l2_emb, label, alpha=self.ua_align_power)
+        ua_uniform = uniformity(l2_emb, t=self.ua_uniform_t)
+        weighted = self.ua_alpha * ua_align + self.ua_beta * ua_uniform
+        return ua_align, ua_uniform, weighted
+
     def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
         label = data_dict['label']
         device = label.device
@@ -1373,6 +1368,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     device=device, dtype=target_dtype)
 
         cls_loss = self.cls_loss(pred_dict['cls'], label)
+        ua_align, ua_uniform, ua_weighted = self._compute_ua_loss(
+            pred_dict, label, device)
 
         # -- Ablation 2/3/4: EDL loss ----------------------------------------
         if self._use_edl:
@@ -1399,17 +1396,20 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 dag_penalty = pred_dict['dag_penalty']
                 total_loss = total_loss + self._dag_penalty_weight * dag_penalty
 
+            # UA auxiliary regularizer on L2-normalized embeddings
+            total_loss = total_loss + ua_weighted
+
             loss_dict = {
                 'overall':          total_loss,
                 'classification':   edl_out['loss'].detach(),
                 'edl_nll':          edl_out['loss_nll'],
                 'edl_kl':           edl_out['loss_kl'],
                 'dag_penalty':      dag_penalty.detach() if isinstance(dag_penalty, torch.Tensor) else dag_penalty,
+                'ua_alignment':     ua_align.detach(),
+                'ua_uniformity':    ua_uniform.detach(),
                 'causal_real':      torch.zeros(1, device=device).squeeze(),
                 'causal_fake':      torch.zeros(1, device=device).squeeze(),
                 'sparse':           torch.zeros(1, device=device).squeeze(),
-                'ua_alignment':     torch.zeros(1, device=device).squeeze(),
-                'ua_uniformity':    torch.zeros(1, device=device).squeeze(),
                 'causal_semantic':  torch.zeros(1, device=device).squeeze(),
                 'graph_divergence': torch.zeros(1, device=device).squeeze(),
             }
@@ -1424,14 +1424,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         if self.ablation_spatial_only:
             def _scalar(t):
                 return t.squeeze() if isinstance(t, torch.Tensor) else t
+            overall = cls_loss + ua_weighted
             return {
-                'overall':            _scalar(cls_loss),
+                'overall':            _scalar(overall),
                 'classification':     _scalar(cls_loss),
+                'ua_alignment':       _scalar(ua_align.detach()),
+                'ua_uniformity':      _scalar(ua_uniform.detach()),
                 'causal_real':        torch.zeros(1, device=device).squeeze(),
                 'causal_fake':        torch.zeros(1, device=device).squeeze(),
                 'sparse':             torch.zeros(1, device=device).squeeze(),
-                'ua_alignment':       torch.zeros(1, device=device).squeeze(),
-                'ua_uniformity':      torch.zeros(1, device=device).squeeze(),
                 'causal_semantic':    torch.zeros(1, device=device).squeeze(),
                 'graph_divergence':   torch.zeros(1, device=device).squeeze(),
             }
@@ -1513,14 +1514,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                         * branch_pair.causal_learner_fake.compute_dag_penalty()
                     )
 
-        # -- Uniformity-Alignment loss (GenD recipe) --------------------------
-        ua_align = torch.zeros(1, device=device)
-        ua_uniform = torch.zeros(1, device=device)
-        if self.use_ua_loss and pred_dict.get('l2_embeddings') is not None:
-            l2_emb = pred_dict['l2_embeddings']
-            ua_align = alignment_loss(l2_emb, label, alpha=2.0)
-            ua_uniform = uniformity_loss(l2_emb, t=2.0)
-
         # SAE loss
         sae_loss = pred_dict.get('sae_loss', torch.zeros(1, device=device))
         if not isinstance(sae_loss, torch.Tensor):
@@ -1563,10 +1556,9 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             + w_causal                   * causal_loss_real
             + w_causal_fake              * causal_loss_fake
             + w.get('sparse', 0.0)       * sae_loss
-            + self.ua_alpha              * ua_align
-            + self.ua_beta               * ua_uniform
             + w_causal_sem               * causal_semantic_loss
             + w_graph_div                * graph_div_loss
+            + ua_weighted
             + ddp_anchor
         )
 
@@ -1576,11 +1568,11 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         return {
             'overall':            _scalar(total_loss),
             'classification':     _scalar(cls_loss),
+            'ua_alignment':       _scalar(ua_align.detach()),
+            'ua_uniformity':      _scalar(ua_uniform.detach()),
             'causal_real':        _scalar(causal_loss_real),
             'causal_fake':        _scalar(causal_loss_fake),
             'sparse':             _scalar(sae_loss),
-            'ua_alignment':       _scalar(ua_align),
-            'ua_uniformity':      _scalar(ua_uniform),
             'causal_semantic':    _scalar(causal_semantic_loss),
             'graph_divergence':   _scalar(graph_div_loss),
         }

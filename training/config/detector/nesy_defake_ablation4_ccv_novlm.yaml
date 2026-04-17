@@ -83,6 +83,15 @@ load_semantic_features: false
 
 class_weights: [1.8, 0.6]    # [real, fake] — stronger push against fake bias (acc_real was 0.65 at epoch 8)
 
+# -- Cross-dataset regularizers (GenD recipe) --------------------------------
+label_smoothing: 0.0
+uniformity_alignment:
+  enabled: false
+  alignment_weight:  1.0
+  uniformity_weight: 1.0
+  alignment_power:   2.0
+  uniformity_t:      2.0
+
 projection_dropout:
   spatial:   0.0
   frequency: 0.0
@@ -174,8 +183,6 @@ fusion:
   dropout:        0.0
 
 # -- ALL old NeSy modules DISABLED --------------------------------------------
-uniformity_alignment:
-  enabled: false
 semantic_gate:
   enabled: false
 causal_intervention:
