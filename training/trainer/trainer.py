@@ -390,50 +390,6 @@ class Trainer(object):
         self.logger.info(f"Metrics saved to {file_path}")
 
     # ------------------------------------------------------------------
-    # v5.1: Frequency branch gradient utilities
-    # ------------------------------------------------------------------
-
-    def _get_freq_params(self):
-        """
-        Lazily collect frequency extractor parameters for per-branch clipping.
-        Cached after first call since model structure doesn't change.
-        """
-        if not hasattr(self, '_freq_params_cache'):
-            m = self.model.module if isinstance(self.model, DDP) else self.model
-            freq_ext = getattr(m, 'frequency_extractor', None)
-            if freq_ext is not None:
-                self._freq_params_cache = [
-                    p for p in freq_ext.parameters() if p.requires_grad
-                ]
-            else:
-                self._freq_params_cache = []
-        return self._freq_params_cache
-
-    def _clip_freq_gradients(self):
-        """
-        Clip frequency extractor gradients separately from the global clip.
-        
-        Why this is needed:
-          Global clip_grad_norm_ computes ONE L2 norm across all ~304M params.
-          The frequency extractor has ~200K trainable params (LayerNorms + FAD).
-          A gradient spike of magnitude 1000 in a single freq param contributes
-          sqrt(1000²) = 1000 to the per-branch norm, but only 
-          sqrt(1000² / 304M_total_grads) ≈ 0.002 to the global norm.
-          
-          So the global norm can be 0.5 (under max_norm=1.0) while a single
-          freq parameter has gradient 1000 → the spike passes through → NaN
-          in the next forward pass.
-          
-        This method clips freq params to max_norm=2.0 BEFORE the global clip,
-        catching per-branch spikes that the global clip misses.
-        """
-        freq_params = self._get_freq_params()
-        if freq_params:
-            torch.nn.utils.clip_grad_norm_(
-                freq_params, max_norm=self.freq_grad_clip
-            )
-
-    # ------------------------------------------------------------------
     # Training
     # ------------------------------------------------------------------
 
@@ -492,13 +448,6 @@ class Trainer(object):
             # Unscale before clipping so we clip true gradients, not scaled ones
             self.scaler.unscale_(self.optimizer)
 
-            # v5.1: Two-level gradient clipping
-            # Level 1: Per-branch clip on frequency extractor (tighter).
-            # This catches gradient spikes in the freq branch's ~200K params
-            # that get diluted by the global norm across ~304M total params.
-            self._clip_freq_gradients()
-
-            # Level 2: Global clip on all parameters (standard safety net).
             if self.grad_clip:
                 torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(), max_norm=self.grad_clip)
@@ -506,165 +455,8 @@ class Trainer(object):
             # scaler.step() skips the update if gradients contain inf/nan
             self.scaler.step(self.optimizer)
             self.scaler.update()
-            
-            # SAE decoder normalization (prevents encoder/decoder scale drift)
-            m = self.model.module if isinstance(self.model, DDP) else self.model
-            if hasattr(m, 'sparse_ae') and m.sparse_ae is not None:
-                if hasattr(m, 'use_sparse') and m.use_sparse:
-                    m.sparse_ae.normalize_decoder_weights()
 
             return losses, predictions
-
-    # ------------------------------------------------------------------
-    # Causal warmup
-    # ------------------------------------------------------------------
-
-    def _run_causal_warmup(self, dataloader, n_batches: int, label_filter: int = 0):
-        """
-        Pre-populate one causal graph's EMA buffer before training starts.
-
-        Called twice at epoch 0:
-          label_filter=0 → warms up A_real (real-face biomechanical graph)
-          label_filter=1 → warms up A_fake (generator artifact graph)
-
-        Why two warmups:
-          Both EMA buffers initialise to zeros. Starting phase 3 training
-          without pre-populating them means the first violation/conformance
-          scores are meaningless, and the contrastive loss may backfire
-          (pushing the wrong direction before any graph structure exists).
-
-          Real warmup: biologically initialises A_real from genuine facial
-          biomechanics before any fake data influences the graph.
-          Fake warmup: initialises A_fake from generator artifact patterns
-          before any classification gradient biases the fake SCM.
-
-        Strategy:
-          - Freeze all params EXCEPT causal_module
-          - Filter each batch to only the target distribution (real or fake)
-          - Run backbone + SAE under no_grad
-          - Run causal_module with grad (for Jacobian); EMA updates as side-effect
-          - Restore trainable states after warmup
-        """
-        filter_name = 'real' if label_filter == 0 else 'fake'
-        graph_name  = 'A_real' if label_filter == 0 else 'A_fake'
-
-        m = self.model.module if isinstance(self.model, DDP) else self.model
-
-        # Freeze everything except causal_module
-        frozen_params = set()
-        for name, param in m.named_parameters():
-            if 'causal_module' not in name and param.requires_grad:
-                param.requires_grad = False
-                frozen_params.add(name)
-
-        m.train()
-        n_done = 0
-
-        for data_dict in dataloader:
-            if n_batches > 0 and n_done >= n_batches:
-                break
-            if 'label' not in data_dict:
-                continue
-
-            for key in data_dict.keys():
-                val = data_dict[key]
-                if val is not None and isinstance(val, torch.Tensor) and key != 'name':
-                    data_dict[key] = val.cuda(non_blocking=True)
-
-            label = data_dict['label']
-            target_mask = (label == label_filter)
-            if not target_mask.any():
-                continue   # skip batches with none of the target class
-
-            # Filter batch to target distribution
-            target_dict = {
-                k: (v[target_mask] if isinstance(v, torch.Tensor) else v)
-                for k, v in data_dict.items()
-            }
-
-            # Backbone + SAE (no grad — these are frozen)
-            with torch.no_grad():
-                raw_feats  = m.extract_raw_features(target_dict)
-                z_spatial, z_freq = None, None
-                if m.use_sparse:
-                    z_spatial, z_freq, _, _ = m.sparse_ae(
-                        spatial_feat=raw_feats.get('spatial_raw'),
-                        frequency_feat=raw_feats.get('frequency_raw'),
-                    )
-
-            # Causal module needs grad for Jacobian → run outside no_grad.
-            # Compute semantic attrs from dedicated face model if enabled.
-            if getattr(m, 'use_semantic_attrs', False) and m.semantic_extractor is not None:
-                with torch.no_grad():
-                    if m.semantic_extractor.is_precomputed:
-                        precomputed = target_dict.get('precomputed_attrs')
-                        if precomputed is None:
-                            precomputed = target_dict.get('semantic_attrs')
-                        semantic_attrs = m.semantic_extractor(
-                            precomputed_attrs=precomputed)
-                    else:
-                        semantic_attrs = m.semantic_extractor(
-                            raw_images=target_dict.get('raw_frames'))
-                semantic_attrs = semantic_attrs.detach()
-            else:
-                semantic_attrs = target_dict.get('semantic_attrs', None)
-                if semantic_attrs is not None:
-                    semantic_attrs = semantic_attrs.detach()
-
-            # Augment semantic vector with Tier 1 + Tier 2 (mirrors detector forward)
-            if semantic_attrs is not None:
-                sem_parts = [semantic_attrs]
-                if getattr(m, 'use_consistency_rules', False):
-                    with torch.no_grad():
-                        consistency_feats = m.consistency_rules(semantic_attrs)
-                    sem_parts.append(consistency_feats.detach())
-                if getattr(m, 'use_forensic_features', False):
-                    forensic_feats = target_dict.get('forensic_features')
-                    if forensic_feats is not None:
-                        sem_parts.append(forensic_feats.to(semantic_attrs.device).detach())
-                    else:
-                        B = semantic_attrs.shape[0]
-                        sem_parts.append(torch.zeros(
-                            B, getattr(m, '_tier2_dim', 30),
-                            device=semantic_attrs.device))
-                if len(sem_parts) > 1:
-                    semantic_attrs = torch.cat(sem_parts, dim=1)
-
-            m.causal_module(
-                z_spatial=(z_spatial.detach() if z_spatial is not None else None),
-                z_freq=(z_freq.detach() if z_freq is not None else None),
-                semantic_attrs=semantic_attrs,
-                label=target_dict['label'],
-                return_graph=False,
-            )
-
-            n_done += 1
-            if n_done % 50 == 0 and is_main_process():
-                self.logger.info(
-                    f"  Causal warmup ({filter_name}): {n_done}/"
-                    f"{'all' if n_batches < 0 else n_batches} batches"
-                )
-
-        # Restore trainable states
-        for name, param in m.named_parameters():
-            if name in frozen_params:
-                param.requires_grad = True
-
-        # Report EMA state for the target graphs (per-branch, per-subgraph)
-        if is_main_process() and hasattr(m, 'causal_module'):
-            cm = m.causal_module
-            for pair_name in ('identity_spatial', 'identity_freq',
-                              'forensic_spatial', 'forensic_freq'):
-                pair = getattr(cm, pair_name, None)
-                if pair is None:
-                    continue
-                learner = (pair.causal_learner_real if label_filter == 0
-                           else pair.causal_learner_fake)
-                self.logger.info(
-                    f"  Causal warmup ({filter_name}/{pair_name}): "
-                    f"{n_done} batches. "
-                    f"{graph_name} EMA initialized: {learner._ema_initialized}"
-                )
 
     def train_epoch(self, epoch, train_data_loader, test_data_loaders=None):
         self.logger.info("===> Epoch[{}] start!".format(epoch))
@@ -678,48 +470,6 @@ class Trainer(object):
                     f"  Loss warmup weights: "
                     + ", ".join(f"{k}={v:.4f}" for k, v in m.loss_weights.items())
                 )
-
-        # ── Causal warmup (epoch 0 only) ──────────────────────────────────
-        # Pre-populate EMA buffers before training starts. All modules
-        # train from epoch 0; causal gate init=-3.0 naturally suppresses
-        # causal influence until the module learns meaningful graphs.
-        m_causal = self.model.module if isinstance(self.model, DDP) else self.model
-
-        if epoch == 0 and getattr(m_causal, 'use_causal', False):
-            self.logger.info(f"===> Causal warmup at epoch {epoch}")
-            causal_warmup_batches = (
-                self.config.get('causal_module', {})
-                .get('causal_warmup_batches', 100)
-            )
-            if causal_warmup_batches != 0:
-                n_label = ("all" if causal_warmup_batches < 0
-                           else str(causal_warmup_batches))
-                self.logger.info(
-                    f"  Causal warmup — real graph: "
-                    f"{n_label} real-face batches..."
-                )
-                self._run_causal_warmup(
-                    train_data_loader,
-                    n_batches=causal_warmup_batches,
-                    label_filter=0,
-                )
-                self.logger.info(
-                    f"  Causal warmup — fake graph: "
-                    f"{n_label} fake-face batches..."
-                )
-                self._run_causal_warmup(
-                    train_data_loader,
-                    n_batches=causal_warmup_batches,
-                    label_filter=1,
-                )
-
-            from training.train import choose_optimizer, choose_scheduler
-            self.optimizer = choose_optimizer(self.model, self.config)
-            self.scheduler = choose_scheduler(self.config, self.optimizer)
-            self.logger.info("  Optimizer and scheduler rebuilt after causal warmup.")
-
-            if hasattr(self, '_freq_params_cache'):
-                del self._freq_params_cache
 
         # ── Rest of train_epoch unchanged ─────────────────────────────────
         times_per_epoch = 1
@@ -1039,20 +789,6 @@ class Trainer(object):
         synchronize()
 
         self.logger.info('===> Test Done!')
-
-        # -- Graph visualization (Part C) --
-        if is_main_process():
-            interp = self.config.get('interpretability', {})
-            viz_every = interp.get('graph_viz_every_n_epochs', 5)
-            if interp.get('save_causal_graphs', False) and epoch % viz_every == 0:
-                m = self.model.module if isinstance(self.model, DDP) else self.model
-                if hasattr(m, 'causal_module') and getattr(m, 'use_causal', False):
-                    try:
-                        from detectors.utils.graph_visualization import save_all_causal_graphs
-                        top_k = interp.get('graph_viz_top_k', 20)
-                        save_all_causal_graphs(m.causal_module, self.log_dir, epoch, top_k=top_k)
-                    except Exception as e:
-                        self.logger.warning(f"Graph visualization failed: {e}")
 
         return self.best_metrics_all_time
 

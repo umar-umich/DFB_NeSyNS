@@ -225,115 +225,62 @@ def choose_optimizer(model, config):
                 seen_ids.add(id(p))
                 group_list.append(p)
 
-    # Group 1: Backbone LayerNorm params
+    # Group 1: Backbone LayerNorm params (spatial CLIP LNs)
     g1 = []
-    for attr in ('spatial_extractor', 'frequency_extractor'):
-        ext = getattr(m, attr, None)
-        if ext is not None and hasattr(ext, 'get_trainable_params'):
-            _add(ext.get_trainable_params(), g1)
+    ext = getattr(m, 'spatial_extractor', None)
+    if ext is not None and hasattr(ext, 'get_trainable_params'):
+        _add(ext.get_trainable_params(), g1)
 
-    # Group 2: always_trainable (freq_norm etc, excluding phase_proj)
+    # Group 2: always_trainable
     g2 = []
-    for attr in ('spatial_extractor', 'frequency_extractor'):
-        ext = getattr(m, attr, None)
-        if ext is None or not hasattr(ext, 'get_always_trainable_params'):
-            continue
+    if ext is not None and hasattr(ext, 'get_always_trainable_params'):
         for p in ext.get_always_trainable_params():
-            freq_ext = getattr(m, 'frequency_extractor', None)
-            if (freq_ext is not None
-                    and hasattr(freq_ext, 'phase_proj')
-                    and freq_ext.phase_proj is not None
-                    and any(id(p) == id(pp)
-                            for pp in freq_ext.phase_proj.parameters())):
-                continue
             if p.requires_grad and id(p) not in seen_ids:
                 seen_ids.add(id(p))
                 g2.append(p)
 
-    # Group 3: phase_proj
+    # Group 3: Projection head (spatial)
     g3 = []
-    freq_ext = getattr(m, 'frequency_extractor', None)
-    if (freq_ext is not None
-            and hasattr(freq_ext, 'phase_proj')
-            and freq_ext.phase_proj is not None):
-        _add(list(freq_ext.phase_proj.parameters()), g3)
+    if getattr(m, 'spatial_proj', None) is not None:
+        _add(list(m.spatial_proj.parameters()), g3)
 
-    # Group 4: Projection heads
+    # Group 4: Classifier
     g4 = []
-    for attr in ('spatial_proj', 'frequency_proj'):
-        mod = getattr(m, attr, None)
-        if mod is not None:
-            _add(list(mod.parameters()), g4)
-
-    # Group 5: Fusion
-    g5 = []
-    if hasattr(m, 'fusion'):
-        _add(list(m.fusion.parameters()), g5)
-
-    # Group 6: Classifier
-    g6 = []
     if hasattr(m, 'multitaskhead'):
-        _add(list(m.multitaskhead.parameters()), g6)
+        _add(list(m.multitaskhead.parameters()), g4)
 
-    # Group 7: Optional modules (always built at init for phase-transition activation)
-    # Note: causal_module includes causal_semantic (Part A) as a sub-module,
-    # so its parameters are automatically included via causal_module.parameters().
-    g7 = []
-    for attr in ('causal_module', 'sparse_ae',
-                 'semantic_extractor',
-                 'causal_attn_fusion',
-                 ):
-        mod = getattr(m, attr, None)
-        if mod is not None:
-            _add(list(mod.parameters()), g7)
-    # Semantic gate + causal gate + ci_gate (nn.Parameter, not modules)
-    for gate_attr in ('semantic_gate', 'causal_gate', 'ci_gate'):
-        gate = getattr(m, gate_attr, None)
-        if gate is not None and isinstance(gate, nn.Parameter):
-            _add([gate], g7)
-    # Tier 3 intervention projection + normalization
-    for ci_attr in ('ci_projection', 'ci_norm'):
-        ci_mod = getattr(m, ci_attr, None)
-        if ci_mod is not None:
-            _add(list(ci_mod.parameters()), g7)
-
-    # Group 8: Concept branch (Ablation 3+)
-    g8_concept = []
+    # Group 5: Concept branch (Ablation 3+)
+    g5_concept = []
     if hasattr(m, 'concept_branch'):
-        _add(list(m.concept_branch.parameters()), g8_concept)
+        _add(list(m.concept_branch.parameters()), g5_concept)
     if hasattr(m, 'concept_gate') and isinstance(m.concept_gate, nn.Parameter):
-        _add([m.concept_gate], g8_concept)
+        _add([m.concept_gate], g5_concept)
 
-    # Group 9: Causal branch (Ablation 4)
-    g9_causal = []
+    # Group 6: Causal branch (Ablation 4) + CMEF + conditioned gate
+    g6_causal = []
     if hasattr(m, 'causal_branch'):
-        _add(list(m.causal_branch.parameters()), g9_causal)
+        _add(list(m.causal_branch.parameters()), g6_causal)
     if hasattr(m, 'causal_ev_gate') and isinstance(m.causal_ev_gate, nn.Parameter):
-        _add([m.causal_ev_gate], g9_causal)
-    # CMEF (NeSy-EDL fusion gates + temperature)
+        _add([m.causal_ev_gate], g6_causal)
     if hasattr(m, 'cmef'):
-        _add(list(m.cmef.parameters()), g9_causal)
+        _add(list(m.cmef.parameters()), g6_causal)
+    if getattr(m, 'conditioned_gate', None) is not None:
+        _add(list(m.conditioned_gate.parameters()), g6_causal)
 
     lr_backbone_ln = lr_cfg.get('backbone_layernorms', 1e-5)
     lr_always      = lr_cfg.get('always_trainable',    base_lr)
-    lr_phase_proj  = lr_cfg.get('phase_proj',          base_lr * 3)
     lr_proj_heads  = lr_cfg.get('projection_heads',    base_lr)
-    lr_fusion      = lr_cfg.get('fusion',              base_lr * 2)
     lr_classifier  = lr_cfg.get('classifier',          base_lr * 2)
-
-    lr_concept = lr_cfg.get('concept_branch', base_lr)
-    lr_causal_b = lr_cfg.get('causal_branch', base_lr)
+    lr_concept     = lr_cfg.get('concept_branch',      base_lr)
+    lr_causal_b    = lr_cfg.get('causal_branch',       base_lr)
 
     group_specs = [
         (g1, lr_backbone_ln, 'backbone_layernorms'),
         (g2, lr_always,      'always_trainable'),
-        (g3, lr_phase_proj,  'phase_proj'),
-        (g4, lr_proj_heads,  'projection_heads'),
-        (g5, lr_fusion,      'fusion'),
-        (g6, lr_classifier,  'classifier'),
-        (g7, base_lr,        'optional_modules'),
-        (g8_concept, lr_concept,  'concept_branch'),
-        (g9_causal, lr_causal_b,  'causal_branch'),
+        (g3, lr_proj_heads,  'projection_heads'),
+        (g4, lr_classifier,  'classifier'),
+        (g5_concept, lr_concept,   'concept_branch'),
+        (g6_causal,  lr_causal_b,  'causal_branch'),
     ]
 
     param_groups = []
