@@ -30,7 +30,11 @@ from .base_detector import AbstractDetector
 from detectors import DETECTOR
 
 from networks.nesy_defake.foundation_models import SpatialFeatureExtractor
-from networks.nesy_defake.classifiers import MultiTaskHead
+from networks.nesy_defake.classifiers import (
+    MultiTaskHead,
+    FeatureConditionedGate,
+    build_projection_head,
+)
 from networks.nesy_defake.losses import alignment, uniformity
 
 logger = logging.getLogger(__name__)
@@ -42,95 +46,6 @@ def _zero_grad_anchor(module: nn.Module, device: torch.device) -> torch.Tensor:
         if p.requires_grad:
             anchor = anchor + p.sum() * 0.0
     return anchor
-
-
-# --------------------------------------------------------------------------- #
-# Projection-head variants (selected via config['projection_head']['type'])    #
-# --------------------------------------------------------------------------- #
-
-def _make_projection(in_dim: int, out_dim: int, dropout: float = 0.0) -> nn.Sequential:
-    layers = [nn.Linear(in_dim, out_dim), nn.LayerNorm(out_dim), nn.GELU()]
-    if dropout > 0.0:
-        layers.append(nn.Dropout(dropout))
-    return nn.Sequential(*layers)
-
-
-class ResidualProjection(nn.Module):
-    """output = x + alpha * projection(x). Alpha learnable, small-init.
-
-    Early training behaves like a linear probe; model learns how much
-    task-specific correction to apply via alpha.
-    """
-
-    def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0,
-                 alpha_init: float = 0.1):
-        super().__init__()
-        self.proj = _make_projection(in_dim, out_dim, dropout)
-        self.alpha = nn.Parameter(torch.tensor(alpha_init))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.alpha * self.proj(x)
-
-
-class BottleneckAdapter(nn.Module):
-    """Down -> act -> up, skip-connected (Houlsby et al., 2019 — no alpha)."""
-
-    def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0,
-                 bottleneck_ratio: int = 4):
-        super().__init__()
-        neck_dim = in_dim // bottleneck_ratio
-        self.down = nn.Linear(in_dim, neck_dim)
-        self.act = nn.GELU()
-        self.up = nn.Linear(neck_dim, out_dim)
-        self.norm = nn.LayerNorm(out_dim)
-        self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.norm(x + self.dropout(self.up(self.act(self.down(x)))))
-
-
-class HoulsbyAdapter(nn.Module):
-    """Bottleneck + learnable residual scale (Houlsby et al., ICML 2019)."""
-
-    def __init__(self, in_dim: int, out_dim: int, dropout: float = 0.0,
-                 bottleneck_ratio: int = 4, alpha_init: float = 0.1):
-        super().__init__()
-        neck_dim = in_dim // bottleneck_ratio
-        self.down = nn.Linear(in_dim, neck_dim)
-        self.act = nn.GELU()
-        self.up = nn.Linear(neck_dim, out_dim)
-        self.norm = nn.LayerNorm(out_dim)
-        self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
-        self.alpha = nn.Parameter(torch.tensor(alpha_init))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        adapted = self.dropout(self.up(self.act(self.down(x))))
-        return self.norm(x + self.alpha * adapted)
-
-
-class FeatureConditionedGate(nn.Module):
-    """Per-image evidence-branch gating via Linear(backbone) -> Sigmoid.
-
-    gate_values = sigmoid(Linear(spatial_raw))  # (B, num_gates)
-
-    Replaces static scalar gates when evidence_gate.conditioned=true —
-    lets the model trust the causal branch more on compressed images,
-    concept branch more on clear frontal faces, etc.
-    """
-
-    def __init__(self, input_dim: int, num_gates: int, gate_inits: list = None):
-        super().__init__()
-        self.linear = nn.Linear(input_dim, num_gates)
-        with torch.no_grad():
-            nn.init.zeros_(self.linear.weight)
-            if gate_inits is not None:
-                for i, val in enumerate(gate_inits):
-                    self.linear.bias[i] = val
-            else:
-                nn.init.constant_(self.linear.bias, -1.0)
-
-    def forward(self, spatial_raw: torch.Tensor) -> torch.Tensor:
-        return torch.sigmoid(self.linear(spatial_raw))
 
 
 @DETECTOR.register_module(module_name='nesydefake_hybrid')
@@ -348,27 +263,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self.spatial_extractor = SpatialFeatureExtractor(config)
 
         proj_dim = config['foundation_models']['spatial']['output_dim']
-        dropout_cfg = config.get('projection_dropout', {})
-        proj_cfg = config.get('projection_head', {})
+        self.spatial_proj = build_projection_head(config, proj_dim, proj_dim)
+
+        proj_cfg = config.get('projection_head', {}) or {}
         proj_type = proj_cfg.get('type', 'standard')
-        dropout = dropout_cfg.get('spatial', 0.2)
-
-        if proj_type == 'residual':
-            alpha_init = proj_cfg.get('alpha_init', 0.1)
-            self.spatial_proj = ResidualProjection(
-                proj_dim, proj_dim, dropout, alpha_init)
-        elif proj_type == 'bottleneck':
-            ratio = proj_cfg.get('bottleneck_ratio', 4)
-            self.spatial_proj = BottleneckAdapter(
-                proj_dim, proj_dim, dropout, ratio)
-        elif proj_type == 'houlsby':
-            ratio = proj_cfg.get('bottleneck_ratio', 4)
-            alpha_init = proj_cfg.get('alpha_init', 0.1)
-            self.spatial_proj = HoulsbyAdapter(
-                proj_dim, proj_dim, dropout, ratio, alpha_init)
-        else:
-            self.spatial_proj = _make_projection(proj_dim, proj_dim, dropout)
-
         if proj_type != 'standard':
             extra = {k: v for k, v in proj_cfg.items() if k != 'type'}
             logger.info(f"  Projection head : type={proj_type}, {extra}")
