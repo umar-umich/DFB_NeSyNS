@@ -75,6 +75,10 @@ parser.add_argument('--tsne_top_k', type=int, default=500,
 parser.add_argument('--tsne_feature_key', type=str, default='feat',
                     help='Prediction-dict key used as embedding '
                          '(e.g. feat, l2_embeddings).')
+parser.add_argument('--rule_error_analysis', action='store_true',
+                    help='Collect per-frame consistency-rule violations '
+                         'and write a slice report (TN/FP/TP/FN firing '
+                         'means + error gaps) per test dataset.')
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -502,28 +506,31 @@ def main():
         ds_out_dir = os.path.join(out_dir, dataset_name)
         os.makedirs(ds_out_dir, exist_ok=True)
 
-        # Build an interpretability engine for this dataset if --tsne_mode
-        # was supplied. The engine is kept minimal (only the tsne analyzer
-        # is activated here, since other analyzers depend on training-time
-        # signals that may not be present at test time).
+        # Build an interpretability engine for this dataset if any
+        # opt-in analyzer was requested via CLI. The engine is kept
+        # minimal (only the requested analyzers are activated), since
+        # other analyzers depend on training-time signals that may not
+        # be present at test time.
         interp_engine = None
-        if args.tsne_mode is not None:
+        want_tsne = args.tsne_mode is not None
+        want_rule_errors = args.rule_error_analysis
+        if want_tsne or want_rule_errors:
             try:
                 from interpretability.engine import InterpretabilityEngine
                 interp_cfg = {
                     'levels': {
                         'edl_uncertainty': False,
                         'branch_evidence': False,
-                        'consistency_rules': False,
+                        'consistency_rules': want_rule_errors,
                         'ccv_analysis': False,
                         'scm_analysis': False,
                         'gate_analysis': False,
                         'disagreement': False,
-                        'tsne': True,
+                        'tsne': want_tsne,
                     },
                     'tsne': {
-                        'enabled': True,
-                        'mode': args.tsne_mode,
+                        'enabled': want_tsne,
+                        'mode': args.tsne_mode or 'worst',
                         'top_k': args.tsne_top_k,
                         'feature_key': args.tsne_feature_key,
                     },
@@ -547,6 +554,20 @@ def main():
         # --- Frame-level metrics ---
         frame_metrics, f_fprs, f_tprs, f_ths, f_precs, f_recs, f_pr_ths, f_eer, f_preds = \
             compute_all_metrics(labels, probs, 'frame')
+
+        # --- Rule-error slice report (uses EER-thresholded frame preds) ---
+        if interp_engine is not None and args.rule_error_analysis:
+            rule_analyzer = interp_engine.analyzers.get('consistency_rules')
+            if rule_analyzer is not None:
+                try:
+                    report = rule_analyzer.slice_report(
+                        f_preds,
+                        os.path.join(ds_out_dir, 'interpretability'),
+                    )
+                    if report:
+                        print(f'  Rule slice report: counts={report["counts"]}')
+                except Exception as e:
+                    print(f'[warn] Rule slice report failed: {e}')
 
         # --- Video-level metrics ---
         video_probs, video_labels, video_ids, video_frames = \
