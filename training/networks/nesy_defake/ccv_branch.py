@@ -205,19 +205,19 @@ class CausalConstraintVerificationBranch(nn.Module):
       2. Forensic anomaly scores (5 features)
       3. Counterfactual predictor mismatch (1 feature)
 
-    Combined with 23 hand-coded consistency rule violations from the
-    ConceptBranch, the total signal is 23 + K + 5 + 1 = ~45-d.
+    Combined with 12 hand-coded consistency rule violations from the
+    ConceptBranch, the total signal is 12 + K + 5 + 1 = ~34-d.
 
     Pipeline:
-      [violations(23) || learned(K) || anomaly(5) || cf(1)] → (B, ~45)
+      [violations(12) || learned(K) || anomaly(5) || cf(1)] → (B, ~34)
       → LayerNorm → Linear → GELU → Dropout → Linear → (B, 2)
       → softplus → evidence (B, 2)
     """
 
     def __init__(
         self,
-        combined_dim: int = 122,
-        rules_dim: int = 23,
+        combined_dim: int = 58,
+        rules_dim: int = 12,
         forensic_dim: int = 83,
         backbone_dim: int = 1024,
         num_constraints: int = 16,
@@ -284,8 +284,8 @@ class CausalConstraintVerificationBranch(nn.Module):
         """
         Args:
             spatial_raw:       (B, 1024) CLIP features (detached internally)
-            combined_features: (B, 122) precomputed [fast || vlm]
-            violations:        (B, 23) hand-coded consistency rule scores
+            combined_features: (B, 58) fast feature vector
+            violations:        (B, 12) hand-coded consistency rule scores
             forensic_features: (B, 83) precomputed forensic features
             labels:            (B,) optional — unused by CCV but accepted
                                for interface compatibility with improved SCM.
@@ -308,7 +308,7 @@ class CausalConstraintVerificationBranch(nn.Module):
 
         # Fuse all signals
         all_signals = torch.cat([
-            violations,            # (B, 23) hand-coded
+            violations,            # (B, 12) hand-coded
             learned_violations,    # (B, K)  learned
             anomaly_scores,        # (B, 5)  forensic groups
             cf_residual,           # (B, 1)  counterfactual

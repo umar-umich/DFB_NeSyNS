@@ -17,8 +17,8 @@ def build_causal_branch(sc_cfg: dict) -> nn.Module:
         from networks.nesy_defake.ccv_branch import (
             CausalConstraintVerificationBranch)
         return CausalConstraintVerificationBranch(
-            combined_dim=sc_cfg.get('combined_dim', 122),
-            rules_dim=sc_cfg.get('rules_dim', 23),
+            combined_dim=sc_cfg.get('combined_dim', 58),
+            rules_dim=sc_cfg.get('rules_dim', 12),
             forensic_dim=sc_cfg.get('forensic_dim', 83),
             backbone_dim=sc_cfg.get('backbone_dim', 1024),
             num_constraints=sc_cfg.get('num_constraints', 16),
@@ -36,8 +36,8 @@ def build_causal_branch(sc_cfg: dict) -> nn.Module:
         return ImprovedCausalBranch(
             backbone_dim=sc_cfg.get('backbone_dim', 1024),
             z_causal_dim=sc_cfg.get('z_causal_dim', 32),
-            curated_dim=sc_cfg.get('curated_dim', 51),
-            rules_dim=sc_cfg.get('rules_dim', 23),
+            curated_dim=sc_cfg.get('curated_dim', 26),
+            rules_dim=sc_cfg.get('rules_dim', 12),
             forensic_dim=sc_cfg.get('forensic_dim', 83),
             scm_hidden_dim=sc_cfg.get('scm_hidden_dim', 64),
             summary_dim=sc_cfg.get('summary_dim', 8),
@@ -51,8 +51,8 @@ def build_causal_branch(sc_cfg: dict) -> nn.Module:
     return SimplifiedCausalBranch(
         backbone_dim=sc_cfg.get('backbone_dim', 1024),
         z_causal_dim=sc_cfg.get('z_causal_dim', 32),
-        curated_dim=sc_cfg.get('curated_dim', 51),
-        rules_dim=sc_cfg.get('rules_dim', 23),
+        curated_dim=sc_cfg.get('curated_dim', 26),
+        rules_dim=sc_cfg.get('rules_dim', 12),
         forensic_dim=sc_cfg.get('forensic_dim', 83),
         hidden_dim=sc_cfg.get('hidden_dim', 64),
         sparsity_penalty=sc_cfg.get('sparsity_penalty', 0.01),

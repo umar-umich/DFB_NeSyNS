@@ -12,10 +12,10 @@ Fixes the fundamental issues in SimplifiedCausalBranch:
      fake SCM fits fake samples only — forces specialization
 
 Sub-graphs (spatial-only, 4 total):
-  Identity:             z(32) + curated(51) + rules(23)      = 106 nodes
-  Forensic-structural:  z(32) + boundary/blur/sym/color (24)  =  56 nodes
+  Identity:             z(32) + curated(26) + rules(12)      =  70 nodes
+  Forensic-structural:  z(32) + boundary/blur/sym/color (30) =  62 nodes
   Forensic-noise:       z(32) + ppnc/ccnc/srm/noise (43)     =  75 nodes
-  Forensic-spectral:    z(32) + dct/fft (16)                  =  48 nodes
+  Forensic-spectral:    z(32) + fft (10)                     =  42 nodes
 
 Each sub-graph has real + fake nonlinear SCMs = 8 SCMs total.
 Per-sub-graph differential residuals are projected to 8-d summaries,
@@ -206,7 +206,7 @@ class ImprovedCausalBranch(nn.Module):
     Improved causal evidence branch with fixes A-D.
 
     4 sub-graphs (spatial-only):
-      1. Identity:            z(32) + curated(51) + rules(23) = 106
+      1. Identity:            z(32) + curated(26) + rules(12) = 70
       2. Forensic-structural: z(32) + features(30) = 62
       3. Forensic-noise:      z(32) + features(43) = 75
       4. Forensic-spectral:   z(32) + features(10) = 42
@@ -224,8 +224,8 @@ class ImprovedCausalBranch(nn.Module):
         self,
         backbone_dim: int = 1024,
         z_causal_dim: int = 32,
-        curated_dim: int = 51,
-        rules_dim: int = 23,
+        curated_dim: int = 26,
+        rules_dim: int = 12,
         forensic_dim: int = 83,
         scm_hidden_dim: int = 64,
         summary_dim: int = 8,
@@ -240,7 +240,7 @@ class ImprovedCausalBranch(nn.Module):
         self.divergence_weight = divergence_weight
         self.recon_weight = recon_weight
 
-        # Curated attribute indices in combined 122-d vector
+        # Curated attribute indices into the 58-d fast feature vector
         self._curated_indices = CAUSAL_ATTRIBUTE_INDICES
 
         # Compress spatial features → z_causal (detached from CLIP)
@@ -249,7 +249,7 @@ class ImprovedCausalBranch(nn.Module):
             self.compressor.weight, std=1.0 / math.sqrt(backbone_dim))
 
         # --- Identity sub-graph ---
-        d_identity = z_causal_dim + curated_dim + rules_dim  # 106
+        d_identity = z_causal_dim + curated_dim + rules_dim  # 70
         self.identity_pair = SubGraphPair(
             d=d_identity, hidden_dim=scm_hidden_dim,
             summary_dim=summary_dim, sparsity_penalty=sparsity_penalty,
@@ -299,8 +299,8 @@ class ImprovedCausalBranch(nn.Module):
         """
         Args:
             spatial_raw:       (B, 1024) CLIP features (detached internally)
-            combined_features: (B, 122) precomputed [fast || vlm]
-            violations:        (B, 23) consistency rule scores
+            combined_features: (B, 58) fast feature vector
+            violations:        (B, 12) consistency rule scores
             forensic_features: (B, 83) precomputed forensic features
             labels:            (B,) optional — for label-conditioned recon loss
         Returns:
@@ -313,8 +313,8 @@ class ImprovedCausalBranch(nn.Module):
         z = self.compressor(spatial_raw.detach())  # (B, 32)
 
         # --- Identity sub-graph ---
-        curated = combined_features[:, self._curated_indices]  # (B, 51)
-        x_identity = torch.cat([z, curated, violations], dim=1)  # (B, 106)
+        curated = combined_features[:, self._curated_indices]   # (B, 26)
+        x_identity = torch.cat([z, curated, violations], dim=1) # (B, 70)
         identity_out = self.identity_pair(x_identity, labels)
 
         # --- Forensic sub-graphs (Fix C: split into 3 groups) ---

@@ -139,8 +139,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             from networks.nesy_defake.concept_branch import ConceptBranch
             cb_cfg = config.get('concept_branch', {})
             self.concept_branch = ConceptBranch(
-                combined_dim=cb_cfg.get('combined_dim', 122),
-                rules_dim=cb_cfg.get('rules_dim', 23),
+                combined_dim=cb_cfg.get('combined_dim', 58),
+                rules_dim=cb_cfg.get('rules_dim', 12),
                 hidden_dim=cb_cfg.get('hidden_dim', 64),
                 dropout=cb_cfg.get('dropout', 0.2),
             )
