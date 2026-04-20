@@ -76,18 +76,6 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
         )
         self.use_semantic = config.get('load_semantic_features', True)
 
-        # ── Precomputed Face-LLaVA semantic features ─────────────────────
-        sem_cfg = config.get('semantic_attributes', {})
-        self.use_precomputed_semantic = (
-            sem_cfg.get('backend') == 'precomputed'
-            and sem_cfg.get('enabled', False)
-        )
-        self._precomputed_subdir = sem_cfg.get(
-            'precomputed_dir', 'facellava_semantic')
-        self._precomputed_dim = sem_cfg.get('precomputed_dim', 211)
-        # Cache: video_base_dir -> {frame_idx: tensor}
-        self._precomputed_cache = {} if self.use_precomputed_semantic else None
-
         # ── Precomputed fast semantic features (InsightFace+MediaPipe+DeepFace)
         fast_cfg = config.get('fast_semantic', {})
         self.use_fast_semantic = fast_cfg.get('enabled', False)
@@ -95,19 +83,6 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             'precomputed_dir', 'fast_semantic')
         self._fast_semantic_dim = fast_cfg.get('output_dim', 58)
         self._fast_semantic_cache = {} if self.use_fast_semantic else None
-
-        # ── VLM feature subset indices (select 64 from 211 FaceBench) ─────
-        # When use_refined_features is True, we select the VLM subset from
-        # the 211-d FaceBench vector and concatenate with fast features.
-        self.use_refined_features = config.get('use_refined_features', False)
-        self._vlm_indices = None
-        self._vlm_dim = 0
-        if self.use_refined_features:
-            from networks.nesy_defake.semantic.refined_attributes import (
-                VLM_INDICES_IN_FACEBENCH, NUM_VLM_FEATURES)
-            self._vlm_dim = NUM_VLM_FEATURES
-            if self.use_precomputed_semantic:
-                self._vlm_indices = torch.LongTensor(VLM_INDICES_IN_FACEBENCH)
 
         # ── Precomputed Tier 2 forensic features ───────────────────────────
         ff_cfg = config.get('forensic_features', {})
@@ -161,7 +136,7 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             f"\n  Augmentation        : {'ON' if aug_active else 'OFF'}"
             f"\n  Balanced sampling   : {'ON' if balance_active else 'OFF'}"
             f"\n  Semantic features   : {'ON' if self.use_semantic else 'OFF'}"
-            f"\n  Precomputed sem.    : {'ON (' + self._precomputed_subdir + ')' if self.use_precomputed_semantic else 'OFF'}"
+            f"\n  Fast semantic (58d) : {'ON (' + self._fast_semantic_subdir + ')' if self.use_fast_semantic else 'OFF'}"
             f"\n  Paired data (GenD)  : {'ON' if self.paired_training else 'OFF'}"
             f"\n  Active branches     : spatial, frequency (no temporal)"
             f"\n{'='*60}\n"
@@ -343,69 +318,6 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
             return np.zeros(SEMANTIC_DIM, dtype=np.float32)
 
     # ------------------------------------------------------------------ #
-    #  Precomputed Face-LLaVA feature loading                              #
-    # ------------------------------------------------------------------ #
-
-    def _load_precomputed_semantic(self, frame_path: str) -> torch.Tensor:
-        """
-        Load precomputed Face-LLaVA 211-d attributes from .pt file.
-        Handles both 'frames/' and 'frames_aug_N/' directories.
-        Returns (precomputed_dim,) tensor. Zero-vector on any failure.
-        """
-        try:
-            sep = "/" if "/" in frame_path else "\\"
-            parts = frame_path.split(sep)
-
-            # Find the frames directory (handles 'frames' and 'frames_aug_N')
-            frames_idx = None
-            for pi, part in enumerate(parts):
-                if part == 'frames' or part.startswith('frames_aug_'):
-                    frames_idx = pi
-                    break
-            if frames_idx is None:
-                return torch.zeros(self._precomputed_dim)
-
-            video_name = parts[frames_idx + 1]
-            base_dir = sep.join(parts[:frames_idx])
-
-            # Cache key
-            cache_key = f"{base_dir}/{video_name}"
-            if cache_key not in self._precomputed_cache:
-                pt_path = os.path.join(
-                    base_dir, self._precomputed_subdir, f'{video_name}.pt')
-                if os.path.exists(pt_path):
-                    data = torch.load(pt_path, map_location='cpu',
-                                      weights_only=False)
-                    self._precomputed_cache[cache_key] = data
-                else:
-                    self._precomputed_cache[cache_key] = None
-
-            cached = self._precomputed_cache[cache_key]
-            if cached is None:
-                return torch.zeros(self._precomputed_dim)
-
-            features = cached['features']  # (n_frames, 211)
-            frame_paths = cached.get('frame_paths', [])
-
-            # Try to find exact frame match
-            if frame_paths:
-                frame_filename = parts[-1]
-                for idx, fp in enumerate(frame_paths):
-                    if fp.endswith(frame_filename):
-                        return features[idx]
-
-            # Fallback: index by frame number
-            frame_filename = parts[-1]
-            frame_num = int(os.path.splitext(frame_filename)[0])
-            if frame_num < features.shape[0]:
-                return features[frame_num]
-
-            return torch.zeros(self._precomputed_dim)
-
-        except Exception:
-            return torch.zeros(self._precomputed_dim)
-
-    # ------------------------------------------------------------------ #
     #  Precomputed Tier 2 forensic feature loading                         #
     # ------------------------------------------------------------------ #
 
@@ -559,26 +471,9 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
 
         semantic_attrs = self._load_semantic_for_frame(frame_path, index)
 
-        # Precomputed semantic features
-        if self.use_refined_features and self.use_fast_semantic and self.use_precomputed_semantic:
-            # Combined mode: [fast(58) || vlm(64)] = 122-d
-            fast_feats = self._load_fast_semantic(frame_path)         # (58,)
-            vlm_feats = self._load_precomputed_semantic(frame_path)   # (64,) or (211,)
-            # If precomputed features are full 211-d FaceBench, select VLM subset
-            if self._vlm_indices is not None and vlm_feats.shape[0] > self._vlm_dim:
-                vlm_feats = vlm_feats[self._vlm_indices]              # (64,)
-            precomputed_attrs = torch.cat([fast_feats, vlm_feats])    # (122,)
-        elif self.use_refined_features and self.use_fast_semantic:
-            # Fast-only mode: [fast(58) || zeros(64)] = 122-d
-            # VLM features not yet available — zero-fill the VLM portion
-            fast_feats = self._load_fast_semantic(frame_path)         # (58,)
-            vlm_zeros = torch.zeros(self._vlm_dim)                    # (64,)
-            precomputed_attrs = torch.cat([fast_feats, vlm_zeros])    # (122,)
-        elif self.use_fast_semantic and not self.use_refined_features:
-            # Fast-only mode without VLM: just fast(58)
-            precomputed_attrs = self._load_fast_semantic(frame_path)   # (58,)
-        elif self.use_precomputed_semantic:
-            precomputed_attrs = self._load_precomputed_semantic(frame_path)
+        # Precomputed fast semantic features (58-d)
+        if self.use_fast_semantic:
+            precomputed_attrs = self._load_fast_semantic(frame_path)
         else:
             precomputed_attrs = torch.zeros(1)  # placeholder
 
