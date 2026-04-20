@@ -4,11 +4,12 @@ networks/nesy_defake/concept_branch.py
 Lightweight neuro-symbolic branches for ablation-based evidence fusion.
 
 ConceptBranch (Ablation 3):
-  122-d combined features -> consistency rules v7 (23-d) -> MLP -> 2-d evidence
+  58-d fast features -> consistency rules v7 (12-d) -> MLP -> 2-d evidence
 
 SimplifiedCausalBranch (Ablation 4):
-  Spatial-only linear SCMs, identity (106) + forensic (115) sub-graphs
-  -> differential residuals -> MLP -> 2-d evidence
+  Spatial-only linear SCMs, identity (z32 + curated26 + rules12 = 70) +
+  forensic (z32 + 83 = 115) sub-graphs -> differential residuals
+  -> MLP -> 2-d evidence.
 
 Both branches produce non-negative evidence vectors that are fused with
 the spatial branch's evidence via gated addition in the detector.
@@ -38,12 +39,12 @@ logger = logging.getLogger(__name__)
 
 class ConceptBranch(nn.Module):
     """
-    Concept evidence branch operating on precomputed semantic features.
+    Concept evidence branch operating on fast semantic features.
 
     Pipeline:
-      combined_features (B, 122)
-        -> CrossAttributeConsistencyRulesV7 -> violations (B, 23)
-        -> concat [combined || violations] = (B, 145)
+      combined_features (B, 58)
+        -> CrossAttributeConsistencyRulesV7 -> violations (B, 12)
+        -> concat [combined || violations] = (B, 70)
         -> LayerNorm -> Linear -> GELU -> Dropout -> Linear -> logits (B, 2)
         -> softplus -> evidence (B, 2)
 
@@ -52,8 +53,8 @@ class ConceptBranch(nn.Module):
 
     def __init__(
         self,
-        combined_dim: int = 122,
-        rules_dim: int = 23,
+        combined_dim: int = 58,
+        rules_dim: int = 12,
         hidden_dim: int = 64,
         num_classes: int = 2,
         dropout: float = 0.2,
@@ -61,7 +62,7 @@ class ConceptBranch(nn.Module):
         super().__init__()
         self.consistency_rules = CrossAttributeConsistencyRulesV7()
 
-        input_dim = combined_dim + rules_dim  # 145
+        input_dim = combined_dim + rules_dim  # 70
         self.concept_mlp = nn.Sequential(
             nn.LayerNorm(input_dim),
             nn.Linear(input_dim, hidden_dim),
@@ -69,7 +70,6 @@ class ConceptBranch(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, num_classes),
         )
-        # Small init so concept evidence starts near zero
         nn.init.normal_(self.concept_mlp[-1].weight, std=0.01)
         nn.init.zeros_(self.concept_mlp[-1].bias)
 
@@ -81,23 +81,15 @@ class ConceptBranch(nn.Module):
     def forward(self, combined_features: torch.Tensor) -> dict:
         """
         Args:
-            combined_features: (B, D) precomputed features, D=122 [fast||vlm] or D=58 [fast only]
+            combined_features: (B, 58) fast feature vector
         Returns:
             dict with 'logits', 'evidence', 'violations', 'concept_input'
         """
-        # Pad to 122-d if fast-only (58-d) so consistency rules indices work.
-        # VLM-dependent rules will produce ~0 (zero × zero), which is correct.
-        if combined_features.shape[1] < 122:
-            pad = combined_features.new_zeros(
-                combined_features.shape[0], 122 - combined_features.shape[1])
-            rules_input = torch.cat([combined_features, pad], dim=1)
-        else:
-            rules_input = combined_features
-        violations = self.consistency_rules(rules_input)  # (B, 23)
+        violations = self.consistency_rules(combined_features)        # (B, 12)
         concept_input = torch.cat(
-            [combined_features, violations], dim=1)             # (B, 145)
-        logits = self.concept_mlp(concept_input)                # (B, 2)
-        evidence = F.softplus(logits)                           # (B, 2)
+            [combined_features, violations], dim=1)                   # (B, 70)
+        logits = self.concept_mlp(concept_input)                      # (B, 2)
+        evidence = F.softplus(logits)                                 # (B, 2)
 
         return {
             'logits': logits,
@@ -116,7 +108,7 @@ class SimplifiedCausalBranch(nn.Module):
     Simplified causal branch: spatial-only, linear SCM, no SAE, no frequency.
 
     Sub-graphs:
-      Identity:  z_causal(32) + curated(51) + rules(23) = 106 nodes
+      Identity:  z_causal(32) + curated(26) + rules(12) = 70 nodes
       Forensic:  z_causal(32) + forensic(83) = 115 nodes
 
     Real/fake SCM pairs learn different causal structures.
@@ -125,10 +117,10 @@ class SimplifiedCausalBranch(nn.Module):
 
     Pipeline:
       spatial_raw (B, 1024) --detach--> compressor -> z (B, 32)
-      x_identity = [z || curated || rules]  (B, 106)
+      x_identity = [z || curated || rules]  (B, 70)
       x_forensic = [z || forensic]          (B, 115)
       -> 4 LinearSCMs (id_real, id_fake, for_real, for_fake)
-      -> differential residuals (B, 221)
+      -> differential residuals (B, 185)
       -> MLP -> logits (B, 2) -> softplus -> evidence (B, 2)
     """
 
@@ -136,8 +128,8 @@ class SimplifiedCausalBranch(nn.Module):
         self,
         backbone_dim: int = 1024,
         z_causal_dim: int = 32,
-        curated_dim: int = 51,
-        rules_dim: int = 23,
+        curated_dim: int = 26,
+        rules_dim: int = 12,
         forensic_dim: int = 83,
         hidden_dim: int = 64,
         num_classes: int = 2,
@@ -147,7 +139,7 @@ class SimplifiedCausalBranch(nn.Module):
         self.z_causal_dim = z_causal_dim
         self.sparsity_penalty = sparsity_penalty
 
-        # Curated attribute indices in combined 122-d vector
+        # Curated attribute indices into the 58-d fast feature vector
         self._curated_indices = CAUSAL_ATTRIBUTE_INDICES
 
         # Compress spatial features -> z_causal (detached from CLIP)
@@ -156,19 +148,19 @@ class SimplifiedCausalBranch(nn.Module):
             self.compressor.weight, std=1.0 / math.sqrt(backbone_dim))
 
         # Identity sub-graph
-        d_id = z_causal_dim + curated_dim + rules_dim  # 106
+        d_id = z_causal_dim + curated_dim + rules_dim  # 70
         self.scm_identity_real = LinearSCM(d_id)
         self.scm_identity_fake = LinearSCM(d_id)
         self._d_identity = d_id
 
         # Forensic sub-graph
-        d_for = z_causal_dim + forensic_dim  # 62
+        d_for = z_causal_dim + forensic_dim  # 115
         self.scm_forensic_real = LinearSCM(d_for)
         self.scm_forensic_fake = LinearSCM(d_for)
         self._d_forensic = d_for
 
         # Differential residuals -> evidence
-        residual_dim = d_id + d_for  # 168
+        residual_dim = d_id + d_for  # 185
         self.residual_mlp = nn.Sequential(
             nn.LayerNorm(residual_dim),
             nn.Linear(residual_dim, hidden_dim),
@@ -194,8 +186,8 @@ class SimplifiedCausalBranch(nn.Module):
         """
         Args:
             spatial_raw:       (B, 1024) CLIP features (will be detached)
-            combined_features: (B, 122) precomputed [fast || vlm]
-            violations:        (B, 23) consistency rule scores
+            combined_features: (B, 58) fast feature vector
+            violations:        (B, 12) consistency rule scores
             forensic_features: (B, 83) precomputed forensic features
         Returns:
             dict with 'logits', 'evidence', 'residuals',
@@ -205,12 +197,12 @@ class SimplifiedCausalBranch(nn.Module):
         # Detach: no gradient flows back to CLIP backbone
         z = self.compressor(spatial_raw.detach())  # (B, 32)
 
-        # Extract curated attributes from combined vector
-        curated = combined_features[:, self._curated_indices]  # (B, 51)
+        # Extract curated attributes from fast feature vector
+        curated = combined_features[:, self._curated_indices]  # (B, 26)
 
         # Build sub-graph inputs
-        x_id = torch.cat([z, curated, violations], dim=1)     # (B, 106)
-        x_for = torch.cat([z, forensic_features], dim=1)      # (B, 62)
+        x_id = torch.cat([z, curated, violations], dim=1)     # (B, 70)
+        x_for = torch.cat([z, forensic_features], dim=1)      # (B, 115)
 
         # SCM forward: x_hat = W @ x + b, residual = x - x_hat
         r_id_real = x_id - self.scm_identity_real(x_id)
