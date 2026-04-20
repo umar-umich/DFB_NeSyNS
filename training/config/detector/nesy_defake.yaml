@@ -138,44 +138,26 @@ semantic_gate:
   enabled: true
 
 # -----------------------------------------------------------------------------
-# Facial Semantic Attributes (precomputed Face-LLaVA)
-# -----------------------------------------------------------------------------
-semantic_attributes:
-  enabled: true
-  backend: precomputed
-  precomputed_dim: 211
-  precomputed_dir: facebench_semantic
-  output_dim: 211
-  model_path: /data/umar/Repos/FaceBench
-  use_llm: true
-  fp16: true
-  micro_batch_size: 16
-
-# -----------------------------------------------------------------------------
 # Fast Semantic Features (InsightFace + MediaPipe + DeepFace + py-feat)
 # -----------------------------------------------------------------------------
 # 58-d per frame: demographics(3), expression(8), AUs(23), pose(3),
 #   gaze(4), geometry(10), quality(7). Precomputed ~30ms/frame.
+# VLM features were removed from the framework — this is the only semantic
+# source the concept / causal branches see.
 fast_semantic:
   enabled: true
   output_dim: 58
   precomputed_dir: fast_semantic
 
-# Refined features: combine fast(58) + VLM subset(64) = 122-d combined vector.
-# When true, dataset loader selects 64 VLM attrs from 211 FaceBench and
-# concatenates with 58 fast features. Consistency rules v7 operate on this.
-use_refined_features: true
-
 # -----------------------------------------------------------------------------
 # Tier 1: Cross-Attribute Consistency Rules (forensic)
 # -----------------------------------------------------------------------------
-# v7: 23 differentiable violation scores on 122-d combined vector.
-# Expression-AU coherence (9), cross-region identity mismatch (5),
-# VLM conflicts (3), skin/age (2), pose-gaze (1), landmark symmetry (2),
-# image quality (1).
+# v7 (fast-only): 12 differentiable violation scores on 58-d fast vector.
+# Expression-AU coherence (9), pose-gaze divergence (1), landmark
+# symmetry relay (2).
 consistency_rules:
   enabled: true
-  output_dim: 23
+  output_dim: 12
 
 # -----------------------------------------------------------------------------
 # Tier 2: Pixel-Level Forensic Features (precomputed)

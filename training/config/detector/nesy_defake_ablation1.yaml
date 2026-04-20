@@ -140,20 +140,9 @@ fusion:
 # -----------------------------------------------------------------------------
 # ALL NeSy modules DISABLED
 # -----------------------------------------------------------------------------
-semantic_attributes:
-  enabled: false
-  backend: precomputed
-  precomputed_dim: 211
-  precomputed_dir: facebench_semantic
-  output_dim: 211
-  model_path: /data/umar/Repos/FaceBench
-  use_llm: true
-  fp16: true
-  micro_batch_size: 16
-
 consistency_rules:
   enabled: false
-  output_dim: 20
+  output_dim: 12
 
 forensic_features:
   enabled: false

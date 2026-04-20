@@ -1,26 +1,25 @@
 # =============================================================================
-# Ablation 4: Spatial + Concept + Simplified Causal + EDL (Full NeSy)
+# Ablation 4: Spatial + Concept + ImprovedSCM + EDL (Full NeSy, fast-only)
 # =============================================================================
 # Purpose: Full neuro-symbolic pipeline with explainable causal graphs.
-# Builds on Ablation 3 by adding a simplified causal branch that learns
-# structural causal models (SCMs) for identity and forensic sub-graphs.
+# Builds on Ablation 3 by adding the ImprovedSCM causal branch that learns
+# nonlinear structural causal models for identity and forensic sub-graphs.
 #
 # Evidence fusion (3 sources):
 #   spatial_evidence = softplus(linear_head(CLIP_features))
-#   concept_evidence = softplus(concept_mlp(122-d + 23 rules))
+#   concept_evidence = softplus(concept_mlp(58-d + 12 rules))
 #   causal_evidence  = softplus(residual_mlp(differential SCM residuals))
 #   total = spatial + gate1 * concept + gate2 * causal
 #
-# Causal sub-graphs (spatial-only, linear SCM):
-#   Identity:  z(32) + curated(51) + rules(23) = 106 nodes
-#   Forensic:  z(32) + forensic(30) = 62 nodes
-#   4 SCMs total (real/fake x identity/forensic)
+# Causal sub-graphs (spatial-only, nonlinear SCM):
+#   Identity:  z(32) + curated(26) + rules(12)      =  70 nodes
+#   Forensic:  split into structural(62) / noise(75) / spectral(42)
 #
 # Changes from Ablation 3:
-#   - Adds forensic_features (30-d precomputed)
-#   - Adds SimplifiedCausalBranch with 4 linear SCMs
-#   - Adds causal evidence gate (init -3.0)
-#   - DAG acyclicity + sparsity penalty in loss
+#   - Adds forensic_features (83-d precomputed)
+#   - Adds ImprovedCausalBranch with 4 nonlinear SCM pairs
+#   - Adds causal evidence gate
+#   - DAG acyclicity + sparsity + divergence + recon penalties in loss
 # =============================================================================
 
 log_dir: /data/umar/Repos/DFB_NeSyNS/logs
@@ -45,8 +44,8 @@ edl:
 # -- Concept branch config ----------------------------------------------------
 concept_branch:
   enabled: true
-  combined_dim: 122
-  rules_dim: 23
+  combined_dim: 58
+  rules_dim: 12
   hidden_dim: 64
   dropout: 0.2
 
@@ -56,8 +55,8 @@ causal_branch:
   type: improved_scm              # 'simple', 'improved_scm', or 'ccv'
   backbone_dim: 1024
   z_causal_dim: 32
-  curated_dim: 51
-  rules_dim: 23
+  curated_dim: 26
+  rules_dim: 12
   forensic_dim: 83
   scm_hidden_dim: 64              # nonlinear SCM hidden layer size
   summary_dim: 8                  # per-subgraph projected summary dimension
@@ -154,25 +153,15 @@ mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]
 
 # -- Precomputed features (for concept + causal branches) ---------------------
-# FaceBench VLM features: 64-d subset precomputed as facebench_semantic/*.pt
-# Combined with fast(58) = [fast(58) || vlm(64)] = 122-d
-semantic_attributes:
-  enabled: true
-  backend: precomputed
-  precomputed_dim: 64
-  precomputed_dir: facebench_semantic
-  output_dim: 64
-
+# Fast semantic features only (58-d) — VLM features removed from framework.
 fast_semantic:
   enabled: true
   output_dim: 58
   precomputed_dir: fast_semantic
 
-use_refined_features: true      # 122-d combined [fast(58) || vlm(64)]
-
 consistency_rules:
   enabled: true
-  output_dim: 23
+  output_dim: 12
 
 forensic_features:
   enabled: true

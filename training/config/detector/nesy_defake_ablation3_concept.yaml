@@ -41,8 +41,8 @@ edl:
 # -- Concept branch config ----------------------------------------------------
 concept_branch:
   enabled: true
-  combined_dim: 122
-  rules_dim: 23
+  combined_dim: 58
+  rules_dim: 12
   hidden_dim: 64
   dropout: 0.2
 
@@ -116,25 +116,15 @@ mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]
 
 # -- Precomputed semantic features (for concept branch) -----------------------
-# FaceBench VLM features: 64-d subset precomputed as facebench_semantic/*.pt
-# Combined with fast(58) = [fast(58) || vlm(64)] = 122-d
-semantic_attributes:
-  enabled: true
-  backend: precomputed
-  precomputed_dim: 64
-  precomputed_dir: facebench_semantic
-  output_dim: 64
-
+# Fast semantic features only (58-d) — VLM features removed from framework.
 fast_semantic:
   enabled: true
   output_dim: 58
   precomputed_dir: fast_semantic
 
-use_refined_features: true      # 122-d combined [fast(58) || vlm(64)]
-
 consistency_rules:
   enabled: true
-  output_dim: 23
+  output_dim: 12
 
 # -- Foundation Models (GenD) -------------------------------------------------
 foundation_models:
