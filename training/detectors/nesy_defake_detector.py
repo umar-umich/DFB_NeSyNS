@@ -30,11 +30,9 @@ from .base_detector import AbstractDetector
 from detectors import DETECTOR
 
 from networks.nesy_defake.foundation_models import SpatialFeatureExtractor
-from networks.nesy_defake.classifiers import (
-    MultiTaskHead,
-    FeatureConditionedGate,
-    build_projection_head,
-)
+from networks.nesy_defake.classifiers import MultiTaskHead, build_projection_head
+from networks.nesy_defake.fusion import EvidenceFusion
+from networks.nesy_defake.causal_branch_factory import build_causal_branch
 from networks.nesy_defake.losses import alignment, uniformity
 
 logger = logging.getLogger(__name__)
@@ -109,10 +107,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # -- EDL evidence loss (Ablation 2/3/4) ------------------------------
         if self._use_edl:
             edl_cfg = config.get('edl', {})
-            use_nesy_edl = edl_cfg.get('nesy_fusion', False)
-            if use_nesy_edl:
+            self._use_nesy_edl = edl_cfg.get('nesy_fusion', False)
+            if self._use_nesy_edl:
                 from networks.nesy_defake.losses.nesy_edl_loss import (
-                    NeSyEvidentialLoss, ConfidenceModulatedEvidenceFusion)
+                    NeSyEvidentialLoss)
                 self.edl_loss = NeSyEvidentialLoss(
                     num_classes=edl_cfg.get('num_classes', 2),
                     annealing_epochs=edl_cfg.get('annealing_epochs', 10),
@@ -121,19 +119,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     aux_weight=edl_cfg.get('aux_weight', 0.1),
                     disagreement_weight=edl_cfg.get('disagreement_weight', 0.05),
                     class_weights=config.get('class_weights', None),
-                )
-                gate_cfg = config.get('evidence_gate', {})
-                num_sym = (1 if self._use_concept_branch else 0) \
-                        + (1 if self._use_causal_branch else 0)
-                gate_inits = []
-                if self._use_concept_branch:
-                    gate_inits.append(gate_cfg.get('concept_init', -0.5))
-                if self._use_causal_branch:
-                    gate_inits.append(gate_cfg.get('causal_init', -0.8))
-                self.cmef = ConfidenceModulatedEvidenceFusion(
-                    num_symbolic_branches=num_sym,
-                    num_classes=edl_cfg.get('num_classes', 2),
-                    gate_inits=gate_inits,
                 )
                 logger.info("  NeSy-EDL        : CMEF + PBAS + IBDC enabled")
             else:
@@ -145,7 +130,6 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     avu_weight=edl_cfg.get('avu_weight', 0.0),
                     class_weights=config.get('class_weights', None),
                 )
-            self._use_nesy_edl = use_nesy_edl
             logger.info(
                 f"  EDL loss        : annealing="
                 f"{edl_cfg.get('annealing_epochs', 10)} epochs")
@@ -160,93 +144,32 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 hidden_dim=cb_cfg.get('hidden_dim', 64),
                 dropout=cb_cfg.get('dropout', 0.2),
             )
-            gate_cfg = config.get('evidence_gate', {})
-            self.concept_gate = nn.Parameter(
-                torch.tensor(float(gate_cfg.get('concept_init', -3.0))))
-            logger.info(
-                f"  Concept branch  : gate_init="
-                f"{gate_cfg.get('concept_init', -3.0)}")
 
         # -- Causal branch (Ablation 4: CCV / ImprovedSCM / Simple) ----------
         if self._use_causal_branch:
             sc_cfg = config.get('causal_branch', {})
-            causal_type = sc_cfg.get('type', 'simple')
-            if causal_type == 'ccv':
-                from networks.nesy_defake.ccv_branch import (
-                    CausalConstraintVerificationBranch)
-                self.causal_branch = CausalConstraintVerificationBranch(
-                    combined_dim=sc_cfg.get('combined_dim', 122),
-                    rules_dim=sc_cfg.get('rules_dim', 23),
-                    forensic_dim=sc_cfg.get('forensic_dim', 83),
-                    backbone_dim=sc_cfg.get('backbone_dim', 1024),
-                    num_constraints=sc_cfg.get('num_constraints', 16),
-                    constraint_hidden=sc_cfg.get('constraint_hidden', 48),
-                    forensic_bottleneck=sc_cfg.get('forensic_bottleneck', 8),
-                    cf_z_dim=sc_cfg.get('cf_z_dim', 32),
-                    cf_hidden_dim=sc_cfg.get('cf_hidden_dim', 64),
-                    evidence_hidden=sc_cfg.get('evidence_hidden', 64),
-                    dropout=sc_cfg.get('dropout', 0.2),
-                )
-            elif causal_type == 'improved_scm':
-                from networks.nesy_defake.improved_scm_branch import (
-                    ImprovedCausalBranch)
-                self.causal_branch = ImprovedCausalBranch(
-                    backbone_dim=sc_cfg.get('backbone_dim', 1024),
-                    z_causal_dim=sc_cfg.get('z_causal_dim', 32),
-                    curated_dim=sc_cfg.get('curated_dim', 51),
-                    rules_dim=sc_cfg.get('rules_dim', 23),
-                    forensic_dim=sc_cfg.get('forensic_dim', 83),
-                    scm_hidden_dim=sc_cfg.get('scm_hidden_dim', 64),
-                    summary_dim=sc_cfg.get('summary_dim', 8),
-                    evidence_hidden=sc_cfg.get('evidence_hidden', 64),
-                    sparsity_penalty=sc_cfg.get('sparsity_penalty', 0.01),
-                    divergence_weight=sc_cfg.get('divergence_weight', 0.1),
-                    recon_weight=sc_cfg.get('recon_weight', 0.5),
-                )
-            else:
-                from networks.nesy_defake.concept_branch import (
-                    SimplifiedCausalBranch)
-                self.causal_branch = SimplifiedCausalBranch(
-                    backbone_dim=sc_cfg.get('backbone_dim', 1024),
-                    z_causal_dim=sc_cfg.get('z_causal_dim', 32),
-                    curated_dim=sc_cfg.get('curated_dim', 51),
-                    rules_dim=sc_cfg.get('rules_dim', 23),
-                    forensic_dim=sc_cfg.get('forensic_dim', 83),
-                    hidden_dim=sc_cfg.get('hidden_dim', 64),
-                    sparsity_penalty=sc_cfg.get('sparsity_penalty', 0.01),
-                )
-            self._causal_branch_type = causal_type
-            gate_cfg = config.get('evidence_gate', {})
-            self.causal_ev_gate = nn.Parameter(
-                torch.tensor(float(gate_cfg.get('causal_init', -3.0))))
+            self.causal_branch = build_causal_branch(sc_cfg)
+            self._causal_branch_type = sc_cfg.get('type', 'simple')
             self._dag_penalty_weight = sc_cfg.get('dag_penalty_weight', 0.05)
             logger.info(
-                f"  Causal branch   : type={causal_type}, "
-                f"gate_init={gate_cfg.get('causal_init', -3.0)}")
+                f"  Causal branch   : type={self._causal_branch_type}")
 
-        # -- Feature-conditioned evidence gates ------------------------------
-        gate_cfg = config.get('evidence_gate', {})
-        self._conditioned_gates = gate_cfg.get('conditioned', False)
-        if self._conditioned_gates and (
-                self._use_concept_branch or self._use_causal_branch):
-            gate_inits = []
-            self._gate_names = []
-            if self._use_concept_branch:
-                gate_inits.append(float(gate_cfg.get('concept_init', -0.5)))
-                self._gate_names.append('concept')
-            if self._use_causal_branch:
-                gate_inits.append(float(gate_cfg.get('causal_init', -0.8)))
-                self._gate_names.append('causal')
-            backbone_dim = config['foundation_models']['spatial']['output_dim']
-            self.conditioned_gate = FeatureConditionedGate(
-                input_dim=backbone_dim,
-                num_gates=len(gate_inits),
-                gate_inits=gate_inits,
+        # -- Evidence fusion (CMEF | conditioned | static scalar gates) -----
+        if self._use_edl:
+            gate_cfg = config.get('evidence_gate', {})
+            self.evidence_fusion = EvidenceFusion(
+                use_concept=self._use_concept_branch,
+                use_causal=self._use_causal_branch,
+                use_nesy_edl=self._use_nesy_edl,
+                conditioned=bool(gate_cfg.get('conditioned', False)),
+                gate_cfg=gate_cfg,
+                backbone_dim=config['foundation_models']['spatial']['output_dim'],
+                edl_num_classes=config.get('edl', {}).get('num_classes', 2),
             )
-            logger.info(
-                f"  Evidence gates  : feature-conditioned "
-                f"({backbone_dim}->{len(gate_inits)}), "
-                f"init={dict(zip(self._gate_names, gate_inits))}")
+            mode = ('CMEF' if self._use_nesy_edl
+                    else ('conditioned' if gate_cfg.get('conditioned', False)
+                          else 'static'))
+            logger.info(f"  Evidence fusion : {mode}")
 
         self._try_compile_frozen_modules()
 
@@ -400,49 +323,11 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                         labels=labels,
                     )
 
-            # -- Evidence fusion --------------------------------------------
-            branch_evidences = {'spatial': spatial_evidence}
-
-            if self._use_nesy_edl and hasattr(self, 'cmef'):
-                # Novel: Confidence-Modulated Evidence Fusion (replaces CMEF's
-                # predecessor CausalViolationAttentionFusion — same per-sample
-                # "pick which signal to trust" idea, placed in EDL space).
-                symbolic_evs = []
-                if concept_out is not None:
-                    symbolic_evs.append(concept_out['evidence'])
-                    branch_evidences['concept'] = concept_out['evidence']
-                if causal_out is not None:
-                    symbolic_evs.append(causal_out['evidence'])
-                    branch_evidences['causal'] = causal_out['evidence']
-                total_evidence, cmef_diag = self.cmef(
-                    spatial_evidence, symbolic_evs)
-            elif self._conditioned_gates and hasattr(self, 'conditioned_gate'):
-                # Feature-conditioned gates: per-image weighting from backbone
-                gate_vals = self.conditioned_gate(spatial_raw)  # (B, num_gates)
-                total_evidence = spatial_evidence
-                gi = 0
-                if concept_out is not None:
-                    concept_gate = gate_vals[:, gi].unsqueeze(1)
-                    total_evidence = total_evidence + concept_gate * concept_out['evidence']
-                    branch_evidences['concept'] = concept_out['evidence']
-                    gi += 1
-                if causal_out is not None:
-                    causal_gate = gate_vals[:, gi].unsqueeze(1)
-                    total_evidence = total_evidence + causal_gate * causal_out['evidence']
-                    branch_evidences['causal'] = causal_out['evidence']
-                cmef_diag = None
-            else:
-                # Standard: static scalar gates
-                total_evidence = spatial_evidence
-                if concept_out is not None:
-                    concept_gate = torch.sigmoid(self.concept_gate)
-                    total_evidence = total_evidence + concept_gate * concept_out['evidence']
-                    branch_evidences['concept'] = concept_out['evidence']
-                if causal_out is not None:
-                    causal_gate = torch.sigmoid(self.causal_ev_gate)
-                    total_evidence = total_evidence + causal_gate * causal_out['evidence']
-                    branch_evidences['causal'] = causal_out['evidence']
-                cmef_diag = None
+            # -- Evidence fusion (CMEF / conditioned / static) --------------
+            fused = self.evidence_fusion(
+                spatial_evidence, spatial_raw, concept_out, causal_out)
+            total_evidence = fused['total_evidence']
+            cmef_diag = fused['cmef_diag']
 
             # Dirichlet prediction from fused evidence
             alpha = total_evidence + 1.0
@@ -455,7 +340,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 'prob':              prob,
                 'total_evidence':    total_evidence,
                 'spatial_evidence':  spatial_evidence,
-                'branch_evidences':  branch_evidences,
+                'branch_evidences':  fused['branch_evidences'],
                 'alpha':             alpha,
                 'uncertainty':       uncertainty,
                 'feat':              projected,
@@ -465,29 +350,18 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             }
             if concept_out is not None:
                 pred['concept_evidence'] = concept_out['evidence']
-                if self._use_nesy_edl and cmef_diag is not None:
-                    pred['concept_gate'] = cmef_diag.get(
-                        'branch_0_gate', torch.tensor(0.0))
-                    pred['concept_conf'] = cmef_diag.get(
-                        'branch_0_conf_mean', torch.tensor(0.0))
-                elif self._conditioned_gates and hasattr(self, 'conditioned_gate'):
-                    pred['concept_gate'] = concept_gate.mean().detach()
-                elif hasattr(self, 'concept_gate'):
-                    pred['concept_gate'] = torch.sigmoid(self.concept_gate).detach()
                 pred['violations'] = concept_out['violations']
+                if fused['concept_gate'] is not None:
+                    pred['concept_gate'] = fused['concept_gate']
+                if fused['concept_conf'] is not None:
+                    pred['concept_conf'] = fused['concept_conf']
             if causal_out is not None:
                 pred['causal_evidence'] = causal_out['evidence']
-                if self._use_nesy_edl and cmef_diag is not None:
-                    idx = 1 if concept_out is not None else 0
-                    pred['causal_gate'] = cmef_diag.get(
-                        f'branch_{idx}_gate', torch.tensor(0.0))
-                    pred['causal_conf'] = cmef_diag.get(
-                        f'branch_{idx}_conf_mean', torch.tensor(0.0))
-                elif self._conditioned_gates and hasattr(self, 'conditioned_gate'):
-                    pred['causal_gate'] = causal_gate.mean().detach()
-                elif hasattr(self, 'causal_ev_gate'):
-                    pred['causal_gate'] = torch.sigmoid(self.causal_ev_gate).detach()
                 pred['dag_penalty'] = causal_out['dag_penalty']
+                if fused['causal_gate'] is not None:
+                    pred['causal_gate'] = fused['causal_gate']
+                if fused['causal_conf'] is not None:
+                    pred['causal_conf'] = fused['causal_conf']
                 for k, v in causal_out.items():
                     if k.startswith('A_'):
                         pred[k] = v

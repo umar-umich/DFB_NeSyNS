@@ -97,7 +97,7 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
-class_weights: [1.6, 0.8]    # [real, fake] — fix fake bias
+class_weights: [1.2, 1.0] # 1.6 0.8    # [real, fake] — fix fake bias
 
 # -- Cross-dataset regularizers (GenD recipe) --------------------------------
 label_smoothing: 0.0
@@ -262,7 +262,7 @@ start_epoch:    0
 save_epoch:     1
 rec_iter:       100
 logdir:         ./logs
-manualSeed:     1024
+manualSeed:     3407   # 1024 
 save_ckpt:      true
 save_feat:      true
 grad_clip:      1.0
@@ -290,10 +290,10 @@ mixed_precision: true
 checkpoint:
   save_best_only: false
   save_interval: 5
-  monitor:        val_auc
+  monitor:        val_acc
   mode:           max
 
 early_stopping:
   enabled: true
-  patience: 10
+  patience: 20
   min_delta: 0.001

@@ -253,19 +253,13 @@ def choose_optimizer(model, config):
     g5_concept = []
     if hasattr(m, 'concept_branch'):
         _add(list(m.concept_branch.parameters()), g5_concept)
-    if hasattr(m, 'concept_gate') and isinstance(m.concept_gate, nn.Parameter):
-        _add([m.concept_gate], g5_concept)
 
-    # Group 6: Causal branch (Ablation 4) + CMEF + conditioned gate
+    # Group 6: Causal branch (Ablation 4) + evidence fusion (gates, CMEF)
     g6_causal = []
     if hasattr(m, 'causal_branch'):
         _add(list(m.causal_branch.parameters()), g6_causal)
-    if hasattr(m, 'causal_ev_gate') and isinstance(m.causal_ev_gate, nn.Parameter):
-        _add([m.causal_ev_gate], g6_causal)
-    if hasattr(m, 'cmef'):
-        _add(list(m.cmef.parameters()), g6_causal)
-    if getattr(m, 'conditioned_gate', None) is not None:
-        _add(list(m.conditioned_gate.parameters()), g6_causal)
+    if hasattr(m, 'evidence_fusion'):
+        _add(list(m.evidence_fusion.parameters()), g6_causal)
 
     lr_backbone_ln = lr_cfg.get('backbone_layernorms', 1e-5)
     lr_always      = lr_cfg.get('always_trainable',    base_lr)

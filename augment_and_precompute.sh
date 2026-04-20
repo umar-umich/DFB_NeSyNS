@@ -26,30 +26,30 @@ CUDA_VISIBLE_DEVICES=$GPU python preprocessing/augment_real_frames.py \
     --workers 16 \
     --skip_existing
 
-# echo ""
-# echo "============================================================"
-# echo "Step 2: Precomputing fast semantic features (58-d)"
-# echo "  InsightFace (GPU) + LibreFace (GPU) + MediaPipe (CPU)"
-# echo "  DeepFace disabled for speed — patched in Step 3"
-# echo "============================================================"
-# PYTHONWARNINGS=ignore CUDA_VISIBLE_DEVICES=$GPU python preprocessing/precompute_fast_semantic.py \
-#     --detector_path "$CONFIG" \
-#     --output_dir fast_semantic \
-#     --skip_existing \
-#     --device cuda:0
+echo ""
+echo "============================================================"
+echo "Step 2: Precomputing fast semantic features (58-d)"
+echo "  InsightFace (GPU) + LibreFace (GPU) + MediaPipe (CPU)"
+echo "  DeepFace disabled for speed — patched in Step 3"
+echo "============================================================"
+PYTHONWARNINGS=ignore CUDA_VISIBLE_DEVICES=$GPU python preprocessing/precompute_fast_semantic.py \
+    --detector_path "$CONFIG" \
+    --output_dir fast_semantic \
+    --skip_existing \
+    --device cuda:0
 
-# echo ""
-# echo "============================================================"
-# echo "Step 2 complete! You can start training now."
-# echo ""
-# echo "Step 3: Patching DeepFace features (CPU-only, 8 processes)"
-# echo "  emotions + ethnicity entropy → indices 2-10"
-# echo "============================================================"
-# PYTHONWARNINGS=ignore python preprocessing/precompute_deepface_patch.py \
-#     --detector_path "$CONFIG" \
-#     --output_dir fast_semantic \
-#     --workers 8 \
-#     --skip_patched
+echo ""
+echo "============================================================"
+echo "Step 2 complete! You can start training now."
+echo ""
+echo "Step 3: Patching DeepFace features (CPU-only, 8 processes)"
+echo "  emotions + ethnicity entropy → indices 2-10"
+echo "============================================================"
+PYTHONWARNINGS=ignore python preprocessing/precompute_deepface_patch.py \
+    --detector_path "$CONFIG" \
+    --output_dir fast_semantic \
+    --workers 8 \
+    --skip_patched
 
 echo ""
 echo "============================================================"

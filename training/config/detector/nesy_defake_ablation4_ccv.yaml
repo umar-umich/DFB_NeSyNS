@@ -99,7 +99,7 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
-class_weights: [1.2, 0.8]    # [real, fake] — stronger push against fake bias (acc_real was 0.65 at epoch 8)
+class_weights: [1.2, 1.0]    # [real, fake] — stronger push against fake bias (acc_real was 0.65 at epoch 8)
 
 # -- Cross-dataset regularizers (GenD recipe) --------------------------------
 # Label smoothing reduces CE over-confidence; UA shapes the unit-sphere manifold.
@@ -131,8 +131,8 @@ projection_dropout:
   frequency: 0.0
 
 # -- Data loading & augmentation (GenD) ---------------------------------------
-train_batchSize: 300
-test_batchSize:  300
+train_batchSize: 128
+test_batchSize:  128
 workers:         12
 
 use_data_augmentation: true
@@ -266,7 +266,7 @@ start_epoch:    0
 save_epoch:     1
 rec_iter:       100
 logdir:         ./logs
-manualSeed:     1024
+manualSeed:     3407   # 1024 
 save_ckpt:      true
 save_feat:      true
 grad_clip:      1.0
@@ -294,10 +294,10 @@ mixed_precision: true
 checkpoint:
   save_best_only: false
   save_interval: 5
-  monitor:        val_auc
+  monitor:        val_acc
   mode:           max
 
 early_stopping:
   enabled: true
-  patience: 15
+  patience: 20
   min_delta: 0.001
