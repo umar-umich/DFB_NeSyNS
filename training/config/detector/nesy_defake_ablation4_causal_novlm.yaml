@@ -1,20 +1,24 @@
 # =============================================================================
-# Ablation 4b: Spatial + Concept + CCV (Causal Constraint Verification) + EDL
+# Ablation 4a-noVLM: Full NeSy (ImprovedSCM) WITHOUT FaceBench VLM features
 # =============================================================================
-# Purpose: Neuro-symbolic causal branch using constraint verification instead
-# of structural causal models. Three components:
-#   1. Learned constraint functions (K=16 additional soft constraints)
-#   2. Forensic anomaly detector (5 per-group autoencoder anomaly scores)
-#   3. Counterfactual predictor (mismatch between predicted/actual CLIP features)
+# Purpose: Measure the marginal value of the VLM 64-d subset for the
+# ImprovedSCM causal pipeline. Pairs with nesy_defake_ablation4_causal.yaml
+# (identical configuration, VLM enabled) for a clean A/B comparison.
 #
-# Evidence fusion (3 sources):
-#   spatial_evidence = softplus(linear_head(CLIP_features))
-#   concept_evidence = softplus(concept_mlp(122-d + 23 rules))
-#   causal_evidence  = softplus(ccv_mlp(23 rules + 16 learned + 5 anomaly + 1 cf))
-#   total = spatial + gate1 * concept + gate2 * causal
+# Why zero-fill (instead of 58-d fast-only as in ccv_novlm):
+#   ImprovedSCM hardcodes CAUSAL_ATTRIBUTE_INDICES — 51 index positions
+#   into the 122-d [fast || vlm] layout. Switching to a 58-d fast-only
+#   input would invalidate those indices. Instead, we keep the 122-d
+#   layout and let the dataset zero-fill the VLM half. The 25 VLM
+#   causal attributes receive constant 0 → they carry no information,
+#   so the causal graph effectively ignores them. This is equivalent
+#   to ablating the VLM contribution while preserving all dims.
 #
-# Much lighter than SCM approach (~15K vs ~180K params), shorter gradient path,
-# no DAG constraints needed.
+# Differences from nesy_defake_ablation4_causal.yaml:
+#   - semantic_attributes.enabled: false   (do NOT load VLM .pt files)
+#   - use_refined_features:        true    (dataset keeps 122-d shape;
+#                                            VLM half becomes zeros)
+#   Everything else (dims, branch config, SCM penalties) is identical.
 # =============================================================================
 
 log_dir: /data/umar/Repos/DFB_NeSyNS/logs
@@ -32,47 +36,40 @@ edl:
   annealing_epochs: 10
   kl_weight: 0.15
   avu_weight: 0.1
-  nesy_fusion: true               # enable Confidence-Modulated Evidence Fusion
-  aux_weight: 0.1                 # per-branch auxiliary EDL supervision
-  disagreement_weight: 0.05       # inter-branch disagreement calibration
+  nesy_fusion: true
+  aux_weight: 0.1
+  disagreement_weight: 0.05
 
 # -- Concept branch config ----------------------------------------------------
 concept_branch:
   enabled: true
-  combined_dim: 122
+  combined_dim: 122               # 58 fast + 64 VLM-zero = 122
   rules_dim: 23
   hidden_dim: 64
   dropout: 0.2
 
-# -- CCV causal branch config --------------------------------------------------
+# -- Improved SCM causal branch config ---------------------------------------
 causal_branch:
   enabled: true
-  type: ccv                        # 'simple', 'improved_scm', or 'ccv'
-  combined_dim: 122
+  type: improved_scm
+  backbone_dim: 1024
+  z_causal_dim: 32
+  curated_dim: 51                 # 51 causal attrs (26 fast + 25 VLM=zero)
   rules_dim: 23
   forensic_dim: 83
-  backbone_dim: 1024
-  num_constraints: 16              # K learned constraint functions
-  constraint_hidden: 48            # shared trunk hidden dim
-  forensic_bottleneck: 8           # autoencoder bottleneck per group
-  cf_z_dim: 32                     # counterfactual predictor z dim
-  cf_hidden_dim: 64                # counterfactual predictor hidden dim
+  scm_hidden_dim: 64
+  summary_dim: 8
   evidence_hidden: 64
-  dropout: 0.2
-  dag_penalty_weight: 0.0          # CCV has no DAG penalty
+  sparsity_penalty: 0.01
+  divergence_weight: 0.1
+  recon_weight: 0.5
+  dag_penalty_weight: 0.01
 
 # -- Evidence gates ------------------------------------------------------------
 evidence_gate:
-  concept_init: -0.5            # sigmoid ≈ 0.38
-  causal_init:  -0.8            # sigmoid ≈ 0.31
-  conditioned: false            # true: per-image gates via Linear(1024→2)→Sigmoid
-                                # false: static scalar gates (default)
-
-# -- EDL classifier dropout override ------------------------------------------
-# Dropout before EDL evidence computation adds noise to deterministic uncertainty
-# estimates. Set this to 0.0 to disable dropout in the classifier for EDL mode.
-# Only takes effect when linear_probe: false (linear_probe has no dropout anyway).
-# edl_classifier_dropout: 0.0
+  concept_init: -0.5
+  causal_init:  -0.8
+  conditioned: false
 
 # -- Dataset ------------------------------------------------------------------
 dataset_type: nesydefake
@@ -80,7 +77,6 @@ active_branches: ['spatial']
 
 train_dataset: [FaceForensics++]
 test_dataset:  [FaceForensics++, DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDC, DFDCP, UADFV]
-
 all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
                 DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
                 DeeperForensics-1.0, UADFV]
@@ -98,38 +94,30 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
-class_weights: [1.2, 1.0]    # [real, fake] — stronger push against fake bias (acc_real was 0.65 at epoch 8)
+class_weights: [1.6, 0.8]
 
-# -- Cross-dataset regularizers (GenD recipe) --------------------------------
-# Label smoothing reduces CE over-confidence; UA shapes the unit-sphere manifold.
-label_smoothing: 0.1
-
+# -- Cross-dataset regularizers -----------------------------------------------
+label_smoothing: 0.0
 uniformity_alignment:
-  enabled: true
-  alignment_weight:  1.0     # w_align — pull same-class pairs together
-  uniformity_weight: 1.0     # w_uniform — spread embeddings evenly
-  alignment_power:   2.0     # Wang & Isola default
-  uniformity_t:      2.0     # Wang & Isola default
+  enabled: false
+  alignment_weight:  1.0
+  uniformity_weight: 1.0
+  alignment_power:   2.0
+  uniformity_t:      2.0
 
-# -- Projection head type -------------------------------------------------------
+# -- Projection head ----------------------------------------------------------
 projection_head:
-  type: standard               # standard | residual | bottleneck | houlsby
-  # residual options (only when type=residual):
-  alpha_init: 0.1          # learnable mixing scalar init
-  # bottleneck options (only when type=bottleneck):
-  #   bottleneck_ratio: 4      # compression ratio (1024→256 when ratio=4)
-  # houlsby options (only when type=houlsby, combines residual + bottleneck):
+  type: standard
+  alpha_init: 0.1
   bottleneck_ratio: 4
-  # alpha_init: 0.1
 
-# -- Skip fusion (EDL path bypasses fusion, so this saves ~1M unused params) ---
-skip_fusion: false             # set true to remove fusion module entirely
+skip_fusion: false
 
 projection_dropout:
   spatial:   0.0
   frequency: 0.0
 
-# -- Data loading & augmentation (GenD) ---------------------------------------
+# -- Data loading & augmentation ----------------------------------------------
 train_batchSize: 128
 test_batchSize:  128
 workers:         12
@@ -156,11 +144,11 @@ data_aug:
 mean: [0.5, 0.5, 0.5]
 std:  [0.5, 0.5, 0.5]
 
-# -- Precomputed features (for concept + causal branches) ---------------------
-# FaceBench VLM features: 64-d subset precomputed as facebench_semantic/*.pt
-# Combined with fast(58) = [fast(58) || vlm(64)] = 122-d
+# -- Precomputed features -----------------------------------------------------
+# VLM DISABLED: dataset triggers the zero-fill branch at
+# nesy_defake_dataset.py:571-576 → precomputed_attrs = [fast(58) || zeros(64)]
 semantic_attributes:
-  enabled: true
+  enabled: false                  # do NOT load facebench_semantic/*.pt
   backend: precomputed
   precomputed_dim: 64
   precomputed_dir: facebench_semantic
@@ -171,7 +159,7 @@ fast_semantic:
   output_dim: 58
   precomputed_dir: fast_semantic
 
-use_refined_features: true      # 122-d combined [fast(58) || vlm(64)]
+use_refined_features: true        # keep 122-d layout (VLM half zero-filled)
 
 consistency_rules:
   enabled: true
@@ -182,7 +170,7 @@ forensic_features:
   output_dim: 83
   precomputed_dir: forensic_features
 
-# -- Foundation Models (GenD) -------------------------------------------------
+# -- Foundation Models --------------------------------------------------------
 foundation_models:
   spatial:
     name:            clip
@@ -215,7 +203,7 @@ fusion:
   projection_dim: 1024
   dropout:        0.0
 
-# -- Classifier (GenD linear probe) ------------------------------------------
+# -- Classifier ---------------------------------------------------------------
 classifier:
   type:         multi_task
   input_dim:    1024
@@ -228,7 +216,7 @@ classifier:
   hidden_dims: [512, 256]
   dropout:     0.3
 
-# -- Loss (EDL + DAG penalty) ------------------------------------------------
+# -- Loss ---------------------------------------------------------------------
 loss_func:
   classification:         cross_entropy
   sparse_penalty:         l1_norm
@@ -257,7 +245,7 @@ optimizer:
     concept_branch:      0.001
     causal_branch:       0.001
 
-# -- Schedule (GenD) ----------------------------------------------------------
+# -- Schedule -----------------------------------------------------------------
 lr_scheduler:   cosine_warmup
 warmup_epochs:  1
 nEpochs:        100
@@ -265,7 +253,7 @@ start_epoch:    0
 save_epoch:     1
 rec_iter:       100
 logdir:         ./logs
-manualSeed:     3407   # 1024 
+manualSeed:     1024
 save_ckpt:      true
 save_feat:      true
 grad_clip:      1.0
@@ -278,7 +266,7 @@ additional_metrics: [acc, eer, ap]
 interpretability:
   enabled: true
   save_attention_maps:      false
-  save_causal_graphs:       true  # Enable for explainability
+  save_causal_graphs:       true
   save_feature_activations: false
   save_sae_features:        false
   visualization_frequency:  500
@@ -293,10 +281,10 @@ mixed_precision: true
 checkpoint:
   save_best_only: false
   save_interval: 5
-  monitor:        val_acc
+  monitor:        val_auc
   mode:           max
 
 early_stopping:
   enabled: true
-  patience: 20
+  patience: 10
   min_delta: 0.001
