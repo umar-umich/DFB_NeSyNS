@@ -11,6 +11,8 @@ from .scm_analysis import SCMAnalyzer
 from .gate_analysis import GateAnalyzer
 from .disagreement import DisagreementAnalyzer
 from .tsne_analyzer import TSNEEmbeddingAnalyzer
+from .selective_prediction import SelectivePredictionAnalyzer
+from .case_study import CaseStudyAnalyzer
 
 __all__ = [
     'BaseAnalyzer',
@@ -22,4 +24,6 @@ __all__ = [
     'GateAnalyzer',
     'DisagreementAnalyzer',
     'TSNEEmbeddingAnalyzer',
+    'SelectivePredictionAnalyzer',
+    'CaseStudyAnalyzer',
 ]

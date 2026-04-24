@@ -79,6 +79,10 @@ parser.add_argument('--rule_error_analysis', action='store_true',
                     help='Collect per-frame consistency-rule violations '
                          'and write a slice report (TN/FP/TP/FN firing '
                          'means + error gaps) per test dataset.')
+parser.add_argument('--no_interpretability', action='store_true',
+                    help='Disable the full interpretability engine (only '
+                         'opt-in analyzers via --tsne_mode / '
+                         '--rule_error_analysis will run).')
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -400,13 +404,16 @@ def run_inference(model, data_loader, interp_engine=None):
 
     If *interp_engine* is provided, each batch's prediction dict is forwarded
     to the engine so analyzers (e.g. t-SNE) can accumulate their signals.
+    Also returns per-sample specific-method labels (label_spe) for use in
+    per-method fingerprint plots, and None if the dataset lacks them.
     """
     prediction_lists = []
     label_lists = []
+    label_spe_lists = []
 
     for data_dict in tqdm(data_loader, desc='  Inference'):
-        if 'label_spe' in data_dict:
-            data_dict.pop('label_spe')
+        # Capture label_spe for per-method interpretability before popping
+        label_spe = data_dict.pop('label_spe', None)
         data_dict['label'] = torch.where(data_dict['label'] != 0, 1, 0)
         for key in data_dict.keys():
             val = data_dict[key]
@@ -421,15 +428,20 @@ def run_inference(model, data_loader, interp_engine=None):
 
         label_lists.append(data_dict['label'].cpu().numpy())
         prediction_lists.append(prob)
+        if label_spe is not None:
+            label_spe_lists.append(
+                label_spe.cpu().numpy() if isinstance(label_spe, torch.Tensor)
+                else np.asarray(label_spe))
 
     preds_1d = np.concatenate(prediction_lists)   # p(fake)
     labels = np.concatenate(label_lists)
     # Convert to 2-class probabilities: [p(real), p(fake)]
     probs_2d = np.stack([1 - preds_1d, preds_1d], axis=1)
+    label_spe = np.concatenate(label_spe_lists) if label_spe_lists else None
 
     dataset = data_loader.dataset
     img_names = getattr(dataset, 'image_list', None) or dataset.data_dict['image']
-    return probs_2d, labels, img_names
+    return probs_2d, labels, img_names, label_spe
 
 
 # ---------------------------------------------------------------------------
@@ -506,47 +518,63 @@ def main():
         ds_out_dir = os.path.join(out_dir, dataset_name)
         os.makedirs(ds_out_dir, exist_ok=True)
 
-        # Build an interpretability engine for this dataset if any
-        # opt-in analyzer was requested via CLI. The engine is kept
-        # minimal (only the requested analyzers are activated), since
-        # other analyzers depend on training-time signals that may not
-        # be present at test time.
+        # Build an interpretability engine for this dataset. By default
+        # all seven levels are enabled (analyzers that don't receive
+        # their required keys degrade gracefully). t-SNE stays opt-in
+        # because it is O(n^2) and can add minutes on large datasets.
         interp_engine = None
         want_tsne = args.tsne_mode is not None
         want_rule_errors = args.rule_error_analysis
-        if want_tsne or want_rule_errors:
+        enable_full = not args.no_interpretability
+        if enable_full or want_tsne or want_rule_errors:
             try:
                 from interpretability.engine import InterpretabilityEngine
+                causal_type = (
+                    getattr(model, '_causal_branch_type', None)
+                    or config.get('causal_branch', {}).get('type', '')
+                )
                 interp_cfg = {
                     'levels': {
-                        'edl_uncertainty': False,
-                        'branch_evidence': False,
-                        'consistency_rules': want_rule_errors,
-                        'ccv_analysis': False,
-                        'scm_analysis': False,
-                        'gate_analysis': False,
-                        'disagreement': False,
-                        'tsne': want_tsne,
+                        'edl_uncertainty':   enable_full,
+                        'branch_evidence':   enable_full,
+                        'consistency_rules': enable_full or want_rule_errors,
+                        'ccv_analysis':      enable_full,
+                        'scm_analysis':      enable_full,
+                        'gate_analysis':     enable_full,
+                        'disagreement':      enable_full,
+                        'tsne':              want_tsne,
                     },
                     'tsne': {
-                        'enabled': want_tsne,
-                        'mode': args.tsne_mode or 'worst',
-                        'top_k': args.tsne_top_k,
+                        'enabled':     want_tsne,
+                        'mode':        args.tsne_mode or 'worst',
+                        'top_k':       args.tsne_top_k,
                         'feature_key': args.tsne_feature_key,
                     },
+                    'graph_viz_top_k': config.get('interpretability', {}).get(
+                        'graph_viz_top_k', 20),
                 }
                 engine_cfg = {**config, 'interpretability': interp_cfg}
                 interp_engine = InterpretabilityEngine(
-                    engine_cfg, causal_type=config.get('causal_branch_type', ''))
+                    engine_cfg, causal_type=causal_type)
             except Exception as e:
                 print(f'[warn] Interpretability engine init failed: {e}')
                 interp_engine = None
 
-        probs, labels, img_names = run_inference(
+        probs, labels, img_names, label_spe = run_inference(
             model, data_loader, interp_engine=interp_engine)
 
         if interp_engine is not None:
             try:
+                # SCM adjacency matrices live on model parameters, not
+                # in the prediction dict — snapshot them once after
+                # inference so the SCMAnalyzer can render graphs.
+                interp_engine.collect_model_params(model)
+                # Case-study gallery: image paths in the same order as
+                # the collected samples (DataLoader shuffle is off).
+                interp_engine.set_image_paths(img_names)
+                # Per-method fingerprint radar (FF-DF / FF-F2F / ...).
+                if label_spe is not None:
+                    interp_engine.set_method_labels(label_spe)
                 interp_engine.finalize(os.path.join(ds_out_dir, 'interpretability'))
             except Exception as e:
                 print(f'[warn] Interpretability finalize failed: {e}')
@@ -654,6 +682,21 @@ def main():
             fk = f'TPR@FPR={t}_frame'
             vk = f'TPR@FPR={t}_video'
             print(f'  TPR@FPR={t}:  frame={frame_metrics[fk]:.4f}  video={video_metrics[vk]:.4f}')
+
+    # Paper-figure mosaic stitching per-dataset interpretability tiles.
+    try:
+        from interpretability.visualization import build_results_mosaic
+        per_dataset_interp_dirs = {}
+        for dataset_name in test_data_loaders.keys():
+            d = os.path.join(out_dir, dataset_name, 'interpretability')
+            if os.path.isdir(d):
+                per_dataset_interp_dirs[dataset_name] = d
+        if per_dataset_interp_dirs:
+            mosaic_path = os.path.join(out_dir, 'fig1_mosaic.png')
+            build_results_mosaic(per_dataset_interp_dirs, mosaic_path)
+            print(f'\nInterpretability mosaic → {mosaic_path}')
+    except Exception as e:
+        print(f'[warn] Mosaic build failed: {e}')
 
     print(f'\nAll results saved to: {out_dir}')
     print('Done!')

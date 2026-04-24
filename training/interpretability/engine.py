@@ -15,12 +15,14 @@ import torch
 from .analyzers import (
     BaseAnalyzer,
     BranchEvidenceAnalyzer,
+    CaseStudyAnalyzer,
     CCVAnalyzer,
     ConsistencyRuleAnalyzer,
     DisagreementAnalyzer,
     EDLUncertaintyAnalyzer,
     GateAnalyzer,
     SCMAnalyzer,
+    SelectivePredictionAnalyzer,
     TSNEEmbeddingAnalyzer,
 )
 from . import visualization as viz
@@ -36,6 +38,8 @@ _DEFAULT_LEVELS = {
     'scm_analysis': True,
     'gate_analysis': True,
     'disagreement': True,
+    'selective_prediction': True,
+    'case_study': True,
     # t-SNE is opt-in — disabled by default because sklearn.manifold.TSNE
     # is O(n^2) and adds a few seconds per test dataset.
     'tsne': False,
@@ -91,6 +95,13 @@ class InterpretabilityEngine:
         if levels.get('disagreement', True):
             self.analyzers['disagreement'] = DisagreementAnalyzer()
 
+        if levels.get('selective_prediction', True):
+            self.analyzers['selective_prediction'] = SelectivePredictionAnalyzer()
+
+        if levels.get('case_study', True):
+            self.analyzers['case_study'] = CaseStudyAnalyzer(
+                num_samples=interp_cfg.get('case_study_samples', 6))
+
         # ── t-SNE embedding plot (opt-in) ────────────────────────────────
         tsne_cfg = interp_cfg.get('tsne', {})
         tsne_enabled = (
@@ -142,6 +153,27 @@ class InterpretabilityEngine:
                 scm.collect_adjacencies(model)
             except Exception as e:
                 logger.warning(f"SCM adjacency collection failed: {e}")
+
+    def set_image_paths(self, paths) -> None:
+        """Attach an ordered list of per-sample image paths for the case
+        study gallery. Must be called after inference (so len(paths) ==
+        number of collected samples) and before finalize()."""
+        cs = self.analyzers.get('case_study')
+        if cs is not None:
+            try:
+                cs.set_image_paths(paths)
+            except Exception as e:
+                logger.warning(f"CaseStudy image-path injection failed: {e}")
+
+    def set_method_labels(self, label_spe) -> None:
+        """Attach per-sample specific-method labels (FF-DF, FF-F2F, ...).
+        Enables per-method SCM fingerprint radars."""
+        scm = self.analyzers.get('scm_analysis')
+        if scm is not None and hasattr(scm, 'set_method_labels'):
+            try:
+                scm.set_method_labels(label_spe)
+            except Exception as e:
+                logger.warning(f"SCM method-label injection failed: {e}")
 
     def finalize(self, save_dir: str) -> dict:
         """

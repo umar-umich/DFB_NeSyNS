@@ -194,6 +194,11 @@ class SubGraphPair(nn.Module):
             'recon_loss': recon_loss,
             'A_real': A_real.detach(),
             'A_fake': A_fake.detach(),
+            # Per-sample |r_fake - r_real| averaged over features → (B,).
+            # Interpretability signal: how much this sub-graph disagrees
+            # between its real-SCM and fake-SCM reconstructions for each
+            # sample. Higher → sub-graph flags this sample as atypical.
+            'r_diff_magnitude': r_diff.detach().abs().mean(dim=1),
         }
 
 
@@ -349,6 +354,14 @@ class ImprovedCausalBranch(nn.Module):
             + self.recon_weight * total_recon
         )
 
+        # Per-sample r_diff magnitude per sub-graph, stacked as (B, 4)
+        # in the order [identity, forensic_structural, forensic_noise,
+        # forensic_spectral]. Paper Section 9 Level 4: "which causal
+        # domain is discriminative for this sample?".
+        r_diff_cols = [identity_out['r_diff_magnitude']] + [
+            fo['r_diff_magnitude'] for fo in forensic_outs]
+        r_diff_g = torch.stack(r_diff_cols, dim=1)
+
         result = {
             'logits': logits,
             'evidence': evidence,
@@ -359,9 +372,13 @@ class ImprovedCausalBranch(nn.Module):
             # Adjacencies for interpretability
             'A_identity_real': identity_out['A_real'],
             'A_identity_fake': identity_out['A_fake'],
+            # Per-sample sub-graph residual magnitudes (B, 4)
+            'r_diff_g': r_diff_g,
+            'r_diff_identity': identity_out['r_diff_magnitude'],
         }
         for i, (name, _, _, _) in enumerate(self.forensic_groups):
             result[f'A_forensic_{name}_real'] = forensic_outs[i]['A_real']
             result[f'A_forensic_{name}_fake'] = forensic_outs[i]['A_fake']
+            result[f'r_diff_forensic_{name}'] = forensic_outs[i]['r_diff_magnitude']
 
         return result

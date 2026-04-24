@@ -363,7 +363,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 if fused['causal_conf'] is not None:
                     pred['causal_conf'] = fused['causal_conf']
                 for k, v in causal_out.items():
-                    if k.startswith('A_'):
+                    if k.startswith('A_') or k.startswith('r_diff'):
                         pred[k] = v
                 for ccv_key in ('violation_scores', 'anomaly_scores',
                                 'counterfactual_residual'):
