@@ -12,7 +12,7 @@ pipeline that we will actually submit._
 
 Deepfake detectors trained on one dataset (FaceForensics++) collapse
 when shown a new generator (Celeb-DF-v2, DFDC, DFDCP…). They memorise
-generator-specific pixel artefacts that do not transfer. Worse, they
+generator-specific pixel artifacts that do not transfer. Worse, they
 are **overconfident on everything** — real or fake, in-domain or
 out-of-domain — so we cannot tell when to trust them. We want a
 detector that (a) **generalises across generators**, (b) **tells us
