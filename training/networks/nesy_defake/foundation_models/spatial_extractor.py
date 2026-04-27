@@ -41,7 +41,8 @@ What this file does instead:
 
 Supported backbone names (config key: name):
   'clip'    — raw CLIP ViT (recommended, matches GenD's best-generalizing variant)
-  'dinov2'  — raw DINOv2 (alternative, excellent fine-grained features)
+  'dinov3'  — Meta DINOv3, successor to DINOv2; stronger dense features (timm)
+  'pe'      — Meta Perception Encoder (PE-Core / PE-Spatial), loaded via timm
   'gend'    — KEPT for compatibility, but now loads raw CLIP from the GenD
               config's backbone field rather than the fine-tuned head weights
               NOTE: if you set name=gend, set model_path to the raw CLIP HF id
@@ -217,17 +218,32 @@ class SpatialFeatureExtractor(nn.Module):
 
     def _get_required_input_size(self) -> int:
         size_map = {
+            # CLIP family
             'openai/clip-vit-base-patch16':           224,
             'openai/clip-vit-base-patch32':           224,
             'openai/clip-vit-large-patch14':          224,
             'openai/clip-vit-large-patch14-336':      336,
-            'laion/CLIP-ViT-H-14-laion2B-s32B-b79K': 224,
-            'facebook/dinov2-small':                  224,
-            'facebook/dinov2-base':                   224,
-            'facebook/dinov2-large':                  224,
-            'facebook/dinov2-giant':                  224,
+            'laion/CLIP-ViT-H-14-laion2B-s32B-b79K':  224,
+            # DINOv3
+            'facebook/dinov3-vits16-pretrain-lvd1689m':      224,
+            'facebook/dinov3-vitb16-pretrain-lvd1689m':      224,
+            'facebook/dinov3-vitl16-pretrain-lvd1689m':      224,
+            'facebook/dinov3-vith16plus-pretrain-lvd1689m':  224,
+            # Perception Encoder (PE)
+            'facebook/PE-Core-B16-224':               224,
+            'facebook/PE-Core-L14-336':               336,
+            'facebook/PE-Core-G14-448':               448,
+            'facebook/PE-Spatial-L14-448':            448,
+            'facebook/PE-Spatial-G14-448':            448,
         }
-        return size_map.get(self.model_path, 224)
+        if self.model_path in size_map:
+            return size_map[self.model_path]
+        # Fallback: PE / CLIP path conventions end in -224 / -336 / -448.
+        # Parse the trailing token so new variants don't need a map edit.
+        for suffix in (448, 384, 336, 256, 224):
+            if self.model_path.endswith(f'-{suffix}'):
+                return suffix
+        return 224
 
     # ------------------------------------------------------------------
     # Backbone builders — raw pretrained weights ONLY
@@ -235,19 +251,17 @@ class SpatialFeatureExtractor(nn.Module):
 
     def _build_backbone(self):
         name = self.model_name
-        if name in ('clip', 'gend'):
-            # 'gend' now means: use the SAME raw CLIP that GenD uses internally,
-            # but loaded directly — not via a fine-tuned GenD checkpoint.
-            # This is the critical fix: GenD's power comes from the raw CLIP
-            # features + LayerNorm adaptation, not from its fine-tuned weights.
-            self._build_clip()
-        elif name == 'dinov2':
-            self._build_dinov2()
-        else:
+        dispatch = {
+            'clip':    self._build_clip,
+            'dinov3':  self._build_dinov3,
+            'pe':      self._build_pe,
+        }
+        if name not in dispatch:
             raise ValueError(
                 f"[SpatialExtractor] Unknown backbone name: '{name}'. "
-                f"Choose from: clip, dinov2, gend"
+                f"Choose from: {sorted(dispatch.keys())}"
             )
+        dispatch[name]()
 
     def _build_clip(self):
         """
@@ -270,24 +284,101 @@ class SpatialFeatureExtractor(nn.Module):
         self.backbone_dim  = clip_dims.get(self.model_path, 1024)
         self._forward_fn   = self._forward_clip
 
-    def _build_dinov2(self):
-        """
-        Load raw DINOv2 from HuggingFace.
-        CLS token output — excellent for fine-grained spatial features.
-        """
-        from transformers import Dinov2Model
 
-        logger.info(f"[SpatialExtractor] Loading raw DINOv2 from: {self.model_path}")
-        self.backbone = Dinov2Model.from_pretrained(self.model_path)
+    def _build_dinov3(self):
+        """
+        Load raw DINOv3 via timm.
 
-        dino_dims = {
-            'facebook/dinov2-small':  384,
-            'facebook/dinov2-base':   768,
-            'facebook/dinov2-large':  1024,
-            'facebook/dinov2-giant':  1536,
+        NOTE: HuggingFace transformers < 4.45 does not recognise the
+        'dinov3_vit' architecture (ValueError on AutoConfig). timm
+        (>= 1.0.25) has first-class DINOv3 support and handles the raw
+        Meta checkpoints directly.
+
+        You can specify either a timm model name (e.g.
+        vit_large_patch16_dinov3) or keep the familiar HF-style path
+        (facebook/dinov3-vitl16-pretrain-lvd1689m) — the map below
+        translates it.
+        """
+        try:
+            import timm
+        except ImportError as e:
+            raise ImportError(
+                "[SpatialExtractor] DINOv3 backbone requires timm (>=1.0.25). "
+                "Install with:  pip install -U timm"
+            ) from e
+
+        hf_to_timm = {
+            'facebook/dinov3-vits16-pretrain-lvd1689m':     'vit_small_patch16_dinov3',
+            'facebook/dinov3-vitb16-pretrain-lvd1689m':     'vit_base_patch16_dinov3',
+            'facebook/dinov3-vitl16-pretrain-lvd1689m':     'vit_large_patch16_dinov3',
+            'facebook/dinov3-vith16plus-pretrain-lvd1689m': 'vit_huge_plus_patch16_dinov3',
         }
-        self.backbone_dim  = dino_dims.get(self.model_path, 1024)
-        self._forward_fn   = self._forward_dinov2
+        timm_name = hf_to_timm.get(self.model_path, self.model_path)
+        logger.info(f"[SpatialExtractor] Loading DINOv3 via timm: {timm_name}")
+        # num_classes=0 drops the classification head → model(x) returns
+        # the globally-pooled CLS feature directly (B, num_features).
+        self.backbone = timm.create_model(
+            timm_name, pretrained=True, num_classes=0,
+        )
+
+        dims = {
+            'facebook/dinov3-vits16-pretrain-lvd1689m':     384,
+            'facebook/dinov3-vitb16-pretrain-lvd1689m':     768,
+            'facebook/dinov3-vitl16-pretrain-lvd1689m':     1024,
+            'facebook/dinov3-vith16plus-pretrain-lvd1689m': 1280,
+        }
+        self.backbone_dim = dims.get(
+            self.model_path, int(getattr(self.backbone, 'num_features', 1024)))
+        self._forward_fn = self._forward_dinov3
+
+    def _build_pe(self):
+        """
+        Load Meta Perception Encoder (PE-Core / PE-Spatial) via timm.
+
+        NOTE: The HF PE repos (facebook/PE-Core-*, facebook/PE-Spatial-*)
+        ship raw Meta .pt checkpoints — there is no config.json, so
+        HuggingFace's AutoModel.from_pretrained cannot load them. timm
+        (>= 1.0.15) has first-class PE support and handles the checkpoint
+        conversion automatically.
+
+        Either specify a timm model name directly (e.g. vit_pe_core_large_
+        patch14_336) or keep the familiar HF id (facebook/PE-Core-L14-336)
+        — the HF→timm name map below translates it.
+        """
+        try:
+            import timm
+        except ImportError as e:
+            raise ImportError(
+                "[SpatialExtractor] PE backbone requires timm (>=1.0.15). "
+                "Install with:  pip install -U timm"
+            ) from e
+
+        hf_to_timm = {
+            'facebook/PE-Core-B16-224':    'vit_pe_core_base_patch16_224',
+            'facebook/PE-Core-L14-336':    'vit_pe_core_large_patch14_336',
+            'facebook/PE-Core-G14-448':    'vit_pe_core_gigantic_patch14_448',
+            'facebook/PE-Spatial-G14-448': 'vit_pe_spatial_gigantic_patch14_448',
+            'facebook/PE-Spatial-L14-448': 'vit_pe_spatial_large_patch14_448',
+        }
+        timm_name = hf_to_timm.get(self.model_path, self.model_path)
+        logger.info(f"[SpatialExtractor] Loading PE via timm: {timm_name}")
+        # num_classes=0 drops the classification head so model(x) returns
+        # the globally-pooled feature directly (B, num_features).
+        self.backbone = timm.create_model(
+            timm_name, pretrained=True, num_classes=0,
+        )
+
+        # Prefer the map; fall back to the model's declared num_features.
+        dims = {
+            'facebook/PE-Core-B16-224':    768,
+            'facebook/PE-Core-L14-336':    1024,
+            'facebook/PE-Core-G14-448':    1536,
+            'facebook/PE-Spatial-G14-448': 1536,
+            'facebook/PE-Spatial-L14-448': 1024,
+        }
+        self.backbone_dim = dims.get(
+            self.model_path, int(getattr(self.backbone, 'num_features', 1024)))
+        self._forward_fn = self._forward_pe
 
     # ------------------------------------------------------------------
     # Trainable parameter helpers
@@ -341,10 +432,13 @@ class SpatialFeatureExtractor(nn.Module):
         outputs = self.backbone(pixel_values=x)
         return outputs.pooler_output  # (B, backbone_dim)
 
-    def _forward_dinov2(self, x: torch.Tensor) -> torch.Tensor:
-        """DINOv2 CLS token from last hidden state. Shape: (B, D)"""
-        outputs = self.backbone(pixel_values=x)
-        return outputs.last_hidden_state[:, 0]  # (B, backbone_dim)
+    def _forward_dinov3(self, x: torch.Tensor) -> torch.Tensor:
+        """DINOv3 (timm backbone, num_classes=0) returns pooled CLS: (B, D)."""
+        return self.backbone(x)
+
+    def _forward_pe(self, x: torch.Tensor) -> torch.Tensor:
+        """PE (timm backbone with num_classes=0) returns pooled CLS: (B, D)."""
+        return self.backbone(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

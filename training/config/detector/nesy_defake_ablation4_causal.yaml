@@ -126,8 +126,8 @@ projection_dropout:
   frequency: 0.0
 
 # -- Data loading & augmentation (GenD) ---------------------------------------
-train_batchSize: 128
-test_batchSize:  128
+train_batchSize: 64
+test_batchSize:  64
 workers:         12
 
 use_data_augmentation: true
@@ -169,10 +169,37 @@ forensic_features:
   precomputed_dir: forensic_features
 
 # -- Foundation Models (GenD) -------------------------------------------------
+# Spatial backbone ablation — uncomment ONE block at a time.
+# All listed variants produce 1024-dim features at ViT-L, matching output_dim.
+#
+# Available names: clip | dinov2 | dinov3 | pe
 foundation_models:
+  # [A] CLIP ViT-L/14 (current default — GenD-style)
+  # spatial:
+  #   name:            clip
+  #   model_path:      openai/clip-vit-large-patch14-336 # openai/clip-vit-large-patch14
+  #   output_dim:      1024
+  #   freeze_backbone: true
+  #   train_layernorms: true
+  #   normalization:
+  #     mean: [0.481, 0.458, 0.408]
+  #     std:  [0.269, 0.261, 0.276]
+
+  # [B] DINOv3 ViT-L/16 — stronger dense features than DINOv2
+  # spatial:
+  #   name:            dinov3
+  #   model_path:      facebook/dinov3-vitl16-pretrain-lvd1689m
+  #   output_dim:      1024
+  #   freeze_backbone: true
+  #   train_layernorms: true
+  #   normalization:
+  #     mean: [0.485, 0.456, 0.406]
+  #     std:  [0.229, 0.224, 0.225]
+
+  # [C] Perception Encoder (PE-Core-L/14-336) — GenD's raw backbone
   spatial:
-    name:            clip
-    model_path:      openai/clip-vit-large-patch14
+    name:            pe
+    model_path:      facebook/PE-Spatial-L14-448 # facebook/PE-Spatial-G14-448, facebook/PE-Core-G14-448, facebook/PE-Core-L14-336
     output_dim:      1024
     freeze_backbone: true
     train_layernorms: true
