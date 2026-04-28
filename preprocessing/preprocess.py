@@ -332,7 +332,7 @@ def process_video(
             f.write(f"{movie_path.stem},{num_saved},{total_target}\n")
 
 
-def preprocess(dataset_path, mask_path, output_path, mode, num_frames, stride, logger, model):
+def preprocess(dataset_path, mask_path, output_path, mode, num_frames, stride, logger, model, allowed_videos=None):
     """Process all videos in a dataset directory.
 
     Args:
@@ -344,10 +344,15 @@ def preprocess(dataset_path, mask_path, output_path, mode, num_frames, stride, l
         stride: Stride for fixed_stride mode.
         logger: Logger instance.
         model: RetinaFace model instance.
+        allowed_videos: Optional set of absolute Path objects. If provided, only
+            videos whose path is in the set will be processed (used for
+            test-list filtering on Celeb-DF-v3).
     """
     movies_path_list = sorted([
         Path(p) for p in glob.glob(os.path.join(dataset_path, '**/*.mp4'), recursive=True)
     ])
+    if allowed_videos is not None:
+        movies_path_list = [p for p in movies_path_list if p.resolve() in allowed_videos]
     if len(movies_path_list) == 0:
         logger.error(f"No videos found in {dataset_path}")
         return
@@ -468,6 +473,23 @@ if __name__ == '__main__':
         sub_dataset_names = ['Celeb-real', 'Celeb-synthesis', 'YouTube-real']
         sub_dataset_paths = [Path(os.path.join(dataset_path, name)) for name in sub_dataset_names]
 
+    ## Celeb-DF-v3 (FaceSwap fakes only + both real folders, restricted to test list)
+    elif dataset_name == 'Celeb-DF-v3':
+        test_list_path = dataset_path / 'List_of_testing_videos.txt'
+        if not test_list_path.is_file():
+            raise FileNotFoundError(f"Missing test list: {test_list_path}")
+        with open(test_list_path) as f:
+            test_rels = [line.strip().split()[1] for line in f if line.strip()]
+        allowed_videos = {(dataset_path / rel).resolve() for rel in test_rels}
+
+        # FaceSwap fakes: enumerate each sub-method as its own sub-dataset
+        # to avoid stem collisions across BlendFace/Celeb-DF-v2/GHOST/etc.
+        faceswap_root = dataset_path / 'Celeb-synthesis' / 'FaceSwap'
+        if not faceswap_root.is_dir():
+            raise FileNotFoundError(f"FaceSwap root missing: {faceswap_root}")
+        sub_dataset_paths = sorted([p for p in faceswap_root.iterdir() if p.is_dir()])
+        sub_dataset_paths += [dataset_path / 'Celeb-real', dataset_path / 'YouTube-real']
+
     ## DFDCP
     elif dataset_name == 'DFDCP':
         sub_dataset_names = ['original_videos', 'method_A', 'method_B']
@@ -504,6 +526,8 @@ if __name__ == '__main__':
                 logger.error(f"Sub Dataset path does not exist: {sub_dataset_path}")
                 sys.exit(1)
 
+        video_filter = allowed_videos if 'allowed_videos' in dir() else None
+
         for sub_dataset_path in sub_dataset_paths:
             # Compute output path mirroring source structure under output_base
             relative_path = sub_dataset_path.relative_to(dataset_path)
@@ -513,9 +537,9 @@ if __name__ == '__main__':
             # Only part of FF++ has masks
             if dataset_name == 'FaceForensics++' and sub_dataset_path.parent in mask_dataset_paths:
                 mask_dataset_path = os.path.join(sub_dataset_path.parent, "masks")
-                preprocess(sub_dataset_path, mask_dataset_path, output_path, mode, num_frames, stride, logger, model)
+                preprocess(sub_dataset_path, mask_dataset_path, output_path, mode, num_frames, stride, logger, model, allowed_videos=video_filter)
             else:
-                preprocess(sub_dataset_path, None, output_path, mode, num_frames, stride, logger, model)
+                preprocess(sub_dataset_path, None, output_path, mode, num_frames, stride, logger, model, allowed_videos=video_filter)
     else:
         logger.error(f"No sub-dataset paths found")
         sys.exit(1)

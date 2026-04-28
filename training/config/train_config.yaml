@@ -25,6 +25,8 @@ label_dict:
   CelebDFv1_fake: 1
   CelebDFv2_real: 0
   CelebDFv2_fake: 1
+  CelebDFv3_real: 0
+  CelebDFv3_fake: 1
   # DFDCP
   DFDCP_Real: 0
   DFDCP_FakeA: 1

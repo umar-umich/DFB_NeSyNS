@@ -358,6 +358,77 @@ def generate_dataset_file(dataset_name, dataset_root_path, output_file_path, com
             dataset_dict[dataset_name][label]['test'][vidname] = {'label': label, 'frames': frame_paths}
             dataset_dict[dataset_name][label]['val'][vidname] = {'label': label, 'frames': frame_paths}
 
+    ## Celeb-DF-v3 dataset (FaceSwap fakes only + both real folders)
+    ## Layout differs from v2: fakes are nested under Celeb-synthesis/FaceSwap/<sub-method>/frames/<stem>/
+    elif dataset_name == 'Celeb-DF-v3':
+        dataset_path = os.path.join(dataset_root_path, dataset_name)
+        dataset_dict[dataset_name] = {
+            'CelebDFv3_real': {'train': {}, 'val': {}, 'test': {}},
+            'CelebDFv3_fake': {'train': {}, 'val': {}, 'test': {}},
+        }
+
+        # Real videos: Celeb-real/ and YouTube-real/ (same depth as v2)
+        for real_folder in ['Celeb-real', 'YouTube-real']:
+            frames_root = os.path.join(dataset_path, real_folder, 'frames')
+            if not os.path.isdir(frames_root):
+                continue
+            for video_path in os.scandir(frames_root):
+                if video_path.is_dir():
+                    video_name = video_path.name
+                    frame_paths = [os.path.join(video_path, f.name) for f in os.scandir(video_path)]
+                    dataset_dict[dataset_name]['CelebDFv3_real']['train'][video_name] = {
+                        'label': 'CelebDFv3_real', 'frames': frame_paths,
+                    }
+
+        # Fake videos: Celeb-synthesis/FaceSwap/<sub-method>/frames/<stem>/
+        # Use "<sub-method>/<stem>" as the key to avoid collisions across sub-methods.
+        faceswap_root = os.path.join(dataset_path, 'Celeb-synthesis', 'FaceSwap')
+        if os.path.isdir(faceswap_root):
+            for sub_method in os.scandir(faceswap_root):
+                if not sub_method.is_dir():
+                    continue
+                frames_root = os.path.join(sub_method.path, 'frames')
+                if not os.path.isdir(frames_root):
+                    continue
+                for video_path in os.scandir(frames_root):
+                    if video_path.is_dir():
+                        video_key = f'{sub_method.name}/{video_path.name}'
+                        frame_paths = [os.path.join(video_path, f.name) for f in os.scandir(video_path)]
+                        dataset_dict[dataset_name]['CelebDFv3_fake']['train'][video_key] = {
+                            'label': 'CelebDFv3_fake', 'frames': frame_paths,
+                        }
+
+        # Test/val splits from List_of_testing_videos.txt
+        with open(os.path.join(dataset_path, 'List_of_testing_videos.txt'), 'r') as f:
+            lines = f.readlines()
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            rel_path = line.split()[1]  # e.g. "Celeb-synthesis/FaceSwap/BlendFace/id1_id0_0007.mp4"
+            parts = rel_path.split('/')
+            if parts[0] in ('Celeb-real', 'YouTube-real'):
+                label = 'CelebDFv3_real'
+                vidname = parts[-1].split('.mp4')[0]
+                video_key = vidname
+                frame_paths = glob.glob(
+                    os.path.join(dataset_path, parts[0], 'frames', vidname, '*png'))
+            elif len(parts) >= 4 and parts[0] == 'Celeb-synthesis' and parts[1] == 'FaceSwap':
+                label = 'CelebDFv3_fake'
+                sub_method = parts[2]
+                vidname = parts[-1].split('.mp4')[0]
+                video_key = f'{sub_method}/{vidname}'
+                frame_paths = glob.glob(
+                    os.path.join(dataset_path, 'Celeb-synthesis', 'FaceSwap', sub_method,
+                                 'frames', vidname, '*png'))
+            else:
+                # Skip non-FaceSwap fakes (FaceReenact, TalkingFace) — not preprocessed
+                continue
+            if not frame_paths:
+                continue
+            dataset_dict[dataset_name][label]['test'][video_key] = {'label': label, 'frames': frame_paths}
+            dataset_dict[dataset_name][label]['val'][video_key] = {'label': label, 'frames': frame_paths}
+
     ## DFDCP dataset
     elif dataset_name == 'DFDCP':
         dataset_path = os.path.join(dataset_root_path, dataset_name)

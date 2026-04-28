@@ -1,7 +1,7 @@
 preprocess:
   dataset_name: # the name of dataset
-    choices: ['FaceForensics++','Celeb-DF-v1', 'Celeb-DF-v2', 'DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV']
-    default: 'Celeb-DF-v1'
+    choices: ['FaceForensics++','Celeb-DF-v1', 'Celeb-DF-v2', 'Celeb-DF-v3', 'DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV']
+    default: 'Celeb-DF-v3'
   
   dataset_root_path: # the root path to the original dataset
     type: str
@@ -31,8 +31,8 @@ preprocess:
 
 rearrange:
   dataset_name: # the name of dataset
-    choices: ['FaceForensics++', 'DeepFakeDetection', 'Celeb-DF-v1', 'Celeb-DF-v2','DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV','FaceShifter']
-    default: 'FaceShifter'
+    choices: ['FaceForensics++', 'DeepFakeDetection', 'Celeb-DF-v1', 'Celeb-DF-v2', 'Celeb-DF-v3', 'DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV','FaceShifter']
+    default: 'Celeb-DF-v3'
   
   dataset_root_path: # the root path to the preprocessed dataset
     type: str

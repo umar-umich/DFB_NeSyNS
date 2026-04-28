@@ -472,18 +472,17 @@ def main():
     if config.get('cudnn', False):
         cudnn.benchmark = True
 
-    # Output directory
-    # Derive experiment name from detector config filename
-    config_name = os.path.splitext(os.path.basename(args.detector_path))[0]
+    # Output directory: reuse the train experiment folder name (the
+    # parent of weights_path, e.g. nesy_defake_ablation4_causal_<dt>_exp)
+    # so test results sit alongside the run that produced them.
     if args.output_dir:
         out_dir = args.output_dir
     else:
-        # Try to reuse the train experiment folder name from weights_path
-        # Expected: logs/train/<config_name>_<datetime>/best_*.pth
-        weights_parent = os.path.basename(os.path.dirname(args.weights_path))
-        if weights_parent.startswith(config_name):
-            experiment_folder = weights_parent
-        else:
+        experiment_folder = os.path.basename(
+            os.path.dirname(os.path.abspath(args.weights_path)))
+        if not experiment_folder:
+            config_name = os.path.splitext(
+                os.path.basename(args.detector_path))[0]
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
             experiment_folder = f'{config_name}_{timestamp}'
         out_dir = os.path.join('logs', 'test', experiment_folder)

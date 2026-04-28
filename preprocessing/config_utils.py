@@ -86,12 +86,23 @@ def collect_videos_from_json(config: dict) -> dict:
                             base_dir = os.path.dirname(
                                 os.path.dirname(sample_frame))
 
+                        # If the JSON dict key contains a path separator (e.g.
+                        # "SimSwap/<stem>" used in Celeb-DF-v3 for cross-sub-method
+                        # uniqueness), derive video_id from the actual frame path
+                        # so the output filename is just the stem and matches the
+                        # training-side _load_fast_semantic lookup. For flat keys
+                        # (FF++, augmented suffixes like "_aug1") preserve the key.
+                        if '/' in video_id and frames_dir_idx is not None:
+                            video_id_fname = parts[frames_dir_idx + 1]
+                        else:
+                            video_id_fname = video_id
+
                         vid_key = f"{base_dir}/{video_id}"
                         if vid_key not in videos:
                             videos[vid_key] = {
                                 'frames': sorted(frames),
                                 'output_dir': base_dir,
-                                'video_id': video_id,
+                                'video_id': video_id_fname,
                             }
                             total_frames += len(frames)
                         else:
