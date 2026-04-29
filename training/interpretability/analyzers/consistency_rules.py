@@ -80,12 +80,25 @@ class ConsistencyRuleAnalyzer(BaseAnalyzer):
     def visualize(self, save_dir: str) -> None:
         if not hasattr(self, '_names'):
             return
+        # Side-by-side firing rates (kept for completeness; uses pretty labels)
+        from ..pretty_names import pretty_many
         viz.plot_grouped_bar(
-            {'Real': self._real_means.tolist(), 'Fake': self._fake_means.tolist()},
-            self._names,
-            title='Consistency Rule Firing Rates by Class',
+            {'Real': self._real_means.tolist(),
+             'Fake': self._fake_means.tolist()},
+            pretty_many(self._names),
+            title='Consistency rule firing rates by class',
             save_path=os.path.join(save_dir, 'rule_firing_rates.png'),
-            ylabel='Mean Violation Score',
+            ylabel='Mean violation score',
+        )
+        # Discriminative-gap view — usually the figure to put in the paper
+        viz.plot_discriminative_gap(
+            real_values=self._real_means.tolist(),
+            fake_values=self._fake_means.tolist(),
+            category_names=list(self._names),
+            title=(r'Rules ranked by class-discriminative gap '
+                   r'(top-12 by $|\mathrm{fake}-\mathrm{real}|$)'),
+            save_path=os.path.join(save_dir, 'rule_discriminative_gap.png'),
+            top_k=12,
         )
 
     def explain_sample(self, idx: int) -> str:

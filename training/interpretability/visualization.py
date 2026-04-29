@@ -14,6 +14,12 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 
+try:
+    from .pretty_names import pretty, pretty_many, group_of, GROUP_COLORS, GROUP_LONGNAMES
+except ImportError:  # allow flat-import (e.g. unit tests)
+    from interpretability.pretty_names import (  # type: ignore
+        pretty, pretty_many, group_of, GROUP_COLORS, GROUP_LONGNAMES)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  Histograms
@@ -89,23 +95,40 @@ def plot_stacked_bar(
     save_path: str,
     ylabel: str = 'Mean Evidence',
 ):
-    """Single stacked bar showing component contributions."""
-    fig, ax = plt.subplots(figsize=(6, 5))
+    """Single stacked bar showing component contributions.
+
+    Compact paper-friendly layout: narrow bar, in-segment labels, and a
+    total annotation above the bar.
+    """
+    fig, ax = plt.subplots(figsize=(3.6, 4.5))
     names = list(components.keys())
     values = [components[n] for n in names]
     colors = plt.cm.Set2(np.linspace(0, 1, len(names)))
 
     bottom = 0.0
+    total = float(sum(values))
     for name, val, color in zip(names, values, colors):
-        ax.bar('Evidence', val, bottom=bottom, color=color,
-               label=f'{name}: {val:.2f}', edgecolor='white')
+        ax.bar('Evidence', val, width=0.42, bottom=bottom, color=color,
+               label=f'{name}: {val:.2f}', edgecolor='white', linewidth=0.8)
+        # Label inside each segment if it's tall enough
+        if total > 0 and val / total > 0.04:
+            ax.text(0, bottom + val / 2, f'{val:.2f}',
+                    ha='center', va='center', fontsize=8.5,
+                    color='white', fontweight='bold')
         bottom += val
 
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.legend(loc='upper right')
+    # Total at the top of the stack
+    ax.text(0, total + 0.02 * max(total, 1e-6),
+            f'Σ = {total:.2f}', ha='center', va='bottom',
+            fontsize=9, color='#222', fontweight='bold')
+
+    ax.set_ylim(0, total + 0.12 * max(total, 1e-6))
+    ax.set_ylabel(ylabel, fontsize=10)
+    ax.set_title(title, fontsize=11)
+    ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5),
+              fontsize=8, frameon=False)
     fig.tight_layout()
-    fig.savefig(save_path, dpi=150)
+    fig.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
 
 
@@ -113,30 +136,131 @@ def plot_evidence_by_class(
     class_components: Dict[str, Dict[str, float]],
     title: str,
     save_path: str,
+    proportional: bool = True,
 ):
-    """Side-by-side stacked bars for real vs fake evidence decomposition."""
-    fig, ax = plt.subplots(figsize=(8, 5))
+    """Side-by-side stacked bars for real-vs-fake evidence decomposition.
+
+    By default each bar is normalised to 100 % so the *composition* of
+    evidence (which branch dominates in each class) is visible — this
+    avoids the absolute-magnitude trap where one class' bar dwarfs the
+    other and you can't see the mix any more.
+
+    Set ``proportional=False`` to recover the original absolute-mean view.
+    """
+    fig, axes = plt.subplots(
+        1, 2 if proportional else 1,
+        figsize=(7.5 if proportional else 4.0, 4.5),
+        squeeze=False)
+    axes = axes[0]
     class_names = list(class_components.keys())
     branch_names = list(class_components[class_names[0]].keys())
     colors = plt.cm.Set2(np.linspace(0, 1, len(branch_names)))
-
     x = np.arange(len(class_names))
-    width = 0.5
+    width = 0.42  # narrower bars for paper layout
 
-    for cls_idx, cls_name in enumerate(class_names):
-        bottom = 0.0
-        for br_idx, br_name in enumerate(branch_names):
-            val = class_components[cls_name][br_name]
-            label = br_name if cls_idx == 0 else None
-            ax.bar(x[cls_idx], val, width, bottom=bottom,
-                   color=colors[br_idx], label=label, edgecolor='white')
-            bottom += val
+    def _stacked(ax, normalize: bool):
+        for cls_idx, cls_name in enumerate(class_names):
+            comp = class_components[cls_name]
+            raw_total = sum(comp.values())
+            total = raw_total if normalize else 1.0
+            total = total if total > 0 else 1.0
+            bottom = 0.0
+            for br_idx, br_name in enumerate(branch_names):
+                val = comp[br_name] / total
+                label = br_name if cls_idx == 0 else None
+                ax.bar(x[cls_idx], val, width, bottom=bottom,
+                       color=colors[br_idx], label=label,
+                       edgecolor='white', linewidth=1.0)
+                # In-segment numeric annotation if the slice is fat enough
+                if (normalize and val > 0.05) or (not normalize and val > 0.5):
+                    ax.text(x[cls_idx], bottom + val / 2,
+                            f'{val*100:.0f}%' if normalize else f'{val:.1f}',
+                            ha='center', va='center', fontsize=8.5,
+                            color='white', fontweight='bold')
+                bottom += val
+            # Total above the stack
+            top_val = bottom
+            top_text = (f'{int(round(top_val * 100))}%' if normalize
+                        else f'{raw_total:.2f}')
+            ax.text(x[cls_idx], top_val + 0.015 * max(top_val, 1.0),
+                    top_text, ha='center', va='bottom',
+                    fontsize=9, color='#222', fontweight='bold')
+        ax.set_xticks(x); ax.set_xticklabels(class_names, fontsize=10)
+        ax.set_ylabel('Share of evidence' if normalize else 'Mean evidence',
+                      fontsize=10)
+        if normalize:
+            ax.set_ylim(0, 1.10)
+            ax.yaxis.set_major_formatter(
+                plt.FuncFormatter(lambda y, _: f'{int(y*100)}%'))
+        ax.set_xlim(-0.6, len(class_names) - 0.4)
 
-    ax.set_xticks(x)
-    ax.set_xticklabels(class_names)
-    ax.set_ylabel('Mean Evidence')
-    ax.set_title(title)
-    ax.legend()
+    if proportional:
+        _stacked(axes[0], normalize=True)
+        axes[0].set_title('Composition (normalised)')
+        _stacked(axes[1], normalize=False)
+        axes[1].set_title('Magnitude (absolute)')
+        axes[1].legend(loc='upper left', fontsize=9, frameon=False)
+    else:
+        _stacked(axes[0], normalize=False)
+        axes[0].legend()
+
+    fig.suptitle(title, fontsize=13)
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+
+def plot_discriminative_gap(
+    real_values: Sequence[float],
+    fake_values: Sequence[float],
+    category_names: List[str],
+    title: str,
+    save_path: str,
+    top_k: int = 12,
+    pretty_labels: bool = True,
+):
+    """Bar chart of |fake − real| per category, ranked.
+
+    Use for consistency-rule firing rates: a flat side-by-side comparison
+    hides which rules actually discriminate. Plotting the gap (signed)
+    makes class-distinctive rules pop out.
+    """
+    real = np.asarray(real_values, dtype=float)
+    fake = np.asarray(fake_values, dtype=float)
+    gap = fake - real
+    order = np.argsort(-np.abs(gap))[:top_k]
+
+    cats = [category_names[i] for i in order]
+    pretty_cats = pretty_many(cats) if pretty_labels else cats
+    g = gap[order]
+
+    fig_w = float(np.clip(2.5 + 0.40 * len(cats), 4.5, 9.0))
+    fig, ax = plt.subplots(figsize=(fig_w, 4.0))
+    colors = ['#d62728' if v > 0 else '#1f77b4' for v in g]
+    bars = ax.bar(range(len(cats)), g, width=0.55, color=colors,
+                  alpha=0.88, edgecolor='white', linewidth=0.5)
+    ax.axhline(0, color='black', lw=0.7)
+    # Numeric labels: above for positive, below for negative
+    span = float(g.max() - g.min()) if len(g) else 1.0
+    pad = 0.025 * (span + 1e-6)
+    for b, v in zip(bars, g):
+        ax.text(b.get_x() + b.get_width() / 2,
+                v + (pad if v >= 0 else -pad),
+                f'{v:+.3f}',
+                ha='center', va='bottom' if v >= 0 else 'top',
+                fontsize=7.5, color='#222')
+    ax.set_xticks(range(len(cats)))
+    ax.set_xticklabels(pretty_cats, rotation=35, ha='right', fontsize=9)
+    ax.set_ylabel(r'Mean$_{\mathrm{fake}}$ - Mean$_{\mathrm{real}}$',
+                  fontsize=10)
+    ax.set_title(title, fontsize=11)
+    # Headroom for labels
+    ax.set_ylim(g.min() - 4 * pad, g.max() + 4 * pad)
+    from matplotlib.patches import Patch
+    ax.legend(handles=[
+        Patch(facecolor='#d62728', alpha=0.85, label='fires more on fakes'),
+        Patch(facecolor='#1f77b4', alpha=0.85, label='fires more on reals'),
+    ], fontsize=8, loc='best', frameon=False)
     fig.tight_layout()
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
@@ -185,24 +309,48 @@ def plot_grouped_bar(
     ylabel: str = 'Mean Score',
     rotate_labels: int = 45,
 ):
-    """Grouped bar chart (e.g., real vs fake per rule)."""
+    """Grouped bar chart (e.g., real vs fake per rule).
+
+    Sized for paper columns: narrow bars, compact figure. Numeric values
+    are annotated above every bar.
+    """
     n_cats = len(category_names)
     n_groups = len(group_data)
     x = np.arange(n_cats)
-    width = 0.8 / n_groups
+    # Narrower bars + total cluster width 0.6 (was 0.8) so neighbouring
+    # category clusters keep visible whitespace between them.
+    width = 0.6 / max(n_groups, 1)
     colors = plt.cm.Set1(np.linspace(0, 1, n_groups))
 
-    fig, ax = plt.subplots(figsize=(max(10, n_cats * 0.6), 6))
+    # Compact width for paper figures; scales with #categories but
+    # capped to a reasonable single/double-column footprint.
+    fig_w = float(np.clip(2.0 + 0.45 * n_cats, 4.5, 9.0))
+    fig, ax = plt.subplots(figsize=(fig_w, 4.0))
+
+    all_vals = []
     for i, (label, values) in enumerate(group_data.items()):
         offset = (i - n_groups / 2 + 0.5) * width
-        ax.bar(x + offset, values, width, label=label,
-               color=colors[i], alpha=0.8)
+        bars = ax.bar(x + offset, values, width, label=label,
+                      color=colors[i], alpha=0.85,
+                      edgecolor='white', linewidth=0.5)
+        all_vals.extend(values)
+        # Numeric label above every bar
+        for b, v in zip(bars, values):
+            ax.text(b.get_x() + b.get_width() / 2,
+                    b.get_height(),
+                    f'{v:.2f}', ha='center', va='bottom',
+                    fontsize=7.5, color='#222')
 
     ax.set_xticks(x)
-    ax.set_xticklabels(category_names, rotation=rotate_labels, ha='right')
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.legend()
+    ax.set_xticklabels(category_names, rotation=rotate_labels, ha='right',
+                       fontsize=9)
+    ax.set_ylabel(ylabel, fontsize=10)
+    ax.set_title(title, fontsize=11)
+    # Headroom so the top labels don't get clipped
+    if all_vals:
+        vmax = max(all_vals); vmin = min(0.0, min(all_vals))
+        ax.set_ylim(vmin, vmax + 0.10 * (vmax - vmin + 1e-6))
+    ax.legend(fontsize=8, frameon=False)
     fig.tight_layout()
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
@@ -220,45 +368,127 @@ def plot_side_by_side_heatmap(
     col_labels: Optional[List[str]] = None,
     cmap: str = 'RdBu_r',
     symmetric: bool = True,
+    crop_inactive: bool = True,
+    activity_thresh: float = 1e-4,
+    max_label_count: int = 60,
+    pretty_labels: bool = True,
 ):
-    """Render N adjacency matrices side-by-side with a shared colour scale.
+    """Render N adjacency matrices side-by-side, paper-ready.
 
-    Used for `A_real | A_fake` (and optionally `|A_real - A_fake|`)
-    figures in the paper. Shared colour scale makes the two panels
-    directly comparable by eye.
+    Improvements over the original:
+      • Auto-crops rows/cols whose combined activity (across all matrices)
+        is below `activity_thresh`. Removes the giant white margins that
+        came from sparse SCM adjacencies.
+      • Uses a SHARED scale for matched matrices (e.g. ``A_real``,
+        ``A_fake``) but a SEPARATE, tighter scale for any matrix whose
+        name starts with ``|`` or ``Δ`` (the divergence panel) — that way
+        small differences don't get flattened by a wide range.
+      • Pretty-prints node labels via ``pretty_names.pretty`` so e.g.
+        ``ff_srm_hedge_kurt`` becomes ``κ_SRM^Hedge`` in math mode.
+      • Tints tick labels by semantic group (latent / curated / forensic
+        sub-types) and adds a group-colour legend.
     """
     names = list(matrices.keys())
     arrs = [np.asarray(matrices[n]) for n in names]
-    n = len(arrs)
+    n_panels = len(arrs)
+
+    # ── Crop inactive rows/cols (combined across panels) ───────────────
+    if crop_inactive and arrs:
+        combined = np.sum([np.abs(a) for a in arrs], axis=0)
+        active_rows = np.where(combined.sum(axis=1) > activity_thresh)[0]
+        active_cols = np.where(combined.sum(axis=0) > activity_thresh)[0]
+        if active_rows.size and active_cols.size:
+            r0, r1 = active_rows.min(), active_rows.max() + 1
+            c0, c1 = active_cols.min(), active_cols.max() + 1
+            arrs = [a[r0:r1, c0:c1] for a in arrs]
+            if row_labels is not None:
+                row_labels = list(row_labels[r0:r1])
+            if col_labels is not None:
+                col_labels = list(col_labels[c0:c1])
+
     h, w = arrs[0].shape
-    cell = 0.18 if max(h, w) > 40 else 0.30
+    cell = 0.30 if max(h, w) <= 40 else 0.20
     fig, axes = plt.subplots(
-        1, n, figsize=(max(5, w * cell) * n + 1.5, max(5, h * cell)),
+        1, n_panels,
+        figsize=(max(5, w * cell) * n_panels + 1.5, max(5, h * cell + 2.5)),
         squeeze=False,
     )
     axes = axes[0]
 
-    vmax = max(np.abs(a).max() for a in arrs)
-    vmin = -vmax if symmetric else 0.0
+    # Two scales: one for shared "raw" panels, one for diff panel.
+    # A diff panel is anything whose key contains "|...|" (or starts with Δ).
+    def _is_diff_key(s: str) -> bool:
+        s = s.lstrip('$').lstrip()
+        return s.startswith('|') or s.startswith('Δ') or s.startswith(r'\Delta')
+    raw_idx = [i for i, nm in enumerate(names) if not _is_diff_key(nm)]
+    diff_idx = [i for i in range(n_panels) if i not in raw_idx]
+    vmax_raw = max((np.abs(arrs[i]).max() for i in raw_idx), default=1.0)
+    vmax_diff = max((np.abs(arrs[i]).max() for i in diff_idx), default=1.0)
+    vmax_raw = max(vmax_raw, 1e-6)
+    vmax_diff = max(vmax_diff, 1e-6)
 
-    im = None
-    for ax, name, A in zip(axes, names, arrs):
-        im = ax.imshow(A, cmap=cmap, aspect='auto', vmin=vmin, vmax=vmax)
-        ax.set_title(name, fontsize=12)
-        if row_labels is not None and len(row_labels) <= 40:
-            ax.set_yticks(range(len(row_labels)))
-            ax.set_yticklabels(row_labels, fontsize=6)
-        else:
-            ax.set_yticks([])
-        if col_labels is not None and len(col_labels) <= 40:
-            ax.set_xticks(range(len(col_labels)))
-            ax.set_xticklabels(col_labels, rotation=90, fontsize=6)
-        else:
-            ax.set_xticks([])
+    show_labels = (row_labels is not None and len(row_labels) <= max_label_count)
+    pretty_rows = pretty_many(row_labels) if (show_labels and pretty_labels) else row_labels
+    pretty_cols = pretty_many(col_labels) if (show_labels and pretty_labels) else col_labels
 
-    if im is not None:
-        fig.colorbar(im, ax=axes, shrink=0.8)
-    fig.suptitle(suptitle, fontsize=13)
+    last_im_raw = last_im_diff = None
+    for i, (ax, nm, A) in enumerate(zip(axes, names, arrs)):
+        is_diff = nm.startswith('|') or nm.startswith('Δ')
+        if is_diff:
+            im = ax.imshow(A, cmap='magma', aspect='auto',
+                           vmin=0.0, vmax=vmax_diff)
+            last_im_diff = im
+        else:
+            vmin = -vmax_raw if symmetric else 0.0
+            im = ax.imshow(A, cmap=cmap, aspect='auto',
+                           vmin=vmin, vmax=vmax_raw)
+            last_im_raw = im
+        ax.set_title(nm, fontsize=13)
+
+        if show_labels:
+            ax.set_yticks(range(len(pretty_rows)))
+            ax.set_yticklabels(pretty_rows, fontsize=7)
+            ax.set_xticks(range(len(pretty_cols)))
+            ax.set_xticklabels(pretty_cols, rotation=90, fontsize=7)
+            # Tint tick text by semantic group (left=row labels, bottom=col labels)
+            for tick, raw in zip(ax.get_yticklabels(), row_labels or []):
+                tick.set_color(GROUP_COLORS.get(group_of(raw), '#333'))
+            for tick, raw in zip(ax.get_xticklabels(), col_labels or []):
+                tick.set_color(GROUP_COLORS.get(group_of(raw), '#333'))
+        else:
+            ax.set_xticks([]); ax.set_yticks([])
+        ax.set_xlabel('target', fontsize=10)
+        if i == 0:
+            ax.set_ylabel('source', fontsize=10)
+
+    # Two colourbars so each scale is honest
+    if last_im_raw is not None:
+        cb1 = fig.colorbar(last_im_raw, ax=axes[raw_idx], shrink=0.75,
+                           pad=0.02, fraction=0.04)
+        cb1.set_label(r'edge weight $A_{ij}$', fontsize=10)
+    if last_im_diff is not None:
+        cb2 = fig.colorbar(last_im_diff, ax=axes[diff_idx[0]],
+                           shrink=0.75, pad=0.02, fraction=0.04)
+        cb2.set_label(r'$|A^{\mathrm{real}}_{ij}-A^{\mathrm{fake}}_{ij}|$',
+                      fontsize=10)
+
+    # Group-colour legend (tick-label colour key)
+    if show_labels:
+        from matplotlib.patches import Patch
+        seen = []
+        for nm in (row_labels or []) + (col_labels or []):
+            g = group_of(nm)
+            if g not in seen:
+                seen.append(g)
+        handles = [Patch(facecolor=GROUP_COLORS[g], edgecolor='none',
+                         label=GROUP_LONGNAMES.get(g, g))
+                   for g in seen if g in GROUP_COLORS]
+        if handles:
+            fig.legend(handles=handles, loc='lower center',
+                       ncol=min(len(handles), 5), fontsize=9,
+                       frameon=False, bbox_to_anchor=(0.5, -0.02))
+
+    fig.suptitle(suptitle, fontsize=14)
     fig.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
 
@@ -271,11 +501,18 @@ def plot_divergent_graph(
     title: str,
     save_path: str,
 ):
-    """Draw a directed graph induced on the top-K |A_real - A_fake| edges.
+    """Draw the top-K most-divergent edges of the per-class SCM.
 
-    Edges are drawn twice — once with real weight (blue), once with fake
-    weight (red) — so we can see *how* the generator rewired the causal
-    structure. Width ∝ |weight|. Requires networkx.
+    Layout:
+      • Node positions come from Graphviz `dot` if pygraphviz/pydot is
+        installed (cleaner DAGs); otherwise spring_layout with a fixed
+        seed.
+      • Nodes are coloured by their semantic group (latent / curated /
+        forensic sub-type) using the palette in ``pretty_names``.
+      • Labels are placed in white-bordered tags ABOVE each node — they
+        no longer overlap with the node circle or the edges.
+      • Each kept (i,j) is drawn TWICE: once with the real weight (blue)
+        and once with the fake weight (red); width ∝ |weight|.
     """
     try:
         import networkx as nx
@@ -302,50 +539,647 @@ def plot_divergent_graph(
 
     G = nx.DiGraph()
     G.add_nodes_from(sorted(nodes))
-    pos = nx.spring_layout(G, seed=7, k=1.3 / max(1.0, np.sqrt(len(nodes))))
+    G.add_edges_from([(s, t) for s, t, _, _ in edges])
 
-    fig, ax = plt.subplots(figsize=(11, 8))
-    # Nodes
-    nx.draw_networkx_nodes(G, pos, ax=ax, node_color='#E8E8E8',
-                           edgecolors='#333', node_size=850)
-    nx.draw_networkx_labels(G, pos, ax=ax, font_size=8)
+    # Prefer Graphviz `dot` for an acyclic layout; fall back to spring.
+    pos = None
+    try:
+        from networkx.drawing.nx_agraph import graphviz_layout
+        pos = graphviz_layout(G, prog='dot')
+    except Exception:
+        try:
+            from networkx.drawing.nx_pydot import graphviz_layout
+            pos = graphviz_layout(G, prog='dot')
+        except Exception:
+            pos = nx.spring_layout(
+                G, seed=7, k=1.6 / max(1.0, np.sqrt(len(nodes))))
 
-    # Scale edge widths by |weight| relative to the max seen in this set
+    fig, ax = plt.subplots(figsize=(13, 9))
+
+    # ── Node circles (small, group-coloured) ──────────────────────────
+    node_colors = [GROUP_COLORS.get(group_of(n), '#bbbbbb') for n in G.nodes]
+    nx.draw_networkx_nodes(
+        G, pos, ax=ax, node_color=node_colors,
+        edgecolors='#222', linewidths=1.2, node_size=300, alpha=0.95,
+    )
+
+    # ── Edges: blue = real weight, red = fake weight ──────────────────
     max_w = max(max(abs(er), abs(ef)) for _, _, er, ef in edges) or 1.0
-
-    def _curved(x, y, real_side=True):
-        # Offset so real and fake arrows don't overlap
-        return f"arc3,rad={'0.1' if real_side else '-0.1'}"
-
     for src, tgt, wr, wf in edges:
         if abs(wr) > 1e-6:
             nx.draw_networkx_edges(
                 G, pos, ax=ax, edgelist=[(src, tgt)],
-                edge_color='#1f77b4',   # blue = real
-                width=0.8 + 3.5 * abs(wr) / max_w,
-                alpha=0.85, arrows=True, arrowsize=11,
-                connectionstyle=_curved(None, None, True),
+                edge_color='#1f77b4',
+                width=0.8 + 4.5 * abs(wr) / max_w,
+                alpha=0.85, arrows=True, arrowsize=14,
+                connectionstyle='arc3,rad=0.12',
+                node_size=300,
             )
         if abs(wf) > 1e-6:
             nx.draw_networkx_edges(
                 G, pos, ax=ax, edgelist=[(src, tgt)],
-                edge_color='#d62728',   # red = fake
-                width=0.8 + 3.5 * abs(wf) / max_w,
-                alpha=0.85, arrows=True, arrowsize=11,
-                connectionstyle=_curved(None, None, False),
+                edge_color='#d62728',
+                width=0.8 + 4.5 * abs(wf) / max_w,
+                alpha=0.85, arrows=True, arrowsize=14,
+                connectionstyle='arc3,rad=-0.12',
+                node_size=300,
             )
 
+    # ── Labels: pretty math, in a white-bordered bubble *above* node ──
+    if pos:
+        ys = [p[1] for p in pos.values()]
+        dy = 0.025 * (max(ys) - min(ys) + 1.0)  # offset the tag upward
+    else:
+        dy = 0.0
+    for nm, (x, y) in pos.items():
+        ax.text(
+            x, y + dy, pretty(nm),
+            fontsize=9, ha='center', va='bottom',
+            bbox=dict(boxstyle='round,pad=0.25',
+                      facecolor='white', edgecolor='#888', alpha=0.92),
+        )
+
+    # ── Legends: edge colour + node group ─────────────────────────────
     from matplotlib.lines import Line2D
-    legend_handles = [
-        Line2D([0], [0], color='#1f77b4', lw=2.5, label='A_real weight'),
-        Line2D([0], [0], color='#d62728', lw=2.5, label='A_fake weight'),
+    from matplotlib.patches import Patch
+    edge_handles = [
+        Line2D([0], [0], color='#1f77b4', lw=2.5,
+               label=r'$A^{\mathrm{real}}_{ij}$  (real-trained SCM)'),
+        Line2D([0], [0], color='#d62728', lw=2.5,
+               label=r'$A^{\mathrm{fake}}_{ij}$  (fake-trained SCM)'),
     ]
-    ax.legend(handles=legend_handles, loc='upper right', fontsize=9)
-    ax.set_title(f'{title}  (top-{len(edges)} divergent edges)',
-                 fontsize=12)
-    ax.axis('off')
+    seen = []
+    for nm in G.nodes:
+        g = group_of(nm)
+        if g not in seen:
+            seen.append(g)
+    node_handles = [
+        Patch(facecolor=GROUP_COLORS.get(g, '#bbb'),
+              edgecolor='#222', label=GROUP_LONGNAMES.get(g, g))
+        for g in seen
+    ]
+    leg1 = ax.legend(handles=edge_handles, loc='upper left', fontsize=10,
+                     frameon=True, framealpha=0.9, title='Edges')
+    ax.add_artist(leg1)
+    ax.legend(handles=node_handles, loc='upper right', fontsize=9,
+              frameon=True, framealpha=0.9, title='Node group')
+
+    ax.set_title(f'{title} — top-{len(edges)} divergent edges',
+                 fontsize=13)
+    ax.set_axis_off()
     fig.tight_layout()
-    fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    fig.savefig(save_path, dpi=170, bbox_inches='tight')
+    plt.close(fig)
+
+
+def plot_separated_class_graphs(
+    A_real: np.ndarray,
+    A_fake: np.ndarray,
+    node_names: List[str],
+    top_k: int,
+    title: str,
+    save_path: str,
+):
+    """Draw the per-class SCMs as TWO separate files (one real, one fake)
+    sharing one node layout, so edge presence/absence is readable without
+    parallel-edge clutter.
+
+    The ``save_path`` argument is treated as a base — this function writes
+    ``<base>_real<ext>`` and ``<base>_fake<ext>``.
+
+    Edge selection: we union the top-K edges of A_real and A_fake plus
+    the top-K most-divergent edges, so each panel shows that union but
+    coloured / weighted with its own class' adjacency. Edges absent in
+    a class are drawn faintly (`alpha≈0.18`) — that's how you see the
+    *removed* couplings at a glance.
+
+    Readability:
+      • Nodes are placed on concentric shells when there are multiple
+        semantic groups (e.g. FFT vs latent), or evenly on a single
+        circle when there's only one group. This avoids the dense central
+        cluster that ``spring`` / ``dot`` produce on hub-shaped SCMs.
+      • Reciprocal and parallel edges between the same node-pair are
+        assigned distinct curvatures so they no longer overlap.
+      • One panel per file at a larger figure size, with bigger nodes,
+        labels and arrowheads.
+    """
+    try:
+        import networkx as nx
+    except ImportError:
+        return
+
+    n = min(A_real.shape[0], A_fake.shape[0], len(node_names))
+    if n == 0:
+        return
+
+    # Edge candidates: top-K by |A_real|, |A_fake|, and |A_real - A_fake|
+    def _topk(M, k):
+        flat = M.flatten()
+        idx = np.argsort(-np.abs(flat))[:k]
+        return [(int(divmod(i, n)[0]), int(divmod(i, n)[1]))
+                for i in idx if abs(flat[i]) > 1e-6]
+
+    cand = set()
+    cand.update(_topk(A_real[:n, :n], top_k))
+    cand.update(_topk(A_fake[:n, :n], top_k))
+    cand.update(_topk(np.abs(A_real[:n, :n] - A_fake[:n, :n]), top_k))
+    if not cand:
+        return
+
+    nodes = sorted({node_names[i] for i, _ in cand}
+                   | {node_names[j] for _, j in cand})
+
+    # ── Layout: pick something that distributes nodes evenly ──────────
+    # Bucket nodes by semantic group, then either:
+    #   - 2-4 groups → shell layout (one concentric ring per group), or
+    #   - otherwise   → kamada-kawai (still fairly even, no clusters), or
+    #   - last resort → circular (perfect even spacing on one ring).
+    G_union = nx.DiGraph()
+    G_union.add_nodes_from(nodes)
+    G_union.add_edges_from([(node_names[i], node_names[j]) for i, j in cand])
+
+    pos = None
+    groups: Dict[str, List[str]] = {}
+    for nm in nodes:
+        groups.setdefault(group_of(nm), []).append(nm)
+    if 2 <= len(groups) <= 4:
+        # Largest group on the outer ring, smallest on the inner — keeps
+        # the dense category around the perimeter where there's room.
+        ordered = sorted(groups.values(), key=len, reverse=True)
+        try:
+            pos = nx.shell_layout(G_union, nlist=ordered)
+        except Exception:
+            pos = None
+    if pos is None:
+        try:
+            pos = nx.kamada_kawai_layout(G_union)
+        except Exception:
+            pos = nx.circular_layout(G_union)
+
+    # ── Edge curvatures: spread parallel/reciprocal edges symmetrically
+    # around 0 so they no longer stack on the same straight line.
+    pair_buckets: Dict[frozenset, List[Tuple[int, int]]] = {}
+    for (i, j) in cand:
+        pair_buckets.setdefault(
+            frozenset({node_names[i], node_names[j]}), []).append((i, j))
+    rad_map: Dict[Tuple[int, int], float] = {}
+    for eds in pair_buckets.values():
+        m = len(eds)
+        if m == 1:
+            rad_map[eds[0]] = 0.12
+        else:
+            for ed, r in zip(eds, np.linspace(-0.32, 0.32, m)):
+                rad_map[ed] = float(r)
+
+    base, ext = os.path.splitext(save_path)
+    panel_specs = [
+        ('Real-trained SCM', A_real[:n, :n], '#1f77b4', f'{base}_real{ext}'),
+        ('Fake-trained SCM', A_fake[:n, :n], '#d62728', f'{base}_fake{ext}'),
+    ]
+    max_w = max(np.abs(A_real[:n, :n]).max(),
+                np.abs(A_fake[:n, :n]).max(), 1e-6)
+
+    # Edges to numerically label: union of top-strong-in-class and top-
+    # divergent. Capped so the figure doesn't drown in numbers.
+    div_mat = np.abs(A_real[:n, :n] - A_fake[:n, :n])
+    label_cap = min(top_k, 10)
+    div_flat = div_mat.flatten()
+    label_edges_div = {(int(divmod(int(i), n)[0]), int(divmod(int(i), n)[1]))
+                       for i in np.argsort(-div_flat)[:label_cap]
+                       if div_flat[i] > 1e-6}
+
+    xs = [p[0] for p in pos.values()] or [0.0]
+    ys = [p[1] for p in pos.values()] or [0.0]
+    span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+    dy = 0.045 * span  # label offset above each node
+
+    from matplotlib.patches import Patch
+    seen_groups: List[str] = []
+    for nm in nodes:
+        g = group_of(nm)
+        if g not in seen_groups:
+            seen_groups.append(g)
+    legend_handles = [
+        Patch(facecolor=GROUP_COLORS.get(g, '#bbb'),
+              edgecolor='#222', label=GROUP_LONGNAMES.get(g, g))
+        for g in seen_groups
+    ]
+
+    for panel_title, A, edge_color, file_path in panel_specs:
+        fig, ax = plt.subplots(figsize=(13, 11))
+
+        node_colors = [GROUP_COLORS.get(group_of(nm), '#bbbbbb') for nm in nodes]
+        nx.draw_networkx_nodes(
+            G_union, pos, ax=ax, nodelist=nodes,
+            node_color=node_colors, edgecolors='#222',
+            linewidths=1.4, node_size=520, alpha=0.95,
+        )
+
+        for (i, j) in cand:
+            w = float(A[i, j])
+            src, tgt = node_names[i], node_names[j]
+            strong = abs(w) > 1e-3
+            rad = rad_map.get((i, j), 0.12)
+            nx.draw_networkx_edges(
+                G_union, pos, ax=ax, edgelist=[(src, tgt)],
+                edge_color=edge_color if strong else '#dddddd',
+                width=(0.9 + 4.5 * abs(w) / max_w) if strong else 0.6,
+                alpha=0.88 if strong else 0.18,
+                arrows=True, arrowsize=15,
+                connectionstyle=f'arc3,rad={rad:.3f}',
+                node_size=520,
+            )
+
+        # Numerical edge labels for the top-divergent edges only — these
+        # are where the two classes actually disagree, so the numbers
+        # carry signal. Labels for all edges would be unreadable.
+        for (i, j) in label_edges_div:
+            if (i, j) not in cand:
+                continue
+            w = float(A[i, j])
+            src, tgt = node_names[i], node_names[j]
+            x0, y0 = pos[src]; x1, y1 = pos[tgt]
+            rad = rad_map.get((i, j), 0.12)
+            # arc3 puts the midpoint perpendicular to the chord, offset
+            # by ~rad * chord_len / 2. Approximate that.
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+            # Perpendicular unit vector
+            dx, dy_ = (x1 - x0), (y1 - y0)
+            length = max((dx * dx + dy_ * dy_) ** 0.5, 1e-6)
+            perp = (-dy_ / length, dx / length)
+            offset = rad * length * 0.5
+            lx, ly = mx + perp[0] * offset, my + perp[1] * offset
+            ax.text(
+                lx, ly, f'{w:.3f}',
+                fontsize=7.5, ha='center', va='center',
+                color='#222',
+                bbox=dict(boxstyle='round,pad=0.15',
+                          facecolor='white', edgecolor='none', alpha=0.85),
+                zorder=10,
+            )
+
+        for nm, (x, y) in pos.items():
+            ax.text(
+                x, y + dy, pretty(nm),
+                fontsize=10, ha='center', va='bottom',
+                bbox=dict(boxstyle='round,pad=0.28',
+                          facecolor='white', edgecolor='#666', alpha=0.95),
+            )
+
+        ax.legend(
+            handles=legend_handles, loc='lower center',
+            ncol=min(len(legend_handles), 3), fontsize=10,
+            frameon=True, framealpha=0.92, title='Node group',
+            bbox_to_anchor=(0.5, -0.04),
+        )
+
+        ax.set_title(
+            f'{title} — {panel_title}\n'
+            f'(numeric labels: top-{label_cap} most class-divergent edges)',
+            fontsize=13, pad=12,
+        )
+        ax.set_axis_off()
+        ax.set_xlim(min(xs) - 0.20 * span, max(xs) + 0.20 * span)
+        ax.set_ylim(min(ys) - 0.15 * span, max(ys) + 0.20 * span)
+        fig.tight_layout()
+        fig.savefig(file_path, dpi=170, bbox_inches='tight')
+        plt.close(fig)
+
+
+def plot_class_distinctive_graphs(
+    A_real: np.ndarray,
+    A_fake: np.ndarray,
+    node_names: List[str],
+    top_k: int,
+    title: str,
+    save_path: str,
+    min_div_frac: float = 0.10,
+):
+    """Per-class graphs that strip out the shared structure and show
+    *only* the edges where one class trusts a coupling more than the
+    other.
+
+    Each panel shows edges where the class wins:
+      • Real panel  → edges where ``A_real[i,j] > A_fake[i,j]`` by a
+        meaningful margin; width ∝ ``A_real - A_fake``.
+      • Fake panel  → mirror image.
+
+    All edges below ``min_div_frac × max |A_real-A_fake|`` are dropped
+    so the figure isn't dominated by noise. This is the
+    paper-presentation-friendly companion to ``plot_separated_class_graphs``:
+    that one shows "what's there", this one shows "what's *different*".
+
+    Writes ``<base>_distinctive_real<ext>`` and ``<base>_distinctive_fake<ext>``.
+    """
+    try:
+        import networkx as nx
+    except ImportError:
+        return
+
+    n = min(A_real.shape[0], A_fake.shape[0], len(node_names))
+    if n == 0:
+        return
+
+    A_r = A_real[:n, :n].astype(float)
+    A_f = A_fake[:n, :n].astype(float)
+    div = A_r - A_f
+    abs_div = np.abs(div)
+    if abs_div.max() < 1e-6:
+        return
+
+    threshold = float(abs_div.max() * min_div_frac)
+    # Top-K class-distinctive edges by magnitude of divergence
+    flat_idx = np.argsort(-abs_div.flatten())[: top_k * 2]
+    real_edges: List[Tuple[int, int, float]] = []  # (i, j, advantage)
+    fake_edges: List[Tuple[int, int, float]] = []
+    for fi in flat_idx:
+        if abs_div.flatten()[fi] < threshold:
+            break
+        i, j = int(divmod(int(fi), n)[0]), int(divmod(int(fi), n)[1])
+        d = float(div[i, j])
+        if d > 0:
+            real_edges.append((i, j, d))
+        else:
+            fake_edges.append((i, j, -d))
+    real_edges = real_edges[:top_k]
+    fake_edges = fake_edges[:top_k]
+
+    if not real_edges and not fake_edges:
+        return
+
+    nodes = sorted(
+        {node_names[i] for i, _, _ in real_edges + fake_edges}
+        | {node_names[j] for _, j, _ in real_edges + fake_edges}
+    )
+    G_union = nx.DiGraph()
+    G_union.add_nodes_from(nodes)
+    G_union.add_edges_from(
+        [(node_names[i], node_names[j]) for i, j, _ in real_edges + fake_edges]
+    )
+
+    # Same shell-or-balanced layout as the other separated-graph helper
+    pos = None
+    groups: Dict[str, List[str]] = {}
+    for nm in nodes:
+        groups.setdefault(group_of(nm), []).append(nm)
+    if 2 <= len(groups) <= 4:
+        ordered = sorted(groups.values(), key=len, reverse=True)
+        try:
+            pos = nx.shell_layout(G_union, nlist=ordered)
+        except Exception:
+            pos = None
+    if pos is None:
+        try:
+            pos = nx.kamada_kawai_layout(G_union)
+        except Exception:
+            pos = nx.circular_layout(G_union)
+
+    base, ext = os.path.splitext(save_path)
+    max_adv = max((adv for *_, adv in real_edges + fake_edges), default=1e-6)
+    panel_specs = [
+        ('Real-distinctive edges', real_edges, '#1f77b4',
+         f'{base}_distinctive_real{ext}'),
+        ('Fake-distinctive edges', fake_edges, '#d62728',
+         f'{base}_distinctive_fake{ext}'),
+    ]
+
+    xs = [p[0] for p in pos.values()] or [0.0]
+    ys = [p[1] for p in pos.values()] or [0.0]
+    span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+    dy = 0.045 * span
+
+    from matplotlib.patches import Patch
+    seen_groups: List[str] = []
+    for nm in nodes:
+        g = group_of(nm)
+        if g not in seen_groups:
+            seen_groups.append(g)
+    legend_handles = [
+        Patch(facecolor=GROUP_COLORS.get(g, '#bbb'),
+              edgecolor='#222', label=GROUP_LONGNAMES.get(g, g))
+        for g in seen_groups
+    ]
+
+    for panel_title, edges, color, file_path in panel_specs:
+        fig, ax = plt.subplots(figsize=(13, 11))
+
+        node_colors = [GROUP_COLORS.get(group_of(nm), '#bbbbbb') for nm in nodes]
+        nx.draw_networkx_nodes(
+            G_union, pos, ax=ax, nodelist=nodes,
+            node_color=node_colors, edgecolors='#222',
+            linewidths=1.4, node_size=520, alpha=0.95,
+        )
+
+        if not edges:
+            ax.text(0.5, 0.5,
+                    'No edges where this class dominates above threshold.',
+                    transform=ax.transAxes, ha='center', va='center',
+                    fontsize=12, color='#888')
+        for (i, j, adv) in edges:
+            src, tgt = node_names[i], node_names[j]
+            nx.draw_networkx_edges(
+                G_union, pos, ax=ax, edgelist=[(src, tgt)],
+                edge_color=color,
+                width=1.0 + 5.5 * adv / max_adv,
+                alpha=0.9, arrows=True, arrowsize=16,
+                connectionstyle='arc3,rad=0.12',
+                node_size=520,
+            )
+            x0, y0 = pos[src]; x1, y1 = pos[tgt]
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+            dx_, dy_ = (x1 - x0), (y1 - y0)
+            ln = max((dx_ * dx_ + dy_ * dy_) ** 0.5, 1e-6)
+            perp = (-dy_ / ln, dx_ / ln)
+            off = 0.12 * ln * 0.5
+            ax.text(
+                mx + perp[0] * off, my + perp[1] * off,
+                f'+{adv:.3f}',
+                fontsize=8, ha='center', va='center', color='#222',
+                bbox=dict(boxstyle='round,pad=0.15',
+                          facecolor='white', edgecolor='none', alpha=0.88),
+                zorder=10,
+            )
+
+        for nm, (x, y) in pos.items():
+            ax.text(
+                x, y + dy, pretty(nm),
+                fontsize=10, ha='center', va='bottom',
+                bbox=dict(boxstyle='round,pad=0.28',
+                          facecolor='white', edgecolor='#666', alpha=0.95),
+            )
+
+        ax.legend(
+            handles=legend_handles, loc='lower center',
+            ncol=min(len(legend_handles), 3), fontsize=10,
+            frameon=True, framealpha=0.92, title='Node group',
+            bbox_to_anchor=(0.5, -0.04),
+        )
+        ax.set_title(
+            f'{title} — {panel_title}\n'
+            f'(width ∝ class advantage; '
+            f'threshold {min_div_frac:.0%} of max divergence)',
+            fontsize=13, pad=12,
+        )
+        ax.set_axis_off()
+        ax.set_xlim(min(xs) - 0.20 * span, max(xs) + 0.20 * span)
+        ax.set_ylim(min(ys) - 0.15 * span, max(ys) + 0.20 * span)
+        fig.tight_layout()
+        fig.savefig(file_path, dpi=170, bbox_inches='tight')
+        plt.close(fig)
+
+
+def plot_edge_weight_scatter(
+    A_real: np.ndarray,
+    A_fake: np.ndarray,
+    node_names: List[str],
+    title: str,
+    save_path: str,
+    label_top_k: int = 10,
+):
+    """Scatter every edge as ``(A_real[i,j], A_fake[i,j])``.
+
+    Points on the y=x diagonal are edges identical between classes;
+    off-diagonal points are class-distinctive. The top-``label_top_k``
+    most divergent points get text labels with their source→target name.
+
+    Single-figure summary that simultaneously shows:
+      • how similar the two SCMs are overall (mass clustering on diagonal),
+      • which specific edges drive the classification signal (outliers).
+    Paper-friendly.
+    """
+    n = min(A_real.shape[0], A_fake.shape[0], len(node_names))
+    if n == 0:
+        return
+    A_r = A_real[:n, :n].astype(float)
+    A_f = A_fake[:n, :n].astype(float)
+    iu = np.indices((n, n)).reshape(2, -1)
+    xs = A_r.flatten()
+    ys = A_f.flatten()
+
+    fig, ax = plt.subplots(figsize=(8, 7.5))
+    div = np.abs(xs - ys)
+    sc = ax.scatter(xs, ys, c=div, cmap='magma',
+                    s=12 + 60 * (div / max(div.max(), 1e-6)),
+                    alpha=0.75, edgecolors='none')
+    cb = fig.colorbar(sc, ax=ax, fraction=0.045)
+    cb.set_label(r'$|A^{\mathrm{real}}_{ij}-A^{\mathrm{fake}}_{ij}|$',
+                 fontsize=10)
+
+    # Diagonal reference
+    lo = float(min(xs.min(), ys.min(), -1e-3))
+    hi = float(max(xs.max(), ys.max(), 1e-3))
+    pad = 0.08 * (hi - lo + 1e-6)
+    ax.plot([lo - pad, hi + pad], [lo - pad, hi + pad],
+            ls='--', color='#888', lw=1.0,
+            label=r'$A^{\mathrm{real}}=A^{\mathrm{fake}}$')
+
+    # Label top-K most divergent points
+    order = np.argsort(-div)[:label_top_k]
+    for idx in order:
+        if div[idx] < 1e-6:
+            break
+        i, j = int(iu[0, idx]), int(iu[1, idx])
+        side = 'R' if xs[idx] > ys[idx] else 'F'
+        col = '#1f77b4' if side == 'R' else '#d62728'
+        ax.annotate(
+            f'{pretty(node_names[i])} → {pretty(node_names[j])}',
+            xy=(xs[idx], ys[idx]),
+            xytext=(8, 8), textcoords='offset points',
+            fontsize=7.5, color=col,
+            bbox=dict(boxstyle='round,pad=0.18',
+                      facecolor='white', edgecolor=col, alpha=0.9),
+            arrowprops=dict(arrowstyle='-', color=col, lw=0.6),
+        )
+
+    ax.set_xlim(lo - pad, hi + pad)
+    ax.set_ylim(lo - pad, hi + pad)
+    ax.set_xlabel(r'Edge weight in real-trained SCM, $A^{\mathrm{real}}_{ij}$',
+                  fontsize=11)
+    ax.set_ylabel(r'Edge weight in fake-trained SCM, $A^{\mathrm{fake}}_{ij}$',
+                  fontsize=11)
+    ax.set_title(
+        f'{title} — per-edge real vs. fake weight\n'
+        f'(off-diagonal points = class-distinctive edges)',
+        fontsize=12, pad=10,
+    )
+    ax.grid(True, alpha=0.25)
+    ax.legend(loc='upper left', fontsize=9, frameon=True)
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=170, bbox_inches='tight')
+    plt.close(fig)
+
+
+def plot_top_edge_comparison(
+    A_real: np.ndarray,
+    A_fake: np.ndarray,
+    node_names: List[str],
+    top_k: int,
+    title: str,
+    save_path: str,
+):
+    """Horizontal paired bars for the top-K most class-divergent edges:
+    each row = one edge, blue bar = real weight, red bar = fake weight.
+
+    The most direct presentation of "this is *which way* and *by how
+    much* each edge differs between classes." Pairs with the scatter
+    above for a complete picture.
+    """
+    n = min(A_real.shape[0], A_fake.shape[0], len(node_names))
+    if n == 0:
+        return
+    A_r = A_real[:n, :n].astype(float)
+    A_f = A_fake[:n, :n].astype(float)
+    div = np.abs(A_r - A_f)
+    if div.max() < 1e-6:
+        return
+
+    flat_idx = np.argsort(-div.flatten())[:top_k]
+    rows: List[Tuple[str, float, float]] = []
+    for fi in flat_idx:
+        if div.flatten()[fi] < 1e-6:
+            break
+        i, j = int(divmod(int(fi), n)[0]), int(divmod(int(fi), n)[1])
+        rows.append((
+            f'{pretty(node_names[i])} → {pretty(node_names[j])}',
+            float(A_r[i, j]),
+            float(A_f[i, j]),
+        ))
+    if not rows:
+        return
+
+    labels = [r[0] for r in rows]
+    rs = np.array([r[1] for r in rows])
+    fs = np.array([r[2] for r in rows])
+    y = np.arange(len(rows))[::-1]  # top-divergent at top of figure
+    h = 0.4
+
+    fig, ax = plt.subplots(figsize=(10, max(4.5, 0.42 * len(rows) + 1.5)))
+    ax.barh(y + h / 2, rs, height=h, color='#1f77b4', alpha=0.9,
+            label='real-trained $A^{\\mathrm{real}}_{ij}$')
+    ax.barh(y - h / 2, fs, height=h, color='#d62728', alpha=0.9,
+            label='fake-trained $A^{\\mathrm{fake}}_{ij}$')
+
+    # Numeric annotations to the right of each bar
+    for yi, ri, fi_ in zip(y, rs, fs):
+        ax.text(ri + 0.002 * max(rs.max(), fs.max(), 1e-6),
+                yi + h / 2, f'{ri:.3f}',
+                va='center', fontsize=8, color='#1f77b4')
+        ax.text(fi_ + 0.002 * max(rs.max(), fs.max(), 1e-6),
+                yi - h / 2, f'{fi_:.3f}',
+                va='center', fontsize=8, color='#d62728')
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=9)
+    ax.set_xlabel(r'Edge weight $|A_{ij}|$', fontsize=11)
+    ax.set_title(
+        f'{title} — top-{len(rows)} most class-divergent edges',
+        fontsize=12, pad=8,
+    )
+    ax.axvline(0, color='black', lw=0.6)
+    ax.grid(True, axis='x', alpha=0.25)
+    ax.legend(loc='lower right', fontsize=9, frameon=True)
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=170, bbox_inches='tight')
     plt.close(fig)
 
 

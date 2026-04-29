@@ -187,6 +187,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
         proj_dim = config['foundation_models']['spatial']['output_dim']
         self.spatial_proj = build_projection_head(config, proj_dim, proj_dim)
+        # Legacy compat: pre-cleanup checkpoints (e.g. ablation4_causal_*_exp,
+        # 2026-04-24) wrapped the projection head in an outer LayerNorm and
+        # nested the head inside a second Sequential. Keep that layout when
+        # the saved detector_config.yaml carries `projection_head.outer_layernorm: true`.
+        if (config.get('projection_head') or {}).get('outer_layernorm', False):
+            self.spatial_proj = nn.Sequential(
+                nn.LayerNorm(proj_dim),
+                nn.Sequential(*list(self.spatial_proj.children())),
+            )
 
         proj_cfg = config.get('projection_head', {}) or {}
         proj_type = proj_cfg.get('type', 'standard')

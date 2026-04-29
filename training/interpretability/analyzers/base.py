@@ -46,6 +46,9 @@ class BaseAnalyzer(ABC):
         bufs = self._buffers.get(key, [])
         if not bufs:
             return None
+        # Promote 0-d scalars (e.g. static gate values logged once per batch)
+        # to 1-d so np.concatenate doesn't choke on them.
+        bufs = [np.atleast_1d(b) for b in bufs]
         return np.concatenate(bufs, axis=0)
 
     @property

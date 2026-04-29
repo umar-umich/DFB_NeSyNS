@@ -38,9 +38,17 @@ class SCMAnalyzer(BaseAnalyzer):
         'identity', 'forensic_structural', 'forensic_noise', 'forensic_spectral',
     ]
 
-    def __init__(self, top_k: int = 20):
+    def __init__(
+        self,
+        top_k: int = 20,
+        top_k_levels: Tuple[int, ...] = (20, 30, 40, 50),
+    ):
         super().__init__()
         self.top_k = top_k
+        # Render the per-class graphs / paired-edge bars / top-edge tables
+        # at multiple K levels so the paper can show how the picture
+        # evolves as more contributing edges are included.
+        self.top_k_levels = tuple(sorted(set(top_k_levels)))
         self._adjacencies: Dict[str, np.ndarray] = {}
         self._node_names: Dict[str, List[str]] = {}
         self._method_labels: Optional[np.ndarray] = None
@@ -307,15 +315,19 @@ class SCMAnalyzer(BaseAnalyzer):
                 continue
 
             n = min(A_real.shape[0], A_fake.shape[0], len(names))
-            label_names = names[:n] if n <= 40 else None
+            # Pass the FULL name list — the heatmap auto-crops inactive
+            # rows/cols and trims labels to the active block, then
+            # math-prettifies them. Keeps publication-ready output even
+            # when the raw graph has 80+ nodes.
+            label_names = names[:n]
 
             # Side-by-side A_real | A_fake | |A_real - A_fake| — the
             # slide-ready figure for Section 13 / Point 5 of the talk.
             diff = np.abs(A_real[:n, :n] - A_fake[:n, :n])
             viz.plot_side_by_side_heatmap(
-                {'A_real': A_real[:n, :n],
-                 'A_fake': A_fake[:n, :n],
-                 '|A_real − A_fake|': diff},
+                {r'$A^{\mathrm{real}}$': A_real[:n, :n],
+                 r'$A^{\mathrm{fake}}$': A_fake[:n, :n],
+                 r'$|A^{\mathrm{real}}-A^{\mathrm{fake}}|$': diff},
                 suptitle=f'Sub-graph: {sg_name}',
                 save_path=os.path.join(scm_dir, f'{sg_name}_side_by_side.png'),
                 row_labels=label_names, col_labels=label_names,
@@ -331,29 +343,77 @@ class SCMAnalyzer(BaseAnalyzer):
                 cmap='hot', vmin=0,
             )
 
-            # Networkx graph induced on top-K divergent edges, with
-            # real (blue) and fake (red) weights drawn as parallel
-            # curved arrows — shows *how* the generator rewired the
-            # causal structure.
-            viz.plot_divergent_graph(
+            # Per-edge scatter: A_real[i,j] vs A_fake[i,j]. Diagonal mass
+            # = how similar the SCMs are; off-diagonal labelled outliers
+            # = the edges that drive classification. K-independent
+            # (shows ALL edges) so it's rendered once.
+            viz.plot_edge_weight_scatter(
                 A_real[:n, :n], A_fake[:n, :n],
-                names[:n], self.top_k,
+                names[:n],
                 title=f'{sg_name}',
-                save_path=os.path.join(scm_dir, f'{sg_name}_graph.png'),
+                save_path=os.path.join(scm_dir, f'{sg_name}_edge_scatter.png'),
             )
 
-            # Top divergent edges (text table only — lightweight, grep-friendly)
-            div_edges = self._divergent_edges(A_real, A_fake, names, self.top_k)
-            if div_edges:
-                txt_path = os.path.join(scm_dir, f'{sg_name}_top_edges.txt')
-                lines = [f'Top Divergent Edges: {sg_name}',
-                         '=' * 50, '',
-                         f'{"Rank":>4}  {"Source":<30} {"Target":<30} {"Div":>8}',
-                         '-' * 76]
-                for rank, (src, tgt, w) in enumerate(div_edges, 1):
-                    lines.append(f'{rank:4d}  {src:<30} {tgt:<30} {w:8.4f}')
-                with open(txt_path, 'w') as f:
-                    f.write('\n'.join(lines))
+            # K-dependent visuals: the same plots are rendered at multiple
+            # top-K levels so the paper can compare "20 most divergent",
+            # "30", etc. File names get a `_k<K>` tag.
+            for K in self.top_k_levels:
+                # Networkx graph induced on top-K divergent edges, with
+                # real (blue) and fake (red) weights drawn as parallel
+                # curved arrows — shows *how* the generator rewired the
+                # causal structure.
+                viz.plot_divergent_graph(
+                    A_real[:n, :n], A_fake[:n, :n],
+                    names[:n], K,
+                    title=f'{sg_name} (top-{K})',
+                    save_path=os.path.join(
+                        scm_dir, f'{sg_name}_graph_k{K}.png'),
+                )
+
+                # Two panels (real | fake) sharing one layout, so the
+                # reader sees edge presence/absence without parallel-edge
+                # clutter.
+                viz.plot_separated_class_graphs(
+                    A_real[:n, :n], A_fake[:n, :n],
+                    names[:n], K,
+                    title=f'{sg_name} (top-{K})',
+                    save_path=os.path.join(
+                        scm_dir, f'{sg_name}_graph_k{K}.png'),
+                )
+
+                # Class-distinctive view: only the edges where each class
+                # outweighs the other; width ∝ class advantage.
+                viz.plot_class_distinctive_graphs(
+                    A_real[:n, :n], A_fake[:n, :n],
+                    names[:n], K,
+                    title=f'{sg_name} (top-{K})',
+                    save_path=os.path.join(
+                        scm_dir, f'{sg_name}_graph_k{K}.png'),
+                )
+
+                # Paired horizontal bars for the top-K most divergent
+                # edges — magnitude AND direction side-by-side.
+                viz.plot_top_edge_comparison(
+                    A_real[:n, :n], A_fake[:n, :n],
+                    names[:n], K,
+                    title=f'{sg_name} (top-{K})',
+                    save_path=os.path.join(
+                        scm_dir, f'{sg_name}_top_edges_bar_k{K}.png'),
+                )
+
+                # Top divergent edges (text table — lightweight, grep-friendly)
+                div_edges = self._divergent_edges(A_real, A_fake, names, K)
+                if div_edges:
+                    txt_path = os.path.join(
+                        scm_dir, f'{sg_name}_top_edges_k{K}.txt')
+                    lines = [f'Top {K} Divergent Edges: {sg_name}',
+                             '=' * 50, '',
+                             f'{"Rank":>4}  {"Source":<30} {"Target":<30} {"Div":>8}',
+                             '-' * 76]
+                    for rank, (src, tgt, w) in enumerate(div_edges, 1):
+                        lines.append(f'{rank:4d}  {src:<30} {tgt:<30} {w:8.4f}')
+                    with open(txt_path, 'w') as f:
+                        f.write('\n'.join(lines))
 
         # Sub-graph divergence bar chart
         if hasattr(self, '_results') and self._results.get('subgraph_divergence'):
