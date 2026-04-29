@@ -96,10 +96,33 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
-class_weights: [1.6, 1.0] # 1.6 0.8    # [real, fake] — fix fake bias
+class_weights: [1.0, 1.0] # 1.6 0.8    # [real, fake] — fix fake bias
+                                       # 1.6 was over-correcting and
+                                       # distorting the score distribution
+                                       # (hurting AUC). With per-dataset
+                                       # Youden-J operating points reported,
+                                       # uniform weights are the right
+                                       # default; rebalance only if
+                                       # acc_real/acc_fake gap reappears
+                                       # at the optimal threshold.
 
 # -- Cross-dataset regularizers (GenD recipe) --------------------------------
-label_smoothing: 0.0
+label_smoothing: 0.1                   # 0.0 → 0.1: small but consistent
+                                       # AUC lift in deepfake benchmarks;
+                                       # smooths over-confident logits and
+                                       # helps cross-dataset generalisation.
+
+# -- Inference-time calibration / TTA ----------------------------------------
+# These knobs are inference-only — no retraining required to change them.
+# Tune T values on a held-out validation split to maximize AUC.
+branch_temperatures:                   # T=1.0 = no-op. T>1 softens an
+  spatial: 1.0                         # over-confident branch; T<1 sharpens
+  concept: 1.0                         # an under-confident one. Affects
+  causal:  1.0                         # the Dirichlet fusion non-linearly.
+tta:                                   # Test-time augmentation: average the
+  enabled: true                        # prediction with one from a hflipped
+                                       # image. Cheap (one extra forward),
+                                       # forensic features stay shared.
 uniformity_alignment:
   enabled: true
   alignment_weight:  1.0
@@ -116,7 +139,7 @@ projection_head:
   #   bottleneck_ratio: 4      # compression ratio (1024→256 when ratio=4)
   # houlsby options (only when type=houlsby, combines residual + bottleneck):
   bottleneck_ratio: 4
-  outer_layernorm: true        # legacy compat for this checkpoint (2026-04-24): wrap projection head in an outer LayerNorm
+  # outer_layernorm: true        # legacy compat for this checkpoint (2026-04-24): wrap projection head in an outer LayerNorm
   # alpha_init: 0.1
 
 # -- Skip fusion (EDL path bypasses fusion, so this saves ~1M unused params) ---
@@ -279,7 +302,7 @@ start_epoch:    0
 save_epoch:     1
 rec_iter:       100
 logdir:         ./logs
-manualSeed:     3407   # 1024 
+manualSeed:     1024   # 1024 , 3407
 save_ckpt:      true
 save_feat:      true
 grad_clip:      1.0

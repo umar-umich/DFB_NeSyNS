@@ -305,7 +305,21 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
 
             task_outputs = self.classifier(projected)
             spatial_logits = task_outputs['classification']         # (B, 2)
-            spatial_evidence = F.softplus(spatial_logits.float())   # (B, 2)
+
+            # ── Per-branch temperature scaling ─────────────────────────────
+            # Inference-time calibration knob: divide each branch's logits
+            # (or evidence, where logits aren't accessible) by T_branch
+            # before fusion. T=1.0 is a no-op; T>1.0 softens / down-weights
+            # an over-confident branch, T<1.0 sharpens an under-confident
+            # one. Tuned post-hoc on a held-out validation split — does
+            # NOT require retraining. Improves AUC when individual branches
+            # have mismatched score distributions.
+            branch_T = self.config.get('branch_temperatures', {}) or {}
+            T_spatial = float(branch_T.get('spatial', 1.0))
+            T_concept = float(branch_T.get('concept', 1.0))
+            T_causal  = float(branch_T.get('causal',  1.0))
+            spatial_evidence = F.softplus(
+                spatial_logits.float() / max(T_spatial, 1e-6))
 
             # Concept evidence (Ablation 3+)
             concept_out = None
@@ -331,6 +345,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                         forensic_features=forensic_features,
                         labels=labels,
                     )
+
+            # Apply temperature scaling to concept / causal evidence (these
+            # branches return softplus-ed evidence, so we scale it directly
+            # — proportional to logit-space temp scaling for the fused
+            # Dirichlet alpha that follows).
+            if concept_out is not None and abs(T_concept - 1.0) > 1e-6:
+                concept_out['evidence'] = concept_out['evidence'] / T_concept
+            if causal_out is not None and abs(T_causal - 1.0) > 1e-6:
+                causal_out['evidence'] = causal_out['evidence'] / T_causal
 
             # -- Evidence fusion (CMEF / conditioned / static) --------------
             fused = self.evidence_fusion(

@@ -795,6 +795,33 @@ class Trainer(object):
     @torch.no_grad()
     def inference(self, data_dict):
         # Run inference under autocast for speed consistency with training
+        tta_cfg = self.config.get('tta', {}) or {}
+        use_tta = bool(tta_cfg.get('enabled', False))
+
         with autocast(enabled=self.use_amp, dtype=self.amp_dtype):
             predictions = self.model(data_dict, inference=True)
+
+            if use_tta and 'image' in data_dict and isinstance(
+                    data_dict['image'], torch.Tensor):
+                # ── Test-time augmentation (horizontal flip) ────────────
+                # Average the original prediction with one from a
+                # horizontally flipped image. Forensic / semantic
+                # features are precomputed and tied to the original
+                # frame, so they're shared across the two passes — TTA
+                # only diversifies the spatial branch, which is the
+                # dominant signal anyway. Cheap (one extra forward) and
+                # consistently lifts AUC without retraining.
+                flipped = dict(data_dict)
+                flipped['image'] = torch.flip(data_dict['image'], dims=[-1])
+                pred_flip = self.model(flipped, inference=True)
+
+                # Average the prob (and evidences, alpha) where present.
+                # Other tensors (feat, embeddings, A_*, scm_input_*) are
+                # left as the original-image versions for downstream
+                # interpretability stability.
+                for k in ('prob', 'total_evidence', 'spatial_evidence',
+                          'concept_evidence', 'causal_evidence', 'alpha'):
+                    if k in predictions and k in pred_flip:
+                        predictions[k] = (predictions[k] + pred_flip[k]) / 2.0
+
         return predictions
