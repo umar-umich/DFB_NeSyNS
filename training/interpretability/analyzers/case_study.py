@@ -24,6 +24,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from .base import BaseAnalyzer
+try:
+    from ..pretty_names import pretty_many
+except ImportError:  # flat-import fallback
+    from interpretability.pretty_names import pretty_many  # type: ignore
 
 
 def _load_rule_names(n_rules: int):
@@ -79,15 +83,25 @@ class CaseStudyAnalyzer(BaseAnalyzer):
 
         groups = {}
         if n > 0:
-            groups['uncertain'] = np.argsort(-unc)[:k]
             correct_idx = np.where(correct)[0]
+            wrong_idx = np.where(~correct)[0]
+            # Confident: lowest uncertainty among correct/wrong respectively
             if correct_idx.size:
                 order = np.argsort(unc[correct_idx])[:k]
                 groups['confident_correct'] = correct_idx[order]
-            wrong_idx = np.where(~correct)[0]
             if wrong_idx.size:
                 order = np.argsort(unc[wrong_idx])[:k]
                 groups['confident_wrong'] = wrong_idx[order]
+            # Uncertain split by correctness — replaces the old single
+            # 'uncertain' bucket so the gallery distinguishes
+            # "model hesitated but got it right" from "model hesitated
+            # and missed".
+            if correct_idx.size:
+                order = np.argsort(-unc[correct_idx])[:k]
+                groups['uncertain_correct'] = correct_idx[order]
+            if wrong_idx.size:
+                order = np.argsort(-unc[wrong_idx])[:k]
+                groups['uncertain_wrong'] = wrong_idx[order]
         return groups
 
     # ── rendering ─────────────────────────────────────────────────────────
@@ -126,7 +140,8 @@ class CaseStudyAnalyzer(BaseAnalyzer):
                     ha='center', va='center', transform=ax.transAxes, fontsize=9)
             ax.set_axis_off()
             return
-        names = [s[0] for s in shown]
+        raw_names = [s[0] for s in shown]
+        names = pretty_many(raw_names)  # cr_mutual_mouth → R_{mouth open×closed}
         vals = [s[1] for s in shown]
         y = np.arange(len(names))
         ax.barh(y, vals, color='#d62728', alpha=0.8)

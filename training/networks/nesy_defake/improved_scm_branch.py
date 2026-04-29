@@ -375,10 +375,18 @@ class ImprovedCausalBranch(nn.Module):
             # Per-sample sub-graph residual magnitudes (B, 4)
             'r_diff_g': r_diff_g,
             'r_diff_identity': identity_out['r_diff_magnitude'],
+            # Per-branch SCM input vectors (the source-node activations
+            # x for which A[i,j] · x_j is the actual contribution).
+            # Used by the SCM analyzer for activation-weighted edge
+            # scoring on the test set.
+            'scm_input_identity': x_identity.detach(),
         }
-        for i, (name, _, _, _) in enumerate(self.forensic_groups):
+        for i, (name, start, end, _) in enumerate(self.forensic_groups):
             result[f'A_forensic_{name}_real'] = forensic_outs[i]['A_real']
             result[f'A_forensic_{name}_fake'] = forensic_outs[i]['A_fake']
             result[f'r_diff_forensic_{name}'] = forensic_outs[i]['r_diff_magnitude']
+            x_for = torch.cat(
+                [z, forensic_features[:, start:end]], dim=1).detach()
+            result[f'scm_input_forensic_{name}'] = x_for
 
         return result

@@ -96,7 +96,7 @@ with_mask:     false
 with_landmark: false
 load_semantic_features: false
 
-class_weights: [1.2, 1.0] # 1.6 0.8    # [real, fake] — fix fake bias
+class_weights: [1.6, 1.0] # 1.6 0.8    # [real, fake] — fix fake bias
 
 # -- Cross-dataset regularizers (GenD recipe) --------------------------------
 label_smoothing: 0.0

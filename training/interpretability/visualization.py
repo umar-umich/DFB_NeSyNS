@@ -854,20 +854,26 @@ def plot_class_distinctive_graphs(
     title: str,
     save_path: str,
     min_div_frac: float = 0.10,
+    act_real: Optional[np.ndarray] = None,
+    act_fake: Optional[np.ndarray] = None,
 ):
     """Per-class graphs that strip out the shared structure and show
     *only* the edges where one class trusts a coupling more than the
     other.
 
-    Each panel shows edges where the class wins:
-      • Real panel  → edges where ``A_real[i,j] > A_fake[i,j]`` by a
-        meaningful margin; width ∝ ``A_real - A_fake``.
-      • Fake panel  → mirror image.
+    When per-class source-node activations are supplied, edges are
+    ranked by the **activation-weighted divergence**
 
-    All edges below ``min_div_frac × max |A_real-A_fake|`` are dropped
-    so the figure isn't dominated by noise. This is the
-    paper-presentation-friendly companion to ``plot_separated_class_graphs``:
-    that one shows "what's there", this one shows "what's *different*".
+        s_real(i, j) = max(0, A_real[i,j] − A_fake[i,j]) · ⟨|x_j|⟩_real
+        s_fake(i, j) = max(0, A_fake[i,j] − A_real[i,j]) · ⟨|x_j|⟩_fake
+
+    instead of the raw weight gap. This suppresses "phantom" edges that
+    differ in the matrix but never get triggered on data, and surfaces
+    edges whose disagreement actually drives the classifier — the
+    paper-defensible filter.
+
+    Falls back to raw |A_real − A_fake| ranking when activations are
+    not provided (back-compat).
 
     Writes ``<base>_distinctive_real<ext>`` and ``<base>_distinctive_fake<ext>``.
     """
@@ -887,34 +893,60 @@ def plot_class_distinctive_graphs(
     if abs_div.max() < 1e-6:
         return
 
-    threshold = float(abs_div.max() * min_div_frac)
-    # Top-K class-distinctive edges by magnitude of divergence
-    flat_idx = np.argsort(-abs_div.flatten())[: top_k * 2]
-    real_edges: List[Tuple[int, int, float]] = []  # (i, j, advantage)
-    fake_edges: List[Tuple[int, int, float]] = []
-    for fi in flat_idx:
-        if abs_div.flatten()[fi] < threshold:
-            break
-        i, j = int(divmod(int(fi), n)[0]), int(divmod(int(fi), n)[1])
-        d = float(div[i, j])
-        if d > 0:
-            real_edges.append((i, j, d))
-        else:
-            fake_edges.append((i, j, -d))
-    real_edges = real_edges[:top_k]
-    fake_edges = fake_edges[:top_k]
+    # ── Build per-class edge scores ──────────────────────────────────
+    # If activations are provided, weight by source-node mean |x_j|
+    # under the corresponding class. Otherwise just use raw advantage.
+    weighted = (act_real is not None and act_fake is not None
+                and len(act_real) >= n and len(act_fake) >= n)
+    if weighted:
+        a_r = np.abs(np.asarray(act_real[:n], dtype=float))
+        a_f = np.abs(np.asarray(act_fake[:n], dtype=float))
+        # Broadcast over rows (target i): score[i, j] depends on j only
+        adv_real = np.maximum(div, 0.0)         # only A_real > A_fake
+        adv_fake = np.maximum(-div, 0.0)        # only A_fake > A_real
+        score_real = adv_real * a_r[None, :]    # weight by real-set act
+        score_fake = adv_fake * a_f[None, :]    # weight by fake-set act
+        score_metric = 'activation-weighted'
+    else:
+        adv_real = np.maximum(div, 0.0)
+        adv_fake = np.maximum(-div, 0.0)
+        score_real = adv_real
+        score_fake = adv_fake
+        score_metric = 'raw weight gap'
+
+    max_score = max(score_real.max(), score_fake.max(), 1e-12)
+    threshold = max_score * min_div_frac
+
+    def _topk_per_class(score_mat: np.ndarray):
+        flat = score_mat.flatten()
+        order = np.argsort(-flat)[: top_k * 4]
+        out: List[Tuple[int, int, float, float]] = []
+        for fi in order:
+            s = float(flat[fi])
+            if s < threshold:
+                break
+            i, j = int(divmod(int(fi), n)[0]), int(divmod(int(fi), n)[1])
+            adv = float(div[i, j])  # signed raw weight gap (for label)
+            out.append((i, j, abs(adv), s))
+            if len(out) >= top_k:
+                break
+        return out
+
+    real_edges = _topk_per_class(score_real)
+    fake_edges = _topk_per_class(score_fake)
 
     if not real_edges and not fake_edges:
         return
 
     nodes = sorted(
-        {node_names[i] for i, _, _ in real_edges + fake_edges}
-        | {node_names[j] for _, j, _ in real_edges + fake_edges}
+        {node_names[i] for i, _, _, _ in real_edges + fake_edges}
+        | {node_names[j] for _, j, _, _ in real_edges + fake_edges}
     )
     G_union = nx.DiGraph()
     G_union.add_nodes_from(nodes)
     G_union.add_edges_from(
-        [(node_names[i], node_names[j]) for i, j, _ in real_edges + fake_edges]
+        [(node_names[i], node_names[j])
+         for i, j, _, _ in real_edges + fake_edges]
     )
 
     # Same shell-or-balanced layout as the other separated-graph helper
@@ -935,7 +967,11 @@ def plot_class_distinctive_graphs(
             pos = nx.circular_layout(G_union)
 
     base, ext = os.path.splitext(save_path)
-    max_adv = max((adv for *_, adv in real_edges + fake_edges), default=1e-6)
+    # Width is driven by the SCORE (data-aware) so the figure shows the
+    # ordering the paper claims. Label still shows the raw weight gap
+    # so readers see the underlying matrix difference.
+    max_score_disp = max(
+        (s for *_, s in real_edges + fake_edges), default=1e-6)
     panel_specs = [
         ('Real-distinctive edges', real_edges, '#1f77b4',
          f'{base}_distinctive_real{ext}'),
@@ -975,12 +1011,12 @@ def plot_class_distinctive_graphs(
                     'No edges where this class dominates above threshold.',
                     transform=ax.transAxes, ha='center', va='center',
                     fontsize=12, color='#888')
-        for (i, j, adv) in edges:
+        for (i, j, adv, s) in edges:
             src, tgt = node_names[i], node_names[j]
             nx.draw_networkx_edges(
                 G_union, pos, ax=ax, edgelist=[(src, tgt)],
                 edge_color=color,
-                width=1.0 + 5.5 * adv / max_adv,
+                width=1.0 + 5.5 * s / max_score_disp,
                 alpha=0.9, arrows=True, arrowsize=16,
                 connectionstyle='arc3,rad=0.12',
                 node_size=520,
@@ -1016,9 +1052,9 @@ def plot_class_distinctive_graphs(
         )
         ax.set_title(
             f'{title} — {panel_title}\n'
-            f'(width ∝ class advantage; '
-            f'threshold {min_div_frac:.0%} of max divergence)',
-            fontsize=13, pad=12,
+            f'(width ∝ {score_metric} score, label = raw |Aʳ−Aᶠ|; '
+            f'threshold {min_div_frac:.0%} of max score)',
+            fontsize=12, pad=12,
         )
         ax.set_axis_off()
         ax.set_xlim(min(xs) - 0.20 * span, max(xs) + 0.20 * span)

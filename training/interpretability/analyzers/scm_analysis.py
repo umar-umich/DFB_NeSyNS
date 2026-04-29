@@ -25,12 +25,18 @@ logger = logging.getLogger(__name__)
 class SCMAnalyzer(BaseAnalyzer):
     name = 'scm_analysis'
     # Per-sample residual magnitudes (B, 4) and per-sub-graph (B,).
+    # scm_input_*: per-sample SCM input vectors used to compute
+    # activation-weighted edge scores (data-driven divergence).
     required_keys = (
         'r_diff_g',
         'r_diff_identity',
         'r_diff_forensic_structural',
         'r_diff_forensic_noise',
         'r_diff_forensic_spectral',
+        'scm_input_identity',
+        'scm_input_forensic_structural',
+        'scm_input_forensic_noise',
+        'scm_input_forensic_spectral',
     )
 
     # Stable ordering matches ImprovedCausalBranch.forward stack.
@@ -41,7 +47,7 @@ class SCMAnalyzer(BaseAnalyzer):
     def __init__(
         self,
         top_k: int = 20,
-        top_k_levels: Tuple[int, ...] = (20, 30, 40, 50),
+        top_k_levels: Tuple[int, ...] = (20, 30),
     ):
         super().__init__()
         self.top_k = top_k
@@ -201,6 +207,22 @@ class SCMAnalyzer(BaseAnalyzer):
                 }
             self._r_diff = r_diff
             self._r_diff_labels = labels
+
+            # ── Per-branch, per-class mean |x_j| activations ─────────────
+            # Used for activation-weighted edge scoring in
+            # plot_class_distinctive_graphs. Shape per branch: (d,) where
+            # d = SCM input dim for that sub-graph.
+            self._mean_act_real: Dict[str, np.ndarray] = {}
+            self._mean_act_fake: Dict[str, np.ndarray] = {}
+            for sg in self.SUBGRAPH_NAMES:
+                x_sg = self._stack(f'scm_input_{sg}')
+                if x_sg is None:
+                    continue
+                x_sg = x_sg.reshape(len(labels), -1)
+                if real_mask.any():
+                    self._mean_act_real[sg] = np.abs(x_sg[real_mask]).mean(axis=0)
+                if fake_mask.any():
+                    self._mean_act_fake[sg] = np.abs(x_sg[fake_mask]).mean(axis=0)
 
         # ── Adjacency-matrix divergence (unchanged) ───────────────────────
         for sg_name in self.SUBGRAPH_NAMES:
@@ -382,13 +404,20 @@ class SCMAnalyzer(BaseAnalyzer):
                 )
 
                 # Class-distinctive view: only the edges where each class
-                # outweighs the other; width ∝ class advantage.
+                # outweighs the other, ranked by activation-weighted
+                # divergence  s(i,j) = max(0, ΔA) · ⟨|x_j|⟩  on the
+                # corresponding class. Suppresses "phantom" edges whose
+                # source nodes never fire on data.
+                act_real = getattr(self, '_mean_act_real', {}).get(sg_name)
+                act_fake = getattr(self, '_mean_act_fake', {}).get(sg_name)
                 viz.plot_class_distinctive_graphs(
                     A_real[:n, :n], A_fake[:n, :n],
                     names[:n], K,
                     title=f'{sg_name} (top-{K})',
                     save_path=os.path.join(
                         scm_dir, f'{sg_name}_graph_k{K}.png'),
+                    act_real=act_real,
+                    act_fake=act_fake,
                 )
 
                 # Paired horizontal bars for the top-K most divergent
