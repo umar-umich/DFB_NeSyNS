@@ -48,6 +48,7 @@ class SCMAnalyzer(BaseAnalyzer):
         self,
         top_k: int = 20,
         top_k_levels: Tuple[int, ...] = (20, 30),
+        distinctive_keep_ratio: float = 0.7,
     ):
         super().__init__()
         self.top_k = top_k
@@ -55,6 +56,10 @@ class SCMAnalyzer(BaseAnalyzer):
         # at multiple K levels so the paper can show how the picture
         # evolves as more contributing edges are included.
         self.top_k_levels = tuple(sorted(set(top_k_levels)))
+        # plot_class_distinctive_graphs: edges where A_fake/A_real falls
+        # below this ratio are rendered as 'missing in fake' (faded
+        # dashed). Lower ratio → fewer edges marked missing.
+        self.distinctive_keep_ratio = float(distinctive_keep_ratio)
         self._adjacencies: Dict[str, np.ndarray] = {}
         self._node_names: Dict[str, List[str]] = {}
         self._method_labels: Optional[np.ndarray] = None
@@ -403,11 +408,16 @@ class SCMAnalyzer(BaseAnalyzer):
                         scm_dir, f'{sg_name}_graph_k{K}.png'),
                 )
 
-                # Class-distinctive view: only the edges where each class
-                # outweighs the other, ranked by activation-weighted
-                # divergence  s(i,j) = max(0, ΔA) · ⟨|x_j|⟩  on the
-                # corresponding class. Suppresses "phantom" edges whose
-                # source nodes never fire on data.
+                # Real-canonical / fake-partial framing:
+                # - Real panel: all top-K edges of the real-trained SCM
+                #   (canonical structure, ranked by activation-weighted
+                #   importance |A_real| · ⟨|x|⟩_real).
+                # - Fake panel: same edges; those with A_fake/A_real
+                #   below `keep_ratio` are drawn faded/dashed, i.e.
+                #   "missing in fake".
+                # Also writes <base>_distinctive_edges.csv and
+                # <base>_distinctive_nodes.csv so the figure can be
+                # rebuilt in R / Cytoscape / Gephi.
                 act_real = getattr(self, '_mean_act_real', {}).get(sg_name)
                 act_fake = getattr(self, '_mean_act_fake', {}).get(sg_name)
                 viz.plot_class_distinctive_graphs(
@@ -418,6 +428,7 @@ class SCMAnalyzer(BaseAnalyzer):
                         scm_dir, f'{sg_name}_graph_k{K}.png'),
                     act_real=act_real,
                     act_fake=act_fake,
+                    keep_ratio=getattr(self, 'distinctive_keep_ratio', 0.5),
                 )
 
                 # Paired horizontal bars for the top-K most divergent

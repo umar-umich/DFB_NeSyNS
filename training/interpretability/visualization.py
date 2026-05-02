@@ -5,6 +5,7 @@ Shared stateless plotting utilities for interpretability analyzers.
 All functions use matplotlib Agg backend (headless) and close figures after save.
 """
 
+import csv
 import json
 import os
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -853,29 +854,41 @@ def plot_class_distinctive_graphs(
     top_k: int,
     title: str,
     save_path: str,
-    min_div_frac: float = 0.10,
+    min_div_frac: float = 0.10,    # legacy kwarg, kept for API compat
     act_real: Optional[np.ndarray] = None,
     act_fake: Optional[np.ndarray] = None,
+    keep_ratio: float = 0.5,
 ):
-    """Per-class graphs that strip out the shared structure and show
-    *only* the edges where one class trusts a coupling more than the
-    other.
+    """Real-canonical / fake-partial framing for the per-class SCMs.
 
-    When per-class source-node activations are supplied, edges are
-    ranked by the **activation-weighted divergence**
+    Renders TWO panels with the SAME node positions and the SAME edge
+    set (the "canonical" structure):
 
-        s_real(i, j) = max(0, A_real[i,j] − A_fake[i,j]) · ⟨|x_j|⟩_real
-        s_fake(i, j) = max(0, A_fake[i,j] − A_real[i,j]) · ⟨|x_j|⟩_fake
+      • **Real panel** — every top-K canonical edge drawn solid blue,
+        width ∝ |A_real|. This represents the complete causal structure
+        learned by the real-trained SCM.
 
-    instead of the raw weight gap. This suppresses "phantom" edges that
-    differ in the matrix but never get triggered on data, and surfaces
-    edges whose disagreement actually drives the classifier — the
-    paper-defensible filter.
+      • **Fake panel** — same edges, classified per-edge by the ratio
+        ``A_fake / |A_real|``:
+          - ``≥ keep_ratio`` → solid red, width ∝ |A_fake| ("preserved")
+          - ``< keep_ratio`` → faded grey dashed ("missing in fake")
+        The fake-trained SCM weakened or lost some couplings; this panel
+        shows which.
 
-    Falls back to raw |A_real − A_fake| ranking when activations are
-    not provided (back-compat).
+    Canonical edge selection: top-K by ``|A_real[i,j]| · ⟨|x_j|⟩_real``
+    when activations are supplied, else raw |A_real|. Phantom edges
+    (high weight on dead source nodes) are excluded.
 
-    Writes ``<base>_distinctive_real<ext>`` and ``<base>_distinctive_fake<ext>``.
+    Files written:
+      - ``<base>_distinctive_real<ext>``  — real panel PNG
+      - ``<base>_distinctive_fake<ext>``  — fake panel PNG
+      - ``<base>_distinctive_edges.csv``  — per-edge data table
+      - ``<base>_distinctive_nodes.csv``  — per-node data table
+
+    The CSVs carry every numeric value used in the figure (A_real,
+    A_fake, divergence, activations, score, fake_status, ranks, group
+    tags) so the figure can be rebuilt in R / Cytoscape / Gephi
+    without rerunning the model.
     """
     try:
         import networkx as nx
@@ -888,68 +901,56 @@ def plot_class_distinctive_graphs(
 
     A_r = A_real[:n, :n].astype(float)
     A_f = A_fake[:n, :n].astype(float)
-    div = A_r - A_f
-    abs_div = np.abs(div)
-    if abs_div.max() < 1e-6:
-        return
 
-    # ── Build per-class edge scores ──────────────────────────────────
-    # If activations are provided, weight by source-node mean |x_j|
-    # under the corresponding class. Otherwise just use raw advantage.
-    weighted = (act_real is not None and act_fake is not None
+    # ── Activation-weighted importance for canonical-edge selection ──
+    has_acts = (act_real is not None and act_fake is not None
                 and len(act_real) >= n and len(act_fake) >= n)
-    if weighted:
+    if has_acts:
         a_r = np.abs(np.asarray(act_real[:n], dtype=float))
         a_f = np.abs(np.asarray(act_fake[:n], dtype=float))
-        # Broadcast over rows (target i): score[i, j] depends on j only
-        adv_real = np.maximum(div, 0.0)         # only A_real > A_fake
-        adv_fake = np.maximum(-div, 0.0)        # only A_fake > A_real
-        score_real = adv_real * a_r[None, :]    # weight by real-set act
-        score_fake = adv_fake * a_f[None, :]    # weight by fake-set act
-        score_metric = 'activation-weighted'
+        importance = np.abs(A_r) * a_r[None, :]
+        score_metric = 'activation-weighted |A_real|'
     else:
-        adv_real = np.maximum(div, 0.0)
-        adv_fake = np.maximum(-div, 0.0)
-        score_real = adv_real
-        score_fake = adv_fake
-        score_metric = 'raw weight gap'
+        a_r = np.zeros(n)
+        a_f = np.zeros(n)
+        importance = np.abs(A_r)
+        score_metric = '|A_real|'
 
-    max_score = max(score_real.max(), score_fake.max(), 1e-12)
-    threshold = max_score * min_div_frac
-
-    def _topk_per_class(score_mat: np.ndarray):
-        flat = score_mat.flatten()
-        order = np.argsort(-flat)[: top_k * 4]
-        out: List[Tuple[int, int, float, float]] = []
-        for fi in order:
-            s = float(flat[fi])
-            if s < threshold:
-                break
-            i, j = int(divmod(int(fi), n)[0]), int(divmod(int(fi), n)[1])
-            adv = float(div[i, j])  # signed raw weight gap (for label)
-            out.append((i, j, abs(adv), s))
-            if len(out) >= top_k:
-                break
-        return out
-
-    real_edges = _topk_per_class(score_real)
-    fake_edges = _topk_per_class(score_fake)
-
-    if not real_edges and not fake_edges:
+    if importance.max() < 1e-9:
         return
 
-    nodes = sorted(
-        {node_names[i] for i, _, _, _ in real_edges + fake_edges}
-        | {node_names[j] for _, j, _, _ in real_edges + fake_edges}
-    )
-    G_union = nx.DiGraph()
-    G_union.add_nodes_from(nodes)
-    G_union.add_edges_from(
-        [(node_names[i], node_names[j])
-         for i, j, _, _ in real_edges + fake_edges]
-    )
+    # ── Pick canonical edges: top-K by real-side importance ──────────
+    flat = importance.flatten()
+    order = np.argsort(-flat)
+    canonical: List[Tuple[int, int]] = []
+    for fi in order:
+        if flat[fi] < 1e-9:
+            break
+        i, j = int(divmod(int(fi), n)[0]), int(divmod(int(fi), n)[1])
+        canonical.append((i, j))
+        if len(canonical) >= top_k:
+            break
+    if not canonical:
+        return
 
-    # Same shell-or-balanced layout as the other separated-graph helper
+    # ── Per-edge fake status: preserved vs missing ───────────────────
+    fake_status: Dict[Tuple[int, int], str] = {}
+    for (i, j) in canonical:
+        ar = abs(float(A_r[i, j]))
+        af = abs(float(A_f[i, j]))
+        if ar < 1e-9:
+            fake_status[(i, j)] = 'preserved'
+        else:
+            fake_status[(i, j)] = ('preserved' if (af / ar) >= keep_ratio
+                                                else 'missing')
+
+    # ── Build graph / shared layout ──────────────────────────────────
+    nodes = sorted({node_names[i] for i, _ in canonical}
+                   | {node_names[j] for _, j in canonical})
+    G = nx.DiGraph()
+    G.add_nodes_from(nodes)
+    G.add_edges_from([(node_names[i], node_names[j]) for i, j in canonical])
+
     pos = None
     groups: Dict[str, List[str]] = {}
     for nm in nodes:
@@ -957,27 +958,34 @@ def plot_class_distinctive_graphs(
     if 2 <= len(groups) <= 4:
         ordered = sorted(groups.values(), key=len, reverse=True)
         try:
-            pos = nx.shell_layout(G_union, nlist=ordered)
+            pos = nx.shell_layout(G, nlist=ordered)
         except Exception:
             pos = None
     if pos is None:
         try:
-            pos = nx.kamada_kawai_layout(G_union)
+            pos = nx.kamada_kawai_layout(G)
         except Exception:
-            pos = nx.circular_layout(G_union)
+            pos = nx.circular_layout(G)
 
     base, ext = os.path.splitext(save_path)
-    # Width is driven by the SCORE (data-aware) so the figure shows the
-    # ordering the paper claims. Label still shows the raw weight gap
-    # so readers see the underlying matrix difference.
-    max_score_disp = max(
-        (s for *_, s in real_edges + fake_edges), default=1e-6)
-    panel_specs = [
-        ('Real-distinctive edges', real_edges, '#1f77b4',
-         f'{base}_distinctive_real{ext}'),
-        ('Fake-distinctive edges', fake_edges, '#d62728',
-         f'{base}_distinctive_fake{ext}'),
-    ]
+
+    # ── Edge curvatures (same approach as plot_separated_class_graphs) ─
+    pair_buckets: Dict[frozenset, List[Tuple[int, int]]] = {}
+    for (i, j) in canonical:
+        pair_buckets.setdefault(
+            frozenset({node_names[i], node_names[j]}), []).append((i, j))
+    rad_map: Dict[Tuple[int, int], float] = {}
+    for eds in pair_buckets.values():
+        m = len(eds)
+        if m == 1:
+            rad_map[eds[0]] = 0.12
+        else:
+            for ed, r in zip(eds, np.linspace(-0.32, 0.32, m)):
+                rad_map[ed] = float(r)
+
+    # ── Width scaling (panel-specific so each is fully visible) ──────
+    max_ar = max((abs(float(A_r[i, j])) for i, j in canonical), default=1e-6)
+    max_af = max((abs(float(A_f[i, j])) for i, j in canonical), default=1e-6)
 
     xs = [p[0] for p in pos.values()] or [0.0]
     ys = [p[1] for p in pos.values()] or [0.0]
@@ -985,54 +993,84 @@ def plot_class_distinctive_graphs(
     dy = 0.045 * span
 
     from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+
     seen_groups: List[str] = []
     for nm in nodes:
         g = group_of(nm)
         if g not in seen_groups:
             seen_groups.append(g)
-    legend_handles = [
+    node_legend = [
         Patch(facecolor=GROUP_COLORS.get(g, '#bbb'),
               edgecolor='#222', label=GROUP_LONGNAMES.get(g, g))
         for g in seen_groups
     ]
 
-    for panel_title, edges, color, file_path in panel_specs:
+    n_missing = sum(1 for v in fake_status.values() if v == 'missing')
+    n_preserved = sum(1 for v in fake_status.values() if v == 'preserved')
+
+    panel_specs = [
+        ('real', '#1f77b4', f'{base}_distinctive_real{ext}'),
+        ('fake', '#d62728', f'{base}_distinctive_fake{ext}'),
+    ]
+
+    for mode, base_color, file_path in panel_specs:
         fig, ax = plt.subplots(figsize=(13, 11))
 
         node_colors = [GROUP_COLORS.get(group_of(nm), '#bbbbbb') for nm in nodes]
         nx.draw_networkx_nodes(
-            G_union, pos, ax=ax, nodelist=nodes,
+            G, pos, ax=ax, nodelist=nodes,
             node_color=node_colors, edgecolors='#222',
             linewidths=1.4, node_size=520, alpha=0.95,
         )
 
-        if not edges:
-            ax.text(0.5, 0.5,
-                    'No edges where this class dominates above threshold.',
-                    transform=ax.transAxes, ha='center', va='center',
-                    fontsize=12, color='#888')
-        for (i, j, adv, s) in edges:
+        for (i, j) in canonical:
             src, tgt = node_names[i], node_names[j]
+            ar = float(A_r[i, j])
+            af = float(A_f[i, j])
+            rad = rad_map.get((i, j), 0.12)
+
+            if mode == 'real':
+                color = base_color
+                width = 1.0 + 5.5 * abs(ar) / max_ar
+                style = 'solid'
+                alpha = 0.9
+                label_val = ar
+            else:  # fake
+                if fake_status[(i, j)] == 'preserved':
+                    color = base_color
+                    width = 1.0 + 5.5 * abs(af) / max_af
+                    style = 'solid'
+                    alpha = 0.9
+                    label_val = af
+                else:  # missing
+                    color = '#9e9e9e'
+                    width = 0.7
+                    style = 'dashed'
+                    alpha = 0.30
+                    label_val = af
+
             nx.draw_networkx_edges(
-                G_union, pos, ax=ax, edgelist=[(src, tgt)],
-                edge_color=color,
-                width=1.0 + 5.5 * s / max_score_disp,
-                alpha=0.9, arrows=True, arrowsize=16,
-                connectionstyle='arc3,rad=0.12',
-                node_size=520,
+                G, pos, ax=ax, edgelist=[(src, tgt)],
+                edge_color=color, width=width, alpha=alpha,
+                arrows=True, arrowsize=15,
+                connectionstyle=f'arc3,rad={rad:.3f}',
+                style=style, node_size=520,
             )
             x0, y0 = pos[src]; x1, y1 = pos[tgt]
             mx, my = (x0 + x1) / 2, (y0 + y1) / 2
             dx_, dy_ = (x1 - x0), (y1 - y0)
             ln = max((dx_ * dx_ + dy_ * dy_) ** 0.5, 1e-6)
             perp = (-dy_ / ln, dx_ / ln)
-            off = 0.12 * ln * 0.5
+            off = rad * ln * 0.5
             ax.text(
                 mx + perp[0] * off, my + perp[1] * off,
-                f'+{adv:.3f}',
-                fontsize=8, ha='center', va='center', color='#222',
+                f'{label_val:.3f}',
+                fontsize=8, ha='center', va='center',
+                color='#666' if (mode == 'fake' and
+                                 fake_status[(i, j)] == 'missing') else '#222',
                 bbox=dict(boxstyle='round,pad=0.15',
-                          facecolor='white', edgecolor='none', alpha=0.88),
+                          facecolor='white', edgecolor='none', alpha=0.85),
                 zorder=10,
             )
 
@@ -1044,24 +1082,100 @@ def plot_class_distinctive_graphs(
                           facecolor='white', edgecolor='#666', alpha=0.95),
             )
 
-        ax.legend(
-            handles=legend_handles, loc='lower center',
-            ncol=min(len(legend_handles), 3), fontsize=10,
+        leg1 = ax.legend(
+            handles=node_legend, loc='lower center',
+            ncol=min(len(node_legend), 3), fontsize=10,
             frameon=True, framealpha=0.92, title='Node group',
             bbox_to_anchor=(0.5, -0.04),
         )
-        ax.set_title(
-            f'{title} — {panel_title}\n'
-            f'(width ∝ {score_metric} score, label = raw |Aʳ−Aᶠ|; '
-            f'threshold {min_div_frac:.0%} of max score)',
-            fontsize=12, pad=12,
-        )
+        ax.add_artist(leg1)
+        # Fake panel: a second legend explains the edge style code
+        if mode == 'fake':
+            edge_legend = [
+                Line2D([0], [0], color=base_color, lw=3,
+                       label='preserved in fake'),
+                Line2D([0], [0], color='#9e9e9e', lw=1.5, ls='--',
+                       label=f'missing in fake (A_fake/A_real < {keep_ratio:g})'),
+            ]
+            ax.legend(handles=edge_legend, loc='upper left',
+                      fontsize=9, frameon=True, framealpha=0.9,
+                      title='Edge status')
+
+        if mode == 'real':
+            sub = (f'Real-trained SCM — canonical structure '
+                   f'(top-{len(canonical)} by {score_metric})')
+        else:
+            sub = (f'Fake-trained SCM — {n_preserved} preserved / '
+                   f'{n_missing} missing of {len(canonical)} canonical edges')
+        ax.set_title(f'{title} — {sub}', fontsize=12, pad=12)
         ax.set_axis_off()
         ax.set_xlim(min(xs) - 0.20 * span, max(xs) + 0.20 * span)
         ax.set_ylim(min(ys) - 0.15 * span, max(ys) + 0.20 * span)
         fig.tight_layout()
         fig.savefig(file_path, dpi=170, bbox_inches='tight')
         plt.close(fig)
+
+    # ── CSV exports for downstream re-rendering (R / Cytoscape) ──────
+    edges_csv = f'{base}_distinctive_edges.csv'
+    nodes_csv = f'{base}_distinctive_nodes.csv'
+
+    with open(edges_csv, 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow([
+            'rank', 'src_idx', 'tgt_idx', 'src_name', 'tgt_name',
+            'src_pretty', 'tgt_pretty', 'src_group', 'tgt_group',
+            'A_real', 'A_fake', 'div_signed', 'abs_div',
+            'act_real_src', 'act_fake_src',
+            'score_real', 'score_fake',
+            'fake_ratio', 'fake_status',
+        ])
+        for rank, (i, j) in enumerate(canonical, 1):
+            ar = float(A_r[i, j]); af = float(A_f[i, j])
+            div_signed = ar - af
+            abs_div = abs(div_signed)
+            ar_act = float(a_r[j]) if has_acts else 0.0
+            af_act = float(a_f[j]) if has_acts else 0.0
+            score_real = max(0.0, div_signed) * ar_act
+            score_fake = max(0.0, -div_signed) * af_act
+            ratio = (af / abs(ar)) if abs(ar) > 1e-9 else float('inf')
+            w.writerow([
+                rank, i, j, node_names[i], node_names[j],
+                pretty(node_names[i]), pretty(node_names[j]),
+                group_of(node_names[i]), group_of(node_names[j]),
+                f'{ar:.6f}', f'{af:.6f}',
+                f'{div_signed:.6f}', f'{abs_div:.6f}',
+                f'{ar_act:.6f}', f'{af_act:.6f}',
+                f'{score_real:.6f}', f'{score_fake:.6f}',
+                f'{ratio:.6f}' if np.isfinite(ratio) else 'inf',
+                fake_status[(i, j)],
+            ])
+
+    with open(nodes_csv, 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['node_id', 'node_pretty', 'node_group',
+                    'pos_x', 'pos_y',
+                    'act_real', 'act_fake',
+                    'in_degree', 'out_degree'])
+        # Compute degrees from the canonical edge set
+        in_deg: Dict[str, int] = {nm: 0 for nm in nodes}
+        out_deg: Dict[str, int] = {nm: 0 for nm in nodes}
+        for (i, j) in canonical:
+            out_deg[node_names[i]] = out_deg.get(node_names[i], 0) + 1
+            in_deg[node_names[j]] = in_deg.get(node_names[j], 0) + 1
+        for nm in nodes:
+            try:
+                idx = node_names.index(nm)
+            except ValueError:
+                idx = -1
+            ar_act = (float(a_r[idx]) if has_acts and 0 <= idx < n else 0.0)
+            af_act = (float(a_f[idx]) if has_acts and 0 <= idx < n else 0.0)
+            x, y = pos.get(nm, (0.0, 0.0))
+            w.writerow([
+                nm, pretty(nm), group_of(nm),
+                f'{x:.6f}', f'{y:.6f}',
+                f'{ar_act:.6f}', f'{af_act:.6f}',
+                in_deg.get(nm, 0), out_deg.get(nm, 0),
+            ])
 
 
 def plot_edge_weight_scatter(
