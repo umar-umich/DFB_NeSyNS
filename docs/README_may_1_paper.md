@@ -358,8 +358,6 @@ Uncomment a tight EDL paragraph (3 sentences) for IBDC differentiation; recover 
 
 ---
 
-## Implementation status update — 2026-05-02
-
 Two pieces of supporting infrastructure landed for the NeurIPS submission. Both are described in the same imperative voice the paper will use; treat the bullet text as draft caption / methods-section material.
 
 ### A. Discriminative-gap predicate selection — *what §3.2 of the paper now references*
@@ -372,28 +370,3 @@ The hand-picked-12 problem is gone. The symbolic stream is now backed by a **sel
 - **Runtime enforcement.** A `RetainedConsistencyRules` wrapper reads the YAML, indexes the `(B, 28)` candidate output to the 18 retained dims, and registers the indices as a buffer so they ship in `state_dict`. On training start, `train.py` calls `verify_against_yaml()` whenever `concept_branch.consistency_rules_version: v8_retained` is set; tampering with either the YAML or the candidate-name table raises before optimisation begins.
 - **Paper assets.** `scripts/render_paper_assets.py` emits `results/tab_predicate_gaps.tex` (booktabs, single-column-friendly, with publication-style predicate labels and category names) and a restyled bar plot (3.4 in width, sans-serif, retained = blue, dropped = hatched grey, gap-threshold dashed line at 0.005, grayscale-readable). Display labels live in the renderer; the YAML and v8 module use the canonical `cr_*` identifiers as ground truth.
 - **Leakage statement.** The 10 % validation slice is never seen by the detector during training (training uses only the complementary 90 %); no predicate gap is recomputed on test or cross-dataset data; the retained set is fixed before the first test evaluation runs. State this in §3.2 of the methods and in any reviewer rebuttal.
-
-### B. Ablation evaluation pipeline — *what feeds Tables 4 / 5 / 6*
-
-A minimal runner suite reproduces every number the paper's ablation tables need from existing checkpoints, without re-implementing model loading or re-sampling frames. All metric definitions come verbatim from `scripts/calibration_metrics.py`.
-
-- `scripts/run_ablation_eval.py` — per-ablation wrapper. Subprocess calls `training/test.py`, normalises `test_predictions.csv` to the canonical `(sample_id, video_id, frame_idx, label, prediction, confidence, prob_fake)` schema via `calibration_metrics.predictions_to_per_sample`, computes frame *and* video-level AUC / ECE / E-AURC / CW@0.9 (the four metrics the paper's Table 4 uses). Writes `results/ablations/<name>/per_sample.csv` and `metrics.json` incrementally. Default config: `nesy_defake_ablation4_causal.yaml`; default test set: `Celeb-DF-v2`.
-- `scripts/run_faithfulness.py` — predicate-substrate intervention. Loads the full DeFakeNet checkpoint, iterates CDFv2, restricts to correctly-classified fakes (`label == 1` and `prob_base ≥ 0.5`). For each k ∈ {1, 3, 5}, runs two interventions per sample: zeroing the **top-k firing predicates** and zeroing **k random retained predicates** (deterministic per `(seed, batch, k)`). Records the relative drop in symbolic-stream evidence `Ev_sym = Σ concept_evidence` and the rate of hard-prediction flips. Writes `results/faithfulness/CDFv2.json` after every batch. The intervention point is the new `predicate_mask` kwarg on `ConceptBranch.forward` (see §C below).
-- `scripts/run_selective.py` — full DeFakeNet vs. GenD-CLIP at video level on CDFv2. Reads the two per-sample CSVs, aggregates by `video_id` (mean `prob_fake`, mean confidence), reports full-coverage AUC and AUC at 90 % coverage (sort descending by confidence, keep top 90 %, recompute). Writes `results/selective/CDFv2.json`. Reports `UNAVAILABLE` with a clear reason if either CSV is missing rather than fabricating numbers.
-- `scripts/aggregate.py` — assembles `results/ABLATION_SUMMARY.md` in the paper's three-table format (Component Ablation / Faithfulness / Selective Prediction) plus a per-config run-log section. Rows for missing artefacts render `—` and are flagged in the run log; no silent fabrication.
-- `scripts/run_all.sh` — single-command driver. Invokes the per-ablation evaluator for every entry in an `ABLATIONS=(...)` array (`full_defakenet`, `no_ibdc`, `no_cmef`, `no_pbas`, `no_causal`, `no_symbolic`, `visual_edl_only`), then faithfulness, then selective, then aggregator. Header points to the checkpoint paths the user must update for their layout. Failures are tolerated — each one prints `FAILED: <name>` and the pipeline continues.
-- **One command:** `bash scripts/run_all.sh`.
-
-### C. Single supporting code change
-
-Faithfulness needs to zero specific predicates between the rule module and the concept MLP. To stay non-invasive:
-
-- `ConceptBranch.forward(combined_features, predicate_mask=None)` — when `None` the forward is bit-for-bit unchanged from before (default for every existing checkpoint and every existing call site). When a `(B, K)` or `(1, K)` `{0, 1}` tensor is supplied, violations are element-wise multiplied by it before the concat into `concept_input`.
-- `NeSyDeFakeHybridDetector.forward` looks up `data_dict.get('predicate_mask')` and threads it into the concept branch.
-- The change is strictly additive; no checkpoint key shapes change, no defaults change, and no existing run path takes the new code path.
-
-### D. What the paper now legitimately claims
-
-- The symbolic substrate is **selected, not curated**, with a documented protocol on a held-out FF++ slice (§3.2). The 18 retained predicates are reproducible from the candidate module and the frozen YAML.
-- Faithfulness is reported as a **causal intervention on the predicate substrate** (zero specific predicates → measure Ev_sym drop and prediction flips), not as a post-hoc attribution. The intervention is mathematically exact under the existing forward graph.
-- The component ablation, faithfulness, and selective-prediction tables are produced from existing checkpoints by a single command, with every metric computed by the verbatim functions in `scripts/calibration_metrics.py`. No bespoke metric reimplementation is hidden in the runner.
