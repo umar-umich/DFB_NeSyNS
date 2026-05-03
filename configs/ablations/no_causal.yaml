@@ -1,0 +1,351 @@
+# =============================================================================
+# Ablation: no_causal
+# =============================================================================
+# Visual + symbolic + EDL only — the structural causal stream is removed
+# from the forward pass via `ablation_mode: concept_edl`. All causal
+# auxiliary losses (DAGMA, divergence, recon) become inert because the
+# branch is never built. CMEF and IBDC operate over the remaining
+# spatial+concept pair (2-stream IBDC is already supported — the
+# disagreement code dynamically iterates over active streams).
+# =============================================================================
+# Ablation 4: Spatial + Concept + ImprovedSCM + EDL (Full NeSy, fast-only)
+# =============================================================================
+# Purpose: Full neuro-symbolic pipeline with explainable causal graphs.
+# Builds on Ablation 3 by adding the ImprovedSCM causal branch that learns
+# nonlinear structural causal models for identity and forensic sub-graphs.
+#
+# Evidence fusion (3 sources):
+#   spatial_evidence = softplus(linear_head(CLIP_features))
+#   concept_evidence = softplus(concept_mlp(58-d + 12 rules))
+#   causal_evidence  = softplus(residual_mlp(differential SCM residuals))
+#   total = spatial + gate1 * concept + gate2 * causal
+#
+# Causal sub-graphs (spatial-only, nonlinear SCM):
+#   Identity:  z(32) + curated(26) + rules(12)      =  70 nodes
+#   Forensic:  split into structural(62) / noise(75) / spectral(42)
+#
+# Changes from Ablation 3:
+#   - Adds forensic_features (83-d precomputed)
+#   - Adds ImprovedCausalBranch with 4 nonlinear SCM pairs
+#   - Adds causal evidence gate
+#   - DAG acyclicity + sparsity + divergence + recon penalties in loss
+# =============================================================================
+
+log_dir: /data/umar/Repos/DFB_NeSyNS/logs
+
+model_name: nesydefake_hybrid
+backbone_name: multi_stream
+
+# -- Ablation flags -----------------------------------------------------------
+ablation_spatial_only: false
+ablation_mode: concept_edl        # ABLATION: causal stream removed
+
+# -- EDL config (NeSy-EDL: CMEF + PBAS + IBDC) --------------------------------
+edl:
+  num_classes: 2
+  annealing_epochs: 10
+  kl_weight: 0.15
+  avu_weight: 0.1
+  nesy_fusion: true               # enable Confidence-Modulated Evidence Fusion
+  aux_weight: 0.1                 # per-branch auxiliary EDL supervision
+  disagreement_weight: 0.05       # inter-branch disagreement calibration
+
+# -- Concept branch config ----------------------------------------------------
+concept_branch:
+  enabled: true
+  combined_dim: 58
+  rules_dim: 18                                       # v8_retained: 18 rules
+  hidden_dim: 64
+  dropout: 0.2
+  consistency_rules_version: v8_retained
+  retained_predicates_yaml: configs/retained_predicates.yaml
+
+# -- Improved SCM causal branch config (fixes A-D) ---------------------------
+causal_branch:
+  enabled: true
+  type: improved_scm              # 'simple', 'improved_scm', or 'ccv'
+  backbone_dim: 1024
+  z_causal_dim: 32
+  curated_dim: 26
+  rules_dim: 18                   # dead — causal branch is not built in this ablation
+  forensic_dim: 83
+  scm_hidden_dim: 64              # nonlinear SCM hidden layer size
+  summary_dim: 8                  # per-subgraph projected summary dimension
+  evidence_hidden: 64
+  sparsity_penalty: 0.01
+  divergence_weight: 0.1          # weight for graph divergence loss
+  recon_weight: 0.5               # weight for label-conditioned reconstruction
+  dag_penalty_weight: 0.01        # weight reduced: DAG penalty exploded to billions at 0.05
+
+# -- Evidence gates ------------------------------------------------------------
+evidence_gate:
+  concept_init: -0.5            # sigmoid ≈ 0.38
+  causal_init:  -0.8            # sigmoid ≈ 0.31 — starts cautious, allows gradient flow
+  conditioned: false            # true: per-image gates via Linear(1024→2)→Sigmoid
+                                # false: static scalar gates (default)
+
+# -- Dataset ------------------------------------------------------------------
+dataset_type: nesydefake
+active_branches: ['spatial']
+
+train_dataset: [FaceForensics++]
+test_dataset:  [FaceForensics++, Celeb-DF-v2]
+# test_dataset:  [FaceForensics++, FaceShifter, Celeb-DF-v1, Celeb-DF-v2, Celeb-DF-v3, DFDCP]
+all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
+                DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
+                DeeperForensics-1.0, UADFV]
+
+compression: c23
+
+# -- Frame config -------------------------------------------------------------
+video_mode: false
+frame_num:
+  train: 32
+  test:  32
+
+resolution:    224
+with_mask:     false
+with_landmark: false
+load_semantic_features: false
+
+class_weights: [1.8, 1.0]              # [real, fake] — restored to the
+                                       # value used by the 2026-04-20 DFDCP
+                                       # run (the best cross-dataset run on
+                                       # record). 1.0/1.0 hurt AUC; 1.6/1.0
+                                       # over-corrected. 1.2/1.0 is the
+                                       # known-good middle ground.
+
+# -- Cross-dataset regularizers (GenD recipe) --------------------------------
+label_smoothing: 0.0                   # restored to 0.0 (DFDCP-good run).
+                                       # 0.1 was an experiment that did not
+                                       # reproduce — keep at 0.0 for the
+                                       # baseline.
+
+# -- Inference-time calibration / TTA ----------------------------------------
+# These knobs are inference-only — no retraining required to change them.
+# Tune T values on a held-out validation split to maximize AUC.
+branch_temperatures:                   # T=1.0 = no-op. T>1 softens an
+  spatial: 1.0                         # over-confident branch; T<1 sharpens
+  concept: 1.0                         # an under-confident one. Affects
+  causal:  1.0                         # the Dirichlet fusion non-linearly.
+tta:                                   # Test-time augmentation: average the
+  enabled: true                        # prediction with one from a hflipped
+                                       # image. Cheap (one extra forward),
+                                       # forensic features stay shared.
+uniformity_alignment:
+  enabled: true
+  alignment_weight:  1.0
+  uniformity_weight: 1.0
+  alignment_power:   2.0
+  uniformity_t:      2.0
+
+# -- Projection head type -------------------------------------------------------
+projection_head:
+  type: standard               # standard | residual | bottleneck | houlsby
+  # residual options (only when type=residual):
+  alpha_init: 0.1          # learnable mixing scalar init
+  # bottleneck options (only when type=bottleneck):
+  #   bottleneck_ratio: 4      # compression ratio (1024→256 when ratio=4)
+  # houlsby options (only when type=houlsby, combines residual + bottleneck):
+  bottleneck_ratio: 4
+  # outer_layernorm: true        # legacy compat for this checkpoint (2026-04-24): wrap projection head in an outer LayerNorm
+  # alpha_init: 0.1
+
+# -- Skip fusion (EDL path bypasses fusion, so this saves ~1M unused params) ---
+skip_fusion: false             # set true to remove fusion module entirely
+
+projection_dropout:
+  spatial:   0.0
+  frequency: 0.0
+
+# -- Data loading & augmentation (GenD) ---------------------------------------
+train_batchSize: 128                  # restored to 128 (DFDCP-good run).
+test_batchSize:  128                  # 300 changed effective LR dynamics
+                                      # for the per-branch causal heads;
+                                      # 128 is the size the LR=3e-4 schedule
+                                      # was tuned around.
+workers:         12
+
+use_data_augmentation: true
+balance_classes:       false
+balance_target_ratio: 0.5
+paired_training: true
+
+data_aug:
+  flip_prob:            0.5
+  rotate_limit:         [-10, 10]
+  affine_translate:     [0.1, 0.1]
+  affine_scale:         [0.9, 1.1]
+  blur_prob:            0.1
+  blur_kernel_size:     7
+  blur_sigma:           [0.1, 2.0]
+  brightness_limit:     0.1
+  contrast_limit:       0.1
+  quality_lower:        65
+  quality_upper:        100
+  gaussian_noise_sigma: 0.0
+
+mean: [0.5, 0.5, 0.5]
+std:  [0.5, 0.5, 0.5]
+
+# -- Precomputed features (for concept + causal branches) ---------------------
+# Fast semantic features only (58-d) — VLM features removed from framework.
+fast_semantic:
+  enabled: true
+  output_dim: 58
+  precomputed_dir: fast_semantic
+
+consistency_rules:
+  enabled: true
+  output_dim: 12
+
+forensic_features:
+  enabled: true
+  output_dim: 83
+  precomputed_dir: forensic_features
+
+# -- Foundation Models (GenD) -------------------------------------------------
+# Spatial backbone ablation — uncomment ONE block at a time.
+# All listed variants produce 1024-dim features at ViT-L, matching output_dim.
+#
+# Available names: clip | dinov2 | dinov3 | pe
+foundation_models:
+  # [A] CLIP ViT-L/14 (current default — GenD-style)
+  spatial:
+    name:            clip
+    model_path:      openai/clip-vit-large-patch14   #openai/clip-vit-large-patch14-336 # openai/clip-vit-large-patch14
+    output_dim:      1024
+    freeze_backbone: true
+    train_layernorms: true
+    normalization:
+      mean: [0.481, 0.458, 0.408]
+      std:  [0.269, 0.261, 0.276]
+
+  # [B] DINOv3 ViT-L/16 — stronger dense features than DINOv2
+  # spatial:
+  #   name:            dinov3
+  #   model_path:      facebook/dinov3-vitl16-pretrain-lvd1689m
+  #   output_dim:      1024
+  #   freeze_backbone: true
+  #   train_layernorms: true
+  #   normalization:
+  #     mean: [0.485, 0.456, 0.406]
+  #     std:  [0.229, 0.224, 0.225]
+
+  # [C] Perception Encoder (PE-Core-L/14-336) — GenD's raw backbone
+  # spatial:
+  #   name:            pe
+  #   model_path:      facebook/PE-Spatial-L14-448 # facebook/PE-Spatial-G14-448, facebook/PE-Core-G14-448, facebook/PE-Core-L14-336
+  #   output_dim:      1024
+  #   freeze_backbone: true
+  #   train_layernorms: true
+  #   normalization:
+  #     mean: [0.481, 0.458, 0.408]
+  #     std:  [0.269, 0.261, 0.276]
+
+  frequency:
+    name:             fad_dinov2
+    model_path:       facebook/dinov2-large
+    output_dim:       1024
+    freeze_backbone:  true
+    train_layernorms: false
+    fad_mode:         single
+    fad_learnable:    true
+    freq_emphasis_init: 0.1
+    normalization:
+      keep_raw:       true
+    clip_normalization:
+      mean: [0.481, 0.458, 0.408]
+      std:  [0.269, 0.261, 0.276]
+
+fusion:
+  type:           attention
+  fused_dim:      1024
+  projection_dim: 1024
+  dropout:        0.0
+
+# -- Classifier (GenD linear probe) ------------------------------------------
+classifier:
+  type:         multi_task
+  input_dim:    1024
+  linear_probe: true
+  tasks:
+    - name:        classification
+      type:        binary
+      output_dim:  2
+      loss_weight: 1.0
+  hidden_dims: [512, 256]
+  dropout:     0.3
+
+# -- Loss (EDL + DAG penalty) ------------------------------------------------
+loss_func:
+  classification:         cross_entropy
+  sparse_penalty:         l1_norm
+  weights:
+    classification:     1.0
+
+loss_warmup: {}
+
+# -- Optimizer ----------------------------------------------------------------
+optimizer:
+  type: adam
+  adam:
+    lr: 0.0003
+    beta1: 0.9
+    beta2: 0.999
+    eps: 0.00000001
+    weight_decay: 0.0
+    amsgrad: false
+  module_lr:
+    backbone_layernorms: 0.0003
+    always_trainable:    0.0003
+    phase_proj:          0.0003
+    projection_heads:    0.0003
+    fusion:              0.0003
+    classifier:          0.0003
+    concept_branch:      0.001
+    causal_branch:       0.001
+
+# -- Schedule (GenD) ----------------------------------------------------------
+lr_scheduler:   cosine_warmup
+warmup_epochs:  1
+nEpochs:        100
+start_epoch:    0
+save_epoch:     1
+rec_iter:       100
+logdir:         ./logs
+manualSeed:     3407   # 3407 = DFDCP-good run; 1024 also tried
+save_ckpt:      true
+save_feat:      true
+grad_clip:      1.0
+freq_grad_clip: 2.0
+
+# -- Metrics ------------------------------------------------------------------
+metric_scoring:     auc
+additional_metrics: [acc, eer, ap]
+
+interpretability:
+  enabled: true
+  save_attention_maps:      false
+  save_causal_graphs:       true  # Enable for explainability
+  save_feature_activations: false
+  save_sae_features:        false
+  visualization_frequency:  500
+  graph_viz_top_k:          20
+  graph_viz_every_n_epochs: 5
+
+# -- Hardware -----------------------------------------------------------------
+cuda:            true
+cudnn:           true
+mixed_precision: true
+
+checkpoint:
+  save_best_only: false
+  save_interval: 5
+  monitor:        val_acc
+  mode:           max
+
+early_stopping:
+  enabled: true
+  patience: 20
+  min_delta: 0.001
