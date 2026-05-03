@@ -289,3 +289,111 @@ The first conversation in the project should produce:
 This single session resolves the headline-result question, the substrate-visibility question, and provides working language for the rest of the paper.
 
 The second session should be `/review` on the current intro + related work + method, using the locked project instructions. The output becomes the working punch-list for everything that follows.
+
+# Critique: Abstract, Introduction, Literature Review
+I'll be direct about what's broken before we move to Method. These are the issues that will sink the paper at NeurIPS, ranked by severity.
+
+Abstract — Issues
+Severity: High. Needs rewrite once headline result is locked, but structural problems are fixable now.
+
+Buries the lede. Opens with a generic threat-model paragraph that any deepfake paper opens with. By sentence three a reviewer is still waiting for the contribution. The differentiator (IBDC, structural divergence, calibrated deferral) appears only after 100+ words of throat-clearing.
+"Outperforms on several, matches on the remainder" is the weakest possible accuracy claim. It signals you don't have a clean accuracy win and are hedging. If the headline is going to be (A) selective-prediction or (C) calibration, the abstract should commit to that as the win and treat AUC as parity, not as a soft win.
+IBDC — the strongest novelty — is described as "inter-branch disagreement directly inflates uncertainty." That's mechanistic but strips the technical claim. The novel binding (uncertainty bound to detached pairwise disagreement, not evidence magnitude) is what differentiates from EDL/TMC. Currently invisible.
+"Causal" appears unscoped. "Label-conditioned structural causal models … detects manipulations from the structural divergence between the real and fake-conditioned mechanisms" — better than most uses, but the abstract still leans on "causal" as a virtue. Per the Hybrid framing decision, this needs to read as structural divergence with the SCM term used precisely (NOTEARS/DAGMA).
+Symbolic stream underclaimed. "Differentiable predicates derived from FACS" undersells the LibreFace-validated 58-dim substrate and the discriminative-gap predicate selection protocol. These are the two things that defang the "decorative symbolic component" objection.
+No headline number. Abstract needs one quantitative claim that lands. Currently zero numbers.
+"Opacity undermines both trust and generalization." The trust half is fine; the generalization half is unsupported and reviewers will challenge it. Cut.
+
+Hold on rewriting the abstract until headline result is decided. I'll draft three abstracts (one per option) when we get to that decision point — per project instructions.
+
+Introduction — Issues
+Severity: Medium-High. Workable but bloated; central insight doesn't land hard enough or early enough.
+
+Paragraph 1 is generic. Four sentences establishing "deepfakes are bad and generalization matters" — every reviewer has read this paragraph 200 times. Cut to two sentences. The page-budget argument: this paragraph is ~⅛ of the intro real estate spent on consensus material.
+Paragraph 2 is well-structured but the gap-claim is the weak version. The current framing — "every method in this family compresses its decision into a single scalar fakeness score" — is the aesthetic claim flagged in the project instructions. Every classifier ever made does this. The locked sharpened version needs to land here:
+
+Cross-dataset CLIP-adapter detectors fail silently and indistinguishably from confident-correct predictions because their uncertainty is uncalibrated and their evidence is undecomposable; an analyst has no surface on which to audit, contest, or defer.
+
+Currently the intro hints at this in paragraph 2 final sentences but doesn't commit. It must commit, and the commitment must precede the contribution list.
+Paragraph 3 — "common cause" framing is good but mistakes the punchline. It correctly identifies that detectors don't reason over semantic regularities, then immediately introduces three streams. The technical insight that should land here — the binding mechanism that ties uncertainty to disagreement — is buried as a clause at the end. IBDC is the strongest single novelty claim per the project framing and should be named in the intro.
+Contribution (1) is overclaimed and over-hedged simultaneously. "First interpretable neuro-symbolic deepfake detector" is the kind of "first" claim that invites a reviewer to find a prior work and reject. Drop "first" framing; lead with what the contribution does — emits per-prediction predicate violations and inspectable class-conditioned structural-graph divergences as the explanation, not as post-hoc visualization. "To our knowledge" is on the project's banned-phrases list.
+Contribution (2) is the strongest but currently second. IBDC (uncertainty bound to detached disagreement, not evidence magnitude) should be contribution (1) once headline is locked, especially under option (A).
+Contribution (3) is the experimental claim, not a contribution. Convert to a results-preview sentence at the end of the intro and recover the bullet for IBDC or the predicate-validation methodology.
+Three contributions, not four. Project instructions specify 3–4 bullets each tied to an experiment. Currently three but the third is results, not contribution. Net: two real contributions in the bullet list. Need to re-distribute.
+No FACS-validated substrate surfacing. The intro says "predicates derived from FACS" but never names LibreFace, DISFA, BP4D, or the 58-dim substrate. Defense against the "decorative symbolic" objection requires this pedigree visible in the intro.
+No causal scoping. "Causal reasoning stream … learns label-conditioned structural causal models" appears without the §3.2 disclaimer existing yet. Per the Hybrid framing lock, every appearance of "causal" before §3.2 must either be scoped or be replaced with "structural" / "class-conditioned structural." Currently the intro uses "causal" four times, all unscoped.
+Page budget. Current intro is ~1.0 page — at budget — but if we're adding the IBDC technical claim and predicate-validation sentence, something has to come out. Candidates: (a) cut paragraph 1 to two sentences (~3 lines saved), (b) collapse the two-strategy taxonomy in paragraph 2 into one sentence with citations (the related work covers it). Net: room for the sharper insight without overrun.
+
+
+Literature Review — Issues
+Severity: Medium. Functional but underweights the positioning that protects the contribution.
+
+CLIP-adapter wave under-positioned. Paragraph 2 lists six adapter methods in one breath and treats them as undifferentiated. The project instructions name Forensics Adapter [Cui 2025] and Yermakov 2026 as primary positioning anchors. These two need a sentence each that names the specific design (bottleneck adapters; LayerNorm-only) and exactly what they leave on the table (no uncertainty, no decomposition, no deferral). One-sentence treatment for the rest is fine.
+The closing sentence of paragraph 2 is the right gap claim but undersells. "DeFakeNet retains the generalization benefit … restructuring the prediction itself as a composition of inspectable evidence streams." Add a clause naming the calibrated deferral and inter-branch disagreement binding — these are what no adapter method can offer regardless of post-hoc add-ons.
+Neuro-symbolic paragraph cites Garcez 2023 and DeepProbLog but doesn't position DeFakeNet within that family. Reviewer-2 will write "what makes this neuro-symbolic beyond a few hand-coded rules?" The differentiable-predicate + learned-fusion family (NS-CL, Semantic Loss, DeepProbLog) needs a one-sentence acknowledgment that DeFakeNet sits in this family with predicates empirically validated via discriminative-gap selection on training-fold data. This pre-empts the "decorative symbolic" objection in the lit-review rather than deferring it to method.
+Causal paragraph conflates causal representation learning with NOTEARS/DAGMA. Schölkopf 2021 is about identifying invariant mechanisms — a Pearlian commitment we explicitly don't make. NOTEARS/DAGMA is structural-equation discovery without identifiability claims. Per the Hybrid framing, the lit-review should cite NOTEARS/DAGMA as the technical lineage and cite Schölkopf 2021 only as motivation that distribution shift is real. As currently written, a careful reviewer will flag the same conflation the §3.2 disclaimer tries to fix.
+Missing citations from the locked positioning anchors. Yermakov 2026 (LayerNorm-only) is cited in the deepfake-detection paragraph but should be cited again in the foundation-model paragraph as the closest baseline. Forensics Adapter [Cui 2025] is correctly cited.
+EDL paragraph is commented out but should arguably be in. The IBDC contribution differentiates against Sensoy 2018 and Han 2021 specifically. Without an EDL paragraph in the lit-review, the differentiation lives only in §3.2 of method, which is too late. Recommend uncommenting a tightened version (~3 sentences) and finding the space by collapsing the deepfake-detection paragraph. This trade is the right one — the EDL positioning protects the strongest novelty claim.
+Page budget. Currently ~0.5–0.75 page. If we add a tight EDL paragraph (3 sentences) and tighten the adapter and neuro-symbolic positioning, we stay within budget by also collapsing the pseudo-fake list (Face X-ray, SBI, FreqBlender, ProDet) into one citation cluster — the lit-review doesn't need to enumerate them.
+
+
+Summary: What to fix before iteration 2
+Abstract: hold pending headline-result decision.
+Introduction:
+
+Compress paragraph 1.
+Replace "scalar score" gap claim with the locked "fail silently and indistinguishably" framing.
+Surface IBDC in paragraph 3 as the technical insight.
+Rebuild contribution bullets: (1) IBDC binding, (2) class-conditioned SCM-pair structural divergence, (3) FACS-validated substrate + predicate validation methodology + interpretability-by-design — with "first" and "to our knowledge" cut.
+Convert contribution (3) → results-preview sentence.
+Scope every "causal" mention or replace with "structural / class-conditioned structural."
+Surface LibreFace + FACS substrate pedigree.
+
+Literature Review:
+
+Differentiate Forensics Adapter and Yermakov 2026 individually; one-sentence-each for the rest of the wave.
+Position DeFakeNet within the differentiable-predicate neuro-symbolic family; mention discriminative-gap validation.
+Separate Schölkopf-style causal representation learning (motivation) from NOTEARS/DAGMA (technical lineage); cite them for what they each are.
+Uncomment a tight EDL paragraph (3 sentences) for IBDC differentiation; recover budget by collapsing the pseudo-fake enumeration.
+
+---
+
+## Implementation status update — 2026-05-02
+
+Two pieces of supporting infrastructure landed for the NeurIPS submission. Both are described in the same imperative voice the paper will use; treat the bullet text as draft caption / methods-section material.
+
+### A. Discriminative-gap predicate selection — *what §3.2 of the paper now references*
+
+The hand-picked-12 problem is gone. The symbolic stream is now backed by a **selection protocol with explicit leakage prevention**, exactly as described in §3.2 of the README.
+
+- **Candidate set (28 predicates)** in `training/networks/nesy_defake/semantic/consistency_rules_v8.py`. Composition: 12 inherited from v7, 4 faceswap-specific predicates from the April-28 README (`cr_yaw_gaze_misalign`, `cr_pose_facewidth`, `cr_lip_geometry_au12`, `cr_brow_eye_couple`), and 12 FACS-grounded additions covering negative-emotion AU coherence, pitch / roll-gaze, geometric ratios, mouth symmetry, and Duchenne / genuine-expression AU pairs. All predicates are differentiable, output ∈ [0, 1], operate on the 58-d fast-semantic substrate, and have one-line FACS or geometric justifications in their docstrings.
+- **Validation script** `scripts/validate_predicates.py`. Loads only FF++ training-fold features; deterministic 90 / 10 *video-level, per-class* split with `seed=42`; computes per-predicate gap, single-predicate AUC, mean / std / sample counts, and sanity flags (NaN, constant, all-zero) on the 10 % slice. Writes `results/predicate_gaps.csv`, `predicate_gaps_sorted.csv`, `predicate_gap_barplot.png`, `predicate_gap_distribution.png`, and `run_log.txt` (CLI invocation, git hash, manifest sha256, slice statistics, top-/bottom-5).
+- **Retained set** `configs/retained_predicates.yaml`. **Top-18 by gap**, justified by an elbow at gap ≈ 0.005 visible in `predicate_gap_distribution.png`; equivalently `gap > 0.005`. The decision is documented in `results/predicate_selection_decision.md`. Of the four README §5 candidates, three were retained (`cr_brow_eye_couple` rank 2, `cr_pose_facewidth` rank 12, `cr_lip_geometry_au12` rank 14); `cr_yaw_gaze_misalign` did not survive on FF++ (front-facing pose distribution under-stresses the constraint) and is parked in the candidate module for future cross-pose evaluation.
+- **Runtime enforcement.** A `RetainedConsistencyRules` wrapper reads the YAML, indexes the `(B, 28)` candidate output to the 18 retained dims, and registers the indices as a buffer so they ship in `state_dict`. On training start, `train.py` calls `verify_against_yaml()` whenever `concept_branch.consistency_rules_version: v8_retained` is set; tampering with either the YAML or the candidate-name table raises before optimisation begins.
+- **Paper assets.** `scripts/render_paper_assets.py` emits `results/tab_predicate_gaps.tex` (booktabs, single-column-friendly, with publication-style predicate labels and category names) and a restyled bar plot (3.4 in width, sans-serif, retained = blue, dropped = hatched grey, gap-threshold dashed line at 0.005, grayscale-readable). Display labels live in the renderer; the YAML and v8 module use the canonical `cr_*` identifiers as ground truth.
+- **Leakage statement.** The 10 % validation slice is never seen by the detector during training (training uses only the complementary 90 %); no predicate gap is recomputed on test or cross-dataset data; the retained set is fixed before the first test evaluation runs. State this in §3.2 of the methods and in any reviewer rebuttal.
+
+### B. Ablation evaluation pipeline — *what feeds Tables 4 / 5 / 6*
+
+A minimal runner suite reproduces every number the paper's ablation tables need from existing checkpoints, without re-implementing model loading or re-sampling frames. All metric definitions come verbatim from `scripts/calibration_metrics.py`.
+
+- `scripts/run_ablation_eval.py` — per-ablation wrapper. Subprocess calls `training/test.py`, normalises `test_predictions.csv` to the canonical `(sample_id, video_id, frame_idx, label, prediction, confidence, prob_fake)` schema via `calibration_metrics.predictions_to_per_sample`, computes frame *and* video-level AUC / ECE / E-AURC / CW@0.9 (the four metrics the paper's Table 4 uses). Writes `results/ablations/<name>/per_sample.csv` and `metrics.json` incrementally. Default config: `nesy_defake_ablation4_causal.yaml`; default test set: `Celeb-DF-v2`.
+- `scripts/run_faithfulness.py` — predicate-substrate intervention. Loads the full DeFakeNet checkpoint, iterates CDFv2, restricts to correctly-classified fakes (`label == 1` and `prob_base ≥ 0.5`). For each k ∈ {1, 3, 5}, runs two interventions per sample: zeroing the **top-k firing predicates** and zeroing **k random retained predicates** (deterministic per `(seed, batch, k)`). Records the relative drop in symbolic-stream evidence `Ev_sym = Σ concept_evidence` and the rate of hard-prediction flips. Writes `results/faithfulness/CDFv2.json` after every batch. The intervention point is the new `predicate_mask` kwarg on `ConceptBranch.forward` (see §C below).
+- `scripts/run_selective.py` — full DeFakeNet vs. GenD-CLIP at video level on CDFv2. Reads the two per-sample CSVs, aggregates by `video_id` (mean `prob_fake`, mean confidence), reports full-coverage AUC and AUC at 90 % coverage (sort descending by confidence, keep top 90 %, recompute). Writes `results/selective/CDFv2.json`. Reports `UNAVAILABLE` with a clear reason if either CSV is missing rather than fabricating numbers.
+- `scripts/aggregate.py` — assembles `results/ABLATION_SUMMARY.md` in the paper's three-table format (Component Ablation / Faithfulness / Selective Prediction) plus a per-config run-log section. Rows for missing artefacts render `—` and are flagged in the run log; no silent fabrication.
+- `scripts/run_all.sh` — single-command driver. Invokes the per-ablation evaluator for every entry in an `ABLATIONS=(...)` array (`full_defakenet`, `no_ibdc`, `no_cmef`, `no_pbas`, `no_causal`, `no_symbolic`, `visual_edl_only`), then faithfulness, then selective, then aggregator. Header points to the checkpoint paths the user must update for their layout. Failures are tolerated — each one prints `FAILED: <name>` and the pipeline continues.
+- **One command:** `bash scripts/run_all.sh`.
+
+### C. Single supporting code change
+
+Faithfulness needs to zero specific predicates between the rule module and the concept MLP. To stay non-invasive:
+
+- `ConceptBranch.forward(combined_features, predicate_mask=None)` — when `None` the forward is bit-for-bit unchanged from before (default for every existing checkpoint and every existing call site). When a `(B, K)` or `(1, K)` `{0, 1}` tensor is supplied, violations are element-wise multiplied by it before the concat into `concept_input`.
+- `NeSyDeFakeHybridDetector.forward` looks up `data_dict.get('predicate_mask')` and threads it into the concept branch.
+- The change is strictly additive; no checkpoint key shapes change, no defaults change, and no existing run path takes the new code path.
+
+### D. What the paper now legitimately claims
+
+- The symbolic substrate is **selected, not curated**, with a documented protocol on a held-out FF++ slice (§3.2). The 18 retained predicates are reproducible from the candidate module and the frozen YAML.
+- Faithfulness is reported as a **causal intervention on the predicate substrate** (zero specific predicates → measure Ev_sym drop and prediction flips), not as a post-hoc attribution. The intervention is mathematically exact under the existing forward graph.
+- The component ablation, faithfulness, and selective-prediction tables are produced from existing checkpoints by a single command, with every metric computed by the verbatim functions in `scripts/calibration_metrics.py`. No bespoke metric reimplementation is hidden in the runner.

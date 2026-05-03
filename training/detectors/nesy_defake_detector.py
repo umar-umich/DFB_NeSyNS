@@ -331,7 +331,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 combined_features = data_dict.get('precomputed_attrs')
                 if combined_features is not None:
                     combined_features = combined_features.to(device)
-                    concept_out = self.concept_branch(combined_features)
+                    # Optional predicate-mask intervention used by the
+                    # faithfulness runner. Default None = unchanged forward.
+                    predicate_mask = data_dict.get('predicate_mask')
+                    if isinstance(predicate_mask, torch.Tensor):
+                        predicate_mask = predicate_mask.to(device)
+                    concept_out = self.concept_branch(
+                        combined_features, predicate_mask=predicate_mask)
 
             # Causal evidence (Ablation 4)
             causal_out = None

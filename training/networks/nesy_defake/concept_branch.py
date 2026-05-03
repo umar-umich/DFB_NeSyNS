@@ -110,16 +110,28 @@ class ConceptBranch(nn.Module):
             f"version={consistency_rules_version}) "
             f"-> {hidden_dim} hidden -> {num_classes} evidence")
 
-    def forward(self, combined_features: torch.Tensor) -> dict:
+    def forward(self, combined_features: torch.Tensor,
+                predicate_mask: torch.Tensor = None) -> dict:
         """
         Args:
             combined_features: (B, 58) fast feature vector
+            predicate_mask:    optional (B, K) or (1, K) tensor in {0, 1}.
+                When supplied, violations are element-wise multiplied by it
+                BEFORE concatenation with the substrate. Used by the
+                faithfulness runner to zero specific retained predicates
+                and observe the change in symbolic-stream evidence.
+                ``None`` (default) is identical to the original forward.
         Returns:
             dict with 'logits', 'evidence', 'violations', 'concept_input'
         """
-        violations = self.consistency_rules(combined_features)        # (B, 12)
+        violations = self.consistency_rules(combined_features)        # (B, K)
+        if predicate_mask is not None:
+            # Broadcast (1, K) to (B, K) if needed; same dtype as violations.
+            mask = predicate_mask.to(
+                dtype=violations.dtype, device=violations.device)
+            violations = violations * mask
         concept_input = torch.cat(
-            [combined_features, violations], dim=1)                   # (B, 70)
+            [combined_features, violations], dim=1)                   # (B, 58+K)
         logits = self.concept_mlp(concept_input)                      # (B, 2)
         evidence = F.softplus(logits)                                 # (B, 2)
 
