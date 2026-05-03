@@ -143,6 +143,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 rules_dim=cb_cfg.get('rules_dim', 12),
                 hidden_dim=cb_cfg.get('hidden_dim', 64),
                 dropout=cb_cfg.get('dropout', 0.2),
+                consistency_rules_version=cb_cfg.get(
+                    'consistency_rules_version', 'v7'),
+                retained_predicates_yaml=cb_cfg.get(
+                    'retained_predicates_yaml', None),
             )
 
         # -- Causal branch (Ablation 4: CCV / ImprovedSCM / Simple) ----------

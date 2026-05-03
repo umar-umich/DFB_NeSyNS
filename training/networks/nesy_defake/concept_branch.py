@@ -23,6 +23,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .semantic.consistency_rules_v7 import CrossAttributeConsistencyRulesV7
+from .semantic.consistency_rules_v8 import (
+    RetainedConsistencyRules,
+    load_retained_rules,
+)
 from .semantic.refined_attributes import (
     CAUSAL_ATTRIBUTE_INDICES,
     NUM_CAUSAL_ATTRIBUTES,
@@ -58,11 +62,38 @@ class ConceptBranch(nn.Module):
         hidden_dim: int = 64,
         num_classes: int = 2,
         dropout: float = 0.2,
+        consistency_rules_version: str = 'v7',
+        retained_predicates_yaml: str = None,
     ):
         super().__init__()
-        self.consistency_rules = CrossAttributeConsistencyRulesV7()
+        # ── Predicate module selection ────────────────────────────────
+        # 'v7'           — legacy 12 predicates (default, preserves
+        #                   existing checkpoint dimensionality).
+        # 'v8_retained'  — 18 predicates from the gap-selection protocol;
+        #                   reads configs/retained_predicates.yaml. The
+        #                   training script must call .verify_against_yaml()
+        #                   at startup before the first forward.
+        self.consistency_rules_version = consistency_rules_version
+        if consistency_rules_version == 'v8_retained':
+            self.consistency_rules = (
+                RetainedConsistencyRules(retained_predicates_yaml)
+                if retained_predicates_yaml
+                else load_retained_rules())
+            actual_rules_dim = self.consistency_rules.k
+            if rules_dim != actual_rules_dim:
+                logger.warning(
+                    f"[ConceptBranch] config rules_dim={rules_dim} "
+                    f"overridden to {actual_rules_dim} (frozen retained set)")
+            rules_dim = actual_rules_dim
+        elif consistency_rules_version == 'v7':
+            self.consistency_rules = CrossAttributeConsistencyRulesV7()
+        else:
+            raise ValueError(
+                f"Unknown consistency_rules_version: "
+                f"{consistency_rules_version!r} "
+                f"(expected 'v7' or 'v8_retained')")
 
-        input_dim = combined_dim + rules_dim  # 70
+        input_dim = combined_dim + rules_dim
         self.concept_mlp = nn.Sequential(
             nn.LayerNorm(input_dim),
             nn.Linear(input_dim, hidden_dim),
@@ -75,7 +106,8 @@ class ConceptBranch(nn.Module):
 
         logger.info(
             f"[ConceptBranch] {input_dim}-d input "
-            f"({combined_dim} combined + {rules_dim} rules) "
+            f"({combined_dim} combined + {rules_dim} rules, "
+            f"version={consistency_rules_version}) "
             f"-> {hidden_dim} hidden -> {num_classes} evidence")
 
     def forward(self, combined_features: torch.Tensor) -> dict:
