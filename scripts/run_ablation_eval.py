@@ -42,12 +42,24 @@ sys.path.insert(0, str(SCRIPT_DIR))
 import calibration_metrics as cm  # verbatim metric helpers
 
 
-DEFAULT_DETECTOR_CFG = (
+ABLATION_CFG_DIR = REPO_ROOT / 'configs' / 'ablations'
+LEGACY_FALLBACK_CFG = (
     REPO_ROOT / 'training' / 'config' / 'detector'
     / 'nesy_defake_ablation4_causal.yaml'
 )
 DEFAULT_TARGET_DATASET = 'Celeb-DF-v2'
 CALIB_DATASET_TOKEN = 'CDFv2'  # canonical name used by calibration_metrics
+
+
+def _detector_cfg_for(ablation_name: str) -> Path:
+    """Each ablation owns its own detector YAML so the model architecture
+    matches the checkpoint that was trained against it (rules_dim, the
+    `concept_branch.disabled` flag, the `cmef_disable_modulation` flag,
+    `ablation_mode`, etc.). Fall back to the legacy full config only if
+    no per-ablation file exists.
+    """
+    cand = ABLATION_CFG_DIR / f'{ablation_name}.yaml'
+    return cand if cand.exists() else LEGACY_FALLBACK_CFG
 
 
 def _run_inference(
@@ -103,7 +115,9 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument('--ablation-name', required=True)
     p.add_argument('--checkpoint-path', required=True, type=Path)
-    p.add_argument('--detector-cfg', type=Path, default=DEFAULT_DETECTOR_CFG)
+    p.add_argument('--detector-cfg', type=Path, default=None,
+                   help='Detector YAML. Default: configs/ablations/'
+                        '<ablation-name>.yaml (matches the checkpoint).')
     p.add_argument('--target-dataset', default=DEFAULT_TARGET_DATASET,
                    help='Dataset name as listed in test_config.yaml '
                         '(default: Celeb-DF-v2).')
@@ -112,6 +126,15 @@ def main() -> None:
     p.add_argument('--keep-inference-dir', action='store_true',
                    help='Keep the raw test.py output directory.')
     args = p.parse_args()
+    if args.detector_cfg is None:
+        args.detector_cfg = _detector_cfg_for(args.ablation_name)
+    if not args.detector_cfg.exists():
+        raise FileNotFoundError(
+            f'detector cfg {args.detector_cfg} not found for ablation '
+            f'{args.ablation_name!r}; expected '
+            f'{ABLATION_CFG_DIR}/{args.ablation_name}.yaml')
+    print(f'[run_ablation_eval] using detector_cfg={args.detector_cfg}',
+          flush=True)
 
     out_dir = (args.results_dir / args.ablation_name).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,72 @@
+--- a/training/detectors/nesy_defake_detector.py
++++ b/training/detectors/nesy_defake_detector.py
+@@ -65,11 +65,17 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
+         self._use_edl = self.ablation_mode in (
+             'spatial_edl', 'concept_edl', 'causal_edl')
+         self._use_concept_branch = self.ablation_mode in (
+             'concept_edl', 'causal_edl')
+         self._use_causal_branch = self.ablation_mode == 'causal_edl'
+         self._use_nesy_edl = False  # overridden below if edl.nesy_fusion=true
++        # ABLATION: when concept_branch.disabled is set, the symbolic
++        # stream is removed from the forward pass (no Ev_sym, no
++        # gradient through ConceptBranch) but the substrate
++        # `combined_features` still flows into the causal stream and a
++        # zero `violations` tensor is supplied for the identity sub-graph.
++        self._concept_disabled = bool(
++            (config.get('concept_branch') or {}).get('disabled', False))
+
+         # -- Backbone + projection head -------------------------------------
+         self.build_backbone(config)
+@@ -325,15 +331,28 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
+             # Concept evidence (Ablation 3+)
+             concept_out = None
+-            if self._use_concept_branch:
++            combined_features = None
++            if self._use_concept_branch and not self._concept_disabled:
+                 combined_features = data_dict.get('precomputed_attrs')
+                 if combined_features is not None:
+                     combined_features = combined_features.to(device)
+                     # Optional predicate-mask intervention used by the
+                     # faithfulness runner. Default None = unchanged forward.
+                     predicate_mask = data_dict.get('predicate_mask')
+                     if isinstance(predicate_mask, torch.Tensor):
+                         predicate_mask = predicate_mask.to(device)
+                     concept_out = self.concept_branch(
+                         combined_features, predicate_mask=predicate_mask)
++            elif self._concept_disabled:
++                # Symbolic stream is disabled. We still need
++                # combined_features for the causal stream's identity
++                # sub-domain, and a zero `violations` tensor to fill the
++                # 12/18-d slot the causal SCM identity input expects.
++                combined_features = data_dict.get('precomputed_attrs')
++                if combined_features is not None:
++                    combined_features = combined_features.to(device)
++                    cb_cfg = self.config.get('concept_branch') or {}
++                    rules_dim = int(cb_cfg.get('rules_dim', 12))
++                    B = combined_features.shape[0]
++                    zero_violations = torch.zeros(
++                        B, rules_dim, device=device,
++                        dtype=combined_features.dtype)
++                    concept_out = {'evidence': None, 'violations': zero_violations}
+
+             # Causal evidence (Ablation 4)
+             causal_out = None
+@@ -349,11 +368,14 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
+                     causal_out = self.causal_branch(
+                         spatial_raw=spatial_raw,
+                         combined_features=combined_features,
+                         violations=concept_out['violations'],
+                         forensic_features=forensic_features,
+                         labels=labels,
+                     )
+
+             # -- Evidence fusion (CMEF / conditioned / static) --------------
++            # Mask the synthetic concept_out from fusion when the
++            # symbolic stream is disabled — only its violations payload
++            # was needed (for the causal stream).
++            fusion_concept_out = (None if self._concept_disabled else concept_out)
+             fused = self.evidence_fusion(
+-                spatial_evidence, spatial_raw, concept_out, causal_out)
++                spatial_evidence, spatial_raw, fusion_concept_out, causal_out)
+             total_evidence = fused['total_evidence']
+             cmef_diag = fused['cmef_diag']

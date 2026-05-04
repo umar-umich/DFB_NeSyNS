@@ -1,0 +1,16 @@
+{
+  "dataset": "CDFv2",
+  "level": "video",
+  "methods": {
+    "full_defakenet": {
+      "method": "full_defakenet",
+      "available": false,
+      "reason": "missing per-sample csv: /data/umar/Repos/DFB_NeSyNS/results/ablations/full_defakenet/per_sample.csv"
+    },
+    "GenD-CLIP": {
+      "method": "GenD-CLIP",
+      "available": false,
+      "reason": "missing per-sample csv: /data/umar/Repos/DFB_NeSyNS/results/baselines/GenD-CLIP/CDFv2_per_sample.csv"
+    }
+  }
+}

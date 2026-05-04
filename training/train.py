@@ -450,28 +450,41 @@ def main():
 
     # ── Symbolic-stream frozen-set assertion ─────────────────────────────
     # If the concept branch is configured to use the gap-selected v8
-    # retained predicate set, verify at startup that the loaded module
+    # retained predicate set AND the concept branch is actually built
+    # for this ablation, verify at startup that the loaded module
     # exactly matches configs/retained_predicates.yaml. This is required
     # by the predicate-selection protocol — see
     # results/predicate_selection_decision.md for context.
+    #
+    # Ablations like `visual_edl_only` and `no_causal` legitimately leave
+    # the v8_retained marker in the config (so the verifier still ranks
+    # them as part of the retained-set family) but skip building the
+    # concept branch via `ablation_mode`. In those cases there is nothing
+    # to assert against — silently skip.
     cb_cfg = config.get('concept_branch', {}) or {}
     if cb_cfg.get('consistency_rules_version') == 'v8_retained':
         cb_module = getattr(model, 'concept_branch', None)
-        if cb_module is None or not hasattr(cb_module, 'consistency_rules'):
+        if cb_module is None:
+            logger.info(
+                'Symbolic stream: concept_branch not built under '
+                f'ablation_mode={config.get("ablation_mode")!r}; '
+                'skipping retained-set verification.')
+        elif not hasattr(cb_module, 'consistency_rules'):
             raise RuntimeError(
                 'concept_branch.consistency_rules_version=v8_retained '
-                'requires a built concept_branch with a consistency_rules '
-                'module — none was found on the detector.')
-        rules = cb_module.consistency_rules
-        if not hasattr(rules, 'verify_against_yaml'):
-            raise RuntimeError(
-                'concept_branch.consistency_rules_version=v8_retained '
-                'expected RetainedConsistencyRules but found '
-                f'{type(rules).__name__}.')
-        rules.verify_against_yaml()
-        logger.info(
-            f'Symbolic stream: verified {rules.k} retained predicates '
-            f'against {rules.yaml_path}')
+                'requires a consistency_rules module on the built concept '
+                'branch — none was found.')
+        else:
+            rules = cb_module.consistency_rules
+            if not hasattr(rules, 'verify_against_yaml'):
+                raise RuntimeError(
+                    'concept_branch.consistency_rules_version=v8_retained '
+                    'expected RetainedConsistencyRules but found '
+                    f'{type(rules).__name__}.')
+            rules.verify_against_yaml()
+            logger.info(
+                f'Symbolic stream: verified {rules.k} retained predicates '
+                f'against {rules.yaml_path}')
 
     if config['ddp']:
         model = model.cuda(local_rank)

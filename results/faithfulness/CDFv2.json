@@ -1,0 +1,43 @@
+{
+  "dataset": "CDFv2",
+  "num_predicates": 18,
+  "total_correct_fakes": 9270,
+  "metrics": {
+    "topk_k1": {
+      "n": 9270,
+      "drop_rate_pct": 0.0,
+      "flip_rate_pct": 0.032362459546925564,
+      "mean_rel_drop_pct": -0.9077502572366479
+    },
+    "topk_k3": {
+      "n": 9270,
+      "drop_rate_pct": 0.0,
+      "flip_rate_pct": 0.12944983818770225,
+      "mean_rel_drop_pct": 1.1799374170613424
+    },
+    "topk_k5": {
+      "n": 9270,
+      "drop_rate_pct": 0.0,
+      "flip_rate_pct": 0.15102481121898598,
+      "mean_rel_drop_pct": 3.254129827593201
+    },
+    "random_k1": {
+      "n": 9270,
+      "drop_rate_pct": 0.0,
+      "flip_rate_pct": 0.021574973031283712,
+      "mean_rel_drop_pct": 0.4835763106051282
+    },
+    "random_k3": {
+      "n": 9270,
+      "drop_rate_pct": 0.0,
+      "flip_rate_pct": 0.043149946062567425,
+      "mean_rel_drop_pct": 1.4459610801037428
+    },
+    "random_k5": {
+      "n": 9270,
+      "drop_rate_pct": 0.0,
+      "flip_rate_pct": 0.06472491909385113,
+      "mean_rel_drop_pct": 2.2937809568031127
+    }
+  }
+}

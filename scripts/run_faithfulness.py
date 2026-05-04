@@ -52,10 +52,9 @@ from dataset.nesy_defake_dataset import NeSyDeFakeDataset  # noqa: E402
 from detectors import DETECTOR  # noqa: E402
 
 DEFAULT_DETECTOR_CFG = (
-    REPO_ROOT / 'training' / 'config' / 'detector'
-    / 'nesy_defake_ablation4_causal.yaml'
+    REPO_ROOT / 'configs' / 'ablations' / 'full_defakenet_18rules.yaml'
 )
-DEFAULT_CKPT = REPO_ROOT / 'checkpoints' / 'defakenet_full.pth'
+DEFAULT_CKPT = REPO_ROOT / 'checkpoints' / 'full_defakenet_18rules.pth'
 DEFAULT_TARGET_DATASET = 'Celeb-DF-v2'
 DEFAULT_OUT = REPO_ROOT / 'results' / 'faithfulness' / 'CDFv2.json'
 
@@ -103,8 +102,11 @@ def _get_concept_branch(model: torch.nn.Module):
 
 def _build_loader(config: dict, target_dataset: str,
                   batch_size: int) -> torch.utils.data.DataLoader:
+    # NB: in test mode, abstract_dataset.py:92 reads config['test_dataset']
+    # as a SINGLE string (not a list — that's only the train-mode path).
+    # See training/test.py:382 for the canonical pattern.
     cfg = copy(config)
-    cfg['test_dataset'] = [target_dataset]
+    cfg['test_dataset'] = target_dataset
     cfg['test_batchSize'] = batch_size
     cfg['mode'] = 'test'
     test_set = NeSyDeFakeDataset(cfg, mode='test')
@@ -123,6 +125,30 @@ def _to_device(data_dict: dict, device: torch.device) -> dict:
     for k, v in data_dict.items():
         out[k] = v.to(device, non_blocking=True) \
             if isinstance(v, torch.Tensor) else v
+    return out
+
+
+def _subset_data_dict(data_dict: dict,
+                      idx_keep: torch.Tensor) -> dict:
+    """Subset every per-sample value in ``data_dict`` to the rows in
+    ``idx_keep``. ``None`` values, scalars, and non-indexable objects
+    pass through unchanged (e.g. ``label_spe`` is None for most test
+    datasets, which broke the previous comprehension).
+    """
+    idx_list = idx_keep.tolist()
+    out: Dict[str, object] = {}
+    for k, v in data_dict.items():
+        if v is None:
+            out[k] = None
+        elif isinstance(v, torch.Tensor):
+            out[k] = v[idx_keep]
+        elif isinstance(v, (list, tuple)):
+            try:
+                out[k] = type(v)(v[i] for i in idx_list)
+            except (IndexError, TypeError):
+                out[k] = v
+        else:
+            out[k] = v
     return out
 
 
@@ -183,7 +209,11 @@ def main() -> None:
     p.add_argument('--detector-cfg', type=Path, default=DEFAULT_DETECTOR_CFG)
     p.add_argument('--checkpoint-path', type=Path, default=DEFAULT_CKPT)
     p.add_argument('--target-dataset', default=DEFAULT_TARGET_DATASET)
-    p.add_argument('--batch-size', type=int, default=64)
+    p.add_argument('--batch-size', type=int, default=32,
+                   help='Per-batch frame count. Each batch incurs '
+                        '1 + (3 ks × 2 interventions) = 7 forwards. '
+                        '32 keeps peak GPU memory near a normal eval; '
+                        'raise this if you have headroom.')
     p.add_argument('--out-path', type=Path, default=DEFAULT_OUT)
     p.add_argument('--seed', type=int, default=42,
                    help='Base seed for the random-k mask.')
@@ -227,15 +257,20 @@ def main() -> None:
         labels = data_dict['label'].cpu()
         # Correctly-classified fakes: label == 1 and (prob >= 0.5)
         sel = (labels == 1) & (prob_base >= 0.5)
+
+        # Free the full-batch GPU tensors immediately so peak GPU memory
+        # is bounded by `max(B_full, B_sub * 1)` rather than B_full + B_sub.
+        del dd_dev, pred_base
+
         if sel.sum().item() == 0:
             continue
         idx_keep = torch.where(sel)[0]
         total_correct_fakes += int(idx_keep.numel())
 
-        # Subset everything to the kept rows.
-        sub_data = {k: (v[idx_keep] if isinstance(v, torch.Tensor) else
-                        [v[i] for i in idx_keep.tolist()])
-                    for k, v in data_dict.items()}
+        # Subset everything to the kept rows. Robust to None/scalars/
+        # non-indexable values in data_dict (e.g. label_spe is None in
+        # test mode for many datasets).
+        sub_data = _subset_data_dict(data_dict, idx_keep)
         sub_prob_base = prob_base[idx_keep]
         sub_ev_base = ev_base[idx_keep]
         sub_viol = viol[idx_keep]
@@ -248,6 +283,7 @@ def main() -> None:
             prob_t, ev_t = _forward_with_mask(model, sub_data, mask_topk, device)
             _accumulate(counters[('topk', k)],
                         sub_prob_base, sub_ev_base, prob_t, ev_t)
+            del mask_topk, prob_t, ev_t
 
             # random-k (deterministic seed per (k, batch))
             mask_rand = _build_random_mask(
@@ -259,6 +295,7 @@ def main() -> None:
             prob_r, ev_r = _forward_with_mask(model, sub_data, mask_rand, device)
             _accumulate(counters[('random', k)],
                         sub_prob_base, sub_ev_base, prob_r, ev_r)
+            del mask_rand, prob_r, ev_r
 
         # Incremental write so partial runs are recoverable.
         _write_summary(args.out_path, counters, total_correct_fakes,

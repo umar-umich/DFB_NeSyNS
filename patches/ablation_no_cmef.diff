@@ -1,0 +1,83 @@
+--- a/training/networks/nesy_defake/losses/nesy_edl_loss.py
++++ b/training/networks/nesy_defake/losses/nesy_edl_loss.py
+@@ -322,9 +322,17 @@ class ConfidenceModulatedEvidenceFusion(nn.Module):
+     def __init__(
+         self,
+         num_symbolic_branches: int = 2,
+         num_classes: int = 2,
+         gate_inits: list = None,
++        disable_modulation: bool = False,
+     ):
+         super().__init__()
+         self.K = num_classes
++        # ABLATION: when True, force phi_b = 1 in forward(); the fusion
++        # then reduces to static gate behaviour (e_total = e_s +
++        # sigma(g_b) * e_b) while the caller still flows through CMEF
++        # so PBAS / IBDC stay active in the loss. Used by the
++        # ``no_cmef`` ablation; see configs/ablations/no_cmef.yaml.
++        self.disable_modulation = bool(disable_modulation)
+
+         # Learnable base gates (one per symbolic branch)
+         if gate_inits is None:
+             gate_inits = [-0.5] * num_symbolic_branches
+@@ -385,11 +393,15 @@ class ConfidenceModulatedEvidenceFusion(nn.Module):
+         }
+
+         for i, (ev, gate) in enumerate(zip(symbolic_evidences, self.gates)):
+             base_gate = torch.sigmoid(gate)
+-            conf = self.confidence_weight(ev)  # (B, 1)
+-            modulated_weight = base_gate * conf  # (B, 1) per-sample weight
++            if self.disable_modulation:
++                conf = torch.ones_like(ev[:, :1])
++                modulated_weight = base_gate.expand_as(conf)
++            else:
++                conf = self.confidence_weight(ev)  # (B, 1)
++                modulated_weight = base_gate * conf  # (B, 1) per-sample weight
+             fused = fused + modulated_weight * ev
+
+             diagnostics[f'branch_{i}_gate'] = base_gate.detach()
+             diagnostics[f'branch_{i}_conf_mean'] = conf.detach().mean()
+--- a/training/networks/nesy_defake/fusion/evidence_fusion.py
++++ b/training/networks/nesy_defake/fusion/evidence_fusion.py
+@@ -53,7 +53,11 @@ class EvidenceFusion(nn.Module):
+         # NeSy-EDL CMEF
+         if use_nesy_edl and (use_concept or use_causal):
+             from networks.nesy_defake.losses.nesy_edl_loss import (
+                 ConfidenceModulatedEvidenceFusion)
+             gate_inits = []
+             if use_concept:
+                 gate_inits.append(concept_init)
+             if use_causal:
+                 gate_inits.append(causal_init)
++            # The detector forwards `edl.cmef_disable_modulation` through
++            # gate_cfg so the no_cmef ablation can opt in via config alone.
++            disable_modulation = bool(gate_cfg.get('cmef_disable_modulation',
++                                                   False))
+             self.cmef = ConfidenceModulatedEvidenceFusion(
+                 num_symbolic_branches=len(gate_inits),
+                 num_classes=edl_num_classes,
+                 gate_inits=gate_inits,
++                disable_modulation=disable_modulation,
+             )
+--- a/training/detectors/nesy_defake_detector.py
++++ b/training/detectors/nesy_defake_detector.py
+@@ -160,12 +160,17 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
+         # -- Evidence fusion (CMEF | conditioned | static scalar gates) -----
+         if self._use_edl:
+             gate_cfg = config.get('evidence_gate', {})
++            # The CMEF disable flag lives under edl: in the YAML so it
++            # sits next to the loss-weight knobs the user toggles.
++            edl_cfg_local = config.get('edl', {}) or {}
++            gate_cfg_with_cmef = {**gate_cfg,
++                'cmef_disable_modulation': bool(
++                    edl_cfg_local.get('cmef_disable_modulation', False))}
+             self.evidence_fusion = EvidenceFusion(
+                 use_concept=self._use_concept_branch,
+                 use_causal=self._use_causal_branch,
+                 use_nesy_edl=self._use_nesy_edl,
+                 conditioned=bool(gate_cfg.get('conditioned', False)),
+-                gate_cfg=gate_cfg,
++                gate_cfg=gate_cfg_with_cmef,
+                 backbone_dim=config['foundation_models']['spatial']['output_dim'],
+                 edl_num_classes=config.get('edl', {}).get('num_classes', 2),
+             )
