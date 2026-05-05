@@ -99,8 +99,10 @@ class InterpretabilityEngine:
             self.analyzers['selective_prediction'] = SelectivePredictionAnalyzer()
 
         if levels.get('case_study', True):
+            # 2026-05-04: default raised 6 → 10 per the gallery-expansion
+            # spec; the analyzer respects values up to at least 20.
             self.analyzers['case_study'] = CaseStudyAnalyzer(
-                num_samples=interp_cfg.get('case_study_samples', 6))
+                num_samples=interp_cfg.get('case_study_samples', 10))
 
         # ── t-SNE embedding plot (opt-in) ────────────────────────────────
         tsne_cfg = interp_cfg.get('tsne', {})
@@ -175,12 +177,24 @@ class InterpretabilityEngine:
             except Exception as e:
                 logger.warning(f"SCM method-label injection failed: {e}")
 
-    def finalize(self, save_dir: str) -> dict:
+    def finalize(self, save_dir: str,
+                 dataset_name: Optional[str] = None) -> dict:
         """
         Run analysis + visualization on all analyzers.
         Returns combined results dict and saves outputs to save_dir.
+
+        ``dataset_name`` is stamped into every analyzer's JSON-metadata
+        sidecars (per the data-export spec). If not supplied, the engine
+        infers it from the parent directory of ``save_dir``
+        (test.py uses ``logs/test/<run>/<dataset>/interpretability``).
         """
         os.makedirs(save_dir, exist_ok=True)
+        if dataset_name is None:
+            # save_dir is typically '.../<dataset_name>/interpretability'
+            parent = os.path.basename(os.path.dirname(os.path.abspath(save_dir)))
+            dataset_name = parent or 'unknown'
+        for analyzer in self.analyzers.values():
+            analyzer.dataset_name = dataset_name
         combined_results = {}
         report_lines = [
             '=' * 70,

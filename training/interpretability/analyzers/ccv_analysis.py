@@ -110,6 +110,7 @@ class CCVAnalyzer(BaseAnalyzer):
                 title='Counterfactual Mismatch Distribution',
                 xlabel='Mismatch Score',
                 save_path=os.path.join(save_dir, 'ccv_counterfactual_hist.png'),
+                balance=True,
             )
 
     def explain_sample(self, idx: int) -> str:

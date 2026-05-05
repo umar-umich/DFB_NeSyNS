@@ -4,6 +4,15 @@ interpretability/analyzers/scm_analysis.py
 Level 4-SCM: Structural Causal Model analysis — adjacency matrix divergence,
 top divergent edges with named nodes, per-subgraph divergence profiles,
 DAG sparsity metrics.
+
+2026-05-04 — Goals 1 + 2:
+  * r_diff_radar.csv             (per-sub-graph mean / std, real vs fake)
+  * r_diff_per_sample.npz        (full (N, 4) r_diff matrix + labels +
+                                  method labels when available)
+  * r_diff_radar_per_method.csv  (per-method mean per sub-graph)
+  * dominant_subgraph_frequency.csv
+  * per sub-graph: ``<sub>_adjacency.npz`` + ``<sub>_top_edges.csv``
+  * Per-sub-graph r_diff histograms use the FULL population.
 """
 
 import logging
@@ -18,6 +27,10 @@ import torch
 
 from .base import BaseAnalyzer
 from .. import visualization as viz
+from ..data_export import (
+    analyzer_metadata, dump_csv, dump_csv_columns, dump_json, dump_npz,
+    sibling_path, with_basename,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -278,11 +291,54 @@ class SCMAnalyzer(BaseAnalyzer):
                           if real_mask.any() else np.zeros(n_sg))
             fake_means = (r_diff[fake_mask].mean(axis=0)
                           if fake_mask.any() else np.zeros(n_sg))
+            real_stds = (r_diff[real_mask].std(axis=0)
+                         if real_mask.any() else np.zeros(n_sg))
+            fake_stds = (r_diff[fake_mask].std(axis=0)
+                         if fake_mask.any() else np.zeros(n_sg))
+            radar_png = os.path.join(scm_dir, 'r_diff_radar.png')
             viz.plot_radar(
                 {'Real': real_means.tolist(), 'Fake': fake_means.tolist()},
                 sg_names,
                 title='Causal sub-graph residuals — real vs fake',
-                save_path=os.path.join(scm_dir, 'r_diff_radar.png'),
+                save_path=radar_png,
+            )
+            # ── Data exports for the radar ──────────────────────────────
+            dump_csv(
+                [
+                    {
+                        'sub_graph': sg_names[i],
+                        'mean_r_diff_real': float(real_means[i]),
+                        'mean_r_diff_fake': float(fake_means[i]),
+                        'std_real': float(real_stds[i]),
+                        'std_fake': float(fake_stds[i]),
+                    }
+                    for i in range(n_sg)
+                ],
+                ['sub_graph', 'mean_r_diff_real', 'mean_r_diff_fake',
+                 'std_real', 'std_fake'],
+                sibling_path(radar_png, '.csv'),
+            )
+            # NPZ — full per-sample r_diff with labels and method tags.
+            r_diff_arrays: Dict[str, np.ndarray] = {
+                'r_diff': r_diff.astype(float),       # (N, 4)
+                'labels': labels.astype(int).reshape(-1),
+                'sub_graph_names': np.asarray(sg_names),
+            }
+            if (self._method_labels is not None
+                    and len(self._method_labels) == len(labels)):
+                r_diff_arrays['method_labels'] = np.asarray(
+                    self._method_labels).astype(int)
+            dump_npz(
+                r_diff_arrays,
+                with_basename(radar_png, 'r_diff_per_sample.npz'),
+            )
+            dump_json(
+                analyzer_metadata(
+                    n_samples=int(len(labels)),
+                    dataset_name=self.dataset_name,
+                    sub_graph_order=sg_names,
+                ),
+                sibling_path(radar_png, '.json'),
             )
 
             # Per-sub-graph histograms (four panels via plot_histogram each)
@@ -293,6 +349,7 @@ class SCMAnalyzer(BaseAnalyzer):
                     title=f'r_diff distribution — {sg}',
                     xlabel='|r_fake − r_real| (mean over features)',
                     save_path=os.path.join(scm_dir, f'r_diff_hist_{sg}.png'),
+                    balance=True,
                 )
 
             # Per-method fingerprint radar (FF-DF / FF-F2F / FF-FS / FF-NT / ...)
@@ -308,11 +365,32 @@ class SCMAnalyzer(BaseAnalyzer):
                     name = f'method_{int(m)}'
                     per_method[name] = r_diff[m_mask].mean(axis=0).tolist()
                 if per_method:
+                    pm_png = os.path.join(scm_dir, 'r_diff_radar_per_method.png')
                     viz.plot_radar(
                         per_method, sg_names,
                         title='Per-method causal fingerprint (mean r_diff)',
-                        save_path=os.path.join(
-                            scm_dir, 'r_diff_radar_per_method.png'),
+                        save_path=pm_png,
+                    )
+                    # CSV: long-format per-method × per-sub-graph means.
+                    pm_rows = []
+                    for method_name, vals in per_method.items():
+                        for sg_idx, v in enumerate(vals):
+                            pm_rows.append({
+                                'method': method_name,
+                                'sub_graph': sg_names[sg_idx],
+                                'mean_r_diff': float(v),
+                            })
+                    dump_csv(
+                        pm_rows, ['method', 'sub_graph', 'mean_r_diff'],
+                        sibling_path(pm_png, '.csv'),
+                    )
+                    dump_json(
+                        analyzer_metadata(
+                            n_samples=int(len(labels)),
+                            dataset_name=self.dataset_name,
+                            n_methods=int(len(per_method)),
+                        ),
+                        sibling_path(pm_png, '.json'),
                     )
 
             # Stacked-bar: dominant sub-graph frequency per class
@@ -325,13 +403,36 @@ class SCMAnalyzer(BaseAnalyzer):
             if fake_mask.any():
                 vals, cnt = np.unique(dominant[fake_mask], return_counts=True)
                 freq_fake[vals] = cnt / fake_mask.sum()
+            dom_png = os.path.join(scm_dir, 'dominant_subgraph_frequency.png')
             viz.plot_grouped_bar(
                 {'Real': freq_real.tolist(), 'Fake': freq_fake.tolist()},
                 sg_names,
                 title='Dominant sub-graph per sample (argmax r_diff)',
-                save_path=os.path.join(scm_dir, 'dominant_subgraph_frequency.png'),
+                save_path=dom_png,
                 ylabel='Fraction of samples',
                 rotate_labels=20,
+            )
+            # CSV — long-format class × sub-graph dominance.
+            dom_rows = []
+            for cls_name, freq in [('Real', freq_real), ('Fake', freq_fake)]:
+                for i, sg in enumerate(sg_names):
+                    dom_rows.append({
+                        'class': cls_name,
+                        'sub_graph': sg,
+                        'dominance_fraction': float(freq[i]),
+                    })
+            dump_csv(
+                dom_rows, ['class', 'sub_graph', 'dominance_fraction'],
+                sibling_path(dom_png, '.csv'),
+            )
+            dump_json(
+                analyzer_metadata(
+                    n_samples=int(len(labels)),
+                    dataset_name=self.dataset_name,
+                    n_real=int(real_mask.sum()),
+                    n_fake=int(fake_mask.sum()),
+                ),
+                sibling_path(dom_png, '.json'),
             )
 
         for sg_name in self.SUBGRAPH_NAMES:
@@ -351,13 +452,43 @@ class SCMAnalyzer(BaseAnalyzer):
             # Side-by-side A_real | A_fake | |A_real - A_fake| — the
             # slide-ready figure for Section 13 / Point 5 of the talk.
             diff = np.abs(A_real[:n, :n] - A_fake[:n, :n])
+            sbs_png = os.path.join(scm_dir, f'{sg_name}_side_by_side.png')
             viz.plot_side_by_side_heatmap(
                 {r'$A^{\mathrm{real}}$': A_real[:n, :n],
                  r'$A^{\mathrm{fake}}$': A_fake[:n, :n],
                  r'$|A^{\mathrm{real}}-A^{\mathrm{fake}}|$': diff},
                 suptitle=f'Sub-graph: {sg_name}',
-                save_path=os.path.join(scm_dir, f'{sg_name}_side_by_side.png'),
+                save_path=sbs_png,
                 row_labels=label_names, col_labels=label_names,
+            )
+            # ── Per-sub-graph data exports ─────────────────────────────
+            dump_npz(
+                {
+                    'A_real': A_real[:n, :n].astype(float),
+                    'A_fake': A_fake[:n, :n].astype(float),
+                    'A_diff': diff.astype(float),
+                    'node_names': np.asarray(label_names),
+                },
+                with_basename(sbs_png, f'{sg_name}_adjacency.npz'),
+            )
+            # Top-50 edges by |divergence|.
+            flat = diff.flatten()
+            top_idx = np.argsort(-flat)[:50]
+            edge_rows = []
+            for fi in top_idx:
+                if flat[fi] <= 1e-9:
+                    break
+                src_i, dst_i = int(divmod(int(fi), n)[0]), int(divmod(int(fi), n)[1])
+                edge_rows.append({
+                    'src': label_names[src_i],
+                    'dst': label_names[dst_i],
+                    'A_real': float(A_real[src_i, dst_i]),
+                    'A_fake': float(A_fake[src_i, dst_i]),
+                    'divergence': float(flat[fi]),
+                })
+            dump_csv(
+                edge_rows, ['src', 'dst', 'A_real', 'A_fake', 'divergence'],
+                with_basename(sbs_png, f'{sg_name}_top_edges.csv'),
             )
 
             # Divergence-only heatmap (kept for back-compat; hot cmap

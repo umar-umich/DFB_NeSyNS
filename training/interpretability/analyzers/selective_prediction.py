@@ -1,6 +1,11 @@
 """
 interpretability/analyzers/selective_prediction.py
 ==================================================
+2026-05-04 — Goal 1: data exports added.
+  * risk_coverage.csv          (coverage / risk_edl / risk_softmax / risk_oracle)
+  * selective_summary.json     (AURC + E-AURC for all three rankings)
+  * confidence_vs_accuracy.csv (coverage / accuracy_edl / accuracy_softmax)
+
 Selective-prediction metrics promised in README §8:
 
   * Risk-Coverage curve   — error rate on the accepted fraction, sweeping
@@ -23,6 +28,10 @@ import numpy as np
 
 from .base import BaseAnalyzer
 from .. import visualization as viz
+from ..data_export import (
+    analyzer_metadata, dump_csv_columns, dump_json, sibling_path,
+    with_basename,
+)
 
 
 class SelectivePredictionAnalyzer(BaseAnalyzer):
@@ -107,6 +116,9 @@ class SelectivePredictionAnalyzer(BaseAnalyzer):
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
 
+        rc_png = os.path.join(save_dir, 'risk_coverage_curve.png')
+        cv_png = os.path.join(save_dir, 'confidence_vs_accuracy.png')
+
         # Risk-coverage curve
         fig, ax = plt.subplots(figsize=(7, 5))
         styles = {
@@ -124,21 +136,94 @@ class SelectivePredictionAnalyzer(BaseAnalyzer):
         ax.grid(True, linestyle='--', alpha=0.3)
         ax.legend()
         fig.tight_layout()
-        fig.savefig(os.path.join(save_dir, 'risk_coverage_curve.png'), dpi=150)
+        fig.savefig(rc_png, dpi=150)
         plt.close(fig)
 
         # Confidence-vs-accuracy
         cov_steps, acc = self._acc_at_cov
+        # Compute softmax accuracy at the same coverage steps for the CSV
+        try:
+            margin_order = np.argsort(-np.abs(self._curves['softmax'][1] - 0))
+        except Exception:
+            margin_order = None
+        # We store curves via _risk_coverage which gives risk; recover acc.
+        _, risk_softmax = self._curves.get('softmax', (None, None))
+        acc_softmax_at_cov = []
+        if risk_softmax is not None:
+            n = len(risk_softmax)
+            for c in cov_steps:
+                k = max(1, int(round(c * n))) - 1
+                acc_softmax_at_cov.append(float(1.0 - risk_softmax[k]))
+
         fig, ax = plt.subplots(figsize=(7, 5))
-        ax.plot(cov_steps, acc, 'o-', color='#2ca02c', linewidth=2)
+        ax.plot(cov_steps, acc, 'o-', color='#2ca02c', linewidth=2,
+                label='EDL uncertainty')
+        if acc_softmax_at_cov:
+            ax.plot(cov_steps, acc_softmax_at_cov, 's--', color='#ff7f0e',
+                    linewidth=1.6, label='Softmax margin')
+            ax.legend(fontsize=9, loc='lower left')
         ax.set_xlabel('Coverage (fraction of most-confident samples kept)')
         ax.set_ylabel('Accuracy on accepted samples')
         ax.set_title('Confidence-aware accuracy')
         ax.grid(True, linestyle='--', alpha=0.3)
         ax.set_ylim(0.0, 1.01)
         fig.tight_layout()
-        fig.savefig(os.path.join(save_dir, 'confidence_vs_accuracy.png'), dpi=150)
+        fig.savefig(cv_png, dpi=150)
         plt.close(fig)
+
+        # ── Data exports ────────────────────────────────────────────────
+        # risk_coverage.csv — three risk curves on a common coverage grid.
+        cov_u, risk_u = self._curves['ours']
+        _, risk_o = self._curves['oracle']
+        risk_s = self._curves['softmax'][1]
+        n = len(cov_u)
+        dump_csv_columns(
+            {
+                'coverage': cov_u,
+                'risk_edl': risk_u,
+                'risk_softmax': risk_s,
+                'risk_oracle': risk_o,
+            },
+            sibling_path(rc_png, '.csv'),
+        )
+
+        # confidence_vs_accuracy.csv
+        if acc_softmax_at_cov:
+            dump_csv_columns(
+                {
+                    'coverage': np.asarray(cov_steps),
+                    'accuracy_edl': np.asarray(acc),
+                    'accuracy_softmax': np.asarray(acc_softmax_at_cov),
+                },
+                sibling_path(cv_png, '.csv'),
+            )
+        else:
+            dump_csv_columns(
+                {
+                    'coverage': np.asarray(cov_steps),
+                    'accuracy_edl': np.asarray(acc),
+                },
+                sibling_path(cv_png, '.csv'),
+            )
+
+        # selective_summary.json — covers both PNGs.
+        aurc_u = self._aurc(*self._curves['ours'])
+        aurc_s = self._aurc(*self._curves['softmax'])
+        aurc_o = self._aurc(*self._curves['oracle'])
+        summary = analyzer_metadata(
+            n_samples=int(n),
+            dataset_name=self.dataset_name,
+            aurc_edl=float(aurc_u),
+            aurc_softmax=float(aurc_s),
+            aurc_oracle=float(aurc_o),
+            e_aurc_edl=float(aurc_u - aurc_o),
+            e_aurc_softmax=float(aurc_s - aurc_o),
+        )
+        dump_json(summary, with_basename(rc_png, 'selective_summary.json'))
+        # Also write the JSON sidecars for each PNG so downstream scripts
+        # that look up `<basename>.json` find them.
+        dump_json(summary, sibling_path(rc_png, '.json'))
+        dump_json(summary, sibling_path(cv_png, '.json'))
 
     def explain_sample(self, idx: int) -> str:
         return ''

@@ -33,10 +33,28 @@ def plot_histogram(
     save_path: str,
     bins: int = 50,
     alpha: float = 0.6,
+    balance: bool = False,
+    balance_seed: int = 0,
 ):
-    """Overlaid histograms for multiple groups (e.g., real vs fake)."""
+    """Overlaid histograms for multiple groups (e.g., real vs fake).
+
+    When ``balance=True`` every group is sub-sampled (without replacement,
+    fixed seed) to ``min(group sizes)`` so the distributions are directly
+    comparable without one group dominating by sheer count.  The balanced
+    sample size is appended to the title.
+    """
+    arrays = {k: np.asarray(v) for k, v in data_dict.items()}
+    if balance and len(arrays) > 1:
+        n_bal = min(a.size for a in arrays.values())
+        rng = np.random.default_rng(balance_seed)
+        arrays = {
+            k: rng.choice(a, size=n_bal, replace=False)
+            for k, a in arrays.items()
+        }
+        title = f'{title}  (n={n_bal:,} per group, balanced)'
+
     fig, ax = plt.subplots(figsize=(8, 5))
-    for label, values in data_dict.items():
+    for label, values in arrays.items():
         ax.hist(values, bins=bins, alpha=alpha, label=label, density=True)
     ax.set_xlabel(xlabel)
     ax.set_ylabel('Density')
@@ -59,7 +77,12 @@ def plot_reliability_diagram(
     save_path: str,
     n_bins: int = 10,
 ):
-    """ECE calibration plot with gap bars."""
+    """ECE calibration plot with gap bars (legacy single-panel API).
+
+    Kept for back-compat. New callers should prefer
+    ``plot_reliability_diagram_v2`` which produces the two-panel composite
+    used in the paper.
+    """
     fig, ax = plt.subplots(figsize=(7, 6))
     bin_edges = np.linspace(0, 1, n_bins + 1)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
@@ -83,6 +106,85 @@ def plot_reliability_diagram(
     ax.legend(loc='upper left')
     fig.tight_layout()
     fig.savefig(save_path, dpi=150)
+    plt.close(fig)
+
+
+def plot_reliability_diagram_v2(
+    *,
+    confidences_per_sample: np.ndarray,
+    accuracies_per_sample: np.ndarray,
+    bin_edges_main: np.ndarray,
+    bin_centers_main: np.ndarray,
+    bin_confidence_main: np.ndarray,
+    bin_accuracy_main: np.ndarray,
+    bin_count_main: np.ndarray,
+    ece_equal_width: float,
+    ece_equal_mass: float,
+    ace: float,
+    main_scheme_label: str,
+    save_path: str,
+    xlim: Optional[Tuple[float, float]] = None,
+):
+    """Two-panel reliability composite (Goal 3, 2026-05-04).
+
+    Top:    reliability bars over the main binning scheme; gap shading;
+            faint per-bin sample-count overlay on a secondary axis.
+    Bottom: predicted-class confidence histogram (same x-axis), so the
+            reader can see where predictions actually concentrate.
+
+    Title carries:  ECE (eq-width, 10 bins) | ECE (eq-mass, 15 bins) | ACE.
+    """
+    fig, (ax_top, ax_bot) = plt.subplots(
+        2, 1, figsize=(7.5, 7.0), sharex=True,
+        gridspec_kw={'height_ratios': [3, 1.2], 'hspace': 0.10},
+    )
+    widths = np.diff(bin_edges_main)
+    # ── Top panel: reliability bars ──────────────────────────────────
+    ax_top.bar(bin_centers_main, bin_accuracy_main, width=widths * 0.9,
+               alpha=0.8, color='steelblue', edgecolor='black',
+               label='Bin accuracy')
+    gaps = np.abs(bin_accuracy_main - bin_confidence_main)
+    ax_top.bar(
+        bin_centers_main, gaps,
+        bottom=np.minimum(bin_accuracy_main, bin_confidence_main),
+        width=widths * 0.9, alpha=0.30, color='red', label='Gap')
+    ax_top.plot([0, 1], [0, 1], 'k--', lw=1.0, label='Perfect calibration')
+    ax_top.set_ylabel('Accuracy')
+    ax_top.set_ylim(0, 1)
+    ax_top.legend(loc='upper left', fontsize=9, frameon=True)
+
+    # Faint per-bin count overlay on secondary axis
+    if bin_count_main.sum() > 0:
+        ax_top_r = ax_top.twinx()
+        ax_top_r.bar(bin_centers_main, bin_count_main,
+                     width=widths * 0.9,
+                     color='#888', alpha=0.15, edgecolor='none',
+                     label='bin count')
+        ax_top_r.set_ylabel('# samples in bin', fontsize=9, color='#666')
+        ax_top_r.tick_params(axis='y', labelsize=8, colors='#666')
+
+    title = (f'Reliability — {main_scheme_label} | '
+             f'ECE (eq-width, 10) = {ece_equal_width:.4f}  |  '
+             f'ECE (eq-mass, 15) = {ece_equal_mass:.4f}  |  '
+             f'ACE = {ace:.4f}')
+    ax_top.set_title(title, fontsize=10, pad=8)
+
+    # ── Bottom panel: confidence histogram of all samples ──────────────
+    if confidences_per_sample.size:
+        ax_bot.hist(confidences_per_sample, bins=40,
+                    color='#1f77b4', alpha=0.7, edgecolor='white',
+                    linewidth=0.4)
+    ax_bot.set_ylabel('# preds', fontsize=9)
+    ax_bot.set_xlabel('Predicted-class confidence  $\\max(p, 1-p)$',
+                      fontsize=10)
+
+    # Axis cropping (configurable upstream via the `xlim` arg)
+    if xlim is None:
+        xlim = (0.0, 1.0)
+    ax_top.set_xlim(*xlim)
+    ax_bot.set_xlim(*xlim)
+
+    fig.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
 
 

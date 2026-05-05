@@ -102,3 +102,5 @@ Files created
   After each run completes, copy/symlink logs/train/<config>_<timestamp>_exp/best_avg.pth → checkpoints/<config>.pth so the
   downstream evaluators (scripts/run_all.sh) find them.
 
+
+d4bc741e-427d-4c18-bd32-4708f56efcec

@@ -4,6 +4,14 @@ interpretability/analyzers/consistency_rules.py
 Level 3: Named Consistency Rule Violations — per-sample top violated rules
 with human-readable FACS names, aggregate firing rates by class, and
 optional misclassification-slice report.
+
+2026-05-04 — Goal 1: data exports added.
+  * rule_firing_rates.csv          (per-rule mean / gap / counts)
+  * rule_firing_rates.json         (n_samples / dataset_name / n_rules)
+  * rule_discriminative_gap.csv    (same columns, sorted by |gap| desc)
+  * rule_discriminative_gap.json   (mirrors rule_firing_rates.json)
+  * rule_violations_per_sample.npz (full per-sample violation matrix
+                                    + rule_names + labels)
 """
 
 import csv
@@ -13,30 +21,41 @@ import numpy as np
 
 from .base import BaseAnalyzer
 from .. import visualization as viz
+from ..data_export import (
+    analyzer_metadata, dump_csv, dump_json, dump_npz, sibling_path,
+    with_basename,
+)
+from ..pretty_names import pretty_many
 
 
 def _load_rule_names(n_rules: int):
-    """Resolve rule names to match the detector's active rule set.
+    """Resolve rule names from the best matching known rule set.
 
-    v7 (23 rules) is the current production set; older v5 had 20.
+    Tries each known rule set in order of decreasing size so that any
+    n_rules <= that set's length gets proper names (sliced).  If no
+    import succeeds the fallback generic names are used only for the
+    remaining indices beyond what was imported.
     """
-    if n_rules == 23:
+    _candidates = [
+        ('networks.nesy_defake.semantic.consistency_rules',
+         'TRAINING_RULE_NAMES'),
+        ('networks.nesy_defake.semantic.consistency_rules_v7',
+         'TRAINING_RULE_NAMES_V7'),
+    ]
+    best: list = []
+    for mod_path, attr in _candidates:
         try:
-            from networks.nesy_defake.semantic.consistency_rules_v7 import (
-                TRAINING_RULE_NAMES_V7,
-            )
-            return list(TRAINING_RULE_NAMES_V7)
-        except ImportError:
+            import importlib
+            mod = importlib.import_module(mod_path)
+            names = list(getattr(mod, attr))
+            if len(names) >= n_rules:
+                return names[:n_rules]
+            if len(names) > len(best):
+                best = names
+        except (ImportError, AttributeError):
             pass
-    if n_rules == 20:
-        try:
-            from networks.nesy_defake.semantic.consistency_rules import (
-                TRAINING_RULE_NAMES,
-            )
-            return list(TRAINING_RULE_NAMES)
-        except ImportError:
-            pass
-    return [f'rule_{i}' for i in range(n_rules)]
+    # Pad whatever partial list we have with generic fallbacks
+    return best + [f'rule_{i}' for i in range(len(best), n_rules)]
 
 
 class ConsistencyRuleAnalyzer(BaseAnalyzer):
@@ -81,25 +100,71 @@ class ConsistencyRuleAnalyzer(BaseAnalyzer):
         if not hasattr(self, '_names'):
             return
         # Side-by-side firing rates (kept for completeness; uses pretty labels)
-        from ..pretty_names import pretty_many
+        firing_png = os.path.join(save_dir, 'rule_firing_rates.png')
         viz.plot_grouped_bar(
             {'Real': self._real_means.tolist(),
              'Fake': self._fake_means.tolist()},
             pretty_many(self._names),
             title='Consistency rule firing rates by class',
-            save_path=os.path.join(save_dir, 'rule_firing_rates.png'),
+            save_path=firing_png,
             ylabel='Mean violation score',
         )
         # Discriminative-gap view — usually the figure to put in the paper
+        gap_png = os.path.join(save_dir, 'rule_discriminative_gap.png')
+        n_rules = len(self._names)
         viz.plot_discriminative_gap(
             real_values=self._real_means.tolist(),
             fake_values=self._fake_means.tolist(),
             category_names=list(self._names),
-            title=(r'Rules ranked by class-discriminative gap '
-                   r'(top-12 by $|\mathrm{fake}-\mathrm{real}|$)'),
-            save_path=os.path.join(save_dir, 'rule_discriminative_gap.png'),
-            top_k=12,
+            title=r'Rules ranked by class-discriminative gap ($|\mathrm{fake}-\mathrm{real}|$)',
+            save_path=gap_png,
+            top_k=n_rules,
         )
+
+        # ── Data exports ────────────────────────────────────────────────
+        labels = self._all_labels.astype(int).reshape(-1)
+        n_real = int((labels == 0).sum())
+        n_fake = int((labels == 1).sum())
+        gaps = self._fake_means - self._real_means
+
+        unsorted_rows = [
+            {
+                'rule_name': self._names[i],
+                'mean_real': float(self._real_means[i]),
+                'mean_fake': float(self._fake_means[i]),
+                'gap': float(gaps[i]),
+                'n_real': n_real,
+                'n_fake': n_fake,
+            }
+            for i in range(len(self._names))
+        ]
+        sorted_rows = sorted(unsorted_rows, key=lambda r: -abs(r['gap']))
+
+        cols = ['rule_name', 'mean_real', 'mean_fake', 'gap',
+                'n_real', 'n_fake']
+        dump_csv(unsorted_rows, cols, sibling_path(firing_png, '.csv'))
+        dump_csv(sorted_rows, cols, sibling_path(gap_png, '.csv'))
+
+        # NPZ — full per-sample violations + rule names + labels.
+        dump_npz(
+            {
+                'violations': self._violations,        # (N, n_rules)
+                'rule_names': np.asarray(self._names),  # (n_rules,)
+                'labels': labels,                      # (N,)
+            },
+            with_basename(firing_png, 'rule_violations_per_sample.npz'),
+        )
+
+        meta = analyzer_metadata(
+            n_samples=int(len(labels)),
+            dataset_name=self.dataset_name,
+            n_rules=int(len(self._names)),
+            n_real=n_real,
+            n_fake=n_fake,
+            top_gap=float(abs(sorted_rows[0]['gap'])) if sorted_rows else 0.0,
+        )
+        dump_json(meta, sibling_path(firing_png, '.json'))
+        dump_json(meta, sibling_path(gap_png, '.json'))
 
     def explain_sample(self, idx: int) -> str:
         if not hasattr(self, '_violations'):
@@ -190,7 +255,7 @@ class ConsistencyRuleAnalyzer(BaseAnalyzer):
                     'TP (fake ok)':    slice_means['TP'][top_idx].tolist(),
                     'FN (fake wrong)': slice_means['FN'][top_idx].tolist(),
                 },
-                [names[i] for i in top_idx],
+                pretty_many([names[i] for i in top_idx]),
                 title=(f'Rule firing by confusion slice — top {top_k_plot} by '
                        f'|FP-TN|+|FN-TP|'),
                 save_path=os.path.join(save_dir, 'rule_error_gap.png'),

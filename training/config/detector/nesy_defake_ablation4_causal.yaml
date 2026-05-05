@@ -1,4 +1,14 @@
 # =============================================================================
+# Ablation: full_defakenet_18rules
+# =============================================================================
+# Identical to training/config/detector/nesy_defake_ablation4_causal.yaml
+# EXCEPT: the concept branch is locked to the v8 retained 18-predicate set
+# (configs/retained_predicates.yaml). All streams + IBDC + CMEF + PBAS active.
+# This is the new headline checkpoint — the previous full-DeFakeNet
+# checkpoint was trained on the 12-rule v7 set (concept_mlp first-Linear
+# shape [64, 70]) and is shape-incompatible with v8_retained ([64, 76]).
+# Retraining is REQUIRED.
+# =============================================================================
 # Ablation 4: Spatial + Concept + ImprovedSCM + EDL (Full NeSy, fast-only)
 # =============================================================================
 # Purpose: Full neuro-symbolic pipeline with explainable causal graphs.
@@ -45,9 +55,11 @@ edl:
 concept_branch:
   enabled: true
   combined_dim: 58
-  rules_dim: 12
+  rules_dim: 18                                       # v8_retained: 18 rules
   hidden_dim: 64
   dropout: 0.2
+  consistency_rules_version: v8_retained
+  retained_predicates_yaml: configs/retained_predicates.yaml
 
 # -- Improved SCM causal branch config (fixes A-D) ---------------------------
 causal_branch:
@@ -56,7 +68,7 @@ causal_branch:
   backbone_dim: 1024
   z_causal_dim: 32
   curated_dim: 26
-  rules_dim: 12
+  rules_dim: 18                   # v8_retained → identity SCM needs 32+26+18=76
   forensic_dim: 83
   scm_hidden_dim: 64              # nonlinear SCM hidden layer size
   summary_dim: 8                  # per-subgraph projected summary dimension
@@ -78,7 +90,7 @@ dataset_type: nesydefake
 active_branches: ['spatial']
 
 train_dataset: [FaceForensics++]
-test_dataset:  [FaceForensics++, FaceShifter, Celeb-DF-v1, Celeb-DF-v2, Celeb-DF-v3, DFDCP]
+test_dataset:  [FaceForensics++, FaceShifter, DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, Celeb-DF-v3, DFDC, DFDCP]
 all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
                 DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
                 DeeperForensics-1.0, UADFV]
@@ -147,8 +159,8 @@ projection_dropout:
   frequency: 0.0
 
 # -- Data loading & augmentation (GenD) ---------------------------------------
-train_batchSize: 240                  # restored to 128 (DFDCP-good run).
-test_batchSize:  240                  # 300 changed effective LR dynamics
+train_batchSize: 128                  # restored to 128 (DFDCP-good run).
+test_batchSize:  128                  # 300 changed effective LR dynamics
                                       # for the per-branch causal heads;
                                       # 128 is the size the LR=3e-4 schedule
                                       # was tuned around.

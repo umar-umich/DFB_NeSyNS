@@ -26,6 +26,11 @@ class BaseAnalyzer(ABC):
     # Keys this analyzer needs from the prediction dict.
     required_keys: Tuple[str, ...] = ()
 
+    # Set by the engine in ``finalize(save_dir, dataset_name=...)`` so each
+    # analyzer can stamp its JSON metadata. Default = 'unknown' so analyzers
+    # invoked outside the engine don't crash.
+    dataset_name: str = 'unknown'
+
     def __init__(self):
         self.reset()
 
