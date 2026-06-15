@@ -261,11 +261,11 @@ def pretty(name: str) -> str:
     if not isinstance(name, str):
         return str(name)
 
-    # SAE / SCM latent dims
+    # SAE / SCM latent dims — Vis^k for publication readability
     if name.startswith('z_'):
         idx = name[2:]
         if idx.isdigit():
-            return rf'$z_{{{idx}}}$'
+            return rf'$\mathrm{{Vis}}^{{{idx}}}$'
     if name in _FORENSIC:
         return _FORENSIC[name]
     if name in _CURATED_OVERRIDES:

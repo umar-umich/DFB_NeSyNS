@@ -1627,3 +1627,1098 @@ def build_results_mosaic(
     fig.tight_layout()
     fig.savefig(save_path, dpi=180, bbox_inches='tight')
     plt.close(fig)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Anchor-node selection utility
+# ═══════════════════════════════════════════════════════════════════════════
+
+def select_anchor_nodes(
+    A_real: np.ndarray,
+    A_fake: np.ndarray,
+    node_names: List[str],
+    n_latent: int = 6,
+    n_other: int = 6,
+    act_real: Optional[np.ndarray] = None,
+) -> List[int]:
+    """Pick a small, semantically balanced node subset for compact graph figures.
+
+    Strategy
+    --------
+    *Latent nodes* (``z_*`` prefix, group = 'latent'):
+        ranked by per-node divergence contribution
+        ``score[j] = Σ_i |A_real[i,j] - A_fake[i,j]| + Σ_i |A_real[j,i] - A_fake[j,i]|``
+        — the latent dims whose causal neighbourhood differs most between classes.
+
+    *All other nodes* (semantic / rule / forensic):
+        ranked by activation-weighted causal influence
+        ``score[j] = act_real[j] * (Σ_i A_real[i,j] + Σ_i A_real[j,i])``
+        or just ``(col_sum + row_sum)`` of A_real when activations are unavailable.
+
+    Returns a sorted list of at most ``n_latent + n_other`` unique indices.
+    """
+    n = min(A_real.shape[0], A_fake.shape[0], len(node_names))
+    if n == 0:
+        return []
+
+    A_r = np.abs(A_real[:n, :n])
+    diff = np.abs(A_real[:n, :n] - A_fake[:n, :n])
+
+    div_score = diff.sum(axis=0) + diff.sum(axis=1)  # per-node divergence
+
+    if act_real is not None and len(act_real) >= n:
+        a = np.abs(act_real[:n])
+        inf_score = a * (A_r.sum(axis=0) + A_r.sum(axis=1))
+    else:
+        inf_score = A_r.sum(axis=0) + A_r.sum(axis=1)
+
+    latent_idx = [i for i in range(n) if group_of(node_names[i]) == 'latent']
+    other_idx  = [i for i in range(n) if group_of(node_names[i]) != 'latent']
+
+    def _topk(indices: List[int], scores: np.ndarray, k: int) -> List[int]:
+        if not indices:
+            return []
+        arr = np.array(indices)
+        order = np.argsort(-scores[arr])[:k]
+        return arr[order].tolist()
+
+    selected = _topk(latent_idx, div_score, n_latent) + _topk(other_idx, inf_score, n_other)
+    return sorted(set(selected))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Broken-links causal graph (paper-ready single panel)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _hierarchical_lr_pos(G: 'nx.DiGraph') -> dict:
+    """Left-to-right hierarchical layout for causal graphs.
+
+    SCM weight-product matrices are often roughly symmetric, so the raw
+    display graph frequently contains bidirectional edges that form large
+    SCCs — collapsing everything to x=0.  To produce a meaningful left→right
+    flow we first build a layout-only DAG by keeping only the *lower-index →
+    higher-index* direction for any bidirectional pair (consistent with
+    DAGMA's lower-triangular convention).  Condensation is then applied to
+    handle any remaining multi-node cycles.
+
+    Returns {node_id: (x, y)} with x in [0, 1], y in [0, 1].
+    """
+    import networkx as nx
+
+    if len(G) == 0:
+        return {}
+
+    # ── Build layout DAG: break bidirectional pairs by index order ────
+    G_dag = nx.DiGraph()
+    G_dag.add_nodes_from(G.nodes())
+    for u, v in G.edges():
+        if G.has_edge(v, u):
+            if u < v:                # keep only the lower→higher direction
+                G_dag.add_edge(u, v)
+        else:
+            G_dag.add_edge(u, v)
+
+    # ── Condensation → guaranteed DAG → longest-path layers ──────────
+    C = nx.condensation(G_dag)
+    scc_map = C.graph['mapping']
+
+    scc_layer: dict = {}
+    for scc in nx.topological_sort(C):
+        preds = list(C.predecessors(scc))
+        scc_layer[scc] = 0 if not preds else max(scc_layer[p] for p in preds) + 1
+
+    node_layer: dict = {n: scc_layer[scc_map[n]] for n in G.nodes()}
+
+    # ── Group by layer, spread vertically ─────────────────────────────
+    layer_nodes: dict = {}
+    for node, lyr in node_layer.items():
+        layer_nodes.setdefault(lyr, []).append(node)
+
+    n_layers = max(layer_nodes.keys()) + 1
+    pos = {}
+    for lyr, nodes in layer_nodes.items():
+        x = lyr / max(n_layers - 1, 1)
+        nodes_sorted = sorted(nodes)
+        for k, node in enumerate(nodes_sorted):
+            y = (k + 1) / (len(nodes_sorted) + 1)
+            pos[node] = (x, y)
+    return pos
+
+
+def plot_scm_broken_links(
+    A_real: np.ndarray,
+    A_fake: np.ndarray,
+    node_names: List[str],
+    title: str,
+    save_path: str,
+    node_indices: Optional[List[int]] = None,
+    n_latent: int = 6,
+    n_other: int = 6,
+    keep_ratio: float = 0.70,
+    break_ratio: float = 0.30,
+    edge_thresh: float = 0.01,
+    act_real: Optional[np.ndarray] = None,
+    max_edges: int = 20,
+):
+    """Single-panel 'broken links' causal graph for paper figures.
+
+    Edge colour encodes what deepfakes do to each causal coupling:
+      Blue  solid  — Preserved  (A_fake/A_real ≥ keep_ratio)
+      Red   dashed — Broken     (A_fake/A_real ≤ break_ratio)
+      Orange dotted — Spurious  (new edge only in fake)
+    Weakened edges are dropped; at most ``max_edges`` edges are shown
+    (broken/spurious always included; remainder filled by top preserved).
+    Disconnected nodes (no displayed edge) are hidden.
+    Layout is hierarchical left→right, sources on left, sinks on right.
+    Companion CSV written alongside the PNG.
+    """
+    try:
+        import networkx as nx
+    except ImportError:
+        return
+
+    n_full = min(A_real.shape[0], A_fake.shape[0], len(node_names))
+    if n_full == 0:
+        return
+
+    # ── Select anchor nodes ───────────────────────────────────────────
+    if node_indices is None:
+        node_indices = select_anchor_nodes(
+            A_real, A_fake, node_names, n_latent, n_other, act_real)
+    idx = [i for i in node_indices if i < n_full]
+    if not idx:
+        return
+
+    A_r = A_real[np.ix_(idx, idx)]
+    A_f = A_fake[np.ix_(idx, idx)]
+    names = [node_names[i] for i in idx]
+    n = len(idx)
+
+    # ── Categorise all edges ──────────────────────────────────────────
+    # record: (src, tgt, category, w_real, w_fake)
+    all_edges: List[Tuple[int, int, str, float, float]] = []
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            wr = float(A_r[i, j])
+            wf = float(A_f[i, j])
+            if wr > edge_thresh:
+                ratio = wf / max(wr, 1e-9)
+                if ratio >= keep_ratio:
+                    cat = 'preserved'
+                elif ratio <= break_ratio:
+                    cat = 'broken'
+                else:
+                    continue          # weakened → dropped
+                all_edges.append((i, j, cat, wr, wf))
+            elif wf > edge_thresh:
+                all_edges.append((i, j, 'created', wr, wf))
+
+    if not all_edges:
+        return
+
+    # ── Prune to budget: broken/spurious first, then top preserved ────
+    priority  = [e for e in all_edges if e[2] in ('broken', 'created')]
+    preserved = sorted([e for e in all_edges if e[2] == 'preserved'],
+                       key=lambda e: -e[3])           # descending A_real
+    budget    = max(0, max_edges - len(priority))
+    edges     = priority + preserved[:budget]
+
+    if not edges:
+        return
+
+    # ── Drop nodes that appear in no displayed edge ───────────────────
+    active = sorted({n_ for e in edges for n_ in (e[0], e[1])})
+    remap  = {old: new for new, old in enumerate(active)}
+    names_a = [names[i] for i in active]
+    edges   = [(remap[i], remap[j], cat, wr, wf) for i, j, cat, wr, wf in edges]
+    n_a     = len(active)
+
+    # ── Build display graph & hierarchical layout ─────────────────────
+    G = nx.DiGraph()
+    G.add_nodes_from(range(n_a))
+    for i, j, *_ in edges:
+        G.add_edge(i, j)
+
+    pos = _hierarchical_lr_pos(G)
+
+    # ── Source / sink detection (in displayed graph) ──────────────────
+    sources = {n_ for n_ in G.nodes() if G.in_degree(n_)  == 0 and G.out_degree(n_) > 0}
+    sinks   = {n_ for n_ in G.nodes() if G.out_degree(n_) == 0 and G.in_degree(n_)  > 0}
+
+    # ── Draw ──────────────────────────────────────────────────────────
+    _CAT = {
+        'preserved': ('#1f77b4', 'solid',  2.5, 0.75),
+        'broken':    ('#d62728', 'dashed', 3.0, 0.95),
+        'created':   ('#ff7f0e', 'dotted', 2.5, 0.90),
+    }
+    max_wr = max((e[3] for e in edges if e[2] != 'created'), default=1e-6)
+    max_wf = max((e[4] for e in edges if e[2] == 'created'), default=1e-6)
+
+    fig, ax = plt.subplots(figsize=(13, 8))
+
+    node_colors = [GROUP_COLORS.get(group_of(names_a[i]), '#bbbbbb')
+                   for i in range(n_a)]
+    nx.draw_networkx_nodes(
+        G, pos, ax=ax, nodelist=list(range(n_a)),
+        node_color=node_colors, edgecolors='#333',
+        linewidths=1.5, node_size=700, alpha=0.95,
+    )
+
+    _RAD = 0.12
+    for i, j, cat, wr, wf in edges:
+        color, ls, base_lw, alpha = _CAT[cat]
+        ref_w = wf if cat == 'created' else wr
+        ref_max = max_wf if cat == 'created' else max_wr
+        w = float(np.clip(base_lw * (0.4 + ref_w / max(ref_max, 1e-6)), 0.5, 7.0))
+        nx.draw_networkx_edges(
+            G, pos, ax=ax, edgelist=[(i, j)],
+            edge_color=color, width=w,
+            alpha=alpha, arrows=True, arrowsize=18,
+            connectionstyle=f'arc3,rad={_RAD}',
+            style=ls, node_size=700,
+        )
+        # Weight labels only on broken and created (the interesting signal)
+        if cat in ('broken', 'created'):
+            x0, y0 = pos[i]; x1, y1 = pos[j]
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+            dx, dy_ = x1 - x0, y1 - y0
+            ln = max((dx*dx + dy_*dy_)**0.5, 1e-6)
+            perp = (-dy_ / ln, dx / ln)
+            # Cap perpendicular offset so labels stay near the edge midpoint
+            off = min(_RAD * ln * 0.45, 0.08)
+            lx, ly = mx + perp[0] * off, my + perp[1] * off
+            # Clamp to node bounding box so labels never fly off-canvas
+            all_xs_now = [p[0] for p in pos.values()]
+            all_ys_now = [p[1] for p in pos.values()]
+            lx = float(np.clip(lx, min(all_xs_now) - 0.05, max(all_xs_now) + 0.05))
+            ly = float(np.clip(ly, min(all_ys_now) - 0.05, max(all_ys_now) + 0.05))
+            label    = (f'{wf / max(max_wf, 1e-6):.3f}' if cat == 'created'
+                        else f'{wr / max(max_wr, 1e-6):.3f}→{wf / max(max_wr, 1e-6):.3f}')
+            txt_col  = '#ff7f0e' if cat == 'created' else '#d62728'
+            ax.text(lx, ly, label, fontsize=8, ha='center', va='center',
+                    color=txt_col, fontweight='bold',
+                    bbox=dict(boxstyle='round,pad=0.15',
+                              facecolor='white', edgecolor='none', alpha=0.88),
+                    zorder=10)
+
+    # ── Set explicit axis limits BEFORE adding labels so bbox_inches='tight'
+    #    cannot expand the canvas for out-of-bounds text ────────────────────
+    xs = [p[0] for p in pos.values()]; ys = [p[1] for p in pos.values()]
+    pad_x = max(0.18, 0.18 * (max(xs) - min(xs) + 1e-6))
+    pad_y = max(0.12, 0.12 * (max(ys) - min(ys) + 1e-6))
+    x_lo, x_hi = min(xs) - pad_x, max(xs) + pad_x
+    y_lo, y_hi = min(ys) - pad_y, max(ys) + pad_y
+    ax.set_xlim(x_lo, x_hi)
+    ax.set_ylim(y_lo, y_hi)
+
+    # ── Node labels ───────────────────────────────────────────────────
+    span = max(x_hi - x_lo, y_hi - y_lo, 1.0)
+    dy_lbl = 0.05 * span
+    for node_id, (x, y) in pos.items():
+        marker = ' ▶' if node_id in sources else (' ◀' if node_id in sinks else '')
+        ax.text(x, y + dy_lbl, pretty(names_a[node_id]) + marker,
+                fontsize=9, ha='center', va='bottom',
+                bbox=dict(boxstyle='round,pad=0.28',
+                          facecolor='white', edgecolor='#666', alpha=0.93))
+
+    # ── Legend ────────────────────────────────────────────────────────
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+
+    n_broken    = sum(1 for e in edges if e[2] == 'broken')
+    n_created   = sum(1 for e in edges if e[2] == 'created')
+    n_preserved = sum(1 for e in edges if e[2] == 'preserved')
+
+    edge_handles = [
+        Line2D([0], [0], color='#1f77b4', lw=2.5, ls='-',
+               label=f'Preserved ({n_preserved})'),
+        Line2D([0], [0], color='#d62728', lw=3.0, ls='--',
+               label=f'Broken by fake ({n_broken})'),
+        Line2D([0], [0], color='#ff7f0e', lw=2.5, ls=':',
+               label=f'Spurious in fake ({n_created})'),
+    ]
+    seen_grp: List[str] = []
+    for nm in names_a:
+        g = group_of(nm)
+        if g not in seen_grp:
+            seen_grp.append(g)
+    node_handles = [
+        Patch(facecolor=GROUP_COLORS.get(g, '#bbb'), edgecolor='#333',
+              label=GROUP_LONGNAMES.get(g, g))
+        for g in seen_grp
+    ]
+    leg1 = ax.legend(handles=edge_handles, loc='upper left', fontsize=9,
+                     frameon=True, framealpha=0.92, title='Edge status')
+    ax.add_artist(leg1)
+    ax.legend(handles=node_handles, loc='upper right', fontsize=8,
+              frameon=True, framealpha=0.92, title='Node group')
+
+    ax.text(0.99, 0.01, '▶ Source   ◀ Sink   (causal flow: left → right)',
+            transform=ax.transAxes, ha='right', va='bottom', fontsize=8,
+            bbox=dict(boxstyle='round', facecolor='#f5f5f5', alpha=0.85))
+
+    subtitle = (f'top {len(edges)} edges shown  '
+                f'({n_preserved} preserved · {n_broken} broken · {n_created} spurious)  '
+                f'— {n_a} active nodes')
+    ax.set_title(f'{title}\n{subtitle}', fontsize=12, pad=10)
+    ax.set_axis_off()
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=170, bbox_inches='tight')
+    plt.close(fig)
+
+    # ── Companion CSV ─────────────────────────────────────────────────
+    csv_path = save_path.replace('.png', '_edges.csv')
+    with open(csv_path, 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['src_idx', 'tgt_idx', 'src_name', 'tgt_name',
+                    'src_pretty', 'tgt_pretty', 'src_group', 'tgt_group',
+                    'category', 'A_real', 'A_fake', 'ratio'])
+        for ei, ej, cat, wr, wf in edges:
+            orig_ei = active[ei]; orig_ej = active[ej]
+            ratio = wf / max(wr, 1e-9) if cat != 'created' else float('inf')
+            w.writerow([
+                idx[orig_ei], idx[orig_ej], names_a[ei], names_a[ej],
+                pretty(names_a[ei]), pretty(names_a[ej]),
+                group_of(names_a[ei]), group_of(names_a[ej]),
+                cat, f'{wr:.6f}', f'{wf:.6f}',
+                f'{ratio:.4f}' if np.isfinite(ratio) else 'inf',
+            ])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Side-by-side Real | Fake SCM comparison (paper-ready)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def plot_scm_real_vs_fake(
+    A_real: np.ndarray,
+    A_fake: np.ndarray,
+    node_names: List[str],
+    title: str,
+    save_path: str,
+    node_indices: Optional[List[int]] = None,
+    n_latent: int = 6,
+    n_other: int = 6,
+    keep_ratio: float = 0.70,
+    break_ratio: float = 0.30,
+    edge_thresh: float = 0.01,
+    act: Optional[np.ndarray] = None,
+    r_diff_val: Optional[float] = None,
+    max_edges: int = 18,
+):
+    """Side-by-side Real | Fake SCM comparison for paper figures.
+
+    Left panel — Real SCM:
+        Top ``max_edges`` edges from A_real, blue, thickness ∝ weight.
+    Right panel — Fake SCM:
+        Same node layout; edges coloured by divergence from Real:
+          Blue   solid  — Preserved  (A_fake/A_real ≥ keep_ratio)
+          Red    dashed — Broken     (A_fake/A_real ≤ break_ratio)
+          Orange solid  — Weakened   (break_ratio < ratio < keep_ratio)
+          Purple dotted — Spurious   (new edge only in fake)
+    Both panels share identical hierarchical left→right layout derived
+    from the union of displayed edges.
+    Node size ∝ per-node activation magnitude when ``act`` is provided.
+    ``r_diff_val`` (per-subgraph SCM divergence for this sample) is
+    annotated as a subtitle; higher means the subgraph is more
+    discriminative for this particular sample.
+    Companion CSV is written alongside the PNG.
+    """
+    try:
+        import networkx as nx
+    except ImportError:
+        return
+
+    n_full = min(A_real.shape[0], A_fake.shape[0], len(node_names))
+    if n_full == 0:
+        return
+
+    # ── Select anchor nodes ───────────────────────────────────────────
+    if node_indices is None:
+        act_sel_for = act[:n_full] if act is not None else None
+        node_indices = select_anchor_nodes(
+            A_real, A_fake, node_names, n_latent, n_other, act_sel_for)
+    idx = [i for i in node_indices if i < n_full]
+    if not idx:
+        return
+
+    A_r = A_real[np.ix_(idx, idx)]
+    A_f = A_fake[np.ix_(idx, idx)]
+    names = [node_names[i] for i in idx]
+    n = len(idx)
+
+    # ── Node sizes from per-node activation ───────────────────────────
+    if act is not None and len(act) >= max(idx) + 1:
+        act_local = np.abs(act[idx])          # (n,) activation per anchor node
+        a_min, a_max = act_local.min(), act_local.max()
+        a_span = max(a_max - a_min, 1e-6)
+        node_sizes = [int(600 + 1600 * (act_local[i] - a_min) / a_span)
+                      for i in range(n)]
+    else:
+        node_sizes = [900] * n
+
+    # ── Categorise all edges ──────────────────────────────────────────
+    # real_edges:  (i, j, wr)
+    # fake_edges:  (i, j, cat, wr, wf)
+    real_edges: List[Tuple] = []
+    fake_edges: List[Tuple] = []
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            wr = float(A_r[i, j])
+            wf = float(A_f[i, j])
+            if wr > edge_thresh:
+                real_edges.append((i, j, wr))
+                ratio = wf / max(wr, 1e-9)
+                if ratio >= keep_ratio:
+                    cat = 'preserved'
+                elif ratio <= break_ratio:
+                    cat = 'broken'
+                else:
+                    cat = 'weakened'
+                fake_edges.append((i, j, cat, wr, wf))
+            elif wf > edge_thresh:
+                fake_edges.append((i, j, 'spurious', wr, wf))
+
+    # ── Budget pruning ────────────────────────────────────────────────
+    # Real panel: top max_edges by A_real weight
+    real_shown = sorted(real_edges, key=lambda e: -e[2])[:max_edges]
+    # Fake panel: broken/spurious first, then weakened/preserved by A_fake
+    fake_prio  = [e for e in fake_edges if e[2] in ('broken', 'spurious')]
+    fake_rest  = sorted([e for e in fake_edges if e[2] not in ('broken', 'spurious')],
+                        key=lambda e: -e[4])
+    fake_shown = (fake_prio + fake_rest)[:max_edges]
+
+    if not real_shown and not fake_shown:
+        return
+
+    # ── Active nodes: union of both panels ───────────────────────────
+    active = sorted({ni for e in real_shown for ni in (e[0], e[1])} |
+                    {ni for e in fake_shown for ni in (e[0], e[1])})
+    if not active:
+        return
+    remap    = {old: new for new, old in enumerate(active)}
+    names_a  = [names[i] for i in active]
+    n_a      = len(active)
+
+    # Remap edge indices
+    real_disp = [(remap[i], remap[j], wr)          for i, j, wr in real_shown]
+    fake_disp = [(remap[i], remap[j], cat, wr, wf) for i, j, cat, wr, wf in fake_shown]
+
+    node_sizes_a  = [node_sizes[active[i]] for i in range(n_a)]
+    node_colors_a = [GROUP_COLORS.get(group_of(names_a[i]), '#bbbbbb')
+                     for i in range(n_a)]
+
+    # ── Shared layout (both panels) ───────────────────────────────────
+    G_layout = nx.DiGraph()
+    G_layout.add_nodes_from(range(n_a))
+    for i, j, *_ in real_disp + fake_disp:
+        G_layout.add_edge(i, j)
+    pos = _hierarchical_lr_pos(G_layout)
+
+    sources = {ni for ni in G_layout if G_layout.in_degree(ni)  == 0 and G_layout.out_degree(ni) > 0}
+    sinks   = {ni for ni in G_layout if G_layout.out_degree(ni) == 0 and G_layout.in_degree(ni)  > 0}
+
+    # ── Axis limits (shared) ──────────────────────────────────────────
+    xs = [pos[ni][0] for ni in range(n_a)]
+    ys = [pos[ni][1] for ni in range(n_a)]
+    pad_x = max(0.20, 0.20 * (max(xs) - min(xs) + 1e-6))
+    pad_y = max(0.15, 0.15 * (max(ys) - min(ys) + 1e-6))
+    xlim = (min(xs) - pad_x, max(xs) + pad_x)
+    ylim = (min(ys) - pad_y, max(ys) + pad_y)
+    dy_lbl = 0.05 * max(xlim[1] - xlim[0], ylim[1] - ylim[0], 1.0)
+
+    # ── Edge style table ──────────────────────────────────────────────
+    _CAT = {
+        'preserved': ('#1f77b4', 'solid',  2.5, 0.80),
+        'broken':    ('#d62728', 'dashed', 3.0, 0.95),
+        'weakened':  ('#ff7f0e', 'solid',  2.0, 0.75),
+        'spurious':  ('#9467bd', 'dotted', 2.5, 0.90),
+    }
+    max_wr = max((e[2] for e in real_disp), default=1e-6)
+    max_wf = max((abs(e[4]) for e in fake_disp), default=1e-6)
+    _RAD = 0.12
+
+    # ── Helpers ───────────────────────────────────────────────────────
+    def _draw_nodes(ax):
+        nx.draw_networkx_nodes(
+            G_layout, pos, ax=ax, nodelist=list(range(n_a)),
+            node_color=node_colors_a, node_size=node_sizes_a,
+            edgecolors='#333', linewidths=1.5, alpha=0.95,
+        )
+
+    def _draw_label(ax, i, j, label_str, color):
+        x0, y0 = pos[i]; x1, y1 = pos[j]
+        mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+        dx, dy_ = x1 - x0, y1 - y0
+        ln = max((dx*dx + dy_*dy_)**0.5, 1e-6)
+        perp = (-dy_ / ln, dx / ln)
+        off = min(_RAD * ln * 0.45, 0.08)
+        lx = float(np.clip(mx + perp[0] * off, min(xs) - 0.05, max(xs) + 0.05))
+        ly = float(np.clip(my + perp[1] * off, min(ys) - 0.05, max(ys) + 0.05))
+        ax.text(lx, ly, label_str, fontsize=7, ha='center', va='center',
+                color=color, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.12', facecolor='white',
+                          edgecolor='none', alpha=0.88),
+                zorder=10)
+
+    def _draw_node_labels(ax):
+        for ni, (x, y) in pos.items():
+            marker = ' ▶' if ni in sources else (' ◀' if ni in sinks else '')
+            ax.text(x, y + dy_lbl, pretty(names_a[ni]) + marker,
+                    fontsize=8, ha='center', va='bottom',
+                    bbox=dict(boxstyle='round,pad=0.25', facecolor='white',
+                              edgecolor='#666', alpha=0.93))
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+        ax.set_axis_off()
+
+    # ── Figure layout ─────────────────────────────────────────────────
+    fig, (ax_r, ax_f) = plt.subplots(1, 2, figsize=(20, 9))
+    fig.subplots_adjust(wspace=0.04)
+
+    # ── LEFT panel: Real SCM ──────────────────────────────────────────
+    _draw_nodes(ax_r)
+    for i, j, wr in real_disp:
+        lw = float(np.clip(2.5 * (0.35 + wr / max(max_wr, 1e-6)), 0.8, 7.5))
+        nx.draw_networkx_edges(
+            G_layout, pos, ax=ax_r, edgelist=[(i, j)],
+            edge_color='#1f77b4', width=lw, alpha=0.82, arrows=True,
+            arrowsize=16, connectionstyle=f'arc3,rad={_RAD}',
+            style='solid', node_size=node_sizes_a,
+        )
+        if wr > edge_thresh * 4:
+            _draw_label(ax_r, i, j, f'{wr / max(max_wr, 1e-6):.3f}', '#1a4f8a')
+    _draw_node_labels(ax_r)
+    ax_r.set_title('Real SCM — authentic face causal structure',
+                   fontsize=11, fontweight='bold', color='#1f4e79', pad=8)
+
+    # ── RIGHT panel: Fake SCM ─────────────────────────────────────────
+    _draw_nodes(ax_f)
+    for i, j, cat, wr, wf in fake_disp:
+        color, ls, base_lw, alpha = _CAT[cat]
+        lw = float(np.clip(base_lw * (0.35 + wf / max(max_wf, 1e-6)), 0.5, 7.5))
+        nx.draw_networkx_edges(
+            G_layout, pos, ax=ax_f, edgelist=[(i, j)],
+            edge_color=color, width=lw, alpha=alpha, arrows=True,
+            arrowsize=16, connectionstyle=f'arc3,rad={_RAD}',
+            style=ls, node_size=node_sizes_a,
+        )
+        label_str = (f'{wf / max(max_wf, 1e-6):.3f}' if cat == 'spurious'
+                     else f'{wr / max(max_wr, 1e-6):.3f}→{wf / max(max_wr, 1e-6):.3f}')
+        _draw_label(ax_f, i, j, label_str, color)
+    _draw_node_labels(ax_f)
+    ax_f.set_title('Fake SCM — how deepfakes alter causal couplings',
+                   fontsize=11, fontweight='bold', color='#7f1d1d', pad=8)
+
+    # ── Shared legend (bottom) ────────────────────────────────────────
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+
+    n_pres = sum(1 for e in fake_disp if e[2] == 'preserved')
+    n_brok = sum(1 for e in fake_disp if e[2] == 'broken')
+    n_weak = sum(1 for e in fake_disp if e[2] == 'weakened')
+    n_spur = sum(1 for e in fake_disp if e[2] == 'spurious')
+    edge_handles = [
+        Line2D([0], [0], color='#1f77b4', lw=2.5, ls='-',
+               label=f'Preserved ({n_pres})'),
+        Line2D([0], [0], color='#d62728', lw=3.0, ls='--',
+               label=f'Broken ({n_brok})'),
+        Line2D([0], [0], color='#ff7f0e', lw=2.0, ls='-',
+               label=f'Weakened ({n_weak})'),
+        Line2D([0], [0], color='#9467bd', lw=2.5, ls=':',
+               label=f'Spurious in fake ({n_spur})'),
+    ]
+    seen_grp: List[str] = []
+    for nm in names_a:
+        g = group_of(nm)
+        if g not in seen_grp:
+            seen_grp.append(g)
+    node_handles = [
+        Patch(facecolor=GROUP_COLORS.get(g, '#bbb'), edgecolor='#333',
+              label=GROUP_LONGNAMES.get(g, g))
+        for g in seen_grp
+    ]
+    all_handles = edge_handles + node_handles
+    fig.legend(handles=all_handles,
+               loc='lower center', ncol=min(len(all_handles), 7),
+               fontsize=9, frameon=True, framealpha=0.94,
+               bbox_to_anchor=(0.5, 0.0))
+
+    # ── r_diff verdict annotation + suptitle ─────────────────────────
+    if r_diff_val is not None:
+        v_str = (f'SCM divergence (this sample) = {r_diff_val:.4f}  '
+                 f'— higher = more discriminative subgraph')
+        fig.text(0.5, 0.965, title, ha='center', va='top',
+                 fontsize=13, fontweight='bold')
+        fig.text(0.5, 0.942, v_str, ha='center', va='top',
+                 fontsize=10, color='#374151',
+                 bbox=dict(boxstyle='round,pad=0.38', facecolor='#f9fafb',
+                           edgecolor='#9ca3af', alpha=0.94))
+    else:
+        fig.suptitle(title, fontsize=13, fontweight='bold', y=0.98)
+
+    fig.text(0.5, 0.005,
+             '▶ Source   ◀ Sink   |   Causal flow: left → right   '
+             '|   Node size ∝ activation magnitude',
+             ha='center', va='bottom', fontsize=8, color='#555')
+
+    fig.tight_layout(rect=[0, 0.07, 1, 0.92])
+    fig.savefig(save_path, dpi=170, bbox_inches='tight')
+    plt.close(fig)
+
+    # ── Companion CSV ─────────────────────────────────────────────────
+    csv_path = save_path.replace('.png', '_comparison.csv')
+    with open(csv_path, 'w', newline='') as f:
+        cw = csv.writer(f)
+        cw.writerow(['src_name', 'tgt_name', 'src_pretty', 'tgt_pretty',
+                     'category', 'A_real', 'A_fake', 'ratio'])
+        for i_r, j_r, cat, wr, wf in fake_disp:
+            ratio = wf / max(wr, 1e-9) if cat != 'spurious' else float('inf')
+            cw.writerow([
+                names_a[i_r], names_a[j_r],
+                pretty(names_a[i_r]), pretty(names_a[j_r]),
+                cat, f'{wr:.6f}', f'{wf:.6f}',
+                f'{ratio:.4f}' if np.isfinite(ratio) else 'inf',
+            ])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Evidence-routing flow graph with REAL / FAKE verdict terminals
+# ═══════════════════════════════════════════════════════════════════════════
+
+def plot_scm_verdict_flow(
+    A_real: np.ndarray,
+    A_fake: np.ndarray,
+    node_names: List[str],
+    title: str,
+    save_path: str,
+    node_indices: Optional[List[int]] = None,
+    n_latent: int = 6,
+    n_other: int = 6,
+    edge_thresh: float = 0.01,
+    act: Optional[np.ndarray] = None,
+    r_diff_val: Optional[float] = None,
+    prob_fake: Optional[float] = None,
+    max_internal_edges: int = 12,
+):
+    """Evidence-routing graph with REAL / FAKE verdict terminals.
+
+    Layout:
+      Feature nodes  ──[internal causal edges (A_real, thin grey-blue)]──
+      Each feature node emits ONE thick coloured edge to the terminal it
+      votes for:
+        Green → REAL   when the node's activation is more consistent with
+                        the real-SCM causal structure than the fake-SCM.
+        Red   → FAKE   when the fake-SCM has more causal weight on this node.
+      Edge thickness ∝ strength of the vote |real_flow − fake_flow|.
+      Node border colour echoes the vote (green / red / grey).
+      Node size ∝ total causal involvement × activation.
+      Terminal node size ∝ total incoming flow (larger = more evidence).
+
+    For high-confidence predictions the dominant terminal accumulates
+    many thick edges; for uncertain samples the flows are roughly equal.
+    Companion CSV is written alongside the PNG.
+    """
+    try:
+        import networkx as nx
+    except ImportError:
+        return
+
+    n_full = min(A_real.shape[0], A_fake.shape[0], len(node_names))
+    if n_full == 0:
+        return
+
+    # ── Select anchor nodes ───────────────────────────────────────────
+    if node_indices is None:
+        act_for_sel = act[:n_full] if act is not None else None
+        node_indices = select_anchor_nodes(
+            A_real, A_fake, node_names, n_latent, n_other, act_for_sel)
+    idx = [i for i in node_indices if i < n_full]
+    if not idx:
+        return
+
+    A_r = A_real[np.ix_(idx, idx)]
+    A_f = A_fake[np.ix_(idx, idx)]
+    names = [node_names[i] for i in idx]
+    n = len(idx)
+
+    # ── Per-node evidence flow ────────────────────────────────────────
+    # real_inv[i] = total causal weight incident on node i in real-SCM
+    # fake_inv[i] = same in fake-SCM
+    real_inv = A_r.sum(axis=0) + A_r.sum(axis=1)   # (n,)
+    fake_inv = A_f.sum(axis=0) + A_f.sum(axis=1)   # (n,)
+
+    if act is not None and len(act) >= max(idx) + 1:
+        act_local = np.abs(act[idx])                 # (n,) activation per node
+        real_flow = act_local * real_inv
+        fake_flow = act_local * fake_inv
+    else:
+        act_local = np.ones(n)
+        real_flow = real_inv.copy()
+        fake_flow = fake_inv.copy()
+
+    net       = real_flow - fake_flow                # pos → votes REAL
+    max_flow  = max(float(np.abs(net).max()), 1e-6)
+    max_total = max(float((real_flow + fake_flow).max()), 1e-6)
+    # Uniform size — all feature nodes equal so no type dominates visually
+    node_sizes = [900] * n
+
+    # ── Top-K internal causal edges from A_real ───────────────────────
+    # Adaptive threshold: at least 5% of the submatrix max so something
+    # always shows even when weights are small.
+    adaptive_thresh = max(edge_thresh, float(A_r.max()) * 0.05)
+    int_edges: List[Tuple[int, int, float]] = []
+    for i in range(n):
+        for j in range(n):
+            if i != j and A_r[i, j] > adaptive_thresh:
+                int_edges.append((i, j, float(A_r[i, j])))
+    int_edges.sort(key=lambda e: -e[2])
+    int_edges = int_edges[:max_internal_edges]
+
+    # ── Active node set: ALWAYS all anchor nodes ──────────────────────
+    # Never filter out a node the caller asked to show. The terminal
+    # edges carry the signal even for nodes with weak net votes.
+    active = list(range(n))
+    remap    = {i: i for i in range(n)}   # identity map
+    names_a  = list(names)
+    n_a      = n
+
+    VOTE_THRESH = max_flow * 0.04          # used only for border colour
+    node_sizes_a  = node_sizes             # already length n
+    node_colors_a = [GROUP_COLORS.get(group_of(names_a[i]), '#bbbbbb')
+                     for i in range(n_a)]
+    net_a = net                            # (n,) net vote — no subsetting
+    node_border_a = [
+        '#1a9c5b' if net_a[i] > VOTE_THRESH else
+        ('#c0392b' if net_a[i] < -VOTE_THRESH else '#888888')
+        for i in range(n_a)
+    ]
+    int_disp = [(i, j, wr) for i, j, wr in int_edges]   # remap is identity
+
+    # ── Terminal nodes ────────────────────────────────────────────────
+    N_REAL = n_a
+    N_FAKE = n_a + 1
+    # Double diameter = 4× area of feature nodes (900)
+    TERMINAL_SZ = 900 * 4
+
+    # ── Layout ────────────────────────────────────────────────────────
+    G_all = nx.DiGraph()
+    G_all.add_nodes_from(range(n_a + 2))
+    for i, j, *_ in int_disp:
+        G_all.add_edge(i, j)
+
+    raw_pos = _hierarchical_lr_pos(G_all.subgraph(range(n_a)).copy())
+    if not raw_pos:
+        raw_pos = {i: (0.0, (i + 1) / (n_a + 1)) for i in range(n_a)}
+    # If layout is degenerate (all same x — no edges or fully symmetric),
+    # fall back to spring layout which spreads nodes evenly.
+    n_x_layers = len({round(v[0], 3) for v in raw_pos.values()})
+    if n_x_layers <= 1 and n_a > 1:
+        try:
+            spring = nx.spring_layout(
+                G_all.subgraph(range(n_a)),
+                k=2.0 / max(n_a ** 0.5, 1),
+                iterations=80, seed=42,
+            )
+            raw_pos = spring
+        except Exception:
+            # Grid fallback: spread nodes in a neat grid
+            cols = max(int(n_a ** 0.5), 1)
+            raw_pos = {i: (i % cols / max(cols - 1, 1),
+                           i // cols / max(n_a // cols, 1))
+                       for i in range(n_a)}
+
+    # Compress feature x-range to [0.05, 0.72]; terminals live at x=1.0
+    feat_xs = [raw_pos[i][0] for i in range(n_a)]
+    x_min, x_span = min(feat_xs), max(max(feat_xs) - min(feat_xs), 1e-6)
+    pos = {i: (0.05 + 0.67 * (raw_pos[i][0] - x_min) / x_span, raw_pos[i][1])
+           for i in range(n_a)}
+    pos[N_REAL] = (1.0, 0.73)
+    pos[N_FAKE] = (1.0, 0.27)
+
+    sources = {ni for ni in range(n_a)
+               if G_all.in_degree(ni)  == 0 and G_all.out_degree(ni) > 0}
+    sinks   = {ni for ni in range(n_a)
+               if G_all.out_degree(ni) == 0 and G_all.in_degree(ni)  > 0}
+
+    # ── Axis limits ───────────────────────────────────────────────────
+    all_xs = [p[0] for p in pos.values()]
+    all_ys = [p[1] for p in pos.values()]
+    xlim = (min(all_xs) - 0.08, max(all_xs) + 0.09)
+    ylim = (min(all_ys) - 0.12, max(all_ys) + 0.17)
+
+    # ── Draw ──────────────────────────────────────────────────────────
+    fig, ax = plt.subplots(figsize=(15, 9))
+    all_sizes = node_sizes_a + [TERMINAL_SZ, TERMINAL_SZ]
+
+    # Feature nodes
+    nx.draw_networkx_nodes(
+        G_all, pos, ax=ax, nodelist=list(range(n_a)),
+        node_color=node_colors_a, node_size=node_sizes_a,
+        edgecolors=node_border_a, linewidths=3.0, alpha=0.93,
+    )
+
+    # Terminal nodes (circles — same shape as feature nodes, double diameter)
+    nx.draw_networkx_nodes(
+        G_all, pos, ax=ax, nodelist=[N_REAL],
+        node_color=['#d5f5e3'],
+        node_size=[TERMINAL_SZ], edgecolors='#1a9c5b', linewidths=4, alpha=0.97,
+    )
+    nx.draw_networkx_nodes(
+        G_all, pos, ax=ax, nodelist=[N_FAKE],
+        node_color=['#fadbd8'],
+        node_size=[TERMINAL_SZ], edgecolors='#c0392b', linewidths=4, alpha=0.97,
+    )
+
+    # Internal causal edges (thin background) — left-to-right only.
+    # max_wr is computed from the displayed (L→R) subset so the strongest
+    # visible edge always reads 1.00 and all others are in (0, 1].
+    lr_int_disp = [(i, j, wr) for i, j, wr in int_disp
+                   if pos[j][0] > pos[i][0]]
+    # max_wr drives line thickness (relative prominence among internal edges).
+    # Labels use max_total so all three edge types share the same [0,1] scale:
+    #   blue  = A_r[i,j] / max_total  (single connection → naturally small)
+    #   green = real_flow[i] / max_total  (integrated flow → larger)
+    #   red   = fake_flow[i] / max_total  (integrated flow → larger)
+    max_wr = max((e[2] for e in lr_int_disp), default=1e-6)
+    for i, j, wr in lr_int_disp:
+        norm_thick = wr / max_wr            # relative thickness only
+        norm_label = wr / max_total         # unified scale with terminal edges
+        lw = float(np.clip(1.8 * norm_thick, 0.4, 2.8))
+        nx.draw_networkx_edges(
+            G_all, pos, ax=ax, edgelist=[(i, j)],
+            edge_color='#8ab4d4', width=lw, alpha=0.38, arrows=True,
+            arrowsize=10, connectionstyle='arc3,rad=0.10',
+            style='solid', node_size=all_sizes,
+        )
+        if norm_label > 0.01:
+            x0, y0 = pos[i]; x1, y1 = pos[j]
+            mx, my = (x0 + x1) * 0.5, (y0 + y1) * 0.5
+            ax.text(mx, my, f'{norm_label:.2f}', fontsize=6,
+                    ha='center', va='center', color='#4a86ae',
+                    bbox=dict(boxstyle='round,pad=0.08', facecolor='white',
+                              edgecolor='none', alpha=0.80),
+                    zorder=12)
+
+    # Terminal edges — every node gets BOTH a green (→ REAL) and red (→ FAKE)
+    # edge so every node is visibly connected to both verdict circles.
+    # Thickness / opacity ∝ per-class causal flow normalised by max_total.
+    for ni in range(n_a):
+        nr = float(real_flow[ni]) / max_total   # [0, 1] real flow
+        nf = float(fake_flow[ni]) / max_total   # [0, 1] fake flow
+        for norm_fl, tgt, ec, rad in [
+            (nr, N_REAL, '#27ae60',  0.06),
+            (nf, N_FAKE, '#e74c3c', -0.06),
+        ]:
+            lw    = float(np.clip(7.0 * norm_fl, 0.4, 9.0))
+            alpha = float(np.clip(0.15 + 0.60 * norm_fl, 0.15, 0.75))
+            nx.draw_networkx_edges(
+                G_all, pos, ax=ax, edgelist=[(ni, tgt)],
+                edge_color=ec, width=lw, alpha=alpha, arrows=True,
+                arrowsize=int(np.clip(18 * norm_fl, 4, 18)),
+                connectionstyle=f'arc3,rad={rad}',
+                style='solid', node_size=all_sizes,
+            )
+            # Weight label — suppressed only for truly negligible flow (< 0.02)
+            if norm_fl > 0:
+                x0, y0 = pos[ni]; x1, y1 = pos[tgt]
+                mx = (x0 + x1) * 0.5 + rad * (y1 - y0)
+                my = (y0 + y1) * 0.5 - rad * (x1 - x0)
+                ax.text(mx, my, f'{norm_fl:.2f}', fontsize=6,
+                        ha='center', va='center', color=ec, fontweight='bold',
+                        bbox=dict(boxstyle='round,pad=0.08', facecolor='white',
+                                  edgecolor='none', alpha=0.80),
+                        zorder=12)
+
+    # ── Node labels ───────────────────────────────────────────────────
+    feat_xs2 = [pos[i][0] for i in range(n_a)]
+    feat_ys2 = [pos[i][1] for i in range(n_a)]
+    dy_lbl = 0.05 * max(max(feat_xs2) - min(feat_xs2),
+                        max(feat_ys2) - min(feat_ys2), 1.0)
+    for ni in range(n_a):
+        x, y = pos[ni]
+        marker = ' ▶' if ni in sources else (' ◀' if ni in sinks else '')
+        # Name label above the node
+        ax.text(x, y + dy_lbl, pretty(names_a[ni]) + marker,
+                fontsize=8, ha='center', va='bottom',
+                bbox=dict(boxstyle='round,pad=0.25', facecolor='white',
+                          edgecolor='#666', alpha=0.93))
+
+    # Terminal labels (inside nodes via ax.text)
+    prob_real = (1.0 - prob_fake) if prob_fake is not None else None
+    real_lbl  = (f'REAL\n{prob_real:.1%}' if prob_real is not None else 'REAL')
+    fake_lbl  = (f'FAKE\n{prob_fake:.1%}' if prob_fake is not None else 'FAKE')
+    rx, ry = pos[N_REAL]
+    fx, fy = pos[N_FAKE]
+    # Predicted class gets a "★ Predicted" tag above the terminal
+    if prob_fake is not None:
+        pred_is_fake = prob_fake > 0.5
+        tag_x = rx if not pred_is_fake else fx
+        tag_y = (ry if not pred_is_fake else fy) + 0.09
+        tag_c = '#1a6b3c' if not pred_is_fake else '#922b21'
+        ax.text(tag_x, tag_y, '★  Predicted',
+                ha='center', va='bottom', fontsize=9, color=tag_c,
+                fontweight='bold', zorder=16)
+    ax.text(rx, ry, real_lbl, ha='center', va='center',
+            fontsize=10, fontweight='bold', color='#1a6b3c', zorder=15)
+    ax.text(fx, fy, fake_lbl, ha='center', va='center',
+            fontsize=10, fontweight='bold', color='#922b21', zorder=15)
+
+    # ── Legend ────────────────────────────────────────────────────────
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+
+    n_real_v = int((net_a > VOTE_THRESH).sum())
+    n_fake_v = int((net_a < -VOTE_THRESH).sum())
+    leg_handles = [
+        Line2D([0], [0], color='#27ae60', lw=3, ls='-',
+               label=f'→ REAL flow  ({n_real_v} dominant)'),
+        Line2D([0], [0], color='#e74c3c', lw=3, ls='-',
+               label=f'→ FAKE flow  ({n_fake_v} dominant)'),
+        Line2D([0], [0], color='#8ab4d4', lw=1.5, ls='-',
+               label=f'Causal edges  (real SCM, top-{len(int_disp)})'),
+    ]
+    seen_grp: List[str] = []
+    for nm in names_a:
+        g = group_of(nm)
+        if g not in seen_grp:
+            seen_grp.append(g)
+    leg_handles += [
+        Patch(facecolor=GROUP_COLORS.get(g, '#bbb'), edgecolor='#333',
+              label=GROUP_LONGNAMES.get(g, g))
+        for g in seen_grp
+    ]
+    ax.legend(handles=leg_handles, loc='lower left', fontsize=8,
+              frameon=True, framealpha=0.94, ncol=2)
+
+    # ── Title + footer ────────────────────────────────────────────────
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+    if r_diff_val is not None:
+        sub = (f'SCM divergence = {r_diff_val:.4f}   |   '
+               f'{n_real_v} nodes → REAL  ·  {n_fake_v} nodes → FAKE   '
+               f'(edge weight = |real_flow − fake_flow|)')
+    else:
+        sub = (f'{n_real_v} nodes → REAL  ·  {n_fake_v} nodes → FAKE   '
+               f'(edge weight = |real_flow − fake_flow|)')
+    ax.set_title(f'{title}\n{sub}', fontsize=12, pad=10)
+    ax.text(0.99, 0.01,
+            '▶ source  ◀ sink   |   node border: ■ real-vote  ■ fake-vote  ■ mixed',
+            transform=ax.transAxes, ha='right', va='bottom', fontsize=7.5,
+            bbox=dict(boxstyle='round', facecolor='#f5f5f5', alpha=0.85))
+    ax.set_axis_off()
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=170, bbox_inches='tight')
+    plt.close(fig)
+
+    # ── Companion CSV ─────────────────────────────────────────────────
+    csv_path = save_path.replace('.png', '_flow.csv')
+    with open(csv_path, 'w', newline='') as f:
+        cw = csv.writer(f)
+        cw.writerow(['node_name', 'node_pretty', 'node_group',
+                     'real_flow', 'fake_flow', 'net_vote', 'verdict'])
+        for ni in range(n_a):
+            orig = active[ni]
+            verdict = ('REAL' if net_a[ni] > VOTE_THRESH else
+                       ('FAKE' if net_a[ni] < -VOTE_THRESH else 'UNCERTAIN'))
+            cw.writerow([
+                names_a[ni], pretty(names_a[ni]), group_of(names_a[ni]),
+                f'{real_flow[orig]:.6f}', f'{fake_flow[orig]:.6f}',
+                f'{net_a[ni]:.6f}', verdict,
+            ])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Per-sample graph alignment bar chart
+# ═══════════════════════════════════════════════════════════════════════════
+
+def plot_sample_graph_alignment(
+    r_diff: np.ndarray,
+    subgraph_names: List[str],
+    save_path: str,
+    label: Optional[int] = None,
+    pred_label: Optional[int] = None,
+    sample_id: Optional[str] = None,
+    prob: Optional[float] = None,
+    uncertainty: Optional[float] = None,
+):
+    """Per-sample reasoning explanation bar chart.
+
+    Shows the r_diff (residual surplus under real SCM vs fake SCM) for each
+    causal sub-graph of one test sample:
+
+      r_diff[sg] = ||x − SCM_fake(x)||_sg  −  ||x − SCM_real(x)||_sg
+
+      positive bar (blue) → sample fits the **real** SCM better → REAL evidence
+      negative bar (red)  → sample fits the **fake** SCM better → FAKE evidence
+
+    The sum across subgraphs is the overall classification signal.
+    """
+    n_sg = min(len(r_diff), len(subgraph_names))
+    vals = np.asarray(r_diff[:n_sg], dtype=float)
+    names = subgraph_names[:n_sg]
+    y = np.arange(n_sg)
+
+    fig, ax = plt.subplots(figsize=(7, max(3.0, 0.65 * n_sg + 1.5)))
+
+    colors = ['#1f77b4' if v >= 0 else '#d62728' for v in vals]
+    bars = ax.barh(y, vals, color=colors, alpha=0.88, height=0.55,
+                   edgecolor='white', linewidth=0.5)
+
+    ax.axvline(0, color='black', lw=1.0)
+
+    # Value labels
+    x_span = float(np.abs(vals).max()) if np.abs(vals).max() > 0 else 1.0
+    pad = 0.02 * x_span
+    for bar, v in zip(bars, vals):
+        ax.text(
+            v + (pad if v >= 0 else -pad), bar.get_y() + bar.get_height() / 2,
+            f'{v:+.3f}', va='center',
+            ha='left' if v >= 0 else 'right',
+            fontsize=9, color='#222',
+        )
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(names, fontsize=9)
+    ax.set_xlabel(
+        r'$r_{\mathrm{diff}}$ = $\|x - \mathrm{SCM}_{\mathrm{fake}}(x)\|$ '
+        r'$- \|x - \mathrm{SCM}_{\mathrm{real}}(x)\|$',
+        fontsize=9,
+    )
+
+    # Total signal annotation
+    total = float(vals.sum())
+    verdict = 'REAL-aligned' if total >= 0 else 'FAKE-aligned'
+    verdict_color = '#1f77b4' if total >= 0 else '#d62728'
+    ax.text(
+        0.99, 0.97,
+        f'Σ r_diff = {total:+.3f}\n{verdict}',
+        transform=ax.transAxes, ha='right', va='top',
+        fontsize=10, color=verdict_color, fontweight='bold',
+        bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                  edgecolor=verdict_color, alpha=0.9),
+    )
+
+    # Build title
+    parts: List[str] = []
+    if sample_id is not None:
+        parts.append(f'Sample {sample_id}')
+    if label is not None:
+        parts.append('GT: ' + ('REAL' if label == 0 else 'FAKE'))
+    if pred_label is not None:
+        correct = '✓' if label == pred_label else '✗'
+        parts.append('Pred: ' + ('REAL' if pred_label == 0 else 'FAKE') + f' {correct}')
+    if prob is not None:
+        parts.append(f'P(fake)={prob:.3f}')
+    if uncertainty is not None:
+        parts.append(f'u={uncertainty:.3f}')
+    ax.set_title('  |  '.join(parts) if parts else 'Graph alignment',
+                 fontsize=10, pad=8)
+
+    ax.grid(True, axis='x', alpha=0.25, linestyle='--')
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)

@@ -93,13 +93,24 @@ class SCMAnalyzer(BaseAnalyzer):
             from networks.nesy_defake.semantic.refined_attributes import CAUSAL_ATTRIBUTE_NAMES
             curated = list(CAUSAL_ATTRIBUTE_NAMES)
         except ImportError:
-            curated = [f'attr_{i}' for i in range(51)]
-        try:
-            from networks.nesy_defake.semantic.consistency_rules import TRAINING_RULE_NAMES
-            rules = list(TRAINING_RULE_NAMES)
-        except ImportError:
-            rules = [f'rule_{i}' for i in range(20)]
-        self._node_names['identity'] = z_names + curated + rules
+            curated = [f'attr_{i}' for i in range(26)]  # curated_dim=26 per config
+        # Load the largest available rule set; the identity SCM dimension
+        # determines which prefix is actually used (min slicing in visualize).
+        _rules: list = []
+        for _mod, _attr in [
+            ('networks.nesy_defake.semantic.consistency_rules', 'TRAINING_RULE_NAMES'),
+            ('networks.nesy_defake.semantic.consistency_rules_v7', 'TRAINING_RULE_NAMES_V7'),
+        ]:
+            try:
+                import importlib as _il
+                _m = _il.import_module(_mod)
+                _rules = list(getattr(_m, _attr))
+                break
+            except (ImportError, AttributeError):
+                pass
+        if not _rules:
+            _rules = [f'cr_rule_{i}' for i in range(20)]
+        self._node_names['identity'] = z_names + curated + _rules
 
         # Forensic sub-graphs: z(32) + forensic features (sliced)
         try:
@@ -586,6 +597,17 @@ class SCMAnalyzer(BaseAnalyzer):
                     with open(txt_path, 'w') as f:
                         f.write('\n'.join(lines))
 
+            # ── Broken-links single-panel (paper-ready) ────────────────
+            # Rendered once per subgraph (K-independent) using anchor nodes.
+            viz.plot_scm_broken_links(
+                A_real[:n, :n], A_fake[:n, :n],
+                names[:n],
+                title=f'Causal Graph — {sg_name}',
+                save_path=os.path.join(scm_dir, f'{sg_name}_broken_links.png'),
+                n_latent=6, n_other=6,
+                act_real=getattr(self, '_mean_act_real', {}).get(sg_name),
+            )
+
         # Sub-graph divergence bar chart
         if hasattr(self, '_results') and self._results.get('subgraph_divergence'):
             viz.plot_stacked_bar(
@@ -595,23 +617,57 @@ class SCMAnalyzer(BaseAnalyzer):
                 ylabel='L1 Divergence',
             )
 
+        # ── Per-sample alignment plots (reasoning showcase) ────────────
+        # Renders bar charts for the most informative individual samples:
+        # 3 most REAL-aligned, 3 most FAKE-aligned, 3 most ambiguous.
+        if hasattr(self, '_r_diff') and self._r_diff is not None:
+            r = self._r_diff          # (N, 4)
+            lbl = self._r_diff_labels  # (N,)
+            sg_names_short = self.SUBGRAPH_NAMES[:r.shape[1]]
+            total_rd = r.sum(axis=1)
+            n_show = min(3, len(total_rd))
+            top_real   = np.argsort(-total_rd)[:n_show].tolist()
+            top_fake   = np.argsort( total_rd)[:n_show].tolist()
+            top_border = np.argsort(np.abs(total_rd))[:n_show].tolist()
+            shown = list(dict.fromkeys(top_real + top_fake + top_border))  # dedup, preserve order
+
+            align_dir = os.path.join(scm_dir, 'sample_alignment')
+            os.makedirs(align_dir, exist_ok=True)
+            for si in shown:
+                gt = int(lbl[si])
+                # Use the spatial-branch argmax as a proxy for pred_label when
+                # true predictions are not stored in this analyzer.
+                pred = 1 if float(total_rd[si]) < 0 else 0
+                viz.plot_sample_graph_alignment(
+                    r_diff=r[si],
+                    subgraph_names=sg_names_short,
+                    save_path=os.path.join(
+                        align_dir, f'sample_{si:05d}_align.png'),
+                    label=gt,
+                    pred_label=pred,
+                    sample_id=str(si),
+                )
+
     def explain_sample(self, idx: int) -> str:
-        # Prefer the per-sample residual signal (Level 4) over the global
-        # adjacency divergence — it says something specific about *this*
-        # sample rather than the trained model.
         if hasattr(self, '_r_diff') and self._r_diff is not None \
                 and idx < len(self._r_diff):
             row = self._r_diff[idx]
             sg_names = self.SUBGRAPH_NAMES[:len(row)]
-            parts = [f"{sg}={row[i]:.3f}" for i, sg in enumerate(sg_names)]
-            top = sg_names[int(np.argmax(row))]
-            return (f"[SCM] r_diff: {', '.join(parts)} "
-                    f"(dominant sub-graph: {top})")
+            total = float(row.sum())
+            # Positive total = fits real SCM better → REAL signal
+            # Negative total = fits fake SCM better → FAKE signal
+            verdict = 'REAL-aligned' if total >= 0 else 'FAKE-aligned'
+            top_sg = sg_names[int(np.argmax(np.abs(row)))]
+            parts = [f'{sg}:{row[i]:+.3f}' for i, sg in enumerate(sg_names)]
+            return (f'[SCM] {verdict}  Σr_diff={total:+.4f} '
+                    f'(strongest: {top_sg})  [{", ".join(parts)}]')
         if not hasattr(self, '_results') or not self._results:
             return ''
         divs = self._results.get('subgraph_divergence', {})
         if not divs:
             return '[SCM] No adjacency matrices available'
-        parts = [f"{sg}={d:.2f}" for sg, d in sorted(divs.items(), key=lambda x: -x[1])]
         top_sg = max(divs, key=divs.get)
-        return f"[SCM] Sub-graph divergence: {', '.join(parts)} (highest: {top_sg})"
+        return (f'[SCM] Global divergence: '
+                + ', '.join(f'{sg}={d:.2f}' for sg, d in
+                            sorted(divs.items(), key=lambda x: -x[1]))
+                + f'  (highest: {top_sg})')
