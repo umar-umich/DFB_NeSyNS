@@ -170,3 +170,4 @@ faithfulness metric.
 5. Single-regime training + cross-dataset eval (tables 1–3).
 6. Faithfulness metric + ablations (table 4, §5).
 7. (Optional, gated) debate/agent.
+
