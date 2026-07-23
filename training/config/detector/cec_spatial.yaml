@@ -1,0 +1,25 @@
+# CEC spatial instrument — frozen detector config
+#
+# One YAML per instrument is the house style, but these four differ only by
+# which registered module is named, so they share this file: set `model_name`
+# to one of cec_effort / cec_fsfm / cec_gend / cec_forada.
+#
+# Checkpoints are NOT restated here. `cec/registration/detectors.yaml` is the
+# single source of truth for paths and anchors; the detector class reads it.
+# Duplicating a checkpoint path is how the frozen anchors would drift apart.
+
+model_name: cec_effort          # cec_effort | cec_fsfm | cec_gend | cec_forada
+instrument: effort              # effort | fsfm | gend | forada
+
+registration_file: cec/registration/detectors.yaml
+gend_root: /data/umar/Repos/GenD_NeSy
+
+# Preprocessing is GenD's own model.get_preprocessing(), resolved at load time
+# from the checkpoint — not configurable here. Overriding it would silently
+# renumber every frozen anchor (CURRENT_STATE ledger item 6). See the module
+# docstring in training/detectors/cec_instrument_detector.py.
+
+# This instrument is frozen and is never trained: no optimizer, no loss, no
+# lr schedule. build_loss/get_losses/get_train_metrics raise NotImplementedError
+# by design (CURRENT_STATE rule 4).
+frozen: true
