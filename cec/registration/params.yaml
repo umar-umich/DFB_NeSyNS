@@ -1,0 +1,142 @@
+# CEC — frozen run parameters
+# Causal Evidence Certification. Written at TASK 1 (2026-07-16).
+#
+# Everything in this file is FROZEN once the audit run starts (Task 9).
+# Provenance rule: every number here is either (a) a design constant fixed by
+# Umar, or (b) derived from the Phase-1 pilot on disk. No invented numbers.
+# Where a value is derived, the source file is named in a `source:` key.
+
+meta:
+  framework: CEC
+  version: 1
+  written: 2026-07-16
+  governing_docs:
+    - docs/implementation/CURRENT_STATE.md      # wins over everything
+    - docs/implementation/CLAUDE_CODE_VEG_IMPLEMENTATION_v2.md
+    - docs/pilots/PLANNING.md
+    - docs/pilots/CODEBOOK.md                   # rev-3, authoritative vocabulary
+  log: docs/cec/LOG.md
+
+# ---------------------------------------------------------------------------
+# Proposer decoding (ledger item 7: locked params)
+# ---------------------------------------------------------------------------
+proposer:
+  k_claims: 4                  # K=4 claims per image, hard cap
+  claim_order: order_of_listing # the proposer's own listing order is the rank; no re-scoring
+  temperature: 0.0
+  do_sample: false
+  seed: 17                     # matches the worked example in VEG_glossary_and_examples.md
+  max_new_tokens: 640
+  api_cost_cap_usd: 100        # hard stop for any paid-API proposer
+
+# ---------------------------------------------------------------------------
+# Certification gate (Implementation v2, Task 7)
+# ---------------------------------------------------------------------------
+# NM (Necessity Margin) = p_fake(original) - p_fake(intervened), on the matched
+# instrument. A claim is CERTIFIED iff ALL of:
+#   1. NM >= certify_margin[detector]
+#   2. NM - max(NM_matched_blur, NM_matched_shift) >= matched_corruption_gap
+#   3. |NM_wrong_region| <= wrong_region_inert_max
+#   4. real_repair_offset <= real_offset_max
+# else REJECTED. Claims with no testable locus are UNTESTABLE (never guessed).
+#
+# FROZEN 2026-07-16 by Umar (Implementation v2 Task 1: "confirm the two threshold
+# values once, then frozen"). Both confirmed at the pilot-derived defaults below.
+# Changing any gate value after this point invalidates the Task 9 audit.
+gate:
+  # --- threshold 1 of 2: per-detector certify margin -------------------------
+  # Rule: margin = max(0.10, ceil_to_0.05(p99 of the pooled control drop
+  # distribution)), where the pooled controls are {matched blur, matched shift,
+  # wrong region} over the 100 rev3 pilot samples. The margin therefore sits
+  # above the 99th percentile of what each detector does when nothing causal
+  # was changed. The 0.10 floor stops a very inert detector (effort, forada)
+  # from certifying on noise.
+  certify_margin:
+    effort: 0.10   # pooled control p99 = 0.026 -> floor binds
+    fsfm:   0.10   # pooled control p99 = 0.087
+    gend:   0.15   # pooled control p99 = 0.124 -> ceil to 0.15
+    forada: 0.10   # pooled control p99 = 0.080
+  source_certify_margin: results/pilot_rev3/{effort,fsfm,gend,forada}/deltas.json
+
+  # --- threshold 2 of 2: control-inertness ----------------------------------
+  # The wrong-region control is the strict one: the pilot measured its median
+  # |Δ| at <= 0.003 across all four detectors, so anything above 0.05 means the
+  # intervention moved the detector for a non-causal reason and the claim is
+  # not trustworthy. Fires on 0-5% of pilot samples, as expected for a control
+  # that is genuinely inert.
+  wrong_region_inert_max: 0.05
+  # The real-repair offset bounds how much the SAME repair op moves the paired
+  # real image. Pilot medians: 0.013-0.033. Task 9's model-level gate uses
+  # offset < 15%; we reuse that number per-claim.
+  real_offset_max: 0.15
+  # The LPIPS-matched corruption is NOT an inertness control -- it is a
+  # contrast. The claim must beat a perceptually-equal-magnitude corruption of
+  # the same region by this much. Task 9 gate: "true-region >= corruption+20pp".
+  matched_corruption_gap: 0.20
+  source_inertness: >
+    results/pilot_rev3/ALL_DETECTORS.md (wrong-region median |Δ| <= 0.003;
+    real-offset median <= 0.033) + Implementation v2 Task 9 control-revalidation gate.
+
+  # Certification rates these thresholds produce on the rev3 pilot samples
+  # (GT-mask repair, i.e. the ceiling case that SHOULD mostly certify):
+  #   effort 78% · fsfm 80% · gend 71% · forada 82%
+  # Binding constraint is margin+gap; the wrong-region control fires on 0-5%.
+  # Recorded so any later drift in these rates is visible.
+  pilot_certification_rate: {effort: 0.78, fsfm: 0.80, gend: 0.71, forada: 0.82}
+
+# ---------------------------------------------------------------------------
+# Control battery (Implementation v2, Task 4 -- PORTED from the pilot harness,
+# never rewritten). Constants are the pilot's own; changing one invalidates the
+# frozen anchors in CURRENT_STATE ledger item 6.
+# ---------------------------------------------------------------------------
+controls:
+  repair_op: poisson              # cv2.seamlessClone; hard-paste fallback < 20 px
+  hard_paste_fallback_px: 20
+  battery:
+    - matched_blur                # LPIPS-matched region-local blur
+    - matched_shift               # LPIPS-matched region-local patch shift
+    - wrong_region                # equal-area region outside the mask, hugging its boundary
+    - real_offset                 # same repair on the paired real, +/- 1 frame
+  lpips_tol: 0.15                 # rev3 LPIPS match tolerance
+  ctrl2_offset_frames: 1
+
+# QC gates inherited from the pilot harness (scripts/intervention_pilot.py).
+# A sample failing any of these is dropped, not repaired.
+qc:
+  max_bg_mse: 60.0                # background must be untouched by alignment
+  fg_min: 0.02                    # mask foreground fraction bounds
+  fg_max: 0.60
+  max_per_video: 2
+  seed: 0                         # the pilot's sampling seed; distinct from proposer.seed
+
+# ---------------------------------------------------------------------------
+# Reporting rules (CURRENT_STATE ledger item 4 -- OBEY IN ALL OUTPUTS)
+# Temperature calibration / ECE were struck from the critical path. These rules
+# are the replacement and are not optional.
+# ---------------------------------------------------------------------------
+reporting:
+  nm_is_raw_score_drop: true      # NM is a raw per-detector score drop
+  nm_is_not_a_probability: true   # never present NM as a probability
+  nm_never_compared_across_detectors: true
+  nm_never_averaged_across_detectors: true
+  limitations_sentence_required: true
+  no_graph_language: true         # the graph was removed as a component
+  verdict_is_detector_passthrough: true   # assembly never modifies a verdict
+
+# ---------------------------------------------------------------------------
+# Data scope (LOG.md 2026-07-16 decisions)
+# ---------------------------------------------------------------------------
+data:
+  ffpp:
+    root: /data/umar/Datasets/preprocessed/FaceForensics++
+    raw_root: /data/umar/Datasets/FaceForensics++
+    compression: c23              # ONLY c23 is preprocessed on disk
+    pilot_methods: [Deepfakes, FaceSwap]
+    localized_method: NeuralTextures   # carries Pilot 1L; has frames+landmarks+masks
+  df40:
+    root: /data/umar/Datasets/df40
+    # DECIDED 2026-07-16: DF40 ships frames+landmarks but NO masks, and its
+    # crops come from DF40's own cropper rather than align_face. Spatial
+    # certification needs a GT mask + a paired real; DF40 has neither.
+    scope: spectral_only          # + detector inference. No spatial gate on DF40 in v1.
+    spatial_gate_enabled: false

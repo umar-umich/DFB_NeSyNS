@@ -1,0 +1,8 @@
+You are examining a facial photograph that may or may not have been digitally manipulated.
+
+Decide whether the face is real or fake. Report only your decision.
+
+Answer with a single JSON object and nothing else. No preamble, no explanation, no
+markdown fences. Use exactly this schema:
+
+{"decision": "real" | "fake"}

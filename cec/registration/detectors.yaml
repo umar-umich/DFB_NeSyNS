@@ -1,0 +1,100 @@
+# CEC — frozen detector registry (Implementation v2, Task 0 output)
+#
+# All four detectors are FROZEN: they own the verdict and the accuracy numbers
+# and are never trained (CURRENT_STATE rule 4; only the proposer is tuned).
+#
+# PREPROCESSING DECISION (Umar, 2026-07-16) -- amends Implementation v2 Task 2.
+# Task 2 as written says to wrap each detector "through DeepfakeBench's own
+# preprocessing/normalization". That is not possible and not correct here:
+#   * three of the four (forada, fsfm, gend) are not in the DFB registry at all;
+#   * every frozen anchor in CURRENT_STATE ledger item 6 was produced through
+#     GenD's own model.get_preprocessing() via scripts/pilot_detectors.py.
+# Following the sentence literally would silently renumber every anchor -- the
+# exact failure it warns against. DECIDED: delegate to the GenD registry.
+# The Task 2 sentence is amended; see docs/cec/LOG.md.
+
+source:
+  repo: /data/umar/Repos/GenD_NeSy
+  registry_port: scripts/pilot_detectors.py   # PORT, never rewrite
+  interface: |
+    model(tensor) -> HeadOutput.logits_labels   # [real, fake]
+    model.get_preprocessing() -> (PIL.Image -> tensor)
+    p_fake = softmax(logits, dim=1)[:, 1]
+  # GenD resolves checkpoints by RELATIVE path (fsfm string-matches its exact
+  # checkpoint path), so construction must happen with cwd == repo. In the
+  # pilot script that is a module-level os.chdir; inside training/ that would
+  # break DFB's own relative config/weight resolution. Use a scoped context
+  # manager around model construction ONLY -- never a chdir at import.
+  chdir_required_for_construction: true
+
+env:
+  python: /data/umar/miniconda3/envs/GenD/bin/python
+  offline: {HF_HUB_OFFLINE: 1, TRANSFORMERS_OFFLINE: 1}
+
+detectors:
+  effort:
+    model_type: effort
+    checkpoint: weights/Effort/effort_clip_L14_trainOn_FaceForensic.pth   # relative to GenD repo
+    family: clip
+    instrument: spatial
+    in_dfb_registry: true        # training/detectors/effort_detector.py, module_name='effort'
+    anchor_gt_repair_drop_median: 0.479
+  fsfm:
+    checkpoint: weights/FS-VFM/FS-VFM-ViT-L.pth
+    zoom: 1.3                    # via CustomPreprocessing; load-bearing
+    family: face_ssl
+    instrument: spatial
+    in_dfb_registry: false
+    anchor_gt_repair_drop_median: 0.713
+  gend:
+    checkpoint: yermandy/GenD_CLIP_L_14    # HF hub id
+    family: clip
+    instrument: spatial
+    in_dfb_registry: false
+    anchor_gt_repair_drop_median: 0.625
+  forada:
+    checkpoint: weights/ForAda/ForAdackpt_best.pth
+    family: clip
+    instrument: spatial
+    in_dfb_registry: false
+    anchor_gt_repair_drop_median: 0.839
+  freqnet:
+    # Spectral instrument (Task 5, Pilot S candidate 1). GenD's load_model routes
+    # this by the "weights/FreqNet" checkpoint-path string match, so it builds
+    # through the same wrapper as the spatial detectors. On disk, no download.
+    checkpoint: weights/FreqNet/4-classes-freqnet-v2.pth
+    loader: gend
+    family: frequency
+    instrument: spectral
+    in_dfb_registry: false
+    anchor_gt_repair_drop_median: null   # spectral: no GT-repair anchor (Pilot S sets its own)
+  npr:
+    # Spectral instrument (Task 5, Pilot S candidate 2). NPR is NOT a GenD model;
+    # it loads through training/networks/cec/npr.py (loader: npr). Checkpoint is an
+    # ABSOLUTE path (not relative to the GenD repo). ProGAN-4class weights,
+    # downloaded 2026-07-16. Trained on GANs (ForenSynths) — strong on DF40's
+    # generative families (StyleGAN/diffusion), weak on FF++ face-swaps; that
+    # split is what Pilot S measures.
+    checkpoint: /data/umar/Repos/GenD_NeSy/weights/NPR/model_epoch_last_3090.pth
+    loader: npr
+    family: frequency
+    instrument: spectral
+    in_dfb_registry: false
+    anchor_gt_repair_drop_median: null
+
+# Frozen anchors (CURRENT_STATE ledger item 6) -- DO NOT RE-DERIVE.
+# Re-verified from results/pilot_rev3/ALL_DETECTORS.md at Task 0:
+# 100 FF++ c23 frames (50 Deepfakes + 50 FaceSwap, test split, seed 0).
+anchors:
+  source: results/pilot_rev3/ALL_DETECTORS.md
+  gt_repair_drop_median: {effort: 0.479, fsfm: 0.713, gend: 0.625, forada: 0.839}
+  controls_inert: true           # wrong-region median |Δ| <= 0.003; real-offset median <= 0.033
+
+# Candidate spectral instrument (Task 5). FreqNet is already implemented at
+# GenD_NeSy/src/model/FreqNet.py with weights on disk -- needs no download.
+# Not yet wired; Pilot S decides.
+spectral_candidates:
+  freqnet:
+    impl: /data/umar/Repos/GenD_NeSy/src/model/FreqNet.py
+    checkpoint: weights/FreqNet/4-classes-freqnet-v2.pth
+    on_disk: true

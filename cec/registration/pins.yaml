@@ -1,0 +1,61 @@
+# CEC — model pins (Implementation v2, Task 1)
+#
+# A pin is an exact, reproducible model identity: repo id + revision hash.
+# Provenance in every Certified Evidence Record names a pin from this file.
+# Changing a pin after the Task 9 audit freeze invalidates the run.
+
+proposer:
+  # Two candidates, per Task 1. Both are audited in Task 9; the audit's
+  # per-model control re-validation may drop either.
+  candidates:
+    - name: internvl3-8b
+      repo_id: OpenGVLab/InternVL3-8B
+      revision: 853e3a797a661694b1b8ece0cb72dc2b23e3dac9
+      on_disk: true              # already in the HF cache; no download needed
+      dtype: bfloat16
+      vram_estimate_gb: 18       # ~16 GB weights + activations; 1 H200 (140 GB) is ample
+      gpus: 1
+      notes: |
+        Candidate 1. AWQ build also cached
+        (OpenGVLab/InternVL3-8B-AWQ, rev 020820e08d63c09e25ade36b191f195ac6da8a77)
+        but NOT used as candidate 2 -- same model quantized is a weak contrast
+        for the per-proposer audit, since both share failure modes.
+    - name: qwen2.5-vl-32b-instruct
+      repo_id: Qwen/Qwen2.5-VL-32B-Instruct
+      revision: 7cfb30d71a1f4f49a57592323337a4a4727301da
+      on_disk: true              # downloaded 2026-07-16; 64 GB in the HF cache
+      dtype: bfloat16
+      vram_estimate_gb: 72       # ~64 GB weights + KV cache/activations; fits 1 H200
+      gpus: 1
+      notes: |
+        Candidate 2, chosen by Umar 2026-07-16 over Qwen2.5-VL-7B-Instruct.
+        Stronger proposer, larger contrast against InternVL3-8B. Cost: the
+        Task 9 timing probe and full audit run get materially more expensive
+        than a 7B would have been -- budget for that in the hour estimates.
+  pinned: null                   # set after the Task 9 audit; both run until then
+
+# Task 5 spectral instrument. FreqNet needs no download (weights on disk in
+# GenD_NeSy); a second public-weight candidate (NPR-class) is still open.
+spectral:
+  candidates:
+    - name: freqnet
+      source: /data/umar/Repos/GenD_NeSy/weights/FreqNet/4-classes-freqnet-v2.pth
+      on_disk: true
+    - name: npr
+      source: /data/umar/Repos/GenD_NeSy/weights/NPR/model_epoch_last_3090.pth
+      origin: github.com/chuangchuangtan/NPR-DeepfakeDetection   # ProGAN-4class checkpoint
+      arch: NPRResNet (truncated ResNet-50, Bottleneck [3,4], fc1 512->1)
+      loader: npr                # training/networks/cec/npr.py, not GenD
+      on_disk: true              # downloaded 2026-07-16 (5.8 MB)
+  fallback: linear_probe_on_discern_spectral_bank   # rule-4 amendment approved
+
+# Environment as measured at Task 1 (2026-07-16).
+environment:
+  python: /data/umar/miniconda3/envs/GenD/bin/python
+  torch: 2.8.0+cu128
+  transformers: 4.56.2
+  peft: 0.14.0
+  trl: null                      # 🔴 NOT INSTALLED -- required by Task 11 (DPO)
+  gpus: 4                        # 4x H200 NVL, 143771 MiB each
+                                 # (the docs say 2x 148 GB; the box actually has 4)
+  hf_cache: /home/umflint.edu/mufarooq/.cache/huggingface/hub

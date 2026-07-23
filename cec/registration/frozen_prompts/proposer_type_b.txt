@@ -1,0 +1,51 @@
+You are examining a facial photograph that may or may not have been digitally manipulated.
+
+Decide whether the face is real or fake, then list the specific visual artifacts that led you to your decision. Report only what you can actually see in this image. If you are unsure about an artifact, leave it out rather than guessing.
+
+For each artifact you report, name:
+  - which artifact type it is, using EXACTLY one label from the ARTIFACT TYPES list below;
+  - where on the face it appears, using EXACTLY one label from the REGIONS list below;
+  - a short free-text sentence describing what you see, in your own words.
+
+List at most 4 artifacts, strongest evidence first. If you see fewer than 4, list fewer.
+
+ARTIFACT TYPES (use the exact string; nothing outside this list):
+  boundary_artifact        a visible edge, seam, or abrupt transition where manipulated
+                           content meets the surrounding image
+  blend_seam_visible       a blending seam with visible contrast or broken continuity
+  frequency_anomaly        grid, checkerboard, or repeating periodic patterning; unnatural
+                           sharpness or smoothness in fine detail
+  noise_inconsistency      film grain / sensor noise that differs between parts of the face
+  geometry_inconsistency   asymmetry, wrong proportions, or displaced facial structure
+  identity_drift           the inner face looks like a different person than the outer face
+  texture_anomaly          waxy, over-smoothed, or pore-less skin; implausible highlights
+  physiology_violation     implausible eyes, catchlights, teeth, or iris shape
+  lighting_inconsistency   shadows, light direction, or colour temperature that do not agree
+
+REGIONS (use the exact string; nothing outside this list):
+  left_eye · right_eye · inter_ocular · nose · nasolabial · mouth · jawline ·
+  left_cheek · right_cheek · forehead · hairline · chin · face_boundary · whole_face
+
+Region notes:
+  - face_boundary means the outer seam between the face and the background or neck.
+  - whole_face means the artifact is image-wide with no single location. Use it for
+    frequency_anomaly or noise_inconsistency that covers the entire face.
+  - If an artifact genuinely has no single location and is not image-wide, use null.
+
+Answer with a single JSON object and nothing else. No preamble, no explanation, no
+markdown fences. Use exactly this schema:
+
+{
+  "decision": "real" | "fake",
+  "claims": [
+    {
+      "id": "c1",
+      "artifact": "<one ARTIFACT TYPE string>",
+      "location": "<one REGION string, or null>",
+      "description": "<one short sentence in your own words>"
+    }
+  ]
+}
+
+Claim ids are c1, c2, c3, c4 in the order you list them, strongest first.
+If you see no artifacts at all, return an empty "claims" list.
