@@ -48,4 +48,19 @@ markdown fences. Use exactly this schema:
 }
 
 Claim ids are c1, c2, c3, c4 in the order you list them, strongest first.
-If you see no artifacts at all, return an empty "claims" list.
+
+If you examined the face and found NO artifact you can point to, do not invent one and
+do not return an empty list. Instead return the claims list with a single abstention
+object naming the regions you actually inspected:
+
+{
+  "decision": "real" | "fake",
+  "claims": [
+    {"id": "c1", "verdict_support": "no_certified_evidence",
+     "examined": ["<region or area you looked at>", "..."]}
+  ]
+}
+
+Use the abstention form whenever nothing specific stands out — for a genuine face, or for
+a fake whose manipulation you cannot localize. It is always better to abstain than to
+assert an artifact you are unsure of.

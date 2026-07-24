@@ -68,9 +68,15 @@ def _internvl_transform(image_path, input_size=448, max_num=12):
 
 
 class Proposer:
-    def __init__(self, name: str, device: str = "cuda:0"):
+    def __init__(self, name: str, device: str = "cuda:0", adapter: str | None = None):
+        """adapter: optional LoRA adapter dir (T20 DPO-tuned proposer).
+
+        The base weights are never modified — the adapter is applied on load, and
+        the cache key includes it so base and tuned outputs never collide.
+        """
         self.name = name
         self.device = device
+        self.adapter = adapter
         self.params = load_params()
         self.prompt, self.prompt_hash = load_prompt("proposer_type_b")
         self._pin = self._resolve_pin(name)
@@ -78,6 +84,11 @@ class Proposer:
         self._tok = None
         self._proc = None
         CACHE.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def variant(self) -> str:
+        """'base' or 'tuned' — used in Pilot D reporting and the cache key."""
+        return "base" if not self.adapter else "tuned"
 
     def _resolve_pin(self, name):
         for c in load_pins()["proposer"]["candidates"]:
@@ -111,10 +122,17 @@ class Proposer:
         else:
             raise ValueError(f"no backend for proposer '{self.name}'")
 
+        # T20: apply the DPO LoRA adapter, if any. Base weights stay untouched.
+        if self.adapter:
+            from peft import PeftModel
+            self._model = PeftModel.from_pretrained(self._model, self.adapter)
+            self._model.eval()
+
     # -- cache ---------------------------------------------------------------
     def _cache_key(self, image_path):
-        h = hashlib.sha256(f"{image_path}|{self.name}|{self.prompt_hash}".encode()).hexdigest()[:24]
-        return CACHE / f"{h}.json"
+        # adapter included so base and DPO-tuned outputs never collide in cache.
+        key = f"{image_path}|{self.name}|{self.prompt_hash}|{self.adapter or 'base'}"
+        return CACHE / f"{hashlib.sha256(key.encode()).hexdigest()[:24]}.json"
 
     # -- inference -----------------------------------------------------------
     @torch.no_grad()
