@@ -204,15 +204,32 @@ def region_mask(region_id: str, landmarks, target_size=TARGET_SIZE,
                 scale=SCALE) -> Optional[np.ndarray]:
     """Binary mask (bool HxW) for a codebook region, or None if not spatial.
 
-    whole_face -> None (spectral only). An unknown region_id raises KeyError, so
-    a validator bug surfaces rather than silently producing an empty mask.
+    whole_face -> None (not a landmark region; use composite_mask for the
+    whole-face COMPOSITE scope). An unknown region_id raises KeyError, so a
+    validator bug surfaces rather than silently producing an empty mask.
     """
     if region_id == WHOLE_FACE:
         return None
     if region_id not in _BUILDERS:
         raise KeyError(
             f"'{region_id}' is not a codebook region. "
-            f"Spatial: {sorted(SPATIAL_REGIONS)}; plus whole_face (spectral)."
+            f"Spatial: {sorted(SPATIAL_REGIONS)}; plus whole_face (composite)."
         )
     geom = FaceGeometry(landmarks, target_size, scale)
     return getattr(geom, _BUILDERS[region_id])()
+
+
+def composite_mask(landmarks, target_size=TARGET_SIZE, scale=SCALE) -> Optional[np.ndarray]:
+    """The inner-face union mask, for the whole-face COMPOSITE scope (T13).
+
+    This is the full inner-face region derivable from landmarks (the face
+    ellipse), NOT a small landmark region. Repairing it is the SAME operation the
+    frozen `gate:` block was calibrated on (Pilot rev3 full-mask repair), so
+    composite claims are judged against `gate:` without lowering any bar.
+    Returns None if alignment fails.
+    """
+    try:
+        geom = FaceGeometry(landmarks, target_size, scale)
+    except ValueError:
+        return None
+    return geom._face_ellipse()

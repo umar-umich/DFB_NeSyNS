@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from cec.registration import load_params
-from cec.registration.vocab import ARTIFACTS, OTHER, REGIONS, WHOLE_FACE, routes_to_spectral
+from cec.registration.vocab import ARTIFACTS, OTHER, REGIONS, claim_scope
 
 _K = load_params().k_claims
 
@@ -31,7 +31,17 @@ class Claim:
     artifact: str
     location: Optional[str]
     description: str
-    route: str  # 'spatial' | 'spectral' | 'untestable'
+    route: str  # 'region' | 'composite' | 'spectral' | 'untestable' | 'abstention'
+    examined: Optional[List[str]] = None  # set only for abstention claims
+
+    @property
+    def is_abstention(self) -> bool:
+        return self.route == "abstention"
+
+    @property
+    def is_manipulation_claim(self) -> bool:
+        """A positive assertion of a manipulation (the thing that can be a false positive)."""
+        return not self.is_abstention
 
 
 @dataclass
@@ -42,6 +52,15 @@ class ValidatedResponse:
     error: Optional[str] = None
     raw: str = ""
 
+    @property
+    def abstained(self) -> bool:
+        """True if the proposer asserted NO manipulation claim (abstention or empty)."""
+        return not any(c.is_manipulation_claim for c in self.claims)
+
+    @property
+    def manipulation_claims(self) -> List[Claim]:
+        return [c for c in self.claims if c.is_manipulation_claim]
+
 
 def _strip_fences(text: str) -> str:
     """Tolerate a stray ```json fence even though the prompt forbids it."""
@@ -50,11 +69,8 @@ def _strip_fences(text: str) -> str:
 
 
 def _route(artifact: str, location: Optional[str]) -> str:
-    if routes_to_spectral(artifact, location):
-        return "spectral"
-    if location is not None and location != WHOLE_FACE:
-        return "spatial"          # a real landmark region -> spatial repair
-    return "untestable"           # no locus, or whole_face non-spectral
+    # T13 scope routing: region | composite | spectral | untestable.
+    return claim_scope(artifact, location)
 
 
 def validate(text: str) -> ValidatedResponse:
@@ -72,11 +88,19 @@ def validate(text: str) -> ValidatedResponse:
     for i, c in enumerate(obj.get("claims", [])[:_K]):
         if not isinstance(c, dict):
             continue
+        cid = c.get("id") or f"c{i + 1}"
+        # Abstention object (T15): "no_certified_evidence" + regions examined.
+        if c.get("verdict_support") == "no_certified_evidence":
+            examined = c.get("examined")
+            claims.append(Claim(id=cid, artifact=None, location=None, description="",
+                                route="abstention",
+                                examined=examined if isinstance(examined, list) else []))
+            continue
         artifact = c.get("artifact") if c.get("artifact") in ARTIFACTS else OTHER
         loc = c.get("location")
         location = loc if loc in REGIONS else None
         claims.append(Claim(
-            id=c.get("id") or f"c{i + 1}",
+            id=cid,
             artifact=artifact,
             location=location,
             description=(c.get("description") or "").strip(),

@@ -66,9 +66,21 @@ class PairSample:
         return self.vid.split("_")[0]
 
     @property
-    def fake_path(self) -> Path:
-        """Path to the fake frame PNG (proposer inference is path-based, for caching)."""
+    def image_path(self) -> Path:
+        """Path to the image under test (proposer inference is path-based, for caching).
+
+        Fakes -> the manipulated frame PNG. Reals (method 'youtube-real') -> the
+        youtube original frame, since there is no manipulated_sequences path.
+        """
+        if self.method == "youtube-real":
+            return PP / "original_sequences" / "youtube" / COMPRESSION / "frames" / \
+                self.source_id / f"{self.frame}.png"
         return fake_paths(self.method, self.vid, self.frame)[0]
+
+    # Back-compat alias (older callers used fake_path).
+    @property
+    def fake_path(self) -> Path:
+        return self.image_path
 
 
 def read_raw_frame(video_path, idx) -> Optional[np.ndarray]:
@@ -102,6 +114,36 @@ def source_video(vid: str) -> Path:
         f"{vid.split('_')[0]}.mp4"
 
 
+def resolve_image_path(image_label: str) -> Path:
+    """Record 'image' label ('method/vid/frame') -> the actual frame PNG.
+
+    Reals are labeled 'youtube-real/<sid>_<sid>/<frame>' -> the youtube original;
+    everything else is a manipulated frame. Used by the multimodal DPO builder to
+    attach each preference pair's image.
+    """
+    method, vid, frame = image_label.split("/")
+    if method == "youtube-real":
+        sid = vid.split("_")[0]
+        return PP / "original_sequences" / "youtube" / COMPRESSION / "frames" / sid / f"{frame}.png"
+    return fake_paths(method, vid, frame)[0]
+
+
+def split_video_ids(split: str) -> set:
+    """FF++ `<a>_<b>` video ids belonging to a split ('train'|'test'|'val').
+
+    Splits are stored as lists of source pairs [a, b]; a fake video `a_b` (or
+    `b_a`) belongs to the split iff [a, b] is listed. Used to keep region-gate
+    calibration (train) disjoint from evaluation (test), per the codebook rule.
+    """
+    import json
+    pairs = json.loads((PP / f"{split}.json").read_text())
+    vids = set()
+    for a, b in pairs:
+        vids.add(f"{a}_{b}")
+        vids.add(f"{b}_{a}")
+    return vids
+
+
 def align_paired_real(landmarks, vid: str, frame, offset: int = 0) -> Optional[np.ndarray]:
     """Re-align the raw youtube frame to the fake's landmarks. offset shifts the
     source frame (used by the real-repair control, which reads a +/-1 frame)."""
@@ -122,6 +164,43 @@ def verify_pair(fake, real, mask) -> tuple[bool, float]:
     outside = ~mask
     bg_mse = float(((fake.astype(float) - real.astype(float))[outside] ** 2).mean())
     return bg_mse <= QC_MSE, bg_mse
+
+
+def real_landmarks_path(source_id: str, frame: str) -> Path:
+    return PP / "original_sequences" / "youtube" / COMPRESSION / "landmarks" / source_id / f"{frame}.npy"
+
+
+def build_real_pair(source_id: str, frame: str) -> Optional["PairSample"]:
+    """A PairSample for a REAL youtube image, for the real-image audit path (T15).
+
+    The image under test is the real crop; its paired "real" is an ADJACENT frame
+    re-aligned to the same landmarks (the real-offset construction). There is no
+    manipulation, so repairing any region should barely move p_fake (NM ~= 0) —
+    the reals anchor the null and let FP-claim rate be measured. `mask` is the
+    inner-face composite region (no GT mask exists for a real).
+    """
+    from cec.masks.regions import composite_mask
+
+    lpath = real_landmarks_path(source_id, frame)
+    if not lpath.exists():
+        return None
+    landmarks = np.load(lpath)
+    # image under test: raw youtube frame re-aligned with its own landmarks.
+    fake = align_paired_real(landmarks, f"{source_id}_{source_id}", frame, offset=0)
+    if fake is None:
+        return None
+    real = align_paired_real(landmarks, f"{source_id}_{source_id}", frame, offset=1)
+    if real is None:
+        real = align_paired_real(landmarks, f"{source_id}_{source_id}", frame, offset=-1)
+    if real is None:
+        return None
+    mask = composite_mask(landmarks)
+    if mask is None:
+        return None
+    return PairSample(
+        method="youtube-real", vid=f"{source_id}_{source_id}", frame=frame,
+        fake=fake, real=real, mask=mask, landmarks=landmarks, fg=float(mask.mean()), bg_mse=0.0,
+    )
 
 
 def build_pair(method: str, vid: str, frame: str) -> Optional[PairSample]:

@@ -46,27 +46,45 @@ class Params:
         return self.raw["proposer"]["temperature"]
 
     # --- gate ---------------------------------------------------------------
-    def certify_margin(self, detector: str) -> float:
-        margins = self.raw["gate"]["certify_margin"]
+    # Two calibrated blocks (T13): `gate` (frozen, full-mask/composite repair) and
+    # `gate_region` (region-sized repair). Accessors take a block name; missing
+    # keys raise (no silent defaults) — a threshold must have a measured
+    # distribution behind it.
+    def _gate_block(self, block: str) -> Dict[str, Any]:
+        if block not in self.raw:
+            raise KeyError(
+                f"no gate block '{block}' in params.yaml. Known gate blocks: "
+                f"{[b for b in ('gate', 'gate_region') if b in self.raw]}."
+            )
+        return self.raw[block]
+
+    def certify_margin(self, detector: str, block: str = "gate") -> float:
+        margins = self._gate_block(block)["certify_margin"]
         if detector not in margins:
             raise KeyError(
-                f"no certify margin registered for detector '{detector}'. "
+                f"no certify margin for detector '{detector}' in '{block}'. "
                 f"Known: {sorted(margins)}. Margins are pilot-derived — add one "
                 f"only with a measured control distribution behind it."
             )
         return margins[detector]
 
-    @property
-    def wrong_region_inert_max(self) -> float:
-        return self.raw["gate"]["wrong_region_inert_max"]
+    def wrong_region_inert_max(self, block: str = "gate") -> float:
+        return self._gate_block(block)["wrong_region_inert_max"]
 
-    @property
-    def real_offset_max(self) -> float:
-        return self.raw["gate"]["real_offset_max"]
+    def real_offset_max(self, block: str = "gate") -> float:
+        return self._gate_block(block)["real_offset_max"]
 
-    @property
-    def matched_corruption_gap(self) -> float:
-        return self.raw["gate"]["matched_corruption_gap"]
+    def matched_corruption_gap(self, block: str = "gate") -> float:
+        return self._gate_block(block)["matched_corruption_gap"]
+
+    def gate_thresholds(self, detector: str, block: str = "gate") -> Dict[str, float]:
+        """All four thresholds for a (detector, block), as a dict."""
+        return {
+            "margin": self.certify_margin(detector, block),
+            "gap": self.matched_corruption_gap(block),
+            "wrong_inert": self.wrong_region_inert_max(block),
+            "offset_max": self.real_offset_max(block),
+        }
 
     # --- qc -----------------------------------------------------------------
     @property

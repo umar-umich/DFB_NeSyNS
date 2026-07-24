@@ -45,13 +45,31 @@ REGIONS: FrozenSet[str] = SPATIAL_REGIONS | {WHOLE_FACE}
 
 
 def routes_to_spectral(artifact: str, location: str | None) -> bool:
-    """Whole-face frequency/noise claims go to the spectral instrument.
+    """Whole-face frequency/noise claims are the (dropped) spectral instrument's.
 
-    The gate's routing rule (Implementation v2, Task 7): spatial -> mask+repair
-    vs the CLIP detector; whole-face spectral -> intervention vs the frequency
-    detector; everything else -> UNTESTABLE.
+    Spectral was dropped after Pilot S, so these are UNTESTABLE — but they stay
+    distinct from whole-face COMPOSITE claims (T13). Do not conflate.
     """
     return location == WHOLE_FACE and artifact in SPECTRAL_PREDICATES
+
+
+def claim_scope(artifact: str, location: str | None) -> str:
+    """Route a claim to a certification scope (T13). One of:
+
+      region      a specific landmark region -> repair that region, judge against
+                  the region-calibrated `gate_region:` block.
+      composite   whole_face + a NON-spectral artifact -> repair the full inner-face
+                  region, judge against the frozen full-mask `gate:` block. (The
+                  same operation `gate:` was calibrated on, so no bar is "lowered".)
+      spectral    whole_face + a frequency/noise artifact -> UNTESTABLE (spectral
+                  instrument dropped after Pilot S; characterization only).
+      untestable  no locus / unmappable.
+    """
+    if location == WHOLE_FACE:
+        return "spectral" if artifact in SPECTRAL_PREDICATES else "composite"
+    if location in SPATIAL_REGIONS:
+        return "region"
+    return "untestable"
 
 
 def check_prompt_vocab(prompt_text: str) -> None:

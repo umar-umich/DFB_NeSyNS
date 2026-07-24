@@ -85,6 +85,54 @@ gate:
   pilot_certification_rate: {effort: 0.78, fsfm: 0.80, gend: 0.71, forada: 0.82}
 
 # ---------------------------------------------------------------------------
+# gate_region: REGION-scoped thresholds (Implementation addendum T13)
+# ---------------------------------------------------------------------------
+# The frozen `gate:` block above was calibrated on FULL-MASK repair (drops
+# 0.65-0.84). The certification gate's REGION scope repairs a single small
+# landmark region (drops ~0.15 max), so those thresholds are unreachable there
+# (a 0.15 drop cannot clear a 0.20 gap). This block re-derives the SAME rules at
+# REGION scale, on the TRAIN split (disjoint from the rev3 test split -- codebook
+# rev-3 rule). Composite/whole-face claims still use `gate:` (same operation it
+# was calibrated on); only region claims read `gate_region:`.
+#
+# !!! PROVISIONAL -- NOT YET CALIBRATED. These are placeholder values derived
+# from the arithmetic (Pilot 1L region control drops ~0.01; NT best-region
+# NM ~0.15), so the region path RUNS for T14 code testing. The real numbers come
+# from `cec/scripts/calibrate_region_gate.py` (T13b, 🔴 UMAR-RUNS on train split);
+# paste its emitted block here and flip `calibrated: true`. Do NOT report region
+# certification numbers as final until then.
+gate_region:
+  calibrated: true             # calibrate_region_gate.py ran on train split (fsfm)
+  calibration_split: train
+  source: results/region_gate_calib/region_gate_calib.json
+  # Derived on 780 region samples (train, NeuralTextures+Face2Face):
+  #   pooled-control p99 = 0.0485 -> margin floor 0.10 binds (doc T13b spec keeps
+  #     the max(0.10,...) convention); control-contrast p99 = 0.0078 -> gap 0.05;
+  #   wrong-region p99 -> 0.05; offset p99 -> 0.20.
+  # NOTE (finding): FF++ GT masks do NOT localize reenactment manipulations
+  #   (region IoU with GT mask maxes at 0.21), so "true region" is identified by
+  #   the NM signal, not mask overlap. On NeuralTextures the MOUTH median NM is
+  #   +0.085 (>> every other region ~0), i.e. the manipulation is mouth-localized
+  #   and the gate detects it. The 0.10 margin floor sat just above that median,
+  #   so region certification was PARTIAL.
+  # RESOLVED (T19-T22 addendum, Umar): margin floor -> 0.05, which is the
+  #   control-p99 rule the frozen `gate:` block itself uses (pooled-control
+  #   p99 = 0.0485 -> ceil_0.05 = 0.05). This is NOT post-hoc bar-lowering:
+  #   every region table MUST report BOTH 0.05 and 0.10 as a sensitivity row,
+  #   and the T13c separation plot is the justification artifact. If a method's
+  #   true-region vs control distributions are not separated, region
+  #   certification is reported UNRELIABLE for that method (pre-committed).
+  margin_floor: 0.05                  # region-scale floor (0.10 was a full-mask-era convention)
+  sensitivity_margins: [0.05, 0.10]   # report BOTH in every region table
+  certify_margin:
+    fsfm:   0.05               # pooled-control p99 0.0485 -> ceil_0.05 = 0.05
+    effort: 0.05               # secondary instrument; calibrate before reporting its numbers
+    # gend / forada: region-scale calibration intentionally skipped (T19-T22 decision)
+  wrong_region_inert_max: 0.05
+  real_offset_max: 0.20        # region offset p99 -> ceil_0.05 = 0.20
+  matched_corruption_gap: 0.05 # control-contrast p99 0.0078 -> floor 0.05
+
+# ---------------------------------------------------------------------------
 # Control battery (Implementation v2, Task 4 -- PORTED from the pilot harness,
 # never rewritten). Constants are the pilot's own; changing one invalidates the
 # frozen anchors in CURRENT_STATE ledger item 6.
@@ -108,6 +156,10 @@ qc:
   fg_max: 0.60
   max_per_video: 2
   seed: 0                         # the pilot's sampling seed; distinct from proposer.seed
+  # T14: video-level sampling. Sample this many frames per video and aggregate
+  # per video (matches the 32-frames-per-video face-swap eval convention; 8 keeps
+  # runs affordable). Certification rate reported per-frame AND per-video.
+  frames_per_video: 8
 
 # ---------------------------------------------------------------------------
 # Reporting rules (CURRENT_STATE ledger item 4 -- OBEY IN ALL OUTPUTS)
