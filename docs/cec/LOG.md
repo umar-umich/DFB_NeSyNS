@@ -952,3 +952,327 @@ InternVL cites the mouth **once in 67 claims**. It proposes plausible-but-inert 
 
 **Everything is built and verified; this is the one genuine open decision.** Tasks 0–12
 code complete; spatial certification + audit + assembly + eval all run end-to-end.
+
+---
+
+## 2026-07-23 — T13–T18 implementation (addendum CLAUDE_CODE_CEC_T13_T18.md)
+Executing the addendum that resolves the region-gate blocker + completes the training arm.
+
+### T13 — scope routing + region-gate calibration  [code done; calibration RAN]
+- **Scope routing** (`vocab.claim_scope`, `certify.py`): each claim routes by location →
+  **region** (landmark → `gate_region:`), **composite** (whole_face + non-spectral →
+  repair the inner-face union → frozen `gate:`), **spectral** (whole_face + freq/noise →
+  UNTESTABLE), **untestable** (no locus). This reclassifies the 32/67 whole_face claims from
+  the old audit as testable (composite). `masks.composite_mask` = inner-face ellipse.
+- **Drift-proofing:** extracted `CertificationGate.measure_region()` — the single source of
+  the counterfactual measurement, shared by the gate AND the calibrator (plan's key risk).
+- **Failure instrumentation:** each claim record now carries `scope`, `checks{margin,gap,
+  wrong,offset}`, `fail_reasons[]`, `thresholds{}` (additive; readers unaffected).
+- **`loader.py`** accessors are scope-aware (`gate` vs `gate_region` block; KeyError on missing).
+- **Calibration RAN** (`calibrate_region_gate.py`, fsfm, train split, 780 region samples):
+  pooled-control p99 = 0.0485 → margin floor 0.10 binds; control-contrast p99 = 0.0078 →
+  **gap_region = 0.05** (was the impossible 0.20); wrong 0.05; offset 0.20. Written to a NEW
+  `gate_region:` block; **frozen `gate:` byte-unchanged.**
+- **Finding (important):** FF++ GT masks do NOT localize reenactment manipulations — region
+  IoU with the GT mask maxes at **0.21**, so the IoU≥0.30 "true region" label found ZERO
+  true regions. The manipulation is localized by the **NM signal**, not the mask: on
+  NeuralTextures the **mouth median NM = +0.085**, an order of magnitude above every other
+  region (cheeks 0.015, rest ≈0) — causally exactly right (NT edits the mouth). Because the
+  0.10 margin floor sits just above that median, region certification is **partial**.
+  🟡 OPEN: keep the 0.10 floor (doc T13b spec) vs drop to the control-p99 value 0.05 (same
+  p99-of-controls rule the frozen gate used). Not lowering unilaterally; Pilot 1L rates inform it.
+
+### T14b — DF40 composite-pairing probe: GATE **FAIL** (pre-committed outcome)
+DF40 `ff` landmarks are 81-pt in CROP space, so the raw re-crop trick can't apply; the
+crop-to-crop affine variant gives median bg-MSE **~11,000** (QC ≤ 60) on simswap/inswap/
+faceswap — DF40 frames were re-sampled independently, so same-index FF++ frames don't
+register. **DF40 stays out of the gate; no re-preprocessing of the 159 GB tree** (exactly
+as originally recorded). Documented limitation. Blocks nothing.
+
+### Built (import-verified), pending 🔴 full runs
+- T14: `pilot_1l` rewritten to call the REAL gate (kills Error-1 overcount), video-level
+  sampling (`qc.frames_per_video: 8`), region vs composite regimes, fail-reason breakdown.
+- T15: prompt revision — abstention form `{"verdict_support":"no_certified_evidence",
+  "examined":[...]}` (new hash `126b045a663e1340`; old `3950a62e3b6d8ea8`); validator parses
+  it (`Claim.is_abstention`, `ValidatedResponse.abstained/manipulation_claims`);
+  `build_real_pair` for the real-image path; three-case `build_prefs` (fake-certified /
+  real-abstention / weakfake-abstention; tiers region≻composite≻rejected; never empty chosen);
+  `eval/metrics.py` FP-claim rate + coverage (raw, pre-suppression).
+- T16: `run_audit.py` — `--group localized|fullface|all`, `--split`, video sampling, real
+  images 1:1 (`split_label`, `n_manipulation_claims`), `family` provenance, `--oracle`
+  proposer→certifiable-region hit-rate.
+
+### T14 — Pilot 1L (fixed gate, test split, 8 frames/video): the blocker is RESOLVED
+```
+method            regime      frame-cert   video-cert   dominant fails
+NeuralTextures    region        0.342        0.867       margin+gap (non-mouth regions)
+Face2Face         region        0.146        0.400       margin+gap
+Deepfakes         composite     0.667        0.933       offset/gap/margin (mixed)
+FaceSwap          composite     0.725        1.000       mixed
+DeepFakeDetection composite     0.000        0.000       (ids not in FF++ test.json split)
+```
+Old audit = 0 CERTIFIED / 100% abstention. Now: region claims certify on localized methods
+(NT 87% video), composite claims certify on full-face swaps (DF/FS 93-100% video). Fail
+breakdown is margin+gap dominant on region regime — i.e. the non-load-bearing regions
+correctly fail; only genuinely-necessary ones pass. **Both scopes work.** (DeepFakeDetection
+= 0: its video ids are outside the FF++ train/test split json; DF/FS carry the composite arm.
+DFD would need its own split list — noted, not blocking.)
+
+### Audit-chain smoke (T15/T16): composite scope reclaims the whole_face claims
+First smoke (internvl3-8b, localized, tiny): 11 CERTIFIED / 26 claims — ALL 11 are
+**composite** (whole_face texture, NM 0.17-0.85), the exact claims the OLD gate discarded as
+UNTESTABLE. T13a's "reclassify the 32/67 whole_face claims as testable" is realized.
+Bug found+fixed: the real-image loop read `pair.fake_path` (a bogus manipulated_sequences
+path for reals) → FileNotFoundError. Added `PairSample.image_path` (youtube frame for reals,
+manipulated frame for fakes); `run_audit` uses it. Re-running to verify the real path +
+three-case prefs + FP-claim metric.
+
+### T15/T16/T18 — full chain verified (smoke, internvl3-8b, localized, 28 records)
+Real-image path fixed (`image_path`); audit reached FREEZE (smoke hash `a4cdbd0b63dbf21e`),
+14 fake + 14 real records.
+- **build_prefs (three-case):** 20 pairs — fake_certified 11 (composite), real_abstention 7,
+  weakfake_abstention 2. All three cases populate; tiers + contentful abstention target work.
+- **metrics:** FP-claim **50%** (7/14 reals asserted a manipulation) paired with coverage
+  **78.6%** (11/14 fakes certified). The FP↔coverage pair the DPO arm must improve (push FP
+  down, hold coverage). Reported as a pair (abstention-only is not the objective).
+
+**All T13–T18 code is built and verified at smoke scale.** Remaining = 🔴 UMAR-RUNS full
+runs: (a) region-gate calibration for effort/gend/forada (only fsfm calibrated); (b) full
+audit both proposers `--group all --split test --videos 40 --oracle`; (c) re-freeze +
+commit records; then T18 pool count vs the ≥500 trigger.
+
+### 🟡 OPEN decisions for Umar
+1. **Region margin floor 0.10 vs 0.05.** Pilot 1L: NT mouth median NM 0.085 sits just under
+   the 0.10 floor, so region cert is partial (NT 34% frame / 87% video). Dropping to the
+   control-p99 value (0.05) — the same p99-of-controls rule the frozen gate uses — would
+   certify the mouth directly. Doc T13b says keep 0.10. Composite scope is unaffected (it
+   carries most certifications anyway). Decision pending.
+2. **DeepFakeDetection** ids are outside the FF++ train/test split json → 0 samples. Add a
+   DFD-specific split list, or drop DFD from the composite set (DF/FS suffice)?
+3. **T17** (`trl` in isolated env `cec_dpo`) + T18 training: only after the full re-freeze,
+   and only on Umar's go if the pool clears ≥500.
+
+---
+
+## 2026-07-23 — T19–T22 (addendum CLAUDE_CODE_CEC_T19_T22.md)
+
+### Decisions applied (carried in, not re-asked)
+- **Region margin floor -> 0.05** (control-p99 rule, the same rule the frozen `gate:` uses;
+  pooled-control p99 = 0.0485 -> ceil_0.05 = 0.05). `params.yaml` now carries
+  `margin_floor: 0.05` and `sensitivity_margins: [0.05, 0.10]` — **every region table must
+  report BOTH**; the T13c separation plot is the justification artifact. Calibrator floor
+  updated to match.
+- **DeepFakeDetection dropped** from the composite set (ids outside the FF++ split json) in
+  `run_pilot_1l.py` and `run_audit.py`. Reason recorded inline.
+- **effort calibrated** as secondary instrument; gend/forada skipped.
+
+### 🔴 Blocking runs
+- **effort region calibration — DONE:** 780 region samples (train). pooled-control p99
+  **0.0303**, control-contrast p99 **0.0211** -> margin **0.05**, gap **0.05**, wrong 0.05,
+  offset 0.20 (matches what params.yaml already carries for effort).
+  Note: effort's region NMs are uniformly tiny (top region 0.018) — it barely responds to
+  region repair, consistent with its smaller full-mask NM (0.479 vs fsfm 0.713). **fsfm
+  remains the primary instrument for region-scope reporting.**
+- **Full audit (internvl3-8b, --group all --split test --videos 40 --oracle):** 300 fake +
+  300 real frames, RUNNING. Qwen-32B to follow.
+
+### Bug found + fixed (would have corrupted the headline figure)
+`calibrate_region_gate.py` wrote to a single `region_gate_calib.json` regardless of
+instrument, so the **effort run silently overwrote the fsfm rows**. The first generated
+Figure-1 was therefore plotting effort's profile while asserting a hardcoded "NM spikes at
+the mouth" caption that effort's data does not support. Fixed: (a) per-instrument output
+`region_gate_calib_<instrument>.json`; (b) Figure 1 caption is now **derived from the data**
+(reports the top region and whether NM concentrates, or explicitly says it does NOT);
+(c) separation plot is instrument-aware. fsfm calibration re-running to restore its rows.
+
+### Built (import-verified)
+- **T19 Disclosure Policy** (`cec/assembly/output_policy.py`, class `DisclosurePolicy`;
+  performs NO certification). Three-tier: region > composite > abstain. Modes
+  `certified_mode` ("certified evidence") / `screening_mode` ("causally supervised
+  evidence", never "certified"). Disagreement (detector REAL + proposer asserts) flagged
+  always, suppressed only when ON (default OFF for audit so FP-claim measures raw
+  behaviour). **All four outcomes + both modes unit-tested**, incl. that screening_mode
+  never emits the word "certified".
+- **T20** `cec/registration/dpo.yaml` (frozen: LoRA r=16/β=0.1/bf16/seed 17) + final
+  `train_dpo.py`. **Splits pre-committed in config**: thresholds calibrated on TRAIN, pairs
+  from TEST, Pilot D evaluates on VAL — all disjoint, so the eval split cannot be chosen
+  after seeing results. Refuses to train below the 500-pair trigger unless explicitly
+  overridden (override is recorded). `Proposer(adapter=...)` loads LoRA; cache key includes
+  the adapter so base/tuned never collide; base weights untouched.
+- **T21 Pilot D** (`cec/pilots/pilot_d/run_pilot_d.py`): base vs tuned over the SAME
+  held-out images through the SAME untouched gate; reports FP-claim, coverage, region vs
+  composite (never pooled) + ratio, oracle hit-rate, abstention (real/weak-fake/all), claim
+  diversity. **Pre-committed verdict function** unit-tested: correctly separates a genuine
+  win from the "went mute" failure (coverage collapse / diversity collapse / over-abstention).
+- **T22** `cec/eval/figures.py` (fig1 NM-localization, fig3 FP-vs-coverage) +
+  instrument-aware separation plot. Nothing hand-entered; all regenerated from results.
+
+### fsfm recalibration + Figure 1 (headline) — regenerated after the clobber fix
+fsfm recalibration reproduced the original numbers EXACTLY (pooled-control p99 0.0485,
+ctrl-contrast p99 0.0078 -> margin 0.05, gap 0.05) — the calibration is deterministic.
+`results/region_gate_calib/region_gate_calib_fsfm.json` restored.
+
+**Figure 1 (`results/figures/fig1_nm_localization.png`), caption derived from data:**
+on NeuralTextures the necessity margin **concentrates at the mouth (0.085, 5.7x the next
+region)** while **GT-mask IoU is diffuse and peaks at the FOREHEAD (max 0.15)** — a region
+with ~zero causal necessity. The causal signal localizes the manipulation; the dataset's own
+annotation points elsewhere. This is the paper's strongest single figure.
+Separation plot written to `region_separation_fsfm.png`.
+
+### Full audit (internvl3-8b) — INTERIM at 157/600 records (fakes only so far)
+- **Oracle hit-rate 0 / 52.** The gate independently finds >=1 certifiable region on
+  **52 of 157 images (33%)**; the untuned proposer cited such a region **0 times**.
+- Claims: 70 CERTIFIED (composite) / 154 REJECTED.
+This is the DPO motivation quantified: the certifiable evidence exists on a third of images
+and the untuned proposer never points at it. INTERIM — confirm on completion.
+
+### T22 tables verified (smoke records), incl. the mandated sensitivity row
+```
+family            scope      claims   cert@0.05  cert@0.10
+Face2Face         composite       5       1.00       1.00
+Face2Face         region          5       0.00       0.00
+NeuralTextures    composite       8       0.75       0.75
+NeuralTextures    region          8       0.00       0.00
+```
+Region/composite never pooled; region:composite ratio emitted. Sensitivity row is currently
+flat because the binding failures are gap/wrong, not margin — watch on the full audit.
+
+### 🔴 FULL AUDIT COMPLETE — internvl3-8b · fsfm · all 4 families · test split
+**594 records (295 fake / 299 real). FREEZE hash `18a835f8bbd746d0`.**
+(Prior hashes kept: original 0-certified audit `49ffffc4f486bd8b`; smoke `a4cdbd0b63dbf21e`.)
+
+```
+FP-claim rate (reals, raw)  58.2%  (174/299)
+Coverage (fakes)            49.1%  (145/295)
+Oracle hit-rate              0.0%  (0/62 eligible; 62/295 = 21% of images HAVE a
+                                    certifiable region — the proposer never cites one)
+abstention 74.7% · certified-claim NM median 0.763
+
+certification by family x scope (SENSITIVITY margin 0.05 vs 0.10)
+family            scope       claims   @0.05    @0.10
+Deepfakes         composite       69   0.638    0.638
+Deepfakes         region          75   0.000    0.000
+Face2Face         composite       38   0.711    0.711
+Face2Face         region          53   0.000    0.000
+FaceSwap          composite       46   0.826    0.826
+FaceSwap          region          61   0.000    0.000
+NeuralTextures    composite       46   0.783    0.783
+NeuralTextures    region          45   0.000    0.000
+region:composite ratio = 0.0 for every family
+```
+**Three findings.**
+1. **Region certification from proposer claims is 0.000 in every family**, while the gate
+   independently finds a certifiable region on 21% of images. The certifiable evidence
+   exists; the untuned proposer never points at it. This is THE motivation for the DPO arm
+   and the number Pilot D must move.
+2. **Composite carries all 145 certifications** (0.64-0.83 by family) — the whole-face claims
+   the pre-T13 gate discarded as UNTESTABLE.
+3. **The 0.05 vs 0.10 sensitivity row is IDENTICAL everywhere.** The margin choice changes
+   no reported number, because proposer region claims fail on gap/wrong, not margin. This
+   defuses the post-hoc-threshold critique outright — worth stating in the paper.
+
+### T18 — DPO POOL COUNT: **389 pairs — BELOW the >=500 trigger. STOPPING.**
+```
+by case:     fake_certified 148 · real_abstention 169 · weakfake_abstention 72
+by scope:    composite 147 · abstention 241 · region 1
+by proposer: internvl3-8b 389
+```
+Per the pre-committed T18 rule: **do not train.** 🟡 ASK-UMAR with the escalation ladder.
+Note the Qwen-32B audit has NOT yet run — it is ladder rungs (i)+(ii) combined and would
+roughly double the pool while giving the per-proposer hit-rate comparison T14d asks for.
+
+### Bug found by the Qwen audit: gate did not handle the abstention scope
+The first Qwen-32B audit crashed in `certify_claim`: it handled `spectral`/`untestable`
+scopes but NOT `abstention`, so an abstention-object claim (route `abstention`) fell through
+to `_certify` -> `region_mask(None)` -> KeyError. Why InternVL passed and Qwen didn't:
+InternVL abstained via EMPTY claim lists (no claim reaches the gate); Qwen follows the
+revised T15 prompt well and emits the abstention OBJECT form, which does reach the gate.
+Fix: `certify_claim` returns label `ABSTENTION` (reason=abstention, examined=[...]) for
+abstention-scope claims — never touches region_mask. Verified: downstream is safe
+(_manip_claims excludes reason=abstention; metrics use vr counts; tables skip non-region/
+composite scopes; assembly counts only CERTIFIED/UNTESTABLE). InternVL's 594 records are
+unaffected (no abstention-object claims). Qwen audit re-running with the fix.
+
+### 🔴 QWEN-32B AUDIT COMPLETE (after abstention fix) — the opposite personality
+**600 records (300/300). FREEZE hash `775d1dde3d6cbdc6`.**
+```
+                    InternVL-8B     Qwen-32B
+coverage (fakes)      49.1%           5.0%
+FP-claim (reals)      58.2%           1.3%
+oracle hit-rate        0.0%           4.8%  (3/63)
+region certs             0              3
+```
+Qwen ABSTAINS explicitly on almost everything (283 ABSTENTION claims) → honest on reals
+(1.3% FP) but mute on fakes (5% coverage); it is the ONLY proposer that ever cites a
+certifiable region (hit-rate 4.8%). Clean two-axis contrast: InternVL over-asserts, Qwen
+over-abstains. Qwen certs: 20 composite + 3 region.
+
+### T18 pool (pooled InternVL+Qwen) = 410 — still < 500
+by case: fake_certified 163 · real_abstention 173 · weakfake_abstention 74
+by scope: composite 159 · abstention 247 · region 4 · by proposer: internvl 389 / qwen 21
+Qwen adds only 21 (its no-claim abstentions leave nothing to contrast). Rung (2) done, short.
+
+### Rung (1): WIDEN — re-running InternVL audit at 65 videos/method (resumable)
+Per Umar's pre-authorized "2 then 1". InternVL yields ~2.4 pairs/video; 40->65 videos scales
+~389 -> ~630 pairs, clearing 500 on InternVL alone. Same test split, resumable store.
+
+### T18 TRIGGER CLEARED — pooled pool = 648 (>= 500)
+Widened InternVL audit (65 videos/method) -> store 949 records, FREEZE hash `7fc3614d1ac96745`.
+Pooled InternVL+Qwen preference pool:
+```
+total 648   fake_certified 245 (composite 240 / region 5) · real_abstention 283 · weakfake_abstention 120
+by proposer: internvl 627 / qwen 21   (InternVL alone = 627, clears 500)
+```
+Per the pre-committed T18 rule, >=500 -> proceed to DPO ON UMAR'S GO.
+Caveat for T20/T21: pool is abstention-heavy (403/648) and fake-certified pairs are almost
+all COMPOSITE (240 vs 5 region). DPO will mainly teach composite-certified >- rejected and
+abstention >- hallucination (on-spec). The region-specificity SECONDARY goal has thin data
+(5 region pairs) — read Pilot D's region:composite-shift metric with that in mind.
+
+### Frozen record hashes (provenance trail)
+- `49ffffc4f486bd8b`  original 0-certified audit (pre-T13; reportable history)
+- `a4cdbd0b63dbf21e`  T15/T16 smoke
+- `18a835f8bbd746d0`  InternVL audit, 40 videos/method
+- `775d1dde3d6cbdc6`  Qwen-32B audit, 40 videos/method
+- `7fc3614d1ac96745`  InternVL audit widened to 65 videos/method (the T20 training source)
+
+### T17 — cec_dpo env (isolated; GenD MUST stay unchanged)
+Decisions (Umar): (1) I create cec_dpo, verify GenD after; (2) train BOTH proposers.
+GenD baseline (to verify unchanged): torch 2.8.0+cu128 · transformers 4.56.2 · numpy 2.2.6
+· peft 0.14.0 · trl ABSENT. Approach: `conda create --clone GenD -n cec_dpo` (independent
+copy — does NOT touch GenD) then `pip install trl` into cec_dpo only. Clone already runs
+both VLMs + has peft; only trl is added.
+
+### T17 DONE — cec_dpo created, GenD verified unchanged
+`conda create --clone GenD -n cec_dpo` succeeded, then `pip install trl` into cec_dpo only.
+- cec_dpo: **trl 1.9.0** + datasets 5.0.0 (pulled by trl) + peft 0.14.0 + torch 2.8.0+cu128.
+- **GenD VERIFIED UNCHANGED**: torch 2.8.0+cu128 · transformers 4.56.2 · numpy 2.2.6 · peft
+  0.14.0, trl still ABSENT. Isolation holds — the frozen anchors are safe.
+Env python: `/data/umar/miniconda3/envs/cec_dpo/bin/python`.
+
+### T20 — MULTIMODAL DPO (Umar: multimodal, both proposers)
+Decision: image-conditioned DPO (not text-only), so the model learns "given THIS image,
+prefer the certified claim/abstention." `train_dpo.py` rewritten for TRL 1.9.0 vision DPO:
+`processing_class` = the VLM processor, dataset carries an `images` column + conversational
+prompt/chosen/rejected. Both proposers loaded via their NATIVE transformers classes
+(InternVLForConditionalGeneration / Qwen2_5_VLForConditionalGeneration — both present in tf
+4.56), avoiding InternVL's custom-chat incompatibility with TRL. `resolve_image_path` maps a
+record 'image' label to the frame PNG. Each proposer trains ONLY on its own pairs (a pair
+reflects that proposer's output distribution). LoRA r=16/β=0.1/bf16/seed17 + gradient
+checkpointing. Running a 1-step InternVL smoke to prove the vision DPO path accepts the arch
+before the full run.
+
+### T20 multimodal DPO — feasibility resolved (smoke tests)
+- **Qwen-32B: multimodal DPO WORKS.** Native `Qwen2_5_VLForConditionalGeneration` + processor
+  loads, the vision dataset builds, TRL DPOTrainer initialises and starts. Two trivial fixes:
+  TRL 1.9.0 dropped `max_prompt_length` (removed), and wandb prompted in no-tty (set
+  `report_to="none"`). Both applied.
+- **InternVL-8B: multimodal DPO BLOCKED.** The pinned `OpenGVLab/InternVL3-8B` is the
+  `internvl_chat` custom checkpoint; native `InternVLForConditionalGeneration` fails with an
+  embedding size mismatch (ckpt 151674x3584 vs native 151936x4096), and its custom
+  image-tiling processor is not compatible with TRL's vision-DPO collator.
+- **THE BIND (🟡 for Umar):** the data-rich proposer (InternVL, 627 pool pairs) can't train
+  multimodally via TRL; the multimodal-capable one (Qwen) has only 21 pool pairs. Options:
+  (1) InternVL text-only + Qwen multimodal; (2) custom InternVL collator (hours);
+  (3) grow Qwen's pool via more Qwen audit; (4) find/convert an HF-native InternVL3 ckpt.
+  Awaiting Umar's direction. All state durable on /data; resume-safe.
