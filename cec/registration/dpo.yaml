@@ -1,0 +1,52 @@
+# CEC — DPO training config (T20). FROZEN: the training arm is the only trained
+# component; detectors and instruments stay frozen (CURRENT_STATE rule 4).
+#
+# Pre-commit (T20): the evaluation is run by the UNTOUCHED gate on a HELD-OUT
+# split the DPO data never saw. That split is named here so it cannot be chosen
+# after seeing results.
+
+meta:
+  written: 2026-07-23
+  task: T20
+  trains: proposer only            # never a detector, never the gate
+
+# --- data splits (pre-committed) -------------------------------------------
+splits:
+  # Preference pairs are built from audit records on this split.
+  train_pairs_split: test          # FF++ test split (the audit split)
+  # Pilot D evaluates base vs tuned HERE. Disjoint from train_pairs_split.
+  heldout_eval_split: val          # FF++ val split (70 pairs) — never in DPO data
+  note: >
+    region-gate thresholds were calibrated on TRAIN, preference pairs come from
+    TEST, and the before/after evaluation runs on VAL. All three disjoint.
+
+# --- model ------------------------------------------------------------------
+model:
+  order: [internvl3-8b, qwen2.5-vl-32b-instruct]   # InternVL first (cheaper)
+  keep_base_untouched: true        # LoRA adapters only; base weights never overwritten
+
+# --- LoRA + DPO hyperparameters (frozen) ------------------------------------
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+dpo:
+  beta: 0.1
+  learning_rate: 5.0e-6
+  num_train_epochs: 1
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  max_length: 1024
+  max_prompt_length: 768
+  bf16: true
+  seed: 17
+  save_strategy: epoch             # checkpoint per epoch
+  logging_steps: 10
+
+# --- environment ------------------------------------------------------------
+env:
+  name: cec_dpo                    # isolated env (T17); NEVER install trl into GenD
+  forbidden_env: GenD              # produced every frozen anchor — do not touch
+  verify_after_install: [torch, transformers, numpy]   # record versions in the LOG
