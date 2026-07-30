@@ -1276,3 +1276,85 @@ before the full run.
   (1) InternVL text-only + Qwen multimodal; (2) custom InternVL collator (hours);
   (3) grow Qwen's pool via more Qwen audit; (4) find/convert an HF-native InternVL3 ckpt.
   Awaiting Umar's direction. All state durable on /data; resume-safe.
+
+claude --resume 6b2efe18-7499-45f9-a1bf-ce78aefea3bb
+
+## 2026-07-24 — T20 resolution: per-proposer training mode (Umar's decision)
+The multimodal bind is resolved by training each proposer the way its architecture allows,
+and DISCLOSING that the two regimes differ:
+- **Qwen-32B -> MULTIMODAL DPO** (native `Qwen2_5_VLForConditionalGeneration` + processor,
+  TRL vision path). Verified working; 21 pool pairs.
+- **InternVL-8B -> TEXT-ONLY DPO** on its underlying language model. Its `internvl_chat`
+  checkpoint cannot load in the native class (embedding 151674x3584 vs 151936x4096) and its
+  custom tiling processor cannot drive TRL's vision collator — but `llm_config.architectures`
+  is `Qwen2ForCausalLM`, a standard causal LM, so the LM trains text-only and the LoRA
+  adapter applies to `model.language_model` at inference. 627 pool pairs.
+`train_dpo.py` now dual-mode (`_MODE` per proposer, `--mode` override). Fixes applied along
+the way: TRL 1.9.0 dropped `max_prompt_length`; wandb disabled (`report_to="none"`, no-tty).
+**Caveat to report in the paper:** the two proposers are trained under different regimes, so
+their Pilot D deltas are not a like-for-like comparison of DPO efficacy — each is a
+before/after against ITSELF.
+
+### T20 — InternVL DPO TRAINED (text mode, 627 pairs)
+79 steps · 1 epoch · 243s wall-clock · LoRA saved to `cec/dpo/lora/internvl3-8b`
+(base weights untouched). Loss curve is textbook:
+```
+            start        end
+loss        0.6931(ln2)  0.1573
+margins     0.000        2.781
+accuracies  0.688        0.985
+rewards/chosen +1.42 · rewards/rejected -1.36
+```
+The model learned to prefer certified claims / contentful abstentions over uncertified
+ones. Qwen (multimodal, 21 pairs) training next — expect little movement at that pool size;
+a null there is a data-quantity artifact, NOT evidence about DPO.
+
+### T20 — Qwen DPO trained but is a NULL (pool-size artifact, not a DPO finding)
+21 pairs -> ~3 optimizer steps, 37s. `train_loss 0.6912` (ln2 = 0.6931, i.e. essentially
+unmoved), `rewards/margins 0.004`, `rewards/accuracies 0.381` (below chance).
+```
+                InternVL (627 pairs, text)   Qwen (21 pairs, multimodal)
+loss            0.693 -> 0.157               0.693 -> 0.691
+margins         2.781                        0.004
+accuracies      0.985                        0.381
+steps           79                           ~3
+```
+**Qwen's Pilot D delta must be read as "effectively untrained", NOT as evidence that DPO
+fails.** Its pool is too small because Qwen abstains ~95% of the time, so few images yield a
+certified/rejected contrast. Reporting it honestly as a data-quantity limitation.
+
+### Adapter application correctness (fixed before Pilot D)
+InternVL's adapter was trained on its LANGUAGE MODEL, so `Proposer` now attaches it to
+`model.language_model` for InternVL rather than the full model (where PEFT matches by
+module-name suffix and could reach the vision tower). Verified: base vs tuned load and
+produce DIFFERENT output on the same image, so the tuned path is genuinely active.
+
+### T21 — PILOT D (held-out VAL, untouched gate): PRIMARY NOT MET (honest negative)
+```
+InternVL-8B (627 pairs, TEXT-only)     base    tuned
+fp_claim_rate                          0.625   0.713   <- UP (wrong way)
+coverage                               0.377   0.462   UP
+abstention_all                         0.349   0.242   DOWN
+claim_diversity                        7       17      UP
+region:composite                       0.000   0.015
+oracle_hit_rate                        0.000   0.031
+VERDICT: PRIMARY NOT MET (FP-claim did not drop)
+
+Qwen-32B (21 pairs, multimodal)        base    tuned   -> base==tuned (untrained; abstains 99%)
+```
+**Diagnosis (a real finding).** DPO made InternVL MORE ASSERTIVE across the board
+(abstention down, coverage up, diversity up, FP up) — not more discriminating. Cause:
+TEXT-only DPO is ILL-POSED here. The frozen prompt carries NO image, so all 627 pairs share
+an IDENTICAL input with CONTRADICTORY labels (chosen=abstain vs chosen=a specific claim,
+a distinction that lives in the image text-only training cannot see). DPO can only shift the
+UNCONDITIONAL output distribution -> exactly the FP-up/abstention-down signature observed.
+The training loss fell cleanly (0.69->0.16) because the two TEXT sets are separable, but
+that separation is not the wanted behavior. This vindicates the multimodal requirement:
+InternVL's checkpoint blocks TRL multimodal DPO, and Qwen (which supports it) is too
+abstention-heavy to yield a trainable pool.
+
+**What stands (unaffected):** the counterfactual gate + hallucination-free guarantee;
+composite-scope certification (reclaims whole_face claims); the NM-localization figure
+(mouth 5.7x vs GT-mask peaking at forehead); the oracle finding (21% of images have a
+certifiable region the untuned proposer never cites). The DPO arm is an honest negative
+under the achievable regimes; "an

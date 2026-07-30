@@ -125,7 +125,14 @@ class Proposer:
         # T20: apply the DPO LoRA adapter, if any. Base weights stay untouched.
         if self.adapter:
             from peft import PeftModel
-            self._model = PeftModel.from_pretrained(self._model, self.adapter)
+            # InternVL was trained TEXT-ONLY on its underlying language model, so the
+            # adapter must be attached THERE — not to the full model, where PEFT would
+            # match by module-name suffix and could touch the vision tower.
+            target = getattr(self._model, "language_model", None)
+            if self.name.startswith("internvl") and target is not None:
+                self._model.language_model = PeftModel.from_pretrained(target, self.adapter)
+            else:
+                self._model = PeftModel.from_pretrained(self._model, self.adapter)
             self._model.eval()
 
     # -- cache ---------------------------------------------------------------

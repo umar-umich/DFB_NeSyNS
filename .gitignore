@@ -4,6 +4,7 @@
 *.pyc
 *.pth
 *.pt
+*.safetensors
 *.dat
 *.log
 *log*

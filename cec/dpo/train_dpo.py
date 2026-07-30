@@ -1,4 +1,4 @@
-"""T20 — MULTIMODAL DPO training (LoRA, proposer only, AFTER the audit freeze).
+"""T20 — DPO training (LoRA, proposer only, AFTER the audit freeze).
 
 The only trained component in CEC. Detectors, instruments and the gate stay
 frozen (CURRENT_STATE rule 4); the proposer is preference-tuned on the gate's own
@@ -34,10 +34,22 @@ sys.path.insert(0, str(REPO))
 
 CONFIG_PATH = REPO / "cec" / "registration" / "dpo.yaml"
 
-# transformers class + processor per proposer (both native in transformers 4.56).
+# transformers class per proposer (multimodal path only).
 _MODEL_CLASS = {
-    "internvl3-8b": "InternVLForConditionalGeneration",
     "qwen2.5-vl-32b-instruct": "Qwen2_5_VLForConditionalGeneration",
+}
+
+# Training MODE per proposer (Umar's decision: train each as its arch allows).
+#   multimodal  image-conditioned DPO via TRL's vision path (native processor).
+#   text        DPO on the underlying causal LM only.
+# InternVL3-8B is pinned to the `internvl_chat` checkpoint, which the native
+# transformers class cannot load (embedding 151674x3584 vs native 151936x4096)
+# and whose custom dynamic-tiling processor TRL's vision collator cannot drive.
+# Its language model IS a standard Qwen2ForCausalLM, so we train that text-only
+# and the LoRA adapter applies to `model.language_model` at inference.
+_MODE = {
+    "internvl3-8b": "text",
+    "qwen2.5-vl-32b-instruct": "multimodal",
 }
 
 
@@ -54,6 +66,14 @@ def load_pairs(prefs_name: str):
             return [json.loads(l) for l in cand.read_text().splitlines() if l.strip()]
     raise FileNotFoundError(f"preference file missing: {prefs_name}[_prefs].jsonl in {data} "
                             f"(run build_prefs.py)")
+
+
+def build_text_dataset(pairs, model_name):
+    """Plain text DPO dataset (prompt -> chosen/rejected), this proposer's pairs only."""
+    from datasets import Dataset
+    rows = [{"prompt": p["prompt"], "chosen": p["chosen"], "rejected": p["rejected"]}
+            for p in pairs if p.get("proposer") == model_name]
+    return Dataset.from_list(rows)
 
 
 def build_vision_dataset(pairs, model_name):
@@ -88,16 +108,19 @@ def main():
     cfg = load_config()
     ap = argparse.ArgumentParser()
     ap.add_argument("--prefs", required=True)
-    ap.add_argument("--model", default=cfg["model"]["order"][0], choices=list(_MODEL_CLASS))
+    ap.add_argument("--model", default=cfg["model"]["order"][0], choices=list(_MODE))
     ap.add_argument("--out", default=None)
     ap.add_argument("--force-small-pool", action="store_true")
     ap.add_argument("--max-steps", type=int, default=-1, help="cap steps (smoke test); -1 = full")
+    ap.add_argument("--mode", choices=["multimodal","text"], default=None,
+                    help="override the per-proposer default training mode")
     args = ap.parse_args()
     out = args.out or str(REPO / "cec" / "dpo" / "lora" / args.model)
 
     pairs = load_pairs(args.prefs)
     mine = [p for p in pairs if p.get("proposer") == args.model]
-    print(f"[dpo] {len(pairs)} pooled pairs · {len(mine)} for {args.model} · MULTIMODAL")
+    mode_label = (args.mode or _MODE[args.model]).upper()
+    print(f"[dpo] {len(pairs)} pooled pairs · {len(mine)} for {args.model} · {mode_label}")
     print(f"[dpo] splits — pairs '{cfg['splits']['train_pairs_split']}', held-out eval "
           f"'{cfg['splits']['heldout_eval_split']}' (pre-committed)")
     if len(pairs) < 500 and not args.force_small_pool:
@@ -119,17 +142,33 @@ def main():
 
     from cec.registration import load_pins
     pin = next(c for c in load_pins()["proposer"]["candidates"] if c["name"] == args.model)
-    model_cls = getattr(tf, _MODEL_CLASS[args.model])
+    mode = args.mode or _MODE[args.model]
 
-    print(f"[dpo] loading {args.model} ({model_cls.__name__}) + processor ...")
-    processor = AutoProcessor.from_pretrained(pin["repo_id"], revision=pin.get("revision"),
-                                              trust_remote_code=True)
-    model = model_cls.from_pretrained(
-        pin["repo_id"], revision=pin.get("revision"), torch_dtype="bfloat16",
-        trust_remote_code=True, device_map="auto")
-
-    ds = build_vision_dataset(pairs, args.model)
-    print(f"[dpo] vision dataset: {len(ds)} image-conditioned pairs")
+    if mode == "multimodal":
+        model_cls = getattr(tf, _MODEL_CLASS[args.model])
+        print(f"[dpo] MULTIMODAL · loading {args.model} ({model_cls.__name__}) + processor ...")
+        processing_class = AutoProcessor.from_pretrained(
+            pin["repo_id"], revision=pin.get("revision"), trust_remote_code=True)
+        model = model_cls.from_pretrained(
+            pin["repo_id"], revision=pin.get("revision"), torch_dtype="bfloat16",
+            trust_remote_code=True, device_map="auto")
+        ds = build_vision_dataset(pairs, args.model)
+        print(f"[dpo] vision dataset: {len(ds)} image-conditioned pairs")
+    else:  # text-only: train the underlying causal LM
+        from transformers import AutoModel, AutoTokenizer
+        print(f"[dpo] TEXT-ONLY · loading {args.model} and extracting its language model ...")
+        processing_class = AutoTokenizer.from_pretrained(
+            pin["repo_id"], revision=pin.get("revision"), trust_remote_code=True, use_fast=False)
+        full = AutoModel.from_pretrained(
+            pin["repo_id"], revision=pin.get("revision"), torch_dtype="bfloat16",
+            trust_remote_code=True, low_cpu_mem_usage=True, device_map="auto")
+        model = getattr(full, "language_model", None)
+        if model is None:
+            print("[dpo] could not reach .language_model on this checkpoint.")
+            return 5
+        print(f"[dpo] language model: {type(model).__name__}")
+        ds = build_text_dataset(pairs, args.model)
+        print(f"[dpo] text dataset: {len(ds)} pairs")
 
     lc, dc = cfg["lora"], cfg["dpo"]
     lora = LoraConfig(r=lc["r"], lora_alpha=lc["alpha"], lora_dropout=lc["dropout"],
@@ -146,10 +185,10 @@ def main():
         report_to="none",  # no wandb (headless); loss goes to stdout
     )
     trainer = DPOTrainer(model=model, args=train_args, train_dataset=ds,
-                         processing_class=processor, peft_config=lora)
+                         processing_class=processing_class, peft_config=lora)
     trainer.train()
     trainer.save_model(out)
-    print(f"[dpo] LoRA adapters saved to {out} (base weights untouched)")
+    print(f"[dpo] LoRA adapters saved to {out} (mode={mode}; base weights untouched)")
     print(f"[dpo] next: Pilot D on held-out '{cfg['splits']['heldout_eval_split']}' via the "
           f"UNTOUCHED gate.")
     return 0
