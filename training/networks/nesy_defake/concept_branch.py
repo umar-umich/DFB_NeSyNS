@@ -58,8 +58,23 @@ class ConceptBranch(nn.Module):
         consistency_rules_version: str = 'v7',
         retained_predicates_yaml: str = None,
         substrate_mode: str = 'both',
+        evidence_head: str = 'mlp',
     ):
         super().__init__()
+        # evidence_head selects how the concept signals become 2-d evidence:
+        #   'mlp'         — the original nonlinear MLP over the substrate_mode
+        #                   input (default; unchanged behavior).
+        #   'rule_linear' — Ev_rules = softplus(W @ nu + b), W shape (2, k) with
+        #                   SIGNED weights (non-negativity NOT forced: positive-
+        #                   to-fake vs positive-to-real rules are the reading).
+        #                   Under substrate_mode='both' the substrate goes
+        #                   through its OWN small linear head and the two
+        #                   evidences ADD, so rule contributions stay isolable.
+        if evidence_head not in ('mlp', 'rule_linear'):
+            raise ValueError(
+                f"Unknown evidence_head: {evidence_head!r} "
+                f"(expected 'mlp' or 'rule_linear')")
+        self.evidence_head = evidence_head
         # substrate_mode controls what feeds the concept MLP:
         #   'both'           [x_sem || violations]  (default; input_dim = combined+rules)
         #   'rules_only'     violations only        (input_dim = rules)
@@ -106,21 +121,47 @@ class ConceptBranch(nn.Module):
             input_dim = rules_dim
         else:  # substrate_only
             input_dim = combined_dim
-        self.concept_mlp = nn.Sequential(
-            nn.LayerNorm(input_dim),
-            nn.Linear(input_dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, num_classes),
-        )
-        nn.init.normal_(self.concept_mlp[-1].weight, std=0.01)
-        nn.init.zeros_(self.concept_mlp[-1].bias)
+        self._input_dim = input_dim
 
-        logger.info(
-            f"[ConceptBranch] {input_dim}-d input "
-            f"(substrate_mode={substrate_mode}: {combined_dim} combined + "
-            f"{rules_dim} rules, version={consistency_rules_version}) "
-            f"-> {hidden_dim} hidden -> {num_classes} evidence")
+        # Whether rules / substrate contribute to the EVIDENCE under this mode.
+        self._rules_in_evidence = substrate_mode in ('both', 'rules_only')
+        self._substrate_in_evidence = substrate_mode in ('both', 'substrate_only')
+
+        if evidence_head == 'mlp':
+            self.concept_mlp = nn.Sequential(
+                nn.LayerNorm(input_dim),
+                nn.Linear(input_dim, hidden_dim),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, num_classes),
+            )
+            nn.init.normal_(self.concept_mlp[-1].weight, std=0.01)
+            nn.init.zeros_(self.concept_mlp[-1].bias)
+            logger.info(
+                f"[ConceptBranch] head=mlp, {input_dim}-d input "
+                f"(substrate_mode={substrate_mode}: {combined_dim} combined + "
+                f"{rules_dim} rules, version={consistency_rules_version}) "
+                f"-> {hidden_dim} hidden -> {num_classes} evidence")
+        else:  # rule_linear
+            # Signed rule->evidence weights W (num_classes, k). Only built when
+            # rules feed the evidence under this substrate_mode.
+            if self._rules_in_evidence:
+                self.rule_linear = nn.Linear(rules_dim, num_classes)
+                nn.init.normal_(self.rule_linear.weight, std=0.05)
+                nn.init.zeros_(self.rule_linear.bias)
+            # Substrate's own small linear head — kept separate so the two
+            # evidences ADD and rule contributions remain isolable.
+            if self._substrate_in_evidence:
+                self.substrate_head = nn.Linear(combined_dim, num_classes)
+                nn.init.normal_(self.substrate_head.weight, std=0.01)
+                nn.init.zeros_(self.substrate_head.bias)
+            logger.info(
+                f"[ConceptBranch] head=rule_linear "
+                f"(substrate_mode={substrate_mode}: "
+                f"rules_in_evidence={self._rules_in_evidence}, "
+                f"substrate_in_evidence={self._substrate_in_evidence}, "
+                f"k={rules_dim}, version={consistency_rules_version}) "
+                f"-> additive softplus evidence")
 
     def forward(self, combined_features: torch.Tensor,
                 predicate_mask: torch.Tensor = None) -> dict:
@@ -146,7 +187,8 @@ class ConceptBranch(nn.Module):
             mask = predicate_mask.to(
                 dtype=violations.dtype, device=violations.device)
             violations = violations * mask
-        # Build the MLP input per substrate_mode.
+        # Build the diagnostic concept_input per substrate_mode (what the branch
+        # conceptually consumes; identical across heads).
         if self.substrate_mode == 'both':
             concept_input = torch.cat(
                 [combined_features, violations], dim=1)               # (B, 58+K)
@@ -154,13 +196,36 @@ class ConceptBranch(nn.Module):
             concept_input = violations                                # (B, K)
         else:  # substrate_only
             concept_input = combined_features                         # (B, 58)
-        logits = self.concept_mlp(concept_input)                      # (B, 2)
-        evidence = F.softplus(logits)                                 # (B, 2)
+
+        rule_contributions = None
+        if self.evidence_head == 'mlp':
+            logits = self.concept_mlp(concept_input)                  # (B, 2)
+            evidence = F.softplus(logits)                             # (B, 2)
+        else:  # rule_linear — additive softplus evidence, isolable rules
+            ev_parts, logit_parts = [], []
+            if self._rules_in_evidence:
+                rule_logits = self.rule_linear(violations)            # (B, 2)
+                ev_parts.append(F.softplus(rule_logits))
+                logit_parts.append(rule_logits)
+                # Per-rule signed contribution to each class: W[c,j]*nu[j].
+                # W: (2, K) -> (1, K, 2); nu: (B, K) -> (B, K, 1).
+                W = self.rule_linear.weight                           # (2, K)
+                rule_contributions = (violations.unsqueeze(-1)
+                                      * W.t().unsqueeze(0))           # (B, K, 2)
+            if self._substrate_in_evidence:
+                sub_logits = self.substrate_head(combined_features)   # (B, 2)
+                ev_parts.append(F.softplus(sub_logits))
+                logit_parts.append(sub_logits)
+            evidence = sum(ev_parts)                                  # (B, 2)
+            # `logits` is a non-load-bearing proxy (fusion consumes 'evidence');
+            # softplus(logits) != evidence when two heads add, by design.
+            logits = sum(logit_parts)
 
         return {
             'logits': logits,
             'evidence': evidence,
             'violations': violations,
             'concept_input': concept_input,
+            'rule_contributions': rule_contributions,   # (B, K, 2) or None
         }
 
