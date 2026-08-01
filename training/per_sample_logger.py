@@ -167,33 +167,77 @@ def _parse_name(name: str):
     return video_id, frame_idx
 
 
-def write_per_sample_csv(path: str, img_names, labels, extras: dict) -> None:
-    """Write the per-frame CSV (one row per frame)."""
+def _method_from_path(name: str) -> str:
+    """FF++ manipulation / source type from the image path, '' if not FF++.
+
+    FF++ layout: .../{manipulated_sequences|original_sequences}/<METHOD>/c23/
+    frames/<vid>/<frame>. Returns the <METHOD> token (Deepfakes, Face2Face,
+    FaceSwap, NeuralTextures, youtube, actors, ...). Other datasets (Celeb-DF,
+    DFDC, ...) lack these anchors and yield '' — which is what Tasks 5/6 want
+    (FF++-only manipulation breakdown / leave-one-manipulation-out).
+    """
+    parts = name.replace('\\', '/').split('/')
+    for anchor in ('manipulated_sequences', 'original_sequences'):
+        if anchor in parts:
+            k = parts.index(anchor)
+            if k + 1 < len(parts):
+                return parts[k + 1]
+    return ''
+
+
+def _spe(label_spe, i):
+    """Specific-method label at row i as int, or '' if unavailable."""
+    if label_spe is None:
+        return ''
+    try:
+        return int(label_spe[i])
+    except (TypeError, ValueError, IndexError):
+        return ''
+
+
+def write_per_sample_csv(path: str, img_names, labels, extras: dict,
+                         label_spe=None) -> None:
+    """Write the per-frame CSV (one row per frame).
+
+    When *label_spe* is given, a `label_spe` column (the dataset's specific-
+    method label — e.g. FF++ manipulation type) is written after `label`.
+    """
     os.makedirs(os.path.dirname(path), exist_ok=True)
     rule_cols = _rule_cols(extras)
     numeric = _NUMERIC + rule_cols
+    has_spe = label_spe is not None
+    spe_col = ['label_spe'] if has_spe else []
     n = len(img_names)
     with open(path, 'w', newline='') as f:
         w = csv.writer(f)
-        w.writerow(FRAME_COLUMNS + rule_cols)
+        w.writerow(FRAME_COLUMNS[:3] + ['method'] + spe_col
+                   + FRAME_COLUMNS[3:] + rule_cols)
         for i in range(n):
             vid, frame_idx = _parse_name(img_names[i])
-            row = [vid, frame_idx, int(labels[i])]
+            row = [vid, frame_idx, int(labels[i]), _method_from_path(img_names[i])]
+            if has_spe:
+                row.append(_spe(label_spe, i))
             row += [_fmt(extras[c][i]) for c in numeric]
             w.writerow(row)
 
 
-def write_video_aggregate_csv(path: str, img_names, labels, extras: dict) -> None:
+def write_video_aggregate_csv(path: str, img_names, labels, extras: dict,
+                              label_spe=None) -> None:
     """Write the video-level aggregate CSV (mean over frames per video)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     rule_cols = _rule_cols(extras)
     numeric = _NUMERIC + rule_cols
-    agg = defaultdict(lambda: {'label': None, 'n': 0,
-                               **{c: [] for c in numeric}})
+    has_spe = label_spe is not None
+    spe_col = ['label_spe'] if has_spe else []
+    agg = defaultdict(lambda: {'label': None, 'method': '', 'label_spe': '',
+                               'n': 0, **{c: [] for c in numeric}})
     for i in range(len(img_names)):
         vid, _ = _parse_name(img_names[i])
         rec = agg[vid]
         rec['label'] = int(labels[i])
+        rec['method'] = _method_from_path(img_names[i])
+        if has_spe:
+            rec['label_spe'] = _spe(label_spe, i)
         rec['n'] += 1
         for c in numeric:
             v = extras[c][i]
@@ -201,17 +245,22 @@ def write_video_aggregate_csv(path: str, img_names, labels, extras: dict) -> Non
                 rec[c].append(float(v))
     with open(path, 'w', newline='') as f:
         w = csv.writer(f)
-        w.writerow(['video_id', 'label', 'num_frames'] + numeric)
+        w.writerow(['video_id', 'label', 'method'] + spe_col
+                   + ['num_frames'] + numeric)
         for vid, rec in agg.items():
-            row = [vid, rec['label'], rec['n']]
+            row = [vid, rec['label'], rec['method']]
+            if has_spe:
+                row.append(rec['label_spe'])
+            row.append(rec['n'])
             row += [_fmt(np.mean(rec[c]) if rec[c] else _NAN) for c in numeric]
             w.writerow(row)
 
 
-def write_logs(out_dir: str, dataset_name: str, img_names, labels, extras: dict):
+def write_logs(out_dir: str, dataset_name: str, img_names, labels, extras: dict,
+               label_spe=None):
     """Write both per-frame and video-aggregate CSVs; returns the two paths."""
     frame_path = os.path.join(out_dir, f'per_sample_{dataset_name}.csv')
     video_path = os.path.join(out_dir, f'per_sample_video_{dataset_name}.csv')
-    write_per_sample_csv(frame_path, img_names, labels, extras)
-    write_video_aggregate_csv(video_path, img_names, labels, extras)
+    write_per_sample_csv(frame_path, img_names, labels, extras, label_spe)
+    write_video_aggregate_csv(video_path, img_names, labels, extras, label_spe)
     return frame_path, video_path

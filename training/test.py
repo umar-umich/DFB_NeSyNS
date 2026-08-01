@@ -577,7 +577,8 @@ def main():
         # every ablation_mode; absent branches leave blank cells.
         try:
             frame_csv, video_csv = per_sample_logger.write_logs(
-                out_dir, dataset_name, img_names, labels, per_sample_extras)
+                out_dir, dataset_name, img_names, labels, per_sample_extras,
+                label_spe=label_spe)
             print(f'  Per-sample CSV: {frame_csv}')
             print(f'  Per-video  CSV: {video_csv}')
         except Exception as e:
