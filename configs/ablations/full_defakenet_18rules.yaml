@@ -243,20 +243,9 @@ foundation_models:
   #     mean: [0.481, 0.458, 0.408]
   #     std:  [0.269, 0.261, 0.276]
 
-  frequency:
-    name:             fad_dinov2
-    model_path:       facebook/dinov2-large
-    output_dim:       1024
-    freeze_backbone:  true
-    train_layernorms: false
-    fad_mode:         single
-    fad_learnable:    true
-    freq_emphasis_init: 0.1
-    normalization:
-      keep_raw:       true
-    clip_normalization:
-      mean: [0.481, 0.458, 0.408]
-      std:  [0.269, 0.261, 0.276]
+  # NOTE: the `frequency:` foundation-model block was REMOVED — the frequency
+  # branch (FrequencyFeatureExtractor) is archived dead code and active_branches
+  # is ['spatial']. The spatial stream above is the only foundation model built.
 
 fusion:
   type:           attention

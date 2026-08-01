@@ -1,17 +1,20 @@
 """
 Factory for Ablation-4 causal branches.
 
-Selects one of three implementations based on config['causal_branch']['type']:
-  - 'ccv'          : CausalConstraintVerificationBranch (default, novel)
+Selects one of two active implementations based on config['causal_branch']['type']:
+  - 'ccv'          : CausalConstraintVerificationBranch (novel)
   - 'improved_scm' : ImprovedCausalBranch (nonlinear SCM with 4 sub-graphs)
-  - 'simple'       : SimplifiedCausalBranch (legacy linear SCM)
+
+  - 'simple'       : SimplifiedCausalBranch — ARCHIVED (dead code) to
+                     attic/training/networks/nesy_defake/simplified_causal_branch.py.
+                     Selecting it now raises; use 'improved_scm' or 'ccv'.
 """
 
 import torch.nn as nn
 
 
 def build_causal_branch(sc_cfg: dict) -> nn.Module:
-    ctype = sc_cfg.get('type', 'simple')
+    ctype = sc_cfg.get('type', 'improved_scm')
 
     if ctype == 'ccv':
         from networks.nesy_defake.ccv_branch import (
@@ -47,13 +50,12 @@ def build_causal_branch(sc_cfg: dict) -> nn.Module:
             recon_weight=sc_cfg.get('recon_weight', 0.5),
         )
 
-    from networks.nesy_defake.concept_branch import SimplifiedCausalBranch
-    return SimplifiedCausalBranch(
-        backbone_dim=sc_cfg.get('backbone_dim', 1024),
-        z_causal_dim=sc_cfg.get('z_causal_dim', 32),
-        curated_dim=sc_cfg.get('curated_dim', 26),
-        rules_dim=sc_cfg.get('rules_dim', 12),
-        forensic_dim=sc_cfg.get('forensic_dim', 83),
-        hidden_dim=sc_cfg.get('hidden_dim', 64),
-        sparsity_penalty=sc_cfg.get('sparsity_penalty', 0.01),
-    )
+    if ctype == 'simple':
+        raise ValueError(
+            "causal_branch.type='simple' (SimplifiedCausalBranch) is ARCHIVED to "
+            "attic/training/networks/nesy_defake/simplified_causal_branch.py. "
+            "Use 'improved_scm' or 'ccv'.")
+
+    raise ValueError(
+        f"Unknown causal_branch.type={ctype!r}; expected 'improved_scm' or 'ccv' "
+        f"('simple' is archived).")

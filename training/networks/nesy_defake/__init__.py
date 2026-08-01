@@ -4,10 +4,10 @@ Modular components for deepfake detection
 """
 
 # Foundation Models
+# NOTE: TemporalFeatureExtractor + FrequencyFeatureExtractor archived to attic/
+# (dead code; spatial-only pipeline). Only the spatial extractor remains.
 from .foundation_models import (
-    TemporalFeatureExtractor,
     SpatialFeatureExtractor,
-    FrequencyFeatureExtractor
 )
 
 # Fusion Modules
@@ -29,9 +29,7 @@ from .classifiers import (
 
 __all__ = [
     # Foundation models
-    'TemporalFeatureExtractor',
     'SpatialFeatureExtractor',
-    'FrequencyFeatureExtractor',
     # Fusion
     'MultiModalFusion',
     'CrossModalAttention',
