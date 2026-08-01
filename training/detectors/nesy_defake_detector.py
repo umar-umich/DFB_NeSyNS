@@ -69,6 +69,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         self._use_causal_branch = self.ablation_mode == 'causal_edl'
         self._use_nesy_edl = False  # overridden below if edl.nesy_fusion=true
 
+        # Concept evidence kill-switch (default true). When false the concept
+        # branch STILL runs — its violations still feed the ImprovedSCM identity
+        # sub-graph — but its EVIDENCE is excluded from EvidenceFusion, and hence
+        # from PBAS branch_evidences and the IBDC pair set (both read
+        # branch_evidences, which the fusion builds). Isolates the concept
+        # branch's evidence contribution from its violations-as-SCM-input role.
+        self._concept_evidence_in_fusion = bool(
+            config.get('concept_branch', {}).get('evidence_in_fusion', True))
+
         # -- Backbone + projection head -------------------------------------
         self.build_backbone(config)
         proj_dim = config['foundation_models']['spatial']['output_dim']
@@ -147,6 +156,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     'consistency_rules_version', 'v7'),
                 retained_predicates_yaml=cb_cfg.get(
                     'retained_predicates_yaml', None),
+                substrate_mode=cb_cfg.get('substrate_mode', 'both'),
             )
 
         # -- Causal branch (Ablation 4: CCV / ImprovedSCM / Simple) ----------
@@ -161,8 +171,14 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         # -- Evidence fusion (CMEF | conditioned | static scalar gates) -----
         if self._use_edl:
             gate_cfg = config.get('evidence_gate', {})
+            # If the concept-evidence kill-switch is off, the fusion must NOT
+            # allocate a concept gate / CMEF branch — otherwise its symbolic-
+            # branch count would mismatch the (concept-less) evidence list at
+            # forward time.
+            fusion_use_concept = (
+                self._use_concept_branch and self._concept_evidence_in_fusion)
             self.evidence_fusion = EvidenceFusion(
-                use_concept=self._use_concept_branch,
+                use_concept=fusion_use_concept,
                 use_causal=self._use_causal_branch,
                 use_nesy_edl=self._use_nesy_edl,
                 conditioned=bool(gate_cfg.get('conditioned', False)),
@@ -348,13 +364,18 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     labels = data_dict.get('label')
                     if labels is not None:
                         labels = labels.to(device)
-                    causal_out = self.causal_branch(
+                    causal_kwargs = dict(
                         spatial_raw=spatial_raw,
                         combined_features=combined_features,
                         violations=concept_out['violations'],
                         forensic_features=forensic_features,
                         labels=labels,
                     )
+                    # CCV accepts a dataset tag purely to annotate its
+                    # non-finite-evidence warning; other branch types don't.
+                    if self._causal_branch_type == 'ccv':
+                        causal_kwargs['dataset'] = data_dict.get('dataset_name')
+                    causal_out = self.causal_branch(**causal_kwargs)
 
             # Apply temperature scaling to concept / causal evidence (these
             # branches return softplus-ed evidence, so we scale it directly
@@ -366,8 +387,14 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 causal_out['evidence'] = causal_out['evidence'] / T_causal
 
             # -- Evidence fusion (CMEF / conditioned / static) --------------
+            # Concept kill-switch: withhold concept EVIDENCE from fusion (and
+            # thus from branch_evidences → PBAS + IBDC) when disabled, while
+            # concept_out still carried its violations into the causal branch
+            # above and remains available below for logging.
+            concept_for_fusion = (
+                concept_out if self._concept_evidence_in_fusion else None)
             fused = self.evidence_fusion(
-                spatial_evidence, spatial_raw, concept_out, causal_out)
+                spatial_evidence, spatial_raw, concept_for_fusion, causal_out)
             total_evidence = fused['total_evidence']
             cmef_diag = fused['cmef_diag']
 
