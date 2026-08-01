@@ -120,6 +120,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             if self._use_nesy_edl:
                 from networks.nesy_defake.losses.nesy_edl_loss import (
                     NeSyEvidentialLoss)
+                _sr_cfg = (config.get('training', {})
+                           .get('symbolic_reweight', {})) or {}
                 self.edl_loss = NeSyEvidentialLoss(
                     num_classes=edl_cfg.get('num_classes', 2),
                     annealing_epochs=edl_cfg.get('annealing_epochs', 10),
@@ -128,6 +130,10 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                     aux_weight=edl_cfg.get('aux_weight', 0.1),
                     disagreement_weight=edl_cfg.get('disagreement_weight', 0.05),
                     class_weights=config.get('class_weights', None),
+                    ibdc_version=edl_cfg.get('ibdc_version', 'v1'),
+                    symbolic_reweight_enabled=_sr_cfg.get('enabled', False),
+                    symbolic_reweight_factor=_sr_cfg.get('factor', 2.0),
+                    symbolic_reweight_warmup=_sr_cfg.get('warmup_epochs', 8),
                 )
                 logger.info("  NeSy-EDL        : CMEF + PBAS + IBDC enabled")
             else:
@@ -157,6 +163,7 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 retained_predicates_yaml=cb_cfg.get(
                     'retained_predicates_yaml', None),
                 substrate_mode=cb_cfg.get('substrate_mode', 'both'),
+                evidence_head=cb_cfg.get('evidence_head', 'mlp'),
             )
 
         # -- Causal branch (Ablation 4: CCV / ImprovedSCM / Simple) ----------
@@ -420,6 +427,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             if concept_out is not None:
                 pred['concept_evidence'] = concept_out['evidence']
                 pred['violations'] = concept_out['violations']
+                if concept_out.get('rule_contributions') is not None:
+                    pred['rule_contributions'] = concept_out['rule_contributions']
                 if fused['concept_gate'] is not None:
                     pred['concept_gate'] = fused['concept_gate']
                 if fused['concept_conf'] is not None:
@@ -529,6 +538,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 loss_dict['edl_aux'] = edl_out['loss_aux']
             if 'loss_bdc' in edl_out:
                 loss_dict['edl_bdc'] = edl_out['loss_bdc']
+            # S2 diagnostics: per-branch mean commitment q_b.
+            for bname, qv in edl_out.get('ibdc_q_means', {}).items():
+                loss_dict[f'ibdc_q_{bname}'] = qv
+            # S9 diagnostic: fraction of symbolically-reweighted samples.
+            if 'symbolic_reweight_frac' in edl_out:
+                loss_dict['sym_reweight_frac'] = edl_out['symbolic_reweight_frac']
             return loss_dict
 
         # -- Ablation 1: pure CE + UA ---------------------------------------
