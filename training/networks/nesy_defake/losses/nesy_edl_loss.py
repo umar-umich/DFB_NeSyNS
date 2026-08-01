@@ -63,14 +63,26 @@ class NeSyEvidentialLoss(nn.Module):
         aux_weight: float = 0.1,
         disagreement_weight: float = 0.05,
         class_weights: list = None,
+        ibdc_version: str = 'v1',
+        symbolic_reweight_enabled: bool = False,
+        symbolic_reweight_factor: float = 2.0,
+        symbolic_reweight_warmup: int = 8,
     ):
         super().__init__()
         self.K = num_classes
+        # S9: symbolic-guided hard-sample reweighting (training only).
+        self.symbolic_reweight_enabled = bool(symbolic_reweight_enabled)
+        self.symbolic_reweight_factor = float(symbolic_reweight_factor)
+        self.symbolic_reweight_warmup = int(symbolic_reweight_warmup)
         self.annealing_epochs = annealing_epochs
         self.kl_weight = kl_weight
         self.avu_weight = avu_weight
         self.aux_weight = aux_weight
         self.disagreement_weight = disagreement_weight
+        if ibdc_version not in ('v1', 'v2'):
+            raise ValueError(
+                f"Unknown ibdc_version: {ibdc_version!r} (expected 'v1' or 'v2')")
+        self.ibdc_version = ibdc_version
         self.eps = 1e-7
 
         if class_weights is not None:
@@ -83,7 +95,9 @@ class NeSyEvidentialLoss(nn.Module):
         logger.info(
             f"[NeSy-EDL] K={num_classes}, kl={kl_weight}, avu={avu_weight}, "
             f"aux={aux_weight}, disagree={disagreement_weight}, "
-            f"class_w={class_weights}")
+            f"ibdc={ibdc_version}, sym_reweight="
+            f"{self.symbolic_reweight_enabled}(x{self.symbolic_reweight_factor},"
+            f"warmup={self.symbolic_reweight_warmup}), class_w={class_weights}")
 
     # ------------------------------------------------------------------
     #  Core EDL quantities
@@ -159,7 +173,8 @@ class NeSyEvidentialLoss(nn.Module):
         self,
         branch_evidences: list,
         fused_uncertainty: torch.Tensor,
-    ) -> torch.Tensor:
+        branch_names: list = None,
+    ) -> tuple:
         """
         Encourage fused uncertainty to reflect inter-branch agreement.
 
@@ -172,36 +187,58 @@ class NeSyEvidentialLoss(nn.Module):
           d(x) = 1 - cos(p_neural(x), p_symbolic(x))
           L_bdc = -d * log(u) - (1-d) * log(1-u)
 
+        Two disagreement aggregations (config `edl.ibdc_version`):
+          v1 (default) — uniform mean over branch pairs (reproducible baseline).
+          v2 (S2)      — vacuity-weighted: each pair is weighted by the product
+                         of the two branches' commitments q_b = 1 - V_b, where
+                         V_b = K / S_b is the branch's Dirichlet vacuity. Vacuous
+                         (uninformative) branches contribute little disagreement:
+                           d = Σ_{i<j} q_i q_j (1-cos(p_i,p_j)) / (Σ_{i<j} q_i q_j + ε)
+                         q is detached (it weights the target, not a grad path).
+
+        Returns (bdc_loss_scalar, {branch_name: mean_commitment_q}).
+
         This is novel: standard EDL has no mechanism for uncertainty
         to reflect reasoning CONFLICT between evidence sources.
         """
         if len(branch_evidences) < 2:
-            return torch.zeros(1, device=fused_uncertainty.device).squeeze()
+            return torch.zeros((), device=fused_uncertainty.device), {}
 
-        # Compute Dirichlet means for each branch
-        branch_probs = []
+        # Dirichlet mean + commitment q_b = 1 - K/S_b for each branch.
+        branch_probs, q_list = [], []
         for ev in branch_evidences:
             alpha = ev + 1.0
-            S = alpha.sum(dim=1, keepdim=True)
-            branch_probs.append(alpha / S)  # (B, K)
+            S = alpha.sum(dim=1, keepdim=True)              # (B, 1)
+            branch_probs.append(alpha / S)                  # (B, K)
+            vacuity = self.K / S.squeeze(1)                 # (B,) in (0, 1]
+            q_list.append((1.0 - vacuity).clamp(0.0, 1.0))  # (B,) commitment
 
-        # Average pairwise cosine disagreement across all branch pairs
-        disagreement = torch.zeros(
-            branch_probs[0].shape[0], device=fused_uncertainty.device)
-        n_pairs = 0
+        B = branch_probs[0].shape[0]
+        device = fused_uncertainty.device
+        num = torch.zeros(B, device=device)
+        den = torch.zeros(B, device=device)
         for i in range(len(branch_probs)):
             for j in range(i + 1, len(branch_probs)):
-                cos_sim = F.cosine_similarity(
-                    branch_probs[i], branch_probs[j], dim=1)
-                disagreement = disagreement + (1.0 - cos_sim)
-                n_pairs += 1
-        disagreement = (disagreement / max(n_pairs, 1)).clamp(0, 1)
+                dis_ij = 1.0 - F.cosine_similarity(
+                    branch_probs[i], branch_probs[j], dim=1)   # (B,)
+                if self.ibdc_version == 'v2':
+                    w = (q_list[i] * q_list[j]).detach()       # q detached
+                else:
+                    w = torch.ones(B, device=device)
+                num = num + w * dis_ij
+                den = den + w
+        # v1: den = n_pairs (≥1) so clamp_min is a no-op → byte-identical to the
+        # original uniform mean. v2: den can be ~0 if all branches are vacuous.
+        disagreement = (num / den.clamp_min(self.eps)).clamp(0, 1)
 
         # Binary cross-entropy: disagreement → high uncertainty
         u = fused_uncertainty.squeeze().clamp(self.eps, 1.0 - self.eps)
         d = disagreement.detach()  # stop gradient on disagreement target
         bdc = -(d * torch.log(u) + (1 - d) * torch.log(1 - u))
-        return bdc.mean()
+
+        names = branch_names or [f'branch{i}' for i in range(len(q_list))]
+        q_means = {nm: q.detach().mean() for nm, q in zip(names, q_list)}
+        return bdc.mean(), q_means
 
     # ------------------------------------------------------------------
     #  Forward: full NeSy-EDL loss
@@ -233,11 +270,33 @@ class NeSyEvidentialLoss(nn.Module):
         alpha, S, uncertainty = self.evidence_to_dirichlet(fused_evidence)
 
         nll = self._nll(alpha, S, y_onehot)
+        nll_ps = nll.squeeze(1)                          # (B,) per-sample NLL
+        weights = torch.ones_like(nll_ps)
         if self._class_weights is not None:
-            w = self._class_weights.to(device)[target]
-            loss_nll = (nll.squeeze(1) * w).mean()
-        else:
-            loss_nll = nll.mean()
+            weights = weights * self._class_weights.to(device)[target]
+
+        # S9: symbolic-guided hard-sample reweighting (fused NLL term only).
+        # After warmup, upweight samples where the spatial stream is WRONG but
+        # the symbolic streams (concept+causal) are RIGHT — the cases where the
+        # neuro-symbolic signal should correct the neural one. Training data
+        # only (uses in-batch labels); disabled by default.
+        reweight_frac = torch.zeros((), device=device)
+        if (self.symbolic_reweight_enabled
+                and epoch >= self.symbolic_reweight_warmup
+                and branch_evidences is not None):
+            spat = branch_evidences.get('spatial')
+            sym_parts = [branch_evidences.get(k) for k in ('concept', 'causal')]
+            sym_parts = [e for e in sym_parts if e is not None]
+            if spat is not None and len(sym_parts) >= 1:
+                sym = sum(sym_parts)
+                spat_pred = spat.argmax(dim=1)
+                sym_pred = sym.argmax(dim=1)
+                hard = ((spat_pred != target)
+                        & (sym_pred == target)).float()  # (B,)
+                weights = weights * (
+                    1.0 + (self.symbolic_reweight_factor - 1.0) * hard)
+                reweight_frac = hard.mean().detach()
+        loss_nll = (nll_ps * weights).mean()
 
         anneal = min(1.0, epoch / max(self.annealing_epochs, 1))
         loss_kl = self._kl(alpha, y_onehot).mean()
@@ -260,13 +319,17 @@ class NeSyEvidentialLoss(nn.Module):
 
         # ── Novel: Inter-Branch Disagreement Calibration (IBDC) ───────
         loss_bdc = torch.zeros(1, device=device).squeeze()
+        ibdc_q_means = {}
         if (branch_evidences is not None
                 and self.disagreement_weight > 0
                 and len(branch_evidences) >= 2):
-            ev_list = [ev for ev in branch_evidences.values() if ev is not None]
-            if len(ev_list) >= 2:
-                loss_bdc = self._disagreement_calibration(
-                    ev_list, uncertainty)
+            named = [(n, ev) for n, ev in branch_evidences.items()
+                     if ev is not None]
+            if len(named) >= 2:
+                names = [n for n, _ in named]
+                ev_list = [ev for _, ev in named]
+                loss_bdc, ibdc_q_means = self._disagreement_calibration(
+                    ev_list, uncertainty, names)
                 loss = loss + self.disagreement_weight * loss_bdc
 
         # ── Diagnostics ───────────────────────────────────────────────
@@ -290,6 +353,8 @@ class NeSyEvidentialLoss(nn.Module):
             'loss_bdc': loss_bdc.detach(),
             'evidence_succ': ev_succ.detach(),
             'evidence_fail': ev_fail.detach(),
+            'ibdc_q_means': ibdc_q_means,   # {branch: mean commitment q_b}
+            'symbolic_reweight_frac': reweight_frac.detach(),
         }
 
 
