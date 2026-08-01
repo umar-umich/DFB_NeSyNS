@@ -125,14 +125,34 @@ def collect_batch(predictions: dict) -> dict:
     be = predictions.get('branch_evidences')
     d = _disagreement(be) if isinstance(be, dict) else None
     out['disagreement_d'] = d if d is not None else np.full(B, _NAN)
+
+    # Per-rule violation columns rule_00..rule_{K-1}. Column index j maps to the
+    # j-th rule in configs/retained_predicates.yaml order (frozen), so Tasks 6/9
+    # can name them. Absent for spatial-only modes (no concept branch).
+    viol = predictions.get('violations')
+    if viol is not None:
+        v = _np(viol)                                    # (B, K)
+        if v.ndim == 2:
+            for j in range(v.shape[1]):
+                out[f'rule_{j:02d}'] = v[:, j]
     return out
 
 
+def _rule_cols(extras: dict) -> list:
+    """Sorted rule_NN columns present in an extras dict (may be empty)."""
+    return sorted(k for k in extras if k.startswith('rule_'))
+
+
 def concat_batches(batches: list) -> dict:
-    """Concatenate a list of per-batch column dicts into full-length arrays."""
+    """Concatenate a list of per-batch column dicts into full-length arrays.
+
+    Concatenates every column present (the fixed _NUMERIC set plus any dynamic
+    rule_NN columns), so per-rule violations survive to the CSV writers.
+    """
     if not batches:
         return {c: np.array([]) for c in _NUMERIC}
-    return {c: np.concatenate([b[c] for b in batches]) for c in _NUMERIC}
+    keys = list(batches[0].keys())
+    return {c: np.concatenate([b[c] for b in batches]) for c in keys}
 
 
 def _fmt(x):
@@ -150,37 +170,41 @@ def _parse_name(name: str):
 def write_per_sample_csv(path: str, img_names, labels, extras: dict) -> None:
     """Write the per-frame CSV (one row per frame)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    rule_cols = _rule_cols(extras)
+    numeric = _NUMERIC + rule_cols
     n = len(img_names)
     with open(path, 'w', newline='') as f:
         w = csv.writer(f)
-        w.writerow(FRAME_COLUMNS)
+        w.writerow(FRAME_COLUMNS + rule_cols)
         for i in range(n):
             vid, frame_idx = _parse_name(img_names[i])
             row = [vid, frame_idx, int(labels[i])]
-            row += [_fmt(extras[c][i]) for c in _NUMERIC]
+            row += [_fmt(extras[c][i]) for c in numeric]
             w.writerow(row)
 
 
 def write_video_aggregate_csv(path: str, img_names, labels, extras: dict) -> None:
     """Write the video-level aggregate CSV (mean over frames per video)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    rule_cols = _rule_cols(extras)
+    numeric = _NUMERIC + rule_cols
     agg = defaultdict(lambda: {'label': None, 'n': 0,
-                               **{c: [] for c in _NUMERIC}})
+                               **{c: [] for c in numeric}})
     for i in range(len(img_names)):
         vid, _ = _parse_name(img_names[i])
         rec = agg[vid]
         rec['label'] = int(labels[i])
         rec['n'] += 1
-        for c in _NUMERIC:
+        for c in numeric:
             v = extras[c][i]
             if not (isinstance(v, float) and np.isnan(v)):
                 rec[c].append(float(v))
     with open(path, 'w', newline='') as f:
         w = csv.writer(f)
-        w.writerow(['video_id', 'label', 'num_frames'] + _NUMERIC)
+        w.writerow(['video_id', 'label', 'num_frames'] + numeric)
         for vid, rec in agg.items():
             row = [vid, rec['label'], rec['n']]
-            row += [_fmt(np.mean(rec[c]) if rec[c] else _NAN) for c in _NUMERIC]
+            row += [_fmt(np.mean(rec[c]) if rec[c] else _NAN) for c in numeric]
             w.writerow(row)
 
 
