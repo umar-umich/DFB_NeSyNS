@@ -154,7 +154,7 @@ class CounterfactualPredictor(nn.Module):
       semantic_summary (B, D) → MLP → predicted_z (B, z_dim)
       actual_z = compress(spatial_raw.detach())  (B, z_dim)
       residual = per-dim squared error (B, z_dim)
-      mismatch = sum → (B, 1)
+      mismatch = log1p(mean) → (B, 1)   # bounded, OOD-safe
 
     Output: (B, 1) counterfactual mismatch score.
     """
@@ -188,7 +188,13 @@ class CounterfactualPredictor(nn.Module):
         """
         actual_z = self.compressor(spatial_raw.detach())
         predicted_z = self.predictor(semantic_summary)
-        mismatch = (actual_z - predicted_z).pow(2).sum(dim=1, keepdim=True)
+        # Bounded mismatch: mean squared error over z-dims, compressed by log1p.
+        # The former `.sum()` over 32 dims was unbounded and produced inf/NaN
+        # evidence on extreme OOD samples (DFDC / DeepFakeDetection). log1p of
+        # the *mean* keeps this in a small, finite range without changing the
+        # monotone real-vs-fake ordering on in-distribution inputs.
+        mse = (actual_z - predicted_z).pow(2).mean(dim=1, keepdim=True)
+        mismatch = torch.log1p(mse)
         return mismatch
 
 
@@ -280,6 +286,7 @@ class CausalConstraintVerificationBranch(nn.Module):
         violations: torch.Tensor,
         forensic_features: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
+        dataset: Optional[str] = None,
     ) -> dict:
         """
         Args:
@@ -289,6 +296,8 @@ class CausalConstraintVerificationBranch(nn.Module):
             forensic_features: (B, 83) precomputed forensic features
             labels:            (B,) optional — unused by CCV but accepted
                                for interface compatibility with improved SCM.
+            dataset:           optional dataset name, used only to annotate the
+                               non-finite-evidence warning (TASK 1d).
         Returns:
             dict with 'logits', 'evidence', 'dag_penalty',
             'violation_scores', 'anomaly_scores', 'counterfactual_residual'
@@ -297,9 +306,19 @@ class CausalConstraintVerificationBranch(nn.Module):
 
         # Component 1: learned constraint violations
         learned_violations = self.learned_constraints(combined_features)
+        # sigmoid-bounded to [0, 1] already, but guard against NaN propagating
+        # from an upstream non-finite combined_features on extreme OOD inputs.
+        learned_violations = torch.nan_to_num(
+            learned_violations, nan=0.0, posinf=50.0, neginf=0.0
+        ).clamp(max=50.0)
 
         # Component 2: forensic anomaly scores
         anomaly_scores = self.forensic_anomaly(forensic_features)
+        # Reconstruction MSE is unbounded above; extreme OOD forensic features
+        # can blow it up to inf/NaN. Sanitize and cap before it reaches the MLP.
+        anomaly_scores = torch.nan_to_num(
+            anomaly_scores, nan=0.0, posinf=50.0, neginf=0.0
+        ).clamp(max=50.0)
 
         # Component 3: counterfactual mismatch
         semantic_summary = torch.cat(
@@ -314,8 +333,26 @@ class CausalConstraintVerificationBranch(nn.Module):
             cf_residual,           # (B, 1)  counterfactual
         ], dim=1)
 
-        logits = self.evidence_mlp(all_signals)
+        # Clamp evidence logits before softplus: softplus(x) grows ~linearly for
+        # large x, so a logit of 1e4 yields evidence 1e4 → alpha 1e4 → downstream
+        # 1/S underflow and NaN. [-30, 30] keeps softplus in a safe finite range
+        # (softplus(30) ≈ 30, softplus(-30) ≈ 1e-13) without touching normal
+        # logits, which sit well within this band.
+        logits = self.evidence_mlp(all_signals).clamp(min=-30.0, max=30.0)
         evidence = F.softplus(logits)
+
+        # TASK 1d: warn (don't crash) if any non-finite evidence slips through,
+        # sanitize it, and log the dataset + count so the offending split is
+        # identifiable in the run log.
+        if not torch.isfinite(evidence).all():
+            n_bad = int((~torch.isfinite(evidence)).sum().item())
+            logger.warning(
+                "[CCV Branch] %d non-finite evidence entries on dataset=%s; "
+                "sanitizing with nan_to_num (this batch's causal evidence is "
+                "degraded, not trusted).", n_bad, dataset or 'unknown')
+            evidence = torch.nan_to_num(
+                evidence, nan=0.0, posinf=30.0, neginf=0.0)
+            logits = torch.nan_to_num(logits, nan=0.0, posinf=30.0, neginf=-30.0)
 
         return {
             'logits': logits,
