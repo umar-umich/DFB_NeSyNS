@@ -46,6 +46,7 @@ import seaborn as sns
 from dataset.abstract_dataset import DeepfakeAbstractBaseDataset
 from dataset.nesy_defake_dataset import NeSyDeFakeDataset
 from detectors import DETECTOR
+import per_sample_logger
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -399,7 +400,7 @@ def prepare_testing_data(config):
 
 
 @torch.no_grad()
-def run_inference(model, data_loader, interp_engine=None):
+def run_inference(model, data_loader, interp_engine=None, dataset_name=None):
     """Run inference on a single dataset, returns predictions, labels, file names.
 
     If *interp_engine* is provided, each batch's prediction dict is forwarded
@@ -410,6 +411,7 @@ def run_inference(model, data_loader, interp_engine=None):
     prediction_lists = []
     label_lists = []
     label_spe_lists = []
+    per_sample_batches = []          # per-branch evidential breakdown per batch
 
     for data_dict in tqdm(data_loader, desc='  Inference'):
         # Capture label_spe for per-method interpretability before popping
@@ -419,12 +421,18 @@ def run_inference(model, data_loader, interp_engine=None):
             val = data_dict[key]
             if val is not None and isinstance(val, torch.Tensor):
                 data_dict[key] = val.to(device)
+        # Tag the batch with its dataset so branches can annotate diagnostics
+        # (e.g. the CCV non-finite-evidence warning). Non-tensor, ignored above.
+        data_dict['dataset_name'] = dataset_name
 
         predictions = model(data_dict, inference=True)
         prob = predictions['prob'].cpu().numpy()  # shape: (B,)
 
         if interp_engine is not None:
             interp_engine.collect_batch(predictions, data_dict['label'])
+
+        # Per-sample diagnostic columns (robust to every ablation_mode).
+        per_sample_batches.append(per_sample_logger.collect_batch(predictions))
 
         label_lists.append(data_dict['label'].cpu().numpy())
         prediction_lists.append(prob)
@@ -438,10 +446,11 @@ def run_inference(model, data_loader, interp_engine=None):
     # Convert to 2-class probabilities: [p(real), p(fake)]
     probs_2d = np.stack([1 - preds_1d, preds_1d], axis=1)
     label_spe = np.concatenate(label_spe_lists) if label_spe_lists else None
+    per_sample_extras = per_sample_logger.concat_batches(per_sample_batches)
 
     dataset = data_loader.dataset
     img_names = getattr(dataset, 'image_list', None) or dataset.data_dict['image']
-    return probs_2d, labels, img_names, label_spe
+    return probs_2d, labels, img_names, label_spe, per_sample_extras
 
 
 # ---------------------------------------------------------------------------
@@ -559,8 +568,20 @@ def main():
                 print(f'[warn] Interpretability engine init failed: {e}')
                 interp_engine = None
 
-        probs, labels, img_names, label_spe = run_inference(
-            model, data_loader, interp_engine=interp_engine)
+        probs, labels, img_names, label_spe, per_sample_extras = run_inference(
+            model, data_loader, interp_engine=interp_engine,
+            dataset_name=dataset_name)
+
+        # --- Per-sample diagnostic CSVs (frame + video aggregate) ---
+        # logs/<run_name>/per_sample_<dataset>.csv (+ ..._video_...). Works for
+        # every ablation_mode; absent branches leave blank cells.
+        try:
+            frame_csv, video_csv = per_sample_logger.write_logs(
+                out_dir, dataset_name, img_names, labels, per_sample_extras)
+            print(f'  Per-sample CSV: {frame_csv}')
+            print(f'  Per-video  CSV: {video_csv}')
+        except Exception as e:
+            print(f'[warn] Per-sample CSV logging failed: {e}')
 
         if interp_engine is not None:
             try:
