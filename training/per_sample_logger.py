@@ -135,12 +135,28 @@ def collect_batch(predictions: dict) -> dict:
         if v.ndim == 2:
             for j in range(v.shape[1]):
                 out[f'rule_{j:02d}'] = v[:, j]
+
+    # CCV diagnostics (only present for causal_branch.type=ccv): per-group
+    # forensic anomaly scores anomaly_0..4 and the counterfactual residual.
+    an = predictions.get('anomaly_scores')
+    if an is not None:
+        a = _np(an)
+        if a.ndim == 2:
+            for j in range(a.shape[1]):
+                out[f'anomaly_{j}'] = a[:, j]
+    cf = predictions.get('counterfactual_residual')
+    if cf is not None:
+        out['cf_residual'] = _np(cf).reshape(-1)
     return out
 
 
-def _rule_cols(extras: dict) -> list:
-    """Sorted rule_NN columns present in an extras dict (may be empty)."""
-    return sorted(k for k in extras if k.startswith('rule_'))
+def _extra_cols(extras: dict) -> list:
+    """Dynamic per-sample columns beyond the fixed set, in a stable order:
+    rule_NN violations, then anomaly_N groups, then cf_residual."""
+    rules = sorted(k for k in extras if k.startswith('rule_'))
+    anoms = sorted(k for k in extras if k.startswith('anomaly_'))
+    cf = ['cf_residual'] if 'cf_residual' in extras else []
+    return rules + anoms + cf
 
 
 def concat_batches(batches: list) -> dict:
@@ -203,7 +219,7 @@ def write_per_sample_csv(path: str, img_names, labels, extras: dict,
     method label — e.g. FF++ manipulation type) is written after `label`.
     """
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    rule_cols = _rule_cols(extras)
+    rule_cols = _extra_cols(extras)
     numeric = _NUMERIC + rule_cols
     has_spe = label_spe is not None
     spe_col = ['label_spe'] if has_spe else []
@@ -225,7 +241,7 @@ def write_video_aggregate_csv(path: str, img_names, labels, extras: dict,
                               label_spe=None) -> None:
     """Write the video-level aggregate CSV (mean over frames per video)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    rule_cols = _rule_cols(extras)
+    rule_cols = _extra_cols(extras)
     numeric = _NUMERIC + rule_cols
     has_spe = label_spe is not None
     spe_col = ['label_spe'] if has_spe else []
