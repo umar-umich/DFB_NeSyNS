@@ -1,14 +1,14 @@
 # =============================================================================
-# FULL-TRAINING CONFIG (generated) — f2_full
+# FULL-TRAINING CONFIG (generated) — f2_noaug
 # Derived from configs/ablations/full_defakenet_18rules.yaml by
 # training/config/detector/full/_generate_full.py. Do not hand-edit;
 # change the generator and re-run.
-# Deltas: {'ablation_spatial_only': False, 'ablation_mode': 'causal_edl', 'concept_branch.substrate_mode': 'both', 'concept_branch.evidence_head': 'rule_linear', 'causal_branch.enabled': True, 'causal_branch.type': 'ccv', 'edl.nesy_fusion': True, 'edl.ibdc_version': 'v2', 'training.symbolic_reweight.enabled': True, 'training.symbolic_reweight.factor': 2.0, 'training.symbolic_reweight.warmup_epochs': 8, 'training.feature_augment.enabled': True, 'training.feature_augment.gauss_std': 0.05, 'training.feature_augment.feature_dropout': 0.1, 'training.feature_augment.std_file': 'configs/feature_stats/ff_train_feature_std.npz'}
+# Deltas: {'ablation_spatial_only': False, 'ablation_mode': 'causal_edl', 'concept_branch.substrate_mode': 'both', 'concept_branch.evidence_head': 'rule_linear', 'causal_branch.enabled': True, 'causal_branch.type': 'ccv', 'edl.nesy_fusion': True, 'edl.ibdc_version': 'v2', 'training.symbolic_reweight.enabled': True, 'training.symbolic_reweight.factor': 2.0, 'training.symbolic_reweight.warmup_epochs': 8, 'training.feature_augment.enabled': False, 'training.feature_augment.gauss_std': 0.05, 'training.feature_augment.feature_dropout': 0.1, 'training.feature_augment.std_file': 'configs/feature_stats/ff_train_feature_std.npz'}
 # Global: nEpochs=100, early_stopping.patience=20, tta.enabled=false,
-#         test_dataset=all six, log_dir=logs/full/f2_full.
+#         test_dataset=all six, log_dir=logs/full/f2_noaug.
 #         Seed per run via `train.py --seed {3407,42,1024}`.
 # =============================================================================
-log_dir: logs/full/f2_full
+log_dir: logs/full/f2_noaug
 model_name: nesydefake_hybrid
 backbone_name: multi_stream
 ablation_spatial_only: false
@@ -259,7 +259,7 @@ training:
     factor: 2.0
     warmup_epochs: 8
   feature_augment:
-    enabled: true
+    enabled: false
     gauss_std: 0.05
     feature_dropout: 0.1
     std_file: configs/feature_stats/ff_train_feature_std.npz

@@ -64,6 +64,31 @@ CONFIGS = {
         'training.symbolic_reweight.enabled': True,
         'training.symbolic_reweight.factor': 2.0,
         'training.symbolic_reweight.warmup_epochs': 8,
+        'training.feature_augment.enabled': True,
+        'training.feature_augment.gauss_std': 0.05,
+        'training.feature_augment.feature_dropout': 0.1,
+        'training.feature_augment.std_file':
+            'configs/feature_stats/ff_train_feature_std.npz',
+    },
+    # f2_noaug: exact copy of f2_full with feature augmentation OFF (nothing
+    # else different) — the T1 ablation control.
+    'f2_noaug': {
+        'ablation_spatial_only': False,
+        'ablation_mode': 'causal_edl',
+        'concept_branch.substrate_mode': 'both',
+        'concept_branch.evidence_head': 'rule_linear',
+        'causal_branch.enabled': True,
+        'causal_branch.type': 'ccv',
+        'edl.nesy_fusion': True,
+        'edl.ibdc_version': 'v2',
+        'training.symbolic_reweight.enabled': True,
+        'training.symbolic_reweight.factor': 2.0,
+        'training.symbolic_reweight.warmup_epochs': 8,
+        'training.feature_augment.enabled': False,
+        'training.feature_augment.gauss_std': 0.05,
+        'training.feature_augment.feature_dropout': 0.1,
+        'training.feature_augment.std_file':
+            'configs/feature_stats/ff_train_feature_std.npz',
     },
     'f3_ibdc_v1': {
         'ablation_spatial_only': False,

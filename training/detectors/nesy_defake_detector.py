@@ -21,6 +21,8 @@ semantic/forensic features arrive via `data_dict['precomputed_attrs']` and
 """
 
 import logging
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -33,6 +35,7 @@ from networks.nesy_defake.foundation_models import SpatialFeatureExtractor
 from networks.nesy_defake.classifiers import MultiTaskHead, build_projection_head
 from networks.nesy_defake.fusion import EvidenceFusion
 from networks.nesy_defake.causal_branch_factory import build_causal_branch
+from networks.nesy_defake.feature_augment import FeatureAugment
 from networks.nesy_defake.losses import alignment, uniformity
 
 logger = logging.getLogger(__name__)
@@ -175,6 +178,25 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             logger.info(
                 f"  Causal branch   : type={self._causal_branch_type}")
 
+        # -- Feature-space augmentation for symbolic inputs (Phase-3 T1) ------
+        # Training-only Gaussian noise + per-dim dropout on precomputed_attrs
+        # (58-d) and forensic_features (83-d) before the concept/CCV branches.
+        # Frozen FF++-train std loaded from feature_augment.std_file if present,
+        # else per-batch std fallback (FF++ data during training).
+        fa_cfg = (config.get('training', {}).get('feature_augment', {})) or {}
+        attrs_std, forensic_std = self._load_feature_stds(
+            fa_cfg.get('std_file'))
+        self.feature_augment = FeatureAugment(
+            enabled=fa_cfg.get('enabled', False),
+            gauss_std=fa_cfg.get('gauss_std', 0.05),
+            feature_dropout=fa_cfg.get('feature_dropout', 0.1),
+            attrs_std=attrs_std, forensic_std=forensic_std)
+        if self.feature_augment.enabled:
+            logger.info(
+                f"  Feature augment : ON (gauss_std={fa_cfg.get('gauss_std', 0.05)}, "
+                f"feature_dropout={fa_cfg.get('feature_dropout', 0.1)}, "
+                f"frozen_std={'yes' if attrs_std is not None else 'per-batch'})")
+
         # -- Evidence fusion (CMEF | conditioned | static scalar gates) -----
         if self._use_edl:
             gate_cfg = config.get('evidence_gate', {})
@@ -282,6 +304,19 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
     #  Feature extraction                                                  #
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _load_feature_stds(std_file):
+        """Load frozen FF++-train per-feature std from an .npz, or (None, None).
+
+        Expects arrays 'attrs_std' (58,) and 'forensic_std' (83,). Missing file
+        → per-batch std fallback in FeatureAugment (keeps configs runnable).
+        """
+        if not std_file or not os.path.exists(std_file):
+            return None, None
+        import numpy as np
+        z = np.load(std_file)
+        return z.get('attrs_std'), z.get('forensic_std')
+
     def extract_raw_features(self, data_dict: dict) -> dict:
         spatial_input = data_dict['spatial_frames']
         if self.spatial_extractor.needs_resize:
@@ -354,6 +389,11 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 combined_features = data_dict.get('precomputed_attrs')
                 if combined_features is not None:
                     combined_features = combined_features.to(device)
+                    # Feature-space augmentation (training-only, T1). Applied
+                    # once here so BOTH the concept branch and the CCV branch
+                    # (which reuses combined_features) see the same draw.
+                    combined_features = self.feature_augment(
+                        combined_features, 'attrs')
                     # Optional predicate-mask intervention used by the
                     # faithfulness runner. Default None = unchanged forward.
                     predicate_mask = data_dict.get('predicate_mask')
@@ -368,6 +408,8 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                 forensic_features = data_dict.get('forensic_features')
                 if forensic_features is not None:
                     forensic_features = forensic_features.to(device)
+                    forensic_features = self.feature_augment(
+                        forensic_features, 'forensic')
                     labels = data_dict.get('label')
                     if labels is not None:
                         labels = labels.to(device)
