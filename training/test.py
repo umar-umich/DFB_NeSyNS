@@ -143,21 +143,10 @@ def calculate_tpr_at_fpr(labels, probs, fpr_targets=(0.001, 0.01, 0.05)):
     return results
 
 
-def compute_wasserstein1(probs, labels):
-    is_real = labels == 0
-    is_fake = labels == 1
-    if not (is_real.any() and is_fake.any()):
-        return {}
-    return {
-        'W1-sep-real': wasserstein_distance(probs[is_real, 0], probs[is_fake, 0]),
-        'W1-sep-fake': wasserstein_distance(probs[is_real, 1], probs[is_fake, 1]),
-        'W1-sep':      (wasserstein_distance(probs[is_real, 0], probs[is_fake, 0]) +
-                         wasserstein_distance(probs[is_real, 1], probs[is_fake, 1])) / 2,
-        'W1-conf-real': wasserstein_distance(probs[is_real, 0], probs[is_real, 1]),
-        'W1-conf-fake': wasserstein_distance(probs[is_fake, 0], probs[is_fake, 1]),
-        'W1-conf':     (wasserstein_distance(probs[is_real, 0], probs[is_real, 1]) +
-                         wasserstein_distance(probs[is_fake, 0], probs[is_fake, 1])) / 2,
-    }
+# W1 separation/confidence metrics live in metrics_wasserstein.py (extracted so
+# they can be unit-tested without importing this arg-parsing module). See that
+# file for why W1-sep and W1-conf coincide for complementary probs (Task 10).
+from metrics_wasserstein import compute_wasserstein1  # noqa: E402
 
 
 def compute_video_predictions(img_names, probs, labels):
