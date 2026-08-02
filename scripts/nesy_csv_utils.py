@@ -155,6 +155,23 @@ def per_video_features(df):
     return pd.DataFrame(rows)
 
 
+def per_video_rule_means(df):
+    """Per-(method, video_id) mean of each rule_NN violation column.
+
+    Returns a DataFrame indexed to match per_video_features' (method, video_id)
+    ordering, with one column per rule. Empty DataFrame if no rule columns.
+    """
+    rc = rule_columns(df)
+    if not rc:
+        return pd.DataFrame()
+    d = df.copy()
+    if 'method' not in d.columns:
+        d['method'] = ''
+    d['method'] = d['method'].fillna('').astype(str)
+    g = d.groupby(['method', 'video_id'], sort=False)[rc].mean()
+    return g.reset_index()
+
+
 def risk_coverage(risk, error):
     """Selective-risk curve when abstaining by descending risk.
 
