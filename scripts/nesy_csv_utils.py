@@ -155,6 +155,21 @@ def per_video_features(df):
     return pd.DataFrame(rows)
 
 
+def rule_names(yaml_path='configs/retained_predicates.yaml'):
+    """rule_NN → predicate name map, in the model's violation-column order.
+
+    RetainedConsistencyRules emits columns in the YAML `retained_predicates`
+    LIST order (rank order), so rule_00 = retained_predicates[0]['name'], etc.
+    Returns {'rule_00': 'cr_angry_au7', ...}; empty dict if the YAML is absent.
+    """
+    import yaml
+    if not os.path.exists(yaml_path):
+        return {}
+    spec = yaml.safe_load(open(yaml_path))
+    names = [str(e['name']) for e in spec.get('retained_predicates', [])]
+    return {f'rule_{j:02d}': nm for j, nm in enumerate(names)}
+
+
 def per_video_rule_means(df):
     """Per-(method, video_id) mean of each rule_NN violation column.
 
