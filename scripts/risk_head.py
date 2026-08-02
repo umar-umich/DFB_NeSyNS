@@ -173,17 +173,41 @@ def main():
     # Final frozen head on all FF++.
     scaler, clf = fit_final_head(vf_ff, tau)
 
-    # Evaluate on FF++ (in-domain reference) + each OOD dataset.
+    # Evaluate on FF++ (in-domain reference) + each OOD dataset. Also pool the
+    # per-video design matrix (V, C, Q, T, err) across all datasets for the T2
+    # diagnostics (multicollinearity / univariate signal).
     results = {}
+    pooled_X, pooled_err = [], []
+
+    def _pool(vf):
+        pooled_X.append(vf[FEATURES].to_numpy(dtype=float))
+        pooled_err.append(errors_at(vf, tau))
+
     results[FF] = evaluate(vf_ff, risk_of(vf_ff, scaler, clf), tau, args.target_risk)
+    _pool(vf_ff)
     for ds in args.ood:
         df = U.load_frames(args.run, ds)
         if df is None:
             continue
         vf = U.per_video_features(df)
         results[ds] = evaluate(vf, risk_of(vf, scaler, clf), tau, args.target_risk)
+        _pool(vf)
 
     figpath = plot_rc(results, args.figdir)
+
+    # ── T2 diagnostics: design-matrix dump + correlation + univariate AUROC ──
+    X = np.vstack(pooled_X)                      # (N, 4) in FEATURES order
+    err = np.concatenate(pooled_err)             # (N,) 1 = misclassified
+    design_path = os.path.join(os.path.dirname(args.out) or '.', 'risk_design.npz')
+    np.savez(design_path,
+             **{f: X[:, i] for i, f in enumerate(FEATURES)}, err=err)
+    corr = np.corrcoef(X.T)                       # 4x4 Pearson
+    # standardized univariate error-prediction AUROC (standardization does not
+    # change AUROC — it just makes the sign explicit vs the multivariate weights)
+    Xz = (X - X.mean(0)) / (X.std(0) + 1e-9)
+    uni_auc = {f: (float(roc_auc_score(err, Xz[:, i]))
+                   if len(np.unique(err)) == 2 else float('nan'))
+               for i, f in enumerate(FEATURES)}
 
     # ── Report ────────────────────────────────────────────────────────────
     os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)
@@ -215,6 +239,28 @@ def main():
                  f"{r['cov@risk']:.3f} |")
     L.append('')
     L.append(f'Risk-coverage figure: `{figpath}`')
+
+    # ── T2 diagnostics section ───────────────────────────────────────────
+    L.append('')
+    L.append('## Feature diagnostics (pooled FF++ + OOD, N='
+             f'{len(err)}; design matrix → `{os.path.basename(design_path)}`)\n')
+    L.append('**V/C/Q/T Pearson correlation**\n')
+    L.append('| | ' + ' | '.join(FEATURES) + ' |')
+    L.append('|' + '---|' * (len(FEATURES) + 1))
+    for i, f in enumerate(FEATURES):
+        L.append(f'| {f} | ' + ' | '.join(f'{corr[i, j]:+.3f}'
+                                          for j in range(len(FEATURES))) + ' |')
+    L.append('')
+    L.append('**Standardized univariate error-prediction AUROC**\n')
+    L.append('| ' + ' | '.join(FEATURES) + ' |')
+    L.append('|' + '---|' * len(FEATURES))
+    L.append('| ' + ' | '.join(f'{uni_auc[f]:.3f}' for f in FEATURES) + ' |')
+    L.append('')
+    L.append('Univariate AUROC > 0.5 means the feature marginally predicts errors '
+             'in the positive direction; compare to the multivariate head weights '
+             'above — a sign flip there (e.g. C) indicates the signal is absorbed '
+             'by a correlated feature, not that C is uninformative.')
+
     open(args.out, 'w').write('\n'.join(L) + '\n')
 
     print('\n'.join(L))
