@@ -28,14 +28,28 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..', '..'))
 REFERENCE = os.path.join(REPO, 'configs', 'ablations', 'full_defakenet_18rules.yaml')
 
+FF = 'FaceForensics++'
 ALL_SIX = ['FaceForensics++', 'Celeb-DF-v2', 'Celeb-DF-v3',
            'DeepFakeDetection', 'DFDC', 'DFDCP']
 
 # Global overrides applied to every full config.
+#
+# NOTE (2026-08-04): training-time eval / early-stopping runs on a small
+# VALIDATION set = FaceForensics++ + Celeb-DF-v2. The trainer evaluates
+# `test_dataset` every epoch and early-stops on the average AUC:
+#   - FF++ alone would let the model overfit to the training distribution, so we
+#     add ONE cross-dataset (Celeb-DF-v2) to select for generalization;
+#   - averaging in ALL the OOD sets instead would both bias every OOD number and
+#     waste most of each epoch on ~335k OOD frames (DFDC alone is 132k).
+# Celeb-DF-v2 is therefore a VALIDATION set (used for selection), not a clean
+# held-out number; the other four sets (CDFv3, DeepFakeDetection, DFDC, DFDCP)
+# stay held-out and are evaluated POST-HOC via test.py --test_dataset (see
+# full/README.md "Evaluate on all six").
+VAL_DATASETS = [FF, 'Celeb-DF-v2']
 GLOBAL = {
     'nEpochs': 100,
     'manualSeed': 3407,               # overridden per-run via `--seed`
-    'test_dataset': ALL_SIX,
+    'test_dataset': VAL_DATASETS,     # training-time eval/early-stop validation
     # nested (dotted) overrides handled by set_dotted():
     'early_stopping.enabled': True,
     'early_stopping.patience': 20,

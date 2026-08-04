@@ -58,10 +58,6 @@ train_dataset:
 test_dataset:
 - FaceForensics++
 - Celeb-DF-v2
-- Celeb-DF-v3
-- DeepFakeDetection
-- DFDC
-- DFDCP
 all_dataset:
 - FaceForensics++
 - FF-F2F
