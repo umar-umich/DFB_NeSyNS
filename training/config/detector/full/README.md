@@ -76,3 +76,15 @@ stops each run in ~25–35 epochs, not 100 — the seed-3407 batch stopped at ep
 | f1_lean    | launched ____ / done ____ | ____ | ____ |
 | f2_full    | launched ____ / done ____ | ____ | ____ |
 | f3_ibdc_v1 | launched ____ / done ____ | ____ | ____ |
+
+
+________________________
+TASK — IBDC v3 (one-sided, R3's preferred form)
+Add edl.ibdc_version: 'v3'. In _disagreement_calibration, keep the
+q-weighted d computation from v2 (q_b = 1 - K/S_b, d detached), but
+replace the symmetric BCE with a one-sided hinge:
+    L_ibdc = torch.relu(d - u).pow(2).mean()
+u is fused vacuity K/S (NOT detached — gradient flows through u only).
+This raises uncertainty when disagreement exceeds it and is inert
+otherwise, never suppressing u under confident-or-ignorant agreement.
+Add an f2_ibdc_v3 config = f2_full with ibdc_version: v3.

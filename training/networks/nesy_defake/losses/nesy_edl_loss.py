@@ -79,9 +79,10 @@ class NeSyEvidentialLoss(nn.Module):
         self.avu_weight = avu_weight
         self.aux_weight = aux_weight
         self.disagreement_weight = disagreement_weight
-        if ibdc_version not in ('v1', 'v2'):
+        if ibdc_version not in ('v1', 'v2', 'v3'):
             raise ValueError(
-                f"Unknown ibdc_version: {ibdc_version!r} (expected 'v1' or 'v2')")
+                f"Unknown ibdc_version: {ibdc_version!r} "
+                f"(expected 'v1', 'v2', or 'v3')")
         self.ibdc_version = ibdc_version
         self.eps = 1e-7
 
@@ -187,14 +188,17 @@ class NeSyEvidentialLoss(nn.Module):
           d(x) = 1 - cos(p_neural(x), p_symbolic(x))
           L_bdc = -d * log(u) - (1-d) * log(1-u)
 
-        Two disagreement aggregations (config `edl.ibdc_version`):
-          v1 (default) — uniform mean over branch pairs (reproducible baseline).
-          v2 (S2)      — vacuity-weighted: each pair is weighted by the product
-                         of the two branches' commitments q_b = 1 - V_b, where
-                         V_b = K / S_b is the branch's Dirichlet vacuity. Vacuous
-                         (uninformative) branches contribute little disagreement:
+        Three variants (config `edl.ibdc_version`), differing in aggregation and
+        the loss form on fused vacuity u = K/S (gradient flows through u only):
+          v1 (default) — uniform-mean disagreement d, symmetric BCE(u; d).
+          v2 (S2)      — vacuity-weighted d (each pair weighted by q_i q_j,
+                         q_b = 1 - K/S_b, q detached):
                            d = Σ_{i<j} q_i q_j (1-cos(p_i,p_j)) / (Σ_{i<j} q_i q_j + ε)
-                         q is detached (it weights the target, not a grad path).
+                         same symmetric BCE(u; d).
+          v3 (R3)      — v2's q-weighted d, but a ONE-SIDED hinge instead of BCE:
+                           L = relu(d - u)^2
+                         raises u only when disagreement exceeds it, inert
+                         otherwise (never suppresses u under agreement).
 
         Returns (bdc_loss_scalar, {branch_name: mean_commitment_q}).
 
@@ -221,20 +225,27 @@ class NeSyEvidentialLoss(nn.Module):
             for j in range(i + 1, len(branch_probs)):
                 dis_ij = 1.0 - F.cosine_similarity(
                     branch_probs[i], branch_probs[j], dim=1)   # (B,)
-                if self.ibdc_version == 'v2':
+                if self.ibdc_version in ('v2', 'v3'):
                     w = (q_list[i] * q_list[j]).detach()       # q detached
                 else:
                     w = torch.ones(B, device=device)
                 num = num + w * dis_ij
                 den = den + w
         # v1: den = n_pairs (≥1) so clamp_min is a no-op → byte-identical to the
-        # original uniform mean. v2: den can be ~0 if all branches are vacuous.
+        # original uniform mean. v2/v3: den can be ~0 if all branches are vacuous.
         disagreement = (num / den.clamp_min(self.eps)).clamp(0, 1)
 
-        # Binary cross-entropy: disagreement → high uncertainty
+        # u = fused vacuity K/S (gradient flows through u only); d is detached.
         u = fused_uncertainty.squeeze().clamp(self.eps, 1.0 - self.eps)
         d = disagreement.detach()  # stop gradient on disagreement target
-        bdc = -(d * torch.log(u) + (1 - d) * torch.log(1 - u))
+        if self.ibdc_version == 'v3':
+            # v3 (one-sided hinge): raise u only when disagreement EXCEEDS it;
+            # inert otherwise, so it never suppresses u under confident-or-
+            # ignorant agreement (unlike the symmetric BCE of v1/v2).
+            bdc = torch.relu(d - u).pow(2)
+        else:
+            # Binary cross-entropy: disagreement → high uncertainty
+            bdc = -(d * torch.log(u) + (1 - d) * torch.log(1 - u))
 
         names = branch_names or [f'branch{i}' for i in range(len(q_list))]
         q_means = {nm: q.detach().mean() for nm, q in zip(names, q_list)}
