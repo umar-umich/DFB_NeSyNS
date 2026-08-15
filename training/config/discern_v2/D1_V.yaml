@@ -1,0 +1,15 @@
+# D1-V — visual only. The control arm of the D1 sub-ablation.
+#
+# Isolates: what does the CLIP visual branch achieve on its own inside the v2 branch
+# contract? Without this arm, "manifold evidence helps" cannot be told apart from "the v2
+# plumbing helps".
+
+_base_: _base.yaml
+
+manifold_v2: false
+process_v2:  false
+
+discern_v2:
+  visual:   {enabled: true}
+  manifold: {enabled: false}
+  process:  {enabled: false}

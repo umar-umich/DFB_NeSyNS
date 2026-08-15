@@ -1,0 +1,25 @@
+# D0 — DISCERN v1 reproduction. Establishes the reference numbers the whole ladder is
+# measured against. 🔴 UMAR-RUNS.
+#
+# The v1 branches are turned on EXPLICITLY rather than inherited, so a stripped v2
+# configuration can never be mislabelled "D0". If you are reading this file and the v1 flags
+# below are not all true, what you are looking at is not D0.
+
+_base_: _base.yaml
+
+semantic_v1:        true    # FACS predicate reasoning
+structural_sem_v1:  true    # class-conditioned SEMs
+handcrafted_freq:   true    # FFT / SRM / DCT features
+ccv:                true    # CCV experiments
+symbolic_rules_v1:  true    # old symbolic rules
+
+manifold_v2:        false
+process_v2:         false
+
+discern_v2:
+  visual:   {enabled: false}
+  manifold: {enabled: false}
+  process:  {enabled: false}
+
+# Gate to advance: numbers frozen. Freeze before measuring — never modify a checkpoint
+# mid-evaluation.

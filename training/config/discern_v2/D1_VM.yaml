@@ -1,0 +1,15 @@
+# D1-VM — CLIP + manifold, the full D1 rung.
+#
+# Gate to advance (integration README): manifold evidence non-degenerate, AND VM beats V on
+# the inversion rows. Beating V on the average is NOT the bar — the claim is about regions
+# of expertise, and the inversion rows are precisely where the visual baseline is
+# confidently wrong.
+
+_base_: _base.yaml
+
+process_v2: false
+
+discern_v2:
+  visual:   {enabled: true}
+  manifold: {enabled: true, projector: mr_vae}
+  process:  {enabled: false}
