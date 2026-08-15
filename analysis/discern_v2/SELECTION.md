@@ -182,9 +182,12 @@ Three caveats that must travel with this, all detailed in `A2B_FINDINGS.md`:
   it has the weakest baseline (BA 0.650). Helping on curated benchmarks while hurting on
   real-world data matters for a reliability paper and should not be averaged away.
 
-Also worth probing before D4 is built: the gate routes to a specialist on 80–90% of samples,
-so it is barely being selective. A higher routing threshold or an explicit abstention cost
-may yield a smaller but safer gain.
+**D4 design input — the routing threshold matters more than the gate family.** A2c sweeps it
+(`A2B_FINDINGS.md`). A2b's default of tau = 0.5 routes on 84% of samples and is a poor
+operating point. **tau = 0.95** is strictly better on the axes that matter: worst-source harm
+drops 72% (DFEval24 −0.0237 → −0.0066 BA), routing falls to 47% so the gate actually
+abstains, one more source turns positive (6/7), and it costs only ~20% of the mean recovery
+(0.106 → 0.085). Build D4 with a conservative routing threshold, not the default.
 
 ---
 
