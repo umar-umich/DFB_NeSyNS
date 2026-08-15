@@ -261,12 +261,23 @@ def choose_optimizer(model, config):
     if hasattr(m, 'evidence_fusion'):
         _add(list(m.evidence_fusion.parameters()), g6_causal)
 
+    # Group 7: DISCERN v2 branches (manifold / process) + their fusion gates.
+    # Without this the v2 stack is built and runs in the forward pass but never receives
+    # gradient updates — training proceeds normally while the branch stays frozen at its
+    # random initialisation, and the rung silently measures noise. This repo has hit the
+    # same class of bug before (causal_attn_fusion + concept_head missing from the
+    # optimizer, fixed in v3), which is why it is an explicit group rather than a catch-all.
+    g7_v2 = []
+    if getattr(m, 'v2', None) is not None:
+        _add(list(m.v2.parameters()), g7_v2)
+
     lr_backbone_ln = lr_cfg.get('backbone_layernorms', 1e-5)
     lr_always      = lr_cfg.get('always_trainable',    base_lr)
     lr_proj_heads  = lr_cfg.get('projection_heads',    base_lr)
     lr_classifier  = lr_cfg.get('classifier',          base_lr * 2)
     lr_concept     = lr_cfg.get('concept_branch',      base_lr)
     lr_causal_b    = lr_cfg.get('causal_branch',       base_lr)
+    lr_discern_v2  = lr_cfg.get('discern_v2',          base_lr)
 
     group_specs = [
         (g1, lr_backbone_ln, 'backbone_layernorms'),
@@ -275,6 +286,7 @@ def choose_optimizer(model, config):
         (g4, lr_classifier,  'classifier'),
         (g5_concept, lr_concept,   'concept_branch'),
         (g6_causal,  lr_causal_b,  'causal_branch'),
+        (g7_v2,      lr_discern_v2, 'discern_v2'),
     ]
 
     param_groups = []
@@ -288,6 +300,23 @@ def choose_optimizer(model, config):
 
     if not param_groups:
         raise RuntimeError("choose_optimizer(): no trainable parameters found.")
+
+    # Coverage guard: every parameter with requires_grad must land in some group.
+    # The groups above are hand-enumerated per module, so adding a new trainable module
+    # without adding its group leaves it frozen at initialisation while training proceeds
+    # and logs normally — the run looks healthy and the module contributes noise. That has
+    # bitten this repo twice (causal_attn_fusion + concept_head in v3; the DISCERN v2 stack
+    # in D1-VM). Failing loudly here is cheap; discovering it after a multi-hour run is not.
+    covered = {id(p) for group in param_groups for p in group['params']}
+    orphans = [(n, p.numel()) for n, p in m.named_parameters()
+               if p.requires_grad and id(p) not in covered]
+    if orphans:
+        total = sum(n for _, n in orphans)
+        preview = ", ".join(f"{n} ({c:,})" for n, c in orphans[:8])
+        raise RuntimeError(
+            f"choose_optimizer(): {len(orphans)} trainable parameters ({total:,} values) "
+            f"are in NO optimizer group and would train as frozen noise: {preview}"
+            f"{' ...' if len(orphans) > 8 else ''}. Add them to a group in group_specs.")
 
     optimizer = optim.Adam(
         param_groups, lr=base_lr,
