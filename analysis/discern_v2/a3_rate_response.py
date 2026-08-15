@@ -113,6 +113,52 @@ def logo_probe(X: np.ndarray, y: np.ndarray, groups: np.ndarray,
     return pd.DataFrame(rows)
 
 
+def fakes_only_probe(X: np.ndarray, y: np.ndarray, groups: np.ndarray,
+                     video_ids: np.ndarray, min_per_group: int,
+                     video_level: bool = True) -> pd.DataFrame:
+    """Leave-one-generator-out probe over FAKES ONLY.
+
+    No real pool is involved, so the folds are simply "this generator" vs "every other
+    generator" and the two-class requirement falls on the target `y` (P0 error) rather than
+    on real/fake. This is the coherent form of the applicability question: *will P0 miss
+    this generator's forgeries?*
+
+    Aggregated to video level by default. The exports are frame-level and frames of one
+    video almost always share their outcome, so a frame-level AUROC counts the same
+    evidence dozens of times and reports an effective sample size far larger than the real
+    one. Video level is the honest unit here.
+    """
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import roc_auc_score
+
+    if video_level:
+        df = pd.DataFrame(X)
+        feat_cols = list(df.columns)
+        df["_y"], df["_g"], df["_v"] = y, groups, video_ids
+        agg = df.groupby("_v", as_index=False).agg(
+            {**{c: "mean" for c in feat_cols}, "_y": "max", "_g": "first"})
+        X, y = agg[feat_cols].values, agg["_y"].values.astype(int)
+        groups = agg["_g"].values
+        # "_y": max -> a video counts as a P0 error if any of its frames is one. Videos are
+        # overwhelmingly all-or-nothing, so this is a tie-break, not a redefinition.
+
+    rows = []
+    for g in sorted(pd.unique(groups)):
+        te = groups == g
+        tr = ~te
+        if te.sum() < min_per_group:
+            continue
+        if len(np.unique(y[tr])) < 2 or len(np.unique(y[te])) < 2:
+            # P0 is either right on all of this generator or wrong on all of it; AUROC is
+            # undefined. Skipped and counted, never silently folded into the mean.
+            continue
+        Xtr, Xte = C.fold_scaler(X[tr], X[te])
+        clf = LogisticRegression(max_iter=2000).fit(Xtr, y[tr])
+        rows.append({"held_out": str(g), "n_test": int(te.sum()),
+                     "auroc": float(roc_auc_score(y[te], clf.predict_proba(Xte)[:, 1]))})
+    return pd.DataFrame(rows)
+
+
 def summarise(df: pd.DataFrame, label: str) -> dict:
     if df.empty:
         return {"probe": label, "n_folds": 0, "mean_auroc": None, "median_auroc": None}
@@ -223,7 +269,12 @@ def plot_embedding(X: np.ndarray, fam: np.ndarray, label: np.ndarray, out: Path)
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="DF40")
-    ap.add_argument("--min-per-group", type=int, default=20)
+    ap.add_argument("--min-per-group", type=int, default=20,
+                    help="minimum FRAMES per held-out generator (frame-level probes)")
+    ap.add_argument("--min-videos-per-group", type=int, default=8,
+                    help=("minimum VIDEOS per held-out generator (video-level probes). "
+                          "DF40 generators hold ~18 videos each, so reusing the frame-level "
+                          "threshold of 20 would silently discard almost every fold."))
     args = ap.parse_args()
 
     out = C.out_dir("A3_rate_response")
@@ -258,7 +309,8 @@ def main() -> int:
     res: dict = {"source": args.source, "pilot": RATE_PILOT,
                  "n_samples": int(len(meta)), "beta_grid": betas.tolist(),
                  "threshold": thr, "threshold_provenance": prov,
-                 "min_per_group": args.min_per_group}
+                 "min_per_group": args.min_per_group,
+                 "min_videos_per_group": args.min_videos_per_group}
 
     # ---- Q1 forgery separability -------------------------------------------------
     q1_R = logo_probe(X, label.astype(int), gen, label, args.min_per_group, vid)
@@ -282,32 +334,71 @@ def main() -> int:
     res["Q2_family_structure"] = family_structure(X[label == 1], fam[label == 1])
 
     # ---- Q3 P0-error predictiveness ----------------------------------------------
+    #
+    # WITHIN CLASS, deliberately. A pooled real+fake "P0 error" target is incoherent: the
+    # error means opposite things on either side. A real P0 gets wrong is a false positive
+    # (it looked FAKE); a fake P0 gets wrong is a miss (it looked REAL). Pooling inverts the
+    # probe, because the train folds are fake-majority (~40 generators x 18) while the test
+    # folds are real-majority (18 fakes vs ~416 reals) -- so it learns one direction and is
+    # scored on the other. That yielded a systematic AUROC of ~0.17, which reads as
+    # "anti-predictive" but is a sign error. The slope deltas confirm the flip directly:
+    # -0.0022 for reals, +0.0077 for fakes.
+    #
+    # The applicability question that matters is fakes-only: will P0 miss this generator's
+    # forgeries? Reals are a single pool with no generator to hold out, so no leave-one-
+    # generator-out real-side number exists; it is reported as absent rather than
+    # manufactured from a different split.
     err = (~p0_correct).astype(int)
-    q3_R = logo_probe(X, err, gen, label, args.min_per_group, vid)
-    q3_base = logo_probe(base_feat, err, gen, label, args.min_per_group, vid)
     res["Q3_p0_error_prediction"] = {
-        "R_only": summarise(q3_R, "R(x) -> P0 error"),
-        "score_only_baseline": summarise(q3_base, "p_fused -> P0 error"),
+        "p0_error_rate_overall": float(err.mean()),
+        "p0_error_rate_reals": float(err[label == 0].mean()) if (label == 0).any() else None,
+        "p0_error_rate_fakes": float(err[label == 1].mean()) if (label == 1).any() else None,
+        "note": ("evaluated within class at video level; a pooled target inverts because a "
+                 "real-side error is a false positive and a fake-side error is a miss"),
+    }
+
+    fake = label == 1
+    q3_R = fakes_only_probe(X[fake], err[fake], gen[fake], vid[fake],
+                            args.min_videos_per_group)
+    q3_base = fakes_only_probe(base_feat[fake], err[fake], gen[fake], vid[fake],
+                               args.min_videos_per_group)
+    res["Q3_p0_error_prediction"]["fakes_only"] = {
+        "R_only": summarise(q3_R, "R(x) -> P0 miss (fakes, video level)"),
+        "score_only_baseline": summarise(q3_base, "p_fused -> P0 miss (fakes, video level)"),
         "incremental_auroc": (None if q3_R.empty or q3_base.empty else
                               float(q3_R["auroc"].mean() - q3_base["auroc"].mean())),
-        "p0_error_rate": float(err.mean()),
     }
-    q3_R.to_csv(out / "Q3_folds_R_only.csv", index=False)
+    res["Q3_p0_error_prediction"]["reals_only"] = C.todo(
+        "no leave-one-generator-out split exists for reals (single pool); use a "
+        "video-grouped CV if a real-side number is wanted")
+    q3_R.to_csv(out / "Q3_folds_R_only_fakes.csv", index=False)
 
     # rescue/harm separation: does R(x) separate samples P1d rescues from those it harms?
+    # Fakes only, for the same reason as Q3 above -- a rescue on a real and a rescue on a
+    # fake are opposite movements in score space, and pooling them mixes the directions.
     p1d_correct = ((p1d_arr["p_fused"] >= thr).astype(int) == label)
-    rescue = (~p0_correct) & p1d_correct
-    harm = p0_correct & (~p1d_correct)
+    rescue = (~p0_correct) & p1d_correct & fake
+    harm = p0_correct & (~p1d_correct) & fake
     sep = {}
     if rescue.sum() >= 10 and harm.sum() >= 10:
         sub = np.concatenate([X[rescue], X[harm]])
-        ysub = np.r_[np.ones(rescue.sum()), np.zeros(harm.sum())]
+        ysub = np.r_[np.ones(rescue.sum()), np.zeros(harm.sum())].astype(int)
         gsub = np.concatenate([gen[rescue], gen[harm]])
-        lsub = np.concatenate([label[rescue], label[harm]])
         vsub = np.concatenate([vid[rescue], vid[harm]])
-        rh = logo_probe(sub, ysub.astype(int), gsub, lsub, min_per_group=10, video_ids=vsub)
-        sep = summarise(rh, "R(x) -> rescue vs harm")
+        mpg = max(4, args.min_videos_per_group // 2)
+        rh = fakes_only_probe(sub, ysub, gsub, vsub, min_per_group=mpg)
+        sep = summarise(rh, "R(x) -> rescue vs harm (fakes, video level)")
         rh.to_csv(out / "Q3_folds_rescue_vs_harm.csv", index=False)
+        # Same incrementality discipline as Q1/Q3: a standalone AUROC here proves nothing,
+        # because p_fused alone separates rescue from harm almost by construction (a rescue
+        # is where P1d is right and P0 wrong). Only the delta over that baseline is evidence
+        # that the *response curve* carries something the score does not.
+        sub_base = np.concatenate([base_feat[rescue], base_feat[harm]])
+        rh_base = fakes_only_probe(sub_base, ysub, gsub, vsub, min_per_group=mpg)
+        sep["score_only_baseline"] = summarise(rh_base, "p_fused -> rescue vs harm")
+        sep["incremental_auroc"] = (
+            None if rh.empty or rh_base.empty
+            else float(rh["auroc"].mean() - rh_base["auroc"].mean()))
     res["Q3_rescue_harm_separation"] = {"n_rescue": int(rescue.sum()),
                                         "n_harm": int(harm.sum()), **sep}
 
