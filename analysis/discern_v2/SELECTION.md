@@ -62,9 +62,21 @@ confidently wrong and therefore the only place a specialist can prove itself:
 | facevid2vid-ff | 0.480 | **0.827** | 0.691 | 0.786 | 0.686 | 0.698 | 0.509 |
 | tpsm-cdf | 0.500 | **0.866** | 0.748 | 0.625 | 0.682 | 0.779 | 0.545 |
 
-It also has the best standalone DF40 AUROC (0.8581 vs P0's 0.8367). The instructions warn
-that best-standalone ≠ best-specialist; here the two happen to coincide, which is worth
-stating plainly rather than dressing up as a subtle finding.
+It also has the best standalone DF40 AUROC (0.8581 vs P0's 0.8367).
+
+**Caveat added 2026-08-15 after the 7-source matrix — P1b's standalone lead is
+DF40-specific.** Across all seven OOD sources P1b is **4th of 8** on mean AUROC (0.8565),
+inside a 0.004 band with P1a, P3a and P0 itself; P2a leads (0.8639) and P1d is second
+(0.8589). On DFDC and DFD, P1b falls *below* the P0 baseline. And by error overlap the most
+complementary operator is **P1c** (mean 0.500 vs P1b's 0.554), which also has the worst mean
+AUROC — the "mediocre standalone, complementary where it counts" profile the north star is
+looking for.
+
+No projector dominates: P1b wins the inverted rows, P2a wins mean AUROC, P1c wins error
+complementarity, P1d wins gate recovery. P1b remains the recommendation because the phase
+privileges regions of expertise over average AUC — but that argument rests on the inversion
+criterion, which is measurable on only two of eight sources. Full detail and the two
+resulting ASK-UMAR items are in `MULTISOURCE_FINDINGS.md`.
 
 ## 3. Does P2a contribute errors/rescues sufficiently different from the manifold and visual branches?
 
