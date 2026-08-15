@@ -1,0 +1,23 @@
+# D3(P1d) — the matched baseline for the D4 arm.
+#
+# WHY THIS FILE EXISTS
+# D4's claim is that applicability-aware fusion beats ordinary EDL fusion, measured as
+# D4 - D3. The main ladder runs on P1b (best raw specialist: wins all eight inverted rows,
+# best standalone AUROC), but P1b's A2a gate recovery is NEGATIVE on both sources once the
+# FF++ threshold is used (-0.032 DF40, -0.031 CDFv3), whereas P1d stays positive
+# (+0.027 DF40, +0.265 CDFv3). So the D4 arm is built on P1d.
+#
+# That split is only interpretable if D4(P1d) is compared against D3(P1d), NOT against
+# D3(P1b). Otherwise the delta mixes "gating helped" with "the manifold branch changed" and
+# means nothing. This config is that matched baseline — run it before D4, and compare
+# D4(P1d) only to this.
+#
+# Main ladder  : D1-V / D1-M / D1-VM -> D2 -> D3_full.yaml        (projector: beta_tcvae)
+# D4 arm       : D3_full_p1d.yaml -> D4                            (projector: mr_vae)
+
+_base_: _base.yaml
+
+discern_v2:
+  visual:   {enabled: true}
+  manifold: {enabled: true, projector: mr_vae}
+  process:  {enabled: true}

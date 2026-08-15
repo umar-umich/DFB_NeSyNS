@@ -12,5 +12,5 @@ process_v2: false
 
 discern_v2:
   visual:   {enabled: false}
-  manifold: {enabled: true, projector: mr_vae}
+  manifold: {enabled: true, projector: beta_tcvae}
   process:  {enabled: false}

@@ -11,5 +11,5 @@ _base_: _base.yaml
 
 discern_v2:
   visual:   {enabled: true}
-  manifold: {enabled: true, projector: mr_vae}
+  manifold: {enabled: true, projector: beta_tcvae}
   process:  {enabled: true}

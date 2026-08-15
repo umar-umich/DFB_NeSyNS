@@ -13,14 +13,16 @@ python analysis/discern_v2/a1_complementarity.py
 python analysis/discern_v2/a2_gate.py
 ```
 
-### Standing caveat — the threshold
+### The threshold — resolved
 
-No FF++ export exists yet, so no threshold can be derived from the permitted protocol
-source. `frozen_threshold()` returns a fixed 0.5 and reports that provenance rather than
-tuning anything on an OOD source. Per the instructions, threshold-free analyses (AUROC,
-score correlation, error overlap) carry every conclusion below, and each decision-based
-table is reported beside its threshold-free counterpart. **`export_features.py P0-DS
---source FFpp` removes this caveat** and is worth running before the numbers are final.
+**threshold = 0.5110, EER on FFpp (the protocol source), frozen for every OOD dataset and
+generator.** The FF++ export landed 2026-08-15 (4,736 frames / 592 videos), so the earlier
+fixed-0.5 fallback is gone and every decision-based number below has real protocol
+provenance. No threshold is tuned per OOD source at any point.
+
+This mattered more than expected: it flipped the sign of P1b's gate recovery (see Q5).
+Threshold-free results — AUROC, error overlap, evidence correlation, and the whole
+inversion-row table — are unchanged by construction.
 
 ---
 
@@ -95,23 +97,26 @@ marked *label-peeking / non-deployable* and is deliberately not a headline.
 **Partly, and — awkwardly — the projector that offers the most headroom is the one the gate
 exploits least.**
 
-| candidate set | DF40 recovery | CDFv3 recovery |
-|---|---|---|
-| {P0, P1d, P2a} | **+0.066** | **+0.368** |
-| {P0, P1b, P2a} | +0.014 | +0.091 |
-| {P0, P1a, P2a} | −0.073 | +0.321 |
-| {P0, P1c, P2a} | −0.239 | +0.292 |
+Under the frozen FFpp threshold (0.5110). The earlier fixed-0.5 numbers are shown for
+comparison because the threshold changed the *sign* for P1b, which is worth seeing:
 
-Negative means the gate does *worse* than simply trusting P0. Two things follow:
+| candidate set | DF40 recovery | CDFv3 recovery | (at the old 0.5 fallback) |
+|---|---|---|---|
+| {P0, **P1d**, P2a} | **+0.027** | **+0.265** | +0.066 / +0.368 |
+| {P0, P1b, P2a} | **−0.032** | **−0.031** | +0.014 / +0.091 |
 
-- **DF40 recovery is poor for every set** (−0.24 to +0.07). DF40 spans far more generator
+Negative means the gate does *worse* than simply trusting P0. Three things follow:
+
+- **P1d is the only projector a gate can exploit.** It is positive on both sources; P1b is
+  negative on both.
+- **P1b has the most headroom and the least gateable headroom.** It offers the largest
+  oracle ceiling (+0.094 BA) and the biggest rescues, and the gate captures none of it.
+- **DF40 recovery is weak even at its best** (+0.027). DF40 spans far more generator
   families, so even the optimistic A2a protocol — where the gate has seen sibling
   generators — barely transfers.
-- **P1d is the most gateable** (+0.066 / +0.368) despite having *less* oracle headroom than
-  P1b. P1b offers the largest ceiling and the biggest rescues but the gate captures little
-  of it.
 
-This is a genuine tension in the selection, not a tie to be broken quietly — see Q7.
+This tension is resolved by *splitting* the ladder rather than picking one projector for
+everything — see Q7.
 
 ## 6. Does R(x) predict forgery, failure, or applicability even without family clusters?
 
@@ -138,29 +143,43 @@ transfer without destroying it. P1b is the recommendation on complementary rescu
 inverted rows), standalone AUROC (0.858, best of the suite), and oracle headroom
 (+0.094 CDFv3, the largest of any set).
 
-**The honest caveat:** if D4 is built, P1d is the more gateable partner (+0.066/+0.368 vs
-P1b's +0.014/+0.091). The choice therefore depends on a decision that has not been made yet:
+**DECIDED 2026-08-15 (Umar): the ladder splits by projector.** P1b is the best raw
+specialist but its gate recovery is negative on both sources; P1d is the only projector a
+gate can exploit. Rather than force one choice, each is used where its evidence supports it:
 
-- **D3 is the destination** → choose **P1b**. Raw complementarity is what fusion consumes,
-  and P1b dominates it.
-- **D4 is the destination** → **P1d** deserves reconsideration despite losing its
-  rate-response justification, because a gate extracts more from it.
+| arm | configs | projector | rationale |
+|---|---|---|---|
+| Main ladder | `D1_V` / `D1_M` / `D1_VM` → `D2_process` → `D3_full` | **beta_tcvae (P1b)** | wins all 8 inverted rows, best AUROC, largest headroom |
+| D4 arm | **`D3_full_p1d`** → D4 | **mr_vae (P1d)** | the only positive gate recovery (+0.027 / +0.265) |
 
-I recommend **P1b**, because D4 is not currently justified (below) and D3 is the honest
-system. 🟡 Yours to confirm.
+**The constraint that makes this valid:** D4's claim is measured as D4 − D3, so
+**D4(P1d) must be compared against D3(P1d)**, never against the P1b D3. Otherwise the delta
+conflates "gating helped" with "the manifold branch changed" and means nothing. That is why
+`D3_full_p1d.yaml` exists as an explicit matched baseline rather than a note someone has to
+remember at run time. The cost of running both arms is one extra D3, not a second ladder.
 
-**D4: not justified on this evidence, and leaning negative.** Oracle headroom is real
-(+0.055 to +0.094) but an observable gate recovers little of it and on DF40 frequently makes
-things worse. Per the integration README this is the "large oracle, unrecoverable" branch —
-a legitimate negative result, not a failure. Two things should be settled before it is
-written up as final: the FF++ threshold export, and A2b (the deployment-valid protocol,
-specified in `A2_gate/A2b_PROTOCOL.md`), since A2a is only an optimistic ceiling.
+**D4 still leans negative, and is still gated on a greenlight.** Oracle headroom is real
+(+0.055 to +0.094 BA) but the gate recovers little of it — at best +0.027 on DF40. Per the
+integration README this is the "large oracle, unrecoverable" branch: a legitimate negative
+result rather than a failure. P1d is the one arm where it has a chance, so testing it is
+worthwhile, but the expected outcome is a written negative result. Before that is final,
+**A2b** (the deployment-valid protocol in `A2_gate/A2b_PROTOCOL.md`) should be run — A2a is
+only an optimistic ceiling, since its gate has seen sibling generators.
 
 ---
 
-## Open 🟡 ASK-UMAR
+## Status of the 🟡 items
 
-1. **D1 projector** — recommendation is P1b; confirm, or choose P1d if D4 is the target.
-2. **FF++ export** — approved, not yet run. Removes the 0.5 threshold fallback.
-3. **D4** — my reading is negative-leaning; confirm before it is written up as a negative
-   result rather than built.
+1. **D1 projector** — **RESOLVED**: P1b for the main ladder, P1d for the D4 arm (Q7).
+2. **FF++ export** — **DONE** 2026-08-15; threshold is now 0.5110 from FFpp EER.
+3. **D4** — still open. Reading is negative-leaning; confirm before it is written up as a
+   negative result rather than built. Depends on A2b, not yet run.
+
+## Still outstanding
+
+- **D0** is not runnable from `training/config/discern_v2/`. Those files are flag manifests
+  (as the Phase-1 spec asked them to be stubbed); `train.py` reads
+  `training/config/detector/*.yaml` and has no `_base_:` include mechanism. D0 is a v1
+  reproduction, so it should run through the existing v1 detector config — **which config
+  is the v1 system of record is an open ASK-UMAR.**
+- **A2b** deployment-valid gate protocol: specified, not run.

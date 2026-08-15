@@ -27,10 +27,17 @@ discern_v2:
     enabled: true
     feature_dim: 64        # DiCoME's semantic feature width f_s
     latent_dim: 32
-    # Projector selection is 🟡 ASK-UMAR and comes out of Track A (A3 incremental signal +
-    # A2a gate recovery), NOT standalone AUC. mr_vae is the WIRING PLACEHOLDER default only.
+    # SELECTED 2026-08-15 by Umar, on Track A evidence: beta_tcvae (P1b). It wins all eight
+    # inverted rows, has the best standalone DF40 AUROC (0.8581), and the largest oracle
+    # headroom (+0.094 BA on CDFv3).
+    #
+    # The D4 arm deliberately uses mr_vae (P1d) instead -- see D3_full_p1d.yaml. P1b's A2a
+    # gate recovery is NEGATIVE under the FF++ threshold (-0.032 / -0.031) while P1d stays
+    # positive (+0.027 / +0.265), so P1d is the only projector a gate can exploit. D4 must
+    # be compared against D3_full_p1d.yaml, never against the P1b D3.
+    #
     # Swapping is this one string: beta_vae | deterministic_ae | beta_tcvae | mr_vae
-    projector: mr_vae
+    projector: beta_tcvae
     export_rate_response: true
     # beta_kld MUST be 0.0 when projector = deterministic_ae. With log_var = 0 the KL term
     # becomes 0.5 * sum(mu^2) — weight decay on the latent, not "no KL".
