@@ -39,12 +39,27 @@ output dirs are gitignored so a given run's numbers can't be mistaken for the ru
 
 ## Headline results
 
-- **Recommended D1 manifold branch: P1b (β-TCVAE)** — best on all eight inverted rows, best
-  standalone AUROC (0.858), largest oracle headroom. 🟡 Awaiting sign-off.
-- **P1d loses privileged status** — its rate response adds +0.012 on forgery separability
-  and is *negative* on both applicability questions.
-- **D4 leans negative** — real oracle headroom (+0.055 to +0.094 BA) that an observable gate
-  largely fails to recover, badly so on DF40.
+Evidence base: **8 eval sources** (FFpp, DF40, CDFv3, CDFv2, DFEval24, DFDC, DFDCP, DFD),
+threshold **0.5110** frozen from FFpp EER.
+
+- **D1 manifold branch: P1b (β-TCVAE)**, confirmed by three independent lines — wins all
+  eight DF40 inverted rows, reproduces the ordering on CDFv3's inverted row
+  (0.420 → 0.686, ahead of P2a and P1d), best standalone AUROC (0.8581), largest oracle
+  headroom (+0.094 BA CDFv3).
+- **D4 arm: P1d (MR-VAE)**, on the matched `D3_full_p1d.yaml` baseline. It is the only
+  projector a gate can exploit, in both A2a and A2b.
+- **P1d loses its *rate-response* justification** — +0.012 incremental on forgery
+  separability, negative on both applicability questions, replicated on CDFv3. It stays in
+  the D4 arm on gate-recovery evidence, not on R(x).
+- **D4 is defensible, not negative** (revised). A gate trained only on FF++ and frozen
+  recovers a mean **+0.106** of oracle headroom with P1d, positive on 5 of 7 OOD sources.
+- **Build D4 with a conservative routing threshold.** A2c: tau = 0.95 cuts worst-source harm
+  72%, halves routing to 47%, and costs only ~20% of the mean gain.
+- **The gate harms the in-the-wild source.** DFEval24 is negative under every configuration
+  tested; tau = 0.95 reduces it to −0.0066 BA but does not eliminate it. For a reliability
+  paper this belongs in the abstract, not a footnote.
+- **Scope limit:** per-generator inversion is only measurable on DF40 and CDFv3. The other
+  five sources label everything as one method — a metadata limitation, not a null result.
 
 ## A DiCoME fix that was required
 
@@ -63,13 +78,16 @@ and P3a / P4 / SBI / VALmix untouched.
 
 ## Outstanding
 
-**FF++ threshold export** (approved, not yet run) — without it no threshold can come from
-the permitted protocol source, so `frozen_threshold()` falls back to a documented 0.5 and
-the threshold-free analyses carry every conclusion:
+**D0 is running** (launched 2026-08-15 02:38, GPU 0) — see `D0_v1_reproduction.yaml` for the
+command and the verified v1 flag state. Its numbers become the ladder's reference once
+frozen.
 
-```
-cd /data/umar/Repos/DiCoME
-python experiments/common/analysis/export_features.py P0-DS --source FFpp
-```
+**D1–D3 cannot be launched.** The `discern_v2` branches are scaffolding: nothing under
+`training/detectors/` calls `build_branches()`, so the D1/D2/D3 configs are flag manifests
+exactly as D0's was. Running the ladder requires wiring the branch contract into the
+detector and trainer — a real architectural change to the training path, deliberately not
+started without an explicit go-ahead. **This is the single blocker for all remaining
+D-ladder work.**
 
-**Next runnable ladder rung: D0**, using `training/config/discern_v2/D0_v1_reproduction.yaml`.
+**D4** is unblocked on evidence but still needs a greenlight, and should be built at
+tau ≈ 0.95 against `D3_full_p1d.yaml`.
