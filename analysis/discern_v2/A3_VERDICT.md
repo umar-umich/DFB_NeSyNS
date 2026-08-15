@@ -14,6 +14,19 @@ merely re-encodes the score would look excellent while adding nothing.
 | Q3 P0-miss prediction (fakes, video level) | 0.8708 | 0.9363 | **−0.0655** | 52 |
 | Q3 rescue vs harm (fakes, video level) | 0.9639 | 0.9853 | **−0.0215** | 43 |
 
+## Replicated on a second source (CDFv3, 1,080 videos)
+
+| question | R(x) | baseline | **incremental** | DF40 incremental | folds |
+|---|---|---|---|---|---|
+| Q1 forgery separability | 0.8170 | 0.8077 | **+0.0089** | +0.0122 | 22 |
+| Q3 P0-miss prediction | 0.9455 | 0.9513 | **−0.0059** | −0.0655 | 22 |
+| Q3 rescue vs harm | 0.9632 | 0.9792 | **−0.0160** | −0.0215 | 21 |
+| Q2 family structure | silhouette 0.033, Fisher 0.012 | — | — | −0.109 / 0.097 | descriptive |
+
+The same pattern on an independent source: a small positive on Q1, negative on both
+applicability questions, and no family structure. A single-source verdict could have been a
+DF40 artefact; two sources agreeing makes that unlikely.
+
 ## Verdict
 
 **The rate response does not justify P1d's privileged status.**
