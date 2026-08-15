@@ -27,6 +27,28 @@ The same pattern on an independent source: a small positive on Q1, negative on b
 applicability questions, and no family structure. A single-source verdict could have been a
 DF40 artefact; two sources agreeing makes that unlikely.
 
+## Third source (DFDCP), and the limit of what is measurable
+
+A3 was run on all seven OOD sources. It is only **computable on three** — DF40, CDFv3 and
+DFDCP. CDFv2, DFEval24, DFDC and DFD label every fake as a single method, so leave-one-
+generator-out folds cannot be built and every probe returns `None`. Same limitation as the
+inversion-row analysis, and the same caveat applies: untestable is not the same as absent.
+
+| source | generators | Q1 incremental | Q3 incremental |
+|---|---|---|---|
+| DF40 | 70 | +0.0122 | −0.0655 |
+| CDFv3 | 22 | +0.0089 | −0.0059 |
+| **DFDCP** | 2 | **−0.0074** | +0.0050 |
+
+**This removes the last support for R(x).** Q1 was the single criterion the rate response
+passed, and on DFDCP it is *negative*. Across the three measurable sources Q1 averages about
++0.005 and changes sign, which is indistinguishable from noise; Q3 is negative on two of
+three. There is no question on which R(x) reliably adds information.
+
+DFDCP has only two generators, so its folds are thin and the individual numbers are weak
+evidence on their own. The point is not that DFDCP proves R(x) useless — it is that Q1's
+small positive does not replicate, so it cannot carry P1d's privileged status.
+
 ## Verdict
 
 **The rate response does not justify P1d's privileged status.**
