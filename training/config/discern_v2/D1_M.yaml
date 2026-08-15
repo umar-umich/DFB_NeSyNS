@@ -1,0 +1,16 @@
+# D1-M — manifold only.
+#
+# Isolates: is the manifold residual evidence non-degenerate on its own, or does it only
+# function as a correction to the visual branch? A manifold branch that collapses here but
+# appears to help in D1-VM is riding the visual head rather than contributing evidence.
+#
+# Projector is 🟡 ASK-UMAR and comes out of Track A. mr_vae is a placeholder default only.
+
+_base_: _base.yaml
+
+process_v2: false
+
+discern_v2:
+  visual:   {enabled: false}
+  manifold: {enabled: true, projector: mr_vae}
+  process:  {enabled: false}

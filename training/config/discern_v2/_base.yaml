@@ -1,0 +1,48 @@
+# DISCERN v2 — shared branch flags.
+#
+# The v1 branches stay AVAILABLE but are off the v2 forward path: they are needed for
+# ablations, so they are disabled by flag rather than deleted. D0 turns them back on
+# explicitly (see D0_v1_reproduction.yaml) — a stripped v2 configuration must never be
+# mislabelled "D0".
+
+# ---- v1 branches: available for ablation, off the v2 forward path -------------------
+semantic_v1:        false   # FACS predicate reasoning
+structural_sem_v1:  false   # class-conditioned SEMs
+handcrafted_freq:   false   # FFT / SRM / DCT features
+ccv:                false   # CCV experiments
+symbolic_rules_v1:  false   # old symbolic rules
+
+# ---- v2 mechanisms --------------------------------------------------------------------
+manifold_v2:        true
+process_v2:         true
+
+discern_v2:
+  visual:
+    enabled: true
+    # The CLIP branch is kept unchanged for now, per the Phase-1 instructions: the phase
+    # success criterion is that the new mechanisms transfer WITHOUT destroying this baseline.
+    feature_dim: 512
+
+  manifold:
+    enabled: true
+    feature_dim: 64        # DiCoME's semantic feature width f_s
+    latent_dim: 32
+    # Projector selection is 🟡 ASK-UMAR and comes out of Track A (A3 incremental signal +
+    # A2a gate recovery), NOT standalone AUC. mr_vae is the WIRING PLACEHOLDER default only.
+    # Swapping is this one string: beta_vae | deterministic_ae | beta_tcvae | mr_vae
+    projector: mr_vae
+    export_rate_response: true
+    # beta_kld MUST be 0.0 when projector = deterministic_ae. With log_var = 0 the KL term
+    # becomes 0.5 * sum(mu^2) — weight decay on the latent, not "no KL".
+    # assert_projector_config() enforces this.
+    beta_kld: 2.0
+
+  process:
+    enabled: true
+    # Frozen stabilityai/sdxl-vae, the same local checkout the P2a pilot used.
+    vae_path: /data/umar/Repos/DiCoME/eval_adaptation/data/models/sdxl-vae
+    resolution: 256
+    # Caching is deliberately NOT enabled. A residual cached from an unaugmented image
+    # paired with a stochastically augmented visual input means the two branches describe
+    # different observations. Reproduce P2a preprocessing exactly before optimising runtime.
+    cache_residuals: false

@@ -1,0 +1,15 @@
+# D3 — CLIP + manifold + process under ordinary EDL fusion.
+#
+# Isolates: do the two complements survive together?
+# Gate to advance: no collapse of the CLIP baseline.
+#
+# D3 is the honest system. D4 (applicability-aware fusion) is gated on Track A's A2a
+# Gate-Recovery verdict plus an explicit greenlight — near-zero recovery makes D4 a written
+# negative result, not code.
+
+_base_: _base.yaml
+
+discern_v2:
+  visual:   {enabled: true}
+  manifold: {enabled: true, projector: mr_vae}
+  process:  {enabled: true}

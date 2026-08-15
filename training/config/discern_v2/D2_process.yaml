@@ -1,0 +1,12 @@
+# D2 — CLIP + process (P2a). Isolates whether the process residual survives integration.
+#
+# Gate to advance: process evidence non-degenerate.
+
+_base_: _base.yaml
+
+manifold_v2: false
+
+discern_v2:
+  visual:   {enabled: true}
+  manifold: {enabled: false}
+  process:  {enabled: true}
