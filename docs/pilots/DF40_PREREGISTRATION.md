@@ -5,6 +5,17 @@ Status. DRAFT. This file must be committed before any Pilot 2 result is produced
 It is written before any attribution number exists. One open decision, marked below,
 needs a human call before it is frozen.
 
+> **2026-08-07 — DF40 train split NO LONGER ON DISK.** `/data/umar/Datasets/df40/train`
+> (74 GB, 31 generators) was deleted to make room for the 109 GB DF40 test-split H5 build
+> for the generation-process pilots (`docs/DiCoME_eval/README-generation-process-pilot.md`).
+> This was a deliberate call made with the conflict known. **Pilot 2 cannot run as
+> pre-registered until train is re-downloaded** from DF40's Google Drive (link in
+> `/data/umar/Datasets/df40/dataset_download_details.txt`, "DF40 (training data)", ~93 GB).
+> Nothing else about this pre-registration changes: the seen-vs-held-out generator
+> assignment below is a property of DF40's published split membership, not of local files,
+> so it remains valid and re-downloading restores reproducibility exactly. The test split
+> is untouched and fully on disk.
+
 Data source. `/data/umar/Datasets/df40`, the 40 generator DF40 benchmark, train and
 test splits already on disk. Nine generators appear only in the test split and are the
 benchmark's designated cross method evaluation set. They are used here as the held out

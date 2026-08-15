@@ -9,7 +9,7 @@ anomalies, and verify counterfactual consistency.
 
 Three components produce interpretable violation/anomaly signals that
 are fused into 2-d evidence via a small MLP:
-
+ 
   1. LearnedConstraintFunctions: K learned soft constraints over combined
      features (extends the 23 hand-coded ConsistencyRulesV7).
   2. ForensicAnomalyDetector: per-group autoencoders on 83-d forensic

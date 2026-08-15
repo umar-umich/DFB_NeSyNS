@@ -49,6 +49,7 @@ import datetime
 import glob
 import concurrent.futures
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 from pathlib import Path
 
@@ -253,6 +254,33 @@ def process_video(
                 logger.warning(f"Detection error frame {cnt_frame} of {movie_path}: {e}")
             continue
 
+        # Fallback for sources that are *already* tight face crops (e.g. Celeb-DF-v3
+        # FaceReenact/TalkingFace ship 256x256 pre-cropped video). RetinaFace expects the
+        # face to be a sub-region of a larger image and finds nothing when it fills the
+        # frame. A replicate border restores the surrounding context; measured 0/12 -> 12/12
+        # detections on a previously-failing DaGAN clip, with no change on clips that
+        # already worked. Upscaling does NOT help, which confirms context and not
+        # resolution is the constraint.
+        # Landmarks are shifted back into original-frame coordinates so alignment runs on
+        # the unpadded frame exactly as it does for normally-detected frames — recovered
+        # frames are therefore identical in convention to the ones already extracted.
+        if len(xyxy) == 0:
+            pad = max(frame_org.shape[0], frame_org.shape[1]) // 4
+            try:
+                padded = cv2.copyMakeBorder(frame_org, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
+                xyxy, kpss = model.detect(padded)
+            except Exception as e:
+                if logger:
+                    logger.warning(f"Padded detection error frame {cnt_frame} of {movie_path}: {e}")
+                continue
+            if len(xyxy):
+                xyxy = xyxy.copy()
+                kpss = kpss.copy()
+                xyxy[:, [0, 2]] -= pad
+                xyxy[:, [1, 3]] -= pad
+                kpss[:, :, 0] -= pad
+                kpss[:, :, 1] -= pad
+
         if len(xyxy) == 0:
             if logger:
                 logger.warning(f"No faces in frame {cnt_frame} of {movie_path}")
@@ -332,7 +360,23 @@ def process_video(
             f.write(f"{movie_path.stem},{num_saved},{total_target}\n")
 
 
-def preprocess(dataset_path, mask_path, output_path, mode, num_frames, stride, logger, model, allowed_videos=None):
+def already_extracted(output_path, video_stem, mode, num_frames):
+    """True if this video's frames were already fully extracted by a previous run.
+
+    Only claims completeness for the modes with a known up-front target count.
+    Videos that came out short (a clip with fewer frames than num_frames, or frames
+    where detection failed) are deliberately not skipped, so a re-run retries them.
+    """
+    if mode not in ('fixed_num_frames', 'at_least'):
+        return False
+    frames_dir = Path(output_path) / 'frames' / video_stem
+    if not frames_dir.is_dir():
+        return False
+    return sum(1 for f in os.scandir(frames_dir) if f.name.endswith('.png')) >= num_frames
+
+
+def preprocess(dataset_path, mask_path, output_path, mode, num_frames, stride, logger, model,
+               allowed_videos=None, skip_existing=False, video_exts=('.mp4',)):
     """Process all videos in a dataset directory.
 
     Args:
@@ -347,16 +391,41 @@ def preprocess(dataset_path, mask_path, output_path, mode, num_frames, stride, l
         allowed_videos: Optional set of absolute Path objects. If provided, only
             videos whose path is in the set will be processed (used for
             test-list filtering on Celeb-DF-v3).
+        skip_existing: Skip videos already fully extracted into output_path. Face
+            detection dominates runtime and runs even when the output PNG exists,
+            so this is what makes re-running over a partly-processed dataset cheap.
+        video_exts: Container extensions to pick up. Defaults to mp4-only, matching the
+            original behaviour for every existing dataset. Deepfake-Eval-2024 is
+            in-the-wild media and contains one .webm (a Fake in the official test split),
+            which an mp4-only glob would silently drop.
     """
     movies_path_list = sorted([
-        Path(p) for p in glob.glob(os.path.join(dataset_path, '**/*.mp4'), recursive=True)
+        Path(p)
+        for ext in video_exts
+        for p in glob.glob(os.path.join(dataset_path, f'**/*{ext}'), recursive=True)
     ])
     if allowed_videos is not None:
         movies_path_list = [p for p in movies_path_list if p.resolve() in allowed_videos]
     if len(movies_path_list) == 0:
         logger.error(f"No videos found in {dataset_path}")
         return
-    logger.info(f"{len(movies_path_list)} videos found in {dataset_path}")
+    found = len(movies_path_list)
+
+    num_skipped = 0
+    if skip_existing:
+        kept = [p for p in movies_path_list
+                if not already_extracted(output_path, p.stem, mode, num_frames)]
+        num_skipped = found - len(kept)
+        movies_path_list = kept
+
+    logger.info(
+        f"{found} videos found in {dataset_path}"
+        + (f" — {num_skipped} already extracted, {len(movies_path_list)} to process"
+           if skip_existing else "")
+    )
+    if not movies_path_list:
+        logger.info(f"Nothing to do for {dataset_path}")
+        return
 
     # Initialize failed-videos log for this sub-dataset
     failed_log_path = Path(output_path) / 'failed_videos.txt'
@@ -428,6 +497,14 @@ if __name__ == '__main__':
     mode = config['preprocess']['mode']['default']
     stride = config['preprocess']['stride']['default']
     num_frames = config['preprocess']['num_frames']['default']
+    # Optional keys — defaulted here so older config.yaml copies keep working.
+    skip_existing = config['preprocess'].get('skip_existing', {}).get('default', True)
+    celebdfv3_families = config['preprocess'].get('celebdfv3_families', {}).get(
+        'default', ['FaceSwap', 'FaceReenact', 'TalkingFace'])
+    # Opt-in override of the Deepfake-Eval-2024 no-leak guard. Default False: the train
+    # ("Finetuning Set") split stays unextracted unless explicitly requested.
+    eval24_include_finetuning_split = bool(
+        config['preprocess'].get('eval24_include_finetuning_split', {}).get('default', False))
 
     # Source dataset path (original videos)
     dataset_path = Path(os.path.join(dataset_root_path, dataset_name))
@@ -444,6 +521,9 @@ if __name__ == '__main__':
     logger.info("Initializing RetinaFace model...")
     model = prepare_model(det_thres=0.5, nms_thresh=0.4)
     logger.info("RetinaFace model ready.")
+
+    # Default container extensions; a dataset branch may widen this.
+    video_exts = ('.mp4',)
 
     # Define sub-dataset paths based on dataset name
     ## FaceForensics++
@@ -473,7 +553,13 @@ if __name__ == '__main__':
         sub_dataset_names = ['Celeb-real', 'Celeb-synthesis', 'YouTube-real']
         sub_dataset_paths = [Path(os.path.join(dataset_path, name)) for name in sub_dataset_names]
 
-    ## Celeb-DF-v3 (FaceSwap fakes only + both real folders, restricted to test list)
+    ## Celeb-DF-v3 (all manipulation families + both real folders, restricted to test list)
+    ## Layout: Celeb-synthesis/<family>/<generator>/*.mp4
+    ##   FaceSwap     — BlendFace, Celeb-DF-v2, GHOST, HifiFace, InSwapper,
+    ##                  MobileFaceSwap, SimSwap, UniFace          (8 generators)
+    ##   FaceReenact  — DaGAN, FSRT, HyperReenact, LIA, LivePortrait, MCNET, TPSMM   (7)
+    ##   TalkingFace  — AniTalker, EchoMimic, EDTalk, FLOAT, IP_LAP,
+    ##                  Real3DPortrait, SadTalker                 (7)
     elif dataset_name == 'Celeb-DF-v3':
         test_list_path = dataset_path / 'List_of_testing_videos.txt'
         if not test_list_path.is_file():
@@ -482,12 +568,31 @@ if __name__ == '__main__':
             test_rels = [line.strip().split()[1] for line in f if line.strip()]
         allowed_videos = {(dataset_path / rel).resolve() for rel in test_rels}
 
-        # FaceSwap fakes: enumerate each sub-method as its own sub-dataset
-        # to avoid stem collisions across BlendFace/Celeb-DF-v2/GHOST/etc.
-        faceswap_root = dataset_path / 'Celeb-synthesis' / 'FaceSwap'
-        if not faceswap_root.is_dir():
-            raise FileNotFoundError(f"FaceSwap root missing: {faceswap_root}")
-        sub_dataset_paths = sorted([p for p in faceswap_root.iterdir() if p.is_dir()])
+        synthesis_root = dataset_path / 'Celeb-synthesis'
+        if not synthesis_root.is_dir():
+            raise FileNotFoundError(f"Celeb-synthesis root missing: {synthesis_root}")
+
+        # Families are discovered from disk rather than hardcoded, then intersected with
+        # the configured selection, so a newly-added family is picked up automatically.
+        available_families = sorted(p.name for p in synthesis_root.iterdir() if p.is_dir())
+        unknown = [f for f in celebdfv3_families if f not in available_families]
+        if unknown:
+            raise ValueError(
+                f"Configured Celeb-DF-v3 families not present on disk: {unknown}. "
+                f"Available: {available_families}"
+            )
+        families = [f for f in available_families if f in celebdfv3_families]
+        logger.info(f"Celeb-DF-v3 families selected: {families} (available: {available_families})")
+
+        # Each generator is its own sub-dataset so that identical video stems across
+        # generators (e.g. id0_id1_0001 appears under every FaceSwap generator) land in
+        # separate output directories instead of overwriting each other.
+        sub_dataset_paths = []
+        for family in families:
+            generators = sorted(p for p in (synthesis_root / family).iterdir() if p.is_dir())
+            if not generators:
+                logger.warning(f"No generator directories under {synthesis_root / family}")
+            sub_dataset_paths += generators
         sub_dataset_paths += [dataset_path / 'Celeb-real', dataset_path / 'YouTube-real']
 
     ## DFDCP
@@ -512,6 +617,63 @@ if __name__ == '__main__':
     elif dataset_name == 'UADFV':
         sub_dataset_names = ['fake', 'real']
         sub_dataset_paths = [Path(os.path.join(dataset_path, name)) for name in sub_dataset_names]
+
+    ## Deepfake-Eval-2024 (Chandra et al., 2025) — in-the-wild deployment benchmark
+    ## Flat directory of 2,036 videos; the class lives in the metadata CSV, not the layout,
+    ## so real/fake separation happens in rearrange.py (same pattern as DFDC test).
+    ## By default only the official `test` split (815 videos: 386 fake / 429 real) is
+    ## extracted — it is used zero-shot, and the 1,221-video `train` (a.k.a. "Finetuning Set")
+    ## split is left untouched so it cannot leak into any finetuning by accident.
+    ##
+    ## `eval24_include_finetuning_split: true` overrides that guard and additionally extracts
+    ## the 1,221 train videos. Authorised 2026-08-12 to build an out-of-domain *validation*
+    ## set (VALmix) for checkpoint selection. The guard stays default-off and every override
+    ## is logged at WARNING, because it has a real cost:
+    ##
+    ##   Selecting checkpoints on in-the-wild 2024 media means the Deepfake-Eval-2024 *test*
+    ##   AUC is no longer a strictly zero-shot number — it becomes a held-out test with
+    ##   in-distribution model selection. That benchmark is the headline deployment target,
+    ##   so any paper using an override-built validation set must say so explicitly.
+    ##
+    ## The test split itself is never contaminated: train and test are disjoint by the CSV's
+    ## own `Finetuning Set` column, and they are staged under different source names.
+    elif dataset_name == 'Deepfake-Eval-2024':
+        # The on-disk directory name differs from the canonical dataset name.
+        dataset_path = Path(dataset_root_path) / 'video_eval24'
+        metadata_path = dataset_path / 'video-metadata-publish-with-links.csv'
+        if not metadata_path.is_file():
+            raise FileNotFoundError(f"Missing metadata CSV: {metadata_path}")
+        metadata = pd.read_csv(metadata_path)
+        test_rows = metadata[metadata['Finetuning Set'] == 'test']
+        wanted_rows = test_rows
+        if eval24_include_finetuning_split:
+            train_rows = metadata[metadata['Finetuning Set'] == 'train']
+            wanted_rows = pd.concat([test_rows, train_rows])
+            logger.warning(
+                "eval24_include_finetuning_split=True — extracting the %d-video train "
+                "('Finetuning Set') split IN ADDITION to the %d test videos. This overrides "
+                "the default no-leak guard. Deepfake-Eval-2024 test AUC is only zero-shot if "
+                "these train videos are never used for training or model selection.",
+                len(train_rows), len(test_rows),
+            )
+        allowed_videos = {(dataset_path / f).resolve() for f in wanted_rows['Filename']}
+        missing = [f for f in test_rows['Filename'] if not (dataset_path / f).is_file()]
+        if missing:
+            raise FileNotFoundError(
+                f"{len(missing)} Deepfake-Eval-2024 test videos missing on disk, "
+                f"e.g. {missing[:3]}"
+            )
+        train_note = ("INCLUDED (guard overridden)" if eval24_include_finetuning_split
+                      else f"({len(metadata) - len(test_rows)}) deliberately skipped")
+        logger.info(
+            f"Deepfake-Eval-2024: {len(allowed_videos)} videos to extract "
+            f"({(wanted_rows['Video Ground Truth'] == 'Fake').sum()} fake / "
+            f"{(wanted_rows['Video Ground Truth'] == 'Real').sum()} real); "
+            f"train split {train_note}"
+        )
+        # One test video is .webm; an mp4-only glob would silently drop it.
+        video_exts = ('.mp4', '.webm')
+        sub_dataset_paths = [dataset_path]
     else:
         raise ValueError(f"Dataset {dataset_name} not recognized")
 
@@ -537,9 +699,11 @@ if __name__ == '__main__':
             # Only part of FF++ has masks
             if dataset_name == 'FaceForensics++' and sub_dataset_path.parent in mask_dataset_paths:
                 mask_dataset_path = os.path.join(sub_dataset_path.parent, "masks")
-                preprocess(sub_dataset_path, mask_dataset_path, output_path, mode, num_frames, stride, logger, model, allowed_videos=video_filter)
+                preprocess(sub_dataset_path, mask_dataset_path, output_path, mode, num_frames, stride, logger, model,
+                           allowed_videos=video_filter, skip_existing=skip_existing, video_exts=video_exts)
             else:
-                preprocess(sub_dataset_path, None, output_path, mode, num_frames, stride, logger, model, allowed_videos=video_filter)
+                preprocess(sub_dataset_path, None, output_path, mode, num_frames, stride, logger, model,
+                           allowed_videos=video_filter, skip_existing=skip_existing, video_exts=video_exts)
     else:
         logger.error(f"No sub-dataset paths found")
         sys.exit(1)

@@ -38,3 +38,6 @@ label_dict:
   # Roop
   roop_Real: 0
   roop_Fake: 1
+  # Deepfake-Eval-2024 (in-the-wild deployment benchmark, zero-shot)
+  DFEval24_Real: 0
+  DFEval24_Fake: 1

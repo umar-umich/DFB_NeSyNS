@@ -1,7 +1,7 @@
 preprocess:
   dataset_name: # the name of dataset
-    choices: ['FaceForensics++','Celeb-DF-v1', 'Celeb-DF-v2', 'Celeb-DF-v3', 'DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV']
-    default: 'FaceForensics++'
+    choices: ['FaceForensics++','Celeb-DF-v1', 'Celeb-DF-v2', 'Celeb-DF-v3', 'DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV','Deepfake-Eval-2024']
+    default: 'Celeb-DF-v3'
   
   dataset_root_path: # the root path to the original dataset
     type: str
@@ -29,9 +29,33 @@ preprocess:
     type: int
     default: 32
 
+  skip_existing: # skip videos whose frames were already fully extracted (makes re-runs cheap;
+                 # face detection runs even when the output PNG exists, so without this a
+                 # re-run re-detects everything). Short/failed videos are still retried.
+    type: bool
+    default: true
+
+  eval24_include_finetuning_split: # Deepfake-Eval-2024 only. Default false: the official
+                                   # 1,221-video train ("Finetuning Set") split is NOT
+                                   # extracted, so it cannot leak into training or model
+                                   # selection and the test AUC stays strictly zero-shot.
+                                   # Set true ONLY to build an out-of-domain validation set,
+                                   # and state it explicitly in any paper: selecting
+                                   # checkpoints on in-the-wild media makes the
+                                   # Deepfake-Eval-2024 test number no longer zero-shot.
+    type: bool
+    default: false
+
+  celebdfv3_families: # which Celeb-DF-v3 manipulation families to preprocess.
+                      # FaceSwap (8 generators), FaceReenact (7), TalkingFace (7).
+                      # Narrow this to process one family at a time; combined with
+                      # skip_existing, leaving all three listed is safe and resumable.
+    choices: ['FaceSwap', 'FaceReenact', 'TalkingFace']
+    default: ['FaceSwap', 'FaceReenact', 'TalkingFace']
+
 rearrange:
   dataset_name: # the name of dataset
-    choices: ['FaceForensics++', 'DeepFakeDetection', 'Celeb-DF-v1', 'Celeb-DF-v2', 'Celeb-DF-v3', 'DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV','FaceShifter']
+    choices: ['FaceForensics++', 'DeepFakeDetection', 'Celeb-DF-v1', 'Celeb-DF-v2', 'Celeb-DF-v3', 'DFDCP', 'DFDC', 'DeeperForensics-1.0','UADFV','FaceShifter','Deepfake-Eval-2024']
     default: 'Celeb-DF-v3'
   
   dataset_root_path: # the root path to the preprocessed dataset
