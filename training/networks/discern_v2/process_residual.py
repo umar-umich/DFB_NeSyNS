@@ -64,7 +64,9 @@ CLIP_STD = (0.26862954, 0.26130258, 0.27577711)
 class ProcessResidualOperator(nn.Module):
     """Frozen LDM first-stage AE cycle -> K reconstruction-error statistics per sample."""
 
-    def __init__(self, vae_path: str | Path, resolution: int = 256):
+    def __init__(self, vae_path: str | Path, resolution: int = 256,
+                 input_mean: tuple[float, float, float] = CLIP_MEAN,
+                 input_std: tuple[float, float, float] = CLIP_STD):
         super().__init__()
         from diffusers import AutoencoderKL
 
@@ -76,8 +78,15 @@ class ProcessResidualOperator(nn.Module):
         for p in self.vae.parameters():
             p.requires_grad_(False)
 
-        self.register_buffer("clip_mean", torch.tensor(CLIP_MEAN).view(1, 3, 1, 1))
-        self.register_buffer("clip_std", torch.tensor(CLIP_STD).view(1, 3, 1, 1))
+        # The operator has to UNDO whatever normalisation the datamodule applied before it
+        # can hand [-1, 1] to the AE. The P2a pilot ran under DiCoME, whose datamodule uses
+        # CLIP normalisation, so those are the defaults. DISCERN's configs use
+        # mean = std = 0.5, and reusing the CLIP constants there would un-normalise with the
+        # wrong numbers, feed the AE out-of-range input, and produce a residual that is
+        # meaningless without ever raising — the exact failure this module's header warns
+        # about. Hence these are parameters, not constants.
+        self.register_buffer("input_mean", torch.tensor(input_mean).view(1, 3, 1, 1))
+        self.register_buffer("input_std", torch.tensor(input_std).view(1, 3, 1, 1))
 
     def train(self, mode: bool = True):
         """Keep the VAE in eval mode even when the enclosing model switches to train.
@@ -91,8 +100,12 @@ class ProcessResidualOperator(nn.Module):
         return self
 
     def _to_ae_space(self, images: torch.Tensor) -> torch.Tensor:
-        """CLIP-normalised batch -> [-1, 1] at the AE's working resolution."""
-        x = images * self.clip_std + self.clip_mean          # -> [0, 1]
+        """Normalised batch -> [-1, 1] at the AE's working resolution.
+
+        `input_mean`/`input_std` must match the datamodule that produced `images`; see the
+        constructor.
+        """
+        x = images * self.input_std + self.input_mean        # -> [0, 1]
         x = x.clamp(0, 1)
         if x.shape[-1] != self.resolution:
             x = F.interpolate(x, size=(self.resolution, self.resolution),
@@ -173,11 +186,18 @@ def assert_cache_safe(process_input_is_deterministic: bool,
             "residual per augmented sample, or explicitly validate the design first.")
 
 
-def build_operator(vae_path: str | Path | None = None, resolution: int = 256
+def build_operator(vae_path: str | Path | None = None, resolution: int = 256,
+                   input_mean: tuple[float, float, float] = CLIP_MEAN,
+                   input_std: tuple[float, float, float] = CLIP_STD
                    ) -> ProcessResidualOperator:
-    """Construct the frozen operator. `vae_path` must point at a local sdxl-vae checkout."""
+    """Construct the frozen operator. `vae_path` must point at a local sdxl-vae checkout.
+
+    Pass `input_mean`/`input_std` matching the datamodule's normalisation. DISCERN configs
+    use 0.5/0.5; the DiCoME pilot used CLIP's constants, which remain the default.
+    """
     if vae_path is None:
         raise ValueError(
             "process branch needs an explicit vae_path (a local stabilityai/sdxl-vae "
             "directory). Data paths are ASK-UMAR, so this is not guessed.")
-    return ProcessResidualOperator(vae_path=vae_path, resolution=resolution)
+    return ProcessResidualOperator(vae_path=vae_path, resolution=resolution,
+                                   input_mean=tuple(input_mean), input_std=tuple(input_std))

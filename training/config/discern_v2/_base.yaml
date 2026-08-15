@@ -25,6 +25,12 @@ discern_v2:
 
   manifold:
     enabled: true
+    # DISCERN's visual feature is 1024-d; DiCoME's f_s was 64-d and every ported projector
+    # has a 32-unit hidden layer sized for that. input_dim > feature_dim inserts a linear
+    # projection so the ported code runs in the regime it was validated in (a 2x bottleneck,
+    # not 32x). Set input_dim: null to feed the feature straight through.
+    input_dim: 1024        # DISCERN backbone / projection width
+    input: projected       # 'projected' (post spatial_proj) or 'spatial_raw'
     feature_dim: 64        # DiCoME's semantic feature width f_s
     latent_dim: 32
     # SELECTED 2026-08-15 by Umar, on Track A evidence: beta_tcvae (P1b). It wins all eight
@@ -49,6 +55,12 @@ discern_v2:
     # Frozen stabilityai/sdxl-vae, the same local checkout the P2a pilot used.
     vae_path: /data/umar/Repos/DiCoME/eval_adaptation/data/models/sdxl-vae
     resolution: 256
+    # MUST match the datamodule's normalisation. DISCERN's detector configs use
+    # mean = std = 0.5; the P2a pilot ran under DiCoME, which uses CLIP's constants. The
+    # operator un-normalises with these before handing [-1, 1] to the AE, so wrong values
+    # feed it out-of-range input and the residual becomes meaningless WITHOUT erroring.
+    input_mean: [0.5, 0.5, 0.5]
+    input_std:  [0.5, 0.5, 0.5]
     # Caching is deliberately NOT enabled. A residual cached from an unaugmented image
     # paired with a stochastically augmented visual input means the two branches describe
     # different observations. Reproduce P2a preprocessing exactly before optimising runtime.

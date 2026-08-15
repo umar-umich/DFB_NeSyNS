@@ -220,6 +220,15 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                           else 'static'))
             logger.info(f"  Evidence fusion : {mode}")
 
+        # -- DISCERN v2 branches (manifold / process) ----------------------
+        # Returns None unless manifold_v2 or process_v2 is set, so a v1 run adds no
+        # parameters and executes no extra ops — that is what keeps D0 comparable to
+        # D1-D3. See networks/discern_v2/integration.py.
+        from networks.discern_v2.integration import build_v2_stack
+        self.v2 = build_v2_stack(
+            config, gate_init=float(config.get('discern_v2', {})
+                                    .get('gate_init', -2.0)))
+
         self._try_compile_frozen_modules()
 
         logger.info("NeSyDeFake detector initialised (spatial + EDL)")
@@ -447,6 +456,17 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             total_evidence = fused['total_evidence']
             cmef_diag = fused['cmef_diag']
 
+            # -- DISCERN v2 branches (manifold / process) -------------------
+            # Additive, gated, and skipped entirely when self.v2 is None, so the v1 path
+            # below sees exactly the tensor it saw before this branch existed.
+            v2_diag = {}
+            if self.v2 is not None:
+                total_evidence, v2_diag = self.v2(
+                    total_evidence,
+                    visual_feature=(projected if self.v2.manifold_input == 'projected'
+                                    else spatial_raw),
+                    images=data_dict.get('spatial_frames'))
+
             # Dirichlet prediction from fused evidence
             alpha = total_evidence + 1.0
             S = alpha.sum(dim=1, keepdim=True)
@@ -492,6 +512,13 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
                         pred[ccv_key] = causal_out[ccv_key]
             if cmef_diag is not None and 'tau' in cmef_diag:
                 pred['cmef_tau'] = cmef_diag['tau']
+            # v2 branch evidence, gates and diagnostics (empty dict on a v1 run)
+            pred.update(v2_diag)
+            if v2_diag:
+                pred['branch_evidences'] = {
+                    **pred['branch_evidences'],
+                    **{k[:-len('_evidence')]: v for k, v in v2_diag.items()
+                       if k.endswith('_evidence')}}
             return pred
 
         raise RuntimeError(

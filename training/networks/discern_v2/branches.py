@@ -107,15 +107,27 @@ class ManifoldEvidenceBranch(EvidenceBranch):
 
     def __init__(self, feature_dim: int, latent_dim: int = 32, projector: str = "mr_vae",
                  hidden_dim: int = 64, num_classes: int = 2,
-                 evidence_activation: str = "softplus", export_rate_response: bool = True):
+                 evidence_activation: str = "softplus", export_rate_response: bool = True,
+                 input_dim: int | None = None):
         # the head reads the residual, which has the same width as the semantic feature
         super().__init__(in_dim=feature_dim, hidden_dim=hidden_dim, num_classes=num_classes,
                          evidence_activation=evidence_activation)
+        # DISCERN's visual feature is 1024-d; DiCoME's f_s was 64-d and every ported
+        # projector has a 32-unit hidden layer sized for that. Feeding 1024 straight in
+        # would run the projector far outside the regime it was validated in (a 32x
+        # bottleneck instead of 2x), so an input projection brings the feature down to
+        # `feature_dim` first and the ported code then operates exactly as in the pilot.
+        # When input_dim == feature_dim (or is omitted) this is an identity and the branch
+        # is byte-equivalent to the pilot.
+        self.input_proj = (nn.Linear(input_dim, feature_dim)
+                           if input_dim is not None and input_dim != feature_dim
+                           else nn.Identity())
         self.projector = build_projector(projector, feature_dim, latent_dim)
         self.projector_name = projector
         self.export_rate_response = export_rate_response
 
     def represent(self, semantic_feature: torch.Tensor) -> tuple[torch.Tensor, dict]:
+        semantic_feature = self.input_proj(semantic_feature)
         z, mu, log_var, recon = self.projector(semantic_feature)
         residual = semantic_feature - recon
 
@@ -134,7 +146,12 @@ class ManifoldEvidenceBranch(EvidenceBranch):
         return residual, diagnostics
 
     def extra_loss(self, semantic_feature: torch.Tensor, dataset_size: int):
-        """Projector-specific loss (beta-TCVAE's TC decomposition), or None."""
+        """Projector-specific loss (beta-TCVAE's TC decomposition), or None.
+
+        Applies the same input projection as `represent`, so the loss is computed on the
+        tensor the projector actually saw rather than the raw backbone feature.
+        """
+        semantic_feature = self.input_proj(semantic_feature)
         z, mu, log_var, _ = self.projector(semantic_feature)
         return self.projector.extra_loss(semantic_feature, z, mu, log_var, dataset_size)
 
@@ -188,13 +205,18 @@ def build_branches(cfg: dict) -> nn.ModuleDict:
             feature_dim=int(man["feature_dim"]),
             latent_dim=int(man.get("latent_dim", 32)),
             projector=str(man.get("projector", "mr_vae")),
-            export_rate_response=bool(man.get("export_rate_response", True)))
+            export_rate_response=bool(man.get("export_rate_response", True)),
+            input_dim=(int(man["input_dim"]) if man.get("input_dim") else None))
 
     proc = v2.get("process", {})
     if proc.get("enabled", False):
         from .process_residual import build_operator
         op = build_operator(vae_path=proc.get("vae_path"),
-                            resolution=int(proc.get("resolution", 256)))
+                            resolution=int(proc.get("resolution", 256)),
+                            input_mean=tuple(proc.get("input_mean", (0.48145466, 0.4578275,
+                                                                     0.40821073))),
+                            input_std=tuple(proc.get("input_std", (0.26862954, 0.26130258,
+                                                                   0.27577711))))
         branches["process"] = ProcessEvidenceBranch(operator=op, stat_dim=op.n_stats)
 
     if not branches:
