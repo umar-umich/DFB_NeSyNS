@@ -177,9 +177,18 @@ only an optimistic ceiling, since its gate has seen sibling generators.
 
 ## Still outstanding
 
-- **D0** is not runnable from `training/config/discern_v2/`. Those files are flag manifests
-  (as the Phase-1 spec asked them to be stubbed); `train.py` reads
-  `training/config/detector/*.yaml` and has no `_base_:` include mechanism. D0 is a v1
-  reproduction, so it should run through the existing v1 detector config — **which config
-  is the v1 system of record is an open ASK-UMAR.**
+- **D0 — RUNNING** (launched 2026-08-15). System of record is
+  `training/config/detector/nesy_defake_ablation4_ccv.yaml`, run from the repo root:
+  `python training/train.py --detector_path training/config/detector/nesy_defake_ablation4_ccv.yaml`
+  (launching from inside `training/` fails at import: `fwa_blend.py` loads a dlib asset by a
+  CWD-relative path). The `discern_v2/` files are flag manifests, not runnable trainer
+  configs — `train.py` has no `_base_:` include mechanism.
+
+  **One spec deviation, recorded in `D0_v1_reproduction.yaml`:** the spec asks D0 to set
+  `structural_sem_v1=true` alongside `ccv`, but `causal_branch.type` is one-of
+  `{simple, improved_scm, ccv}` — those two flags name *mutually exclusive* mechanisms, not
+  independent branches. The system of record uses `ccv`, so `structural_sem_v1` is FALSE in
+  the real v1 configuration. Setting it true would select a different causal mechanism and
+  produce something that is not the reference system.
+
 - **A2b** deployment-valid gate protocol: specified, not run.

@@ -1,17 +1,54 @@
 # D0 — DISCERN v1 reproduction. Establishes the reference numbers the whole ladder is
-# measured against. 🔴 UMAR-RUNS.
+# measured against.
 #
-# The v1 branches are turned on EXPLICITLY rather than inherited, so a stripped v2
-# configuration can never be mislabelled "D0". If you are reading this file and the v1 flags
-# below are not all true, what you are looking at is not D0.
+# THIS FILE IS A MANIFEST, NOT A RUNNABLE TRAINER CONFIG.
+# `train.py` reads `training/config/detector/*.yaml` and has no `_base_:` include
+# mechanism, so nothing under `training/config/discern_v2/` is executable by it. D0 is a
+# reproduction of the *existing* v1 system, so it runs an existing detector config
+# unchanged. This file records which one, and what its v1 flag state actually is, so a
+# stripped or altered configuration can never be mislabelled "D0".
+#
+# RUN D0 WITH (from the repo root -- fwa_blend.py loads a dlib asset by a CWD-relative
+# path, so launching from inside training/ fails at import time):
+#
+#   python training/train.py \
+#       --detector_path training/config/detector/nesy_defake_ablation4_ccv.yaml
+#
+# System of record: nesy_defake_ablation4_ccv.yaml (confirmed by Umar 2026-08-15).
+# Rationale: it writes to the production `logs/` rather than `logs_debug/`, its NeSy-EDL
+# stack (CMEF + PBAS + IBDC) matches the most recent commits, and the Phase-2 canonical
+# evaluation CSVs live under `logs/test/p4b_full_ccv_reeval/`. The alternative,
+# nesy_defake.yaml, is the v5 dual-sub-graph SCM lineage -- a different system, not this one.
+#
+# ---------------------------------------------------------------------------------------
+# DEVIATION FROM THE PHASE-1 SPEC, DELIBERATE AND LOAD-BEARING
+# ---------------------------------------------------------------------------------------
+# The spec asks D0 to set `semantic_v1=true, structural_sem_v1=true` "and the other v1
+# branches on". That is not achievable, because two of those flags name mutually exclusive
+# mechanisms rather than independent branches:
+#
+#   causal_branch.type: 'simple' | 'improved_scm' | 'ccv'      <- one-of, not a set
+#
+# `structural_sem_v1` corresponds to `improved_scm`; `ccv` corresponds to `ccv`. The system
+# of record sets `type: ccv`, so structural_sem_v1 is FALSE in the real v1 configuration.
+# Turning it "on" as the spec's wording suggests would not reproduce v1 -- it would select a
+# different causal mechanism and produce an unnamed system that is not the reference.
+#
+# Recorded here rather than silently resolved, because the whole point of the explicit-v1
+# requirement is that D0 cannot be mislabelled.
+# ---------------------------------------------------------------------------------------
 
 _base_: _base.yaml
 
-semantic_v1:        true    # FACS predicate reasoning
-structural_sem_v1:  true    # class-conditioned SEMs
-handcrafted_freq:   true    # FFT / SRM / DCT features
-ccv:                true    # CCV experiments
-symbolic_rules_v1:  true    # old symbolic rules
+# Verified against nesy_defake_ablation4_ccv.yaml on 2026-08-15:
+semantic_v1:        true    # fast_semantic.enabled: true; concept_branch.enabled: true (58-d)
+structural_sem_v1:  false   # causal_branch.type == 'ccv', NOT 'improved_scm' -- see above
+handcrafted_freq:   true    # causal_branch.forensic_dim: 83 -- the FFT/SRM/DCT feature
+                            # groups feed the CCV forensic anomaly detector. Note that
+                            # active_branches is ['spatial'], so there is no separate
+                            # frequency *branch*; the handcrafted features enter via CCV.
+ccv:                true    # causal_branch.type: ccv, num_constraints: 16
+symbolic_rules_v1:  true    # rules_dim: 12 in both concept_branch and causal_branch
 
 manifold_v2:        false
 process_v2:         false
@@ -21,5 +58,5 @@ discern_v2:
   manifold: {enabled: false}
   process:  {enabled: false}
 
-# Gate to advance: numbers frozen. Freeze before measuring — never modify a checkpoint
+# Gate to advance: numbers frozen. Freeze before measuring -- never modify a checkpoint
 # mid-evaluation.
