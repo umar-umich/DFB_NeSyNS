@@ -68,6 +68,28 @@ stating plainly rather than dressing up as a subtle finding.
 
 ## 3. Does P2a contribute errors/rescues sufficiently different from the manifold and visual branches?
 
+### Scope of the inversion argument — testable on two sources only
+
+Checked across all seven OOD sources (2026-08-15). The inversion phenomenon can only be
+*measured* where the cohort carries generator-level labels:
+
+| source | generators in cohort | inverted rows (P0 AUROC < 0.5) |
+|---|---|---|
+| DF40 | 70 | **8** |
+| CDFv3 | 22 | **1** (SadTalker, 0.420) |
+| CDFv2 / DFEval24 / DFDC / DFD | 1 each | not testable |
+| DFDCP | 2 | 0 |
+
+The conventional benchmarks label everything as one method, so per-generator inversion
+cannot be detected there at all. **This is a limitation of the metadata, not evidence that
+the phenomenon is absent** — and the paper should say so rather than implying the effect was
+looked for and not found.
+
+CDFv3's single inverted row independently reproduces the DF40 ordering: SadTalker
+0.420 → **P1b 0.686** > P2a 0.655 > P1d 0.638. The worst inversion on both sources is a
+talking-head generator (`sadtalker-ff` 0.253 on DF40, `SadTalker` 0.420 on CDFv3), which
+suggests the failure is tied to a manipulation *type* rather than to one dataset's quirks.
+
 **From the visual branch, yes; from the manifold branches, it is largely dominated.**
 
 P2a recovers 0.25–0.47 AUROC on the inverted rows where P0 fails (e.g. danet-cdf
