@@ -3,5 +3,6 @@
 # also prevents a verification run's numbers from being mistaken for the run of record.
 A1_complementarity/
 A2_gate/
+A2b_gate_deployment/
 A3_rate_response/
 __pycache__/

@@ -158,13 +158,33 @@ conflates "gating helped" with "the manifold branch changed" and means nothing. 
 `D3_full_p1d.yaml` exists as an explicit matched baseline rather than a note someone has to
 remember at run time. The cost of running both arms is one extra D3, not a second ladder.
 
-**D4 still leans negative, and is still gated on a greenlight.** Oracle headroom is real
-(+0.055 to +0.094 BA) but the gate recovers little of it — at best +0.027 on DF40. Per the
-integration README this is the "large oracle, unrecoverable" branch: a legitimate negative
-result rather than a failure. P1d is the one arm where it has a chance, so testing it is
-worthwhile, but the expected outcome is a written negative result. Before that is final,
-**A2b** (the deployment-valid protocol in `A2_gate/A2b_PROTOCOL.md`) should be run — A2a is
-only an optimistic ceiling, since its gate has seen sibling generators.
+**D4 — REVISED 2026-08-15: defensible, not negative.** A2b has now been run (full results in
+`A2B_FINDINGS.md`), and it overturns the earlier "large oracle, unrecoverable" reading,
+which rested on A2a over two sources.
+
+A gate trained **only on FFpp** and frozen recovers a meaningful share of the oracle headroom
+on **five of seven** OOD sources, averaging **+0.106** with P1d (vs +0.033 with P1b):
+
+| source | DF40 | CDFv3 | CDFv2 | DFEval24 | DFDC | DFDCP | DFD | mean |
+|---|---|---|---|---|---|---|---|---|
+| {P0,P1d,P2a} | +0.134 | +0.288 | −0.102 | **−0.290** | +0.102 | +0.363 | +0.248 | **+0.106** |
+| {P0,P1b,P2a} | +0.023 | +0.176 | +0.045 | **−0.336** | −0.012 | +0.327 | +0.010 | +0.033 |
+
+P1d beats P1b on five of seven sources and 3× on the mean — a second, independent protocol
+reaching the same projector conclusion as A2a, which strengthens the D1/D4 split.
+
+Three caveats that must travel with this, all detailed in `A2B_FINDINGS.md`:
+- **A2a and A2b are not directly comparable** (per-generator folds vs whole-source), so
+  A2b > A2a does not mean deployment beats the ceiling.
+- **A2a is uncomputable on four of the seven sources** — CDFv2/DFEval24/DFDC/DFD lack the
+  generator structure LOGO requires. A2b works everywhere.
+- **DFEval24, the in-the-wild source, is where the gate does the most harm** (−0.290), and
+  it has the weakest baseline (BA 0.650). Helping on curated benchmarks while hurting on
+  real-world data matters for a reliability paper and should not be averaged away.
+
+Also worth probing before D4 is built: the gate routes to a specialist on 80–90% of samples,
+so it is barely being selective. A higher routing threshold or an explicit abstention cost
+may yield a smaller but safer gain.
 
 ---
 
