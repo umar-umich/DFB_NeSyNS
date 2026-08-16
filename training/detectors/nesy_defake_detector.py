@@ -471,11 +471,19 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             # below sees exactly the tensor it saw before this branch existed.
             v2_diag = {}
             if self.v2 is not None:
+                # D4 only: the gate scores each specialist against the v1 spatial head, and
+                # is supervised by the label as a TARGET. Labels are passed only in
+                # training, so at inference the gate is structurally incapable of seeing
+                # one — the A2b protocol requires that, and a flag would be weaker than
+                # simply not handing it over.
                 total_evidence, v2_diag = self.v2(
                     total_evidence,
                     visual_feature=(projected if self.v2.manifold_input == 'projected'
                                     else spatial_raw),
-                    images=data_dict.get('spatial_frames'))
+                    images=data_dict.get('spatial_frames'),
+                    baseline_evidence=spatial_evidence,
+                    labels=data_dict.get('label') if self.training else None,
+                    epoch=self._current_epoch)
 
             # Dirichlet prediction from fused evidence
             alpha = total_evidence + 1.0
@@ -559,6 +567,22 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
         weighted = self.ua_alpha * ua_align + self.ua_beta * ua_uniform
         return ua_align, ua_uniform, weighted
 
+    def _applicability_loss(self, pred_dict: dict):
+        """Weighted sum of the D4 gate's per-branch BCE terms, or None when the gate is off.
+
+        The terms arrive via pred_dict because the v2 stack computes them where each
+        branch's Dirichlet state already exists; recomputing them here would mean re-running
+        every branch. They are absent on an eval pass — no labels are handed to the gate
+        outside training — so `None` there is correct, not a missing-key bug.
+        """
+        if self.v2 is None or getattr(self.v2, 'applicability', None) is None:
+            return None
+        terms = [v for k, v in pred_dict.items()
+                 if k.startswith('applicability_loss_')]
+        if not terms:
+            return None
+        return self.v2.applicability.loss_weight * torch.stack(terms).sum()
+
     def get_losses(self, data_dict: dict, pred_dict: dict) -> dict:
         label = data_dict['label']
         device = label.device
@@ -602,6 +626,12 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             # UA auxiliary regularizer on L2-normalized embeddings
             total_loss = total_loss + ua_weighted
 
+            # D4: the applicability gate's own supervision. Absent for D0-D3, so those
+            # rungs' loss is byte-for-byte what it was.
+            app_loss = self._applicability_loss(pred_dict)
+            if app_loss is not None:
+                total_loss = total_loss + app_loss
+
             loss_dict = {
                 'overall':          total_loss,
                 'classification':   edl_out['loss'].detach(),
@@ -623,6 +653,16 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             # S9 diagnostic: fraction of symbolically-reweighted samples.
             if 'symbolic_reweight_frac' in edl_out:
                 loss_dict['sym_reweight_frac'] = edl_out['symbolic_reweight_frac']
+            # D4 diagnostics. The routing fraction is the number to watch: A2c reported 47%
+            # at tau = 0.95, and a fraction pinned at 0 or 1 means the gate has collapsed
+            # into "never route" or "always route" and D4 has degenerated into D3.
+            if app_loss is not None:
+                loss_dict['applicability'] = app_loss.detach()
+            for k, v in pred_dict.items():
+                if k.endswith('_route'):
+                    loss_dict[f'route_frac_{k[:-6]}'] = v.detach().mean()
+                elif k.endswith('_q') and torch.is_tensor(v):
+                    loss_dict[f'gate_q_{k[:-2]}'] = v.detach().mean()
             return loss_dict
 
         # -- Ablation 1: pure CE + UA ---------------------------------------
