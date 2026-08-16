@@ -392,6 +392,16 @@ class NeSyDeFakeHybridDetector(AbstractDetector):
             spatial_evidence = F.softplus(
                 spatial_logits.float() / max(T_spatial, 1e-6))
 
+            # D1-M (manifold only) needs the visual branch to contribute NO evidence, so
+            # that the rung answers "is manifold evidence non-degenerate on its own?" rather
+            # than "does manifold help the visual head?". Temperature scaling cannot express
+            # this: softplus(0) = 0.693, not 0, so even an enormous T leaves a constant
+            # pedestal that dominates a young branch. Zeroing is the only faithful version.
+            # The spatial head still runs (its logits remain in `cls` for logging and the CE
+            # path), it simply contributes nothing to the fused Dirichlet.
+            if self.config.get('suppress_spatial_evidence', False):
+                spatial_evidence = torch.zeros_like(spatial_evidence)
+
             # Concept evidence (Ablation 3+)
             concept_out = None
             if self._use_concept_branch:

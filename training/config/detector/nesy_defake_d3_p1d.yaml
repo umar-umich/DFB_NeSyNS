@@ -1,0 +1,369 @@
+# D3(P1d) — matched baseline for the D4 arm. Identical to D3 but mr_vae.
+#
+# Derived from nesy_defake_ablation4_ccv_d0.yaml (the D0 system of record, leak-free
+# validation). Two deliberate differences:
+#
+#   ablation_mode: causal_edl -> spatial_edl
+#       Turns OFF the v1 symbolic branches (concept + CCV causal). D1 is "CLIP + Manifold",
+#       so the v1 neuro-symbolic stack must not be in the forward path or the rung would be
+#       measuring v1 + manifold rather than the v2 architecture.
+#
+#   projector: mr_vae instead of beta_tcvae
+#       D4's claim is measured as D4 - D3, so D4(P1d) must be compared
+#       against D3(P1d), never against the beta_tcvae D3 — otherwise the
+#       delta conflates gating with a change of manifold branch.
+#       P1d is used for the D4 arm because it is the only projector with
+#       positive A2b gate recovery (+0.027 DF40 / +0.265 CDFv3).
+#
+# Validation stays [FaceForensics++, Celeb-DF-v2] — the same leak-free protocol as D0, so
+# D1-VM and D0 are selected the same way and their comparison means something.
+#
+# Gate to advance (integration README): manifold evidence non-degenerate, AND VM beats V on
+# the inversion rows. Beating V on the average is NOT the bar.
+#
+# RUN FROM THE REPO ROOT:
+#   python training/train.py --detector_path training/config/detector/nesy_defake_d3_p1d.yaml
+#
+# ---- DISCERN v2 -------------------------------------------------------------
+manifold_v2: true
+process_v2:  true
+
+discern_v2:
+  gate_init: -2.0          # sigmoid ~= 0.12; the branch must earn its weight
+  manifold:
+    enabled: true
+    input_dim: 1024        # DISCERN backbone width -> projected to the pilot's 64-d regime
+    input: projected
+    feature_dim: 64
+    latent_dim: 32
+    projector: mr_vae
+    export_rate_response: false
+  process:
+    enabled: true
+    vae_path: /data/umar/Repos/DiCoME/eval_adaptation/data/models/sdxl-vae
+    resolution: 256
+    # MUST match the datamodule normalisation (DISCERN uses 0.5/0.5, not CLIP's constants);
+    # wrong values silently produce a meaningless residual.
+    input_mean: [0.5, 0.5, 0.5]
+    input_std:  [0.5, 0.5, 0.5]
+# -----------------------------------------------------------------------------
+
+# D0 — DISCERN v1 reproduction, LEAK-FREE MODEL SELECTION.
+#
+# Identical to nesy_defake_ablation4_ccv.yaml in every respect except `test_dataset`.
+#
+# WHY THIS FILE EXISTS
+# The trainer evaluates `test_dataset` every epoch and early-stops on the average AUC of
+# those sets (training/train.py: best_metric['avg'][metric_scoring]). The parent config
+# lists all eight datasets, so checkpoint selection READS the OOD sets — CDFv3, DFDC,
+# DFDCP, UADFV, DeepFakeDetection, Celeb-DF-v1/v2. A D0 selected that way is not a clean
+# reference: every downstream D1-D5 comparison against it would inherit the leak, and the
+# zero-shot claim is compromised at its root.
+#
+# Commit 1668901 already established the fix for this project — VAL_DATASETS =
+# [FaceForensics++, Celeb-DF-v2] for training-time eval/early-stop, everything else
+# held out and evaluated POST-HOC. That fix was applied to config/detector/full/* but
+# never to this config. This file applies the same protocol to D0.
+#
+# Celeb-DF-v2 is therefore a VALIDATION set (used for selection), NOT a clean test set —
+# the same caveat commit 1668901 records for the full/* configs.
+#
+# Post-hoc evaluation on the held-out sets is a separate test.py run against the frozen
+# checkpoint; do not add them here.
+#
+# RUN FROM THE REPO ROOT (fwa_blend.py loads a dlib asset by a CWD-relative path):
+#   python training/train.py \
+#       --detector_path training/config/detector/nesy_defake_ablation4_ccv_d0.yaml
+#
+# =============================================================================
+# Ablation 4b: Spatial + Concept + CCV (Causal Constraint Verification) + EDL
+# =============================================================================
+# Purpose: Neuro-symbolic causal branch using constraint verification instead
+# of structural causal models. Three components:
+#   1. Learned constraint functions (K=16 additional soft constraints)
+#   2. Forensic anomaly detector (5 per-group autoencoder anomaly scores)
+#   3. Counterfactual predictor (mismatch between predicted/actual CLIP features)
+#
+# Evidence fusion (3 sources):
+#   spatial_evidence = softplus(linear_head(CLIP_features))
+#   concept_evidence = softplus(concept_mlp(58-d + 12 rules))
+#   causal_evidence  = softplus(ccv_mlp(12 rules + 16 learned + 5 anomaly + 1 cf))
+#   total = spatial + gate1 * concept + gate2 * causal
+#
+# Much lighter than SCM approach (~15K vs ~180K params), shorter gradient path,
+# no DAG constraints needed.
+# =============================================================================
+
+log_dir: /data/umar/Repos/DFB_NeSyNS/logs
+
+model_name: nesydefake_hybrid
+backbone_name: multi_stream
+
+# -- Ablation flags -----------------------------------------------------------
+ablation_spatial_only: false
+ablation_mode: spatial_edl
+
+# -- EDL config (NeSy-EDL: CMEF + PBAS + IBDC) --------------------------------
+edl:
+  num_classes: 2
+  annealing_epochs: 10
+  kl_weight: 0.15
+  avu_weight: 0.1
+  nesy_fusion: true               # enable Confidence-Modulated Evidence Fusion
+  aux_weight: 0.1                 # per-branch auxiliary EDL supervision
+  disagreement_weight: 0.05       # inter-branch disagreement calibration
+
+# -- Concept branch config ----------------------------------------------------
+concept_branch:
+  enabled: true
+  combined_dim: 58
+  rules_dim: 12
+  hidden_dim: 64
+  dropout: 0.2
+
+# -- CCV causal branch config --------------------------------------------------
+causal_branch:
+  enabled: true
+  type: ccv                        # 'simple', 'improved_scm', or 'ccv'
+  combined_dim: 58
+  rules_dim: 12
+  forensic_dim: 83
+  backbone_dim: 1024
+  num_constraints: 16              # K learned constraint functions
+  constraint_hidden: 48            # shared trunk hidden dim
+  forensic_bottleneck: 8           # autoencoder bottleneck per group
+  cf_z_dim: 32                     # counterfactual predictor z dim
+  cf_hidden_dim: 64                # counterfactual predictor hidden dim
+  evidence_hidden: 64
+  dropout: 0.2
+  dag_penalty_weight: 0.0          # CCV has no DAG penalty
+
+# -- Evidence gates ------------------------------------------------------------
+evidence_gate:
+  concept_init: -0.5            # sigmoid ≈ 0.38
+  causal_init:  -0.8            # sigmoid ≈ 0.31
+  conditioned: false            # true: per-image gates via Linear(1024→2)→Sigmoid
+                                # false: static scalar gates (default)
+
+# -- EDL classifier dropout override ------------------------------------------
+# Dropout before EDL evidence computation adds noise to deterministic uncertainty
+# estimates. Set this to 0.0 to disable dropout in the classifier for EDL mode.
+# Only takes effect when linear_probe: false (linear_probe has no dropout anyway).
+# edl_classifier_dropout: 0.0
+
+# -- Dataset ------------------------------------------------------------------
+dataset_type: nesydefake
+active_branches: ['spatial']
+
+train_dataset: [FaceForensics++]
+test_dataset:  [FaceForensics++, Celeb-DF-v2]   # VALIDATION ONLY — see header note
+
+all_dataset:   [FaceForensics++, FF-F2F, FF-DF, FF-FS, FF-NT, FaceShifter,
+                DeepFakeDetection, Celeb-DF-v1, Celeb-DF-v2, DFDCP, DFDC,
+                DeeperForensics-1.0, UADFV]
+
+compression: c23
+
+# -- Frame config -------------------------------------------------------------
+video_mode: false
+frame_num:
+  train: 32
+  test:  32
+
+resolution:    224
+with_mask:     false
+with_landmark: false
+load_semantic_features: false
+
+class_weights: [1.2, 1.0]    # [real, fake] — stronger push against fake bias (acc_real was 0.65 at epoch 8)
+
+# -- Cross-dataset regularizers (GenD recipe) --------------------------------
+# Label smoothing reduces CE over-confidence; UA shapes the unit-sphere manifold.
+label_smoothing: 0.1
+
+uniformity_alignment:
+  enabled: true
+  alignment_weight:  1.0     # w_align — pull same-class pairs together
+  uniformity_weight: 1.0     # w_uniform — spread embeddings evenly
+  alignment_power:   2.0     # Wang & Isola default
+  uniformity_t:      2.0     # Wang & Isola default
+
+# -- Projection head type -------------------------------------------------------
+projection_head:
+  type: standard               # standard | residual | bottleneck | houlsby
+  # residual options (only when type=residual):
+  alpha_init: 0.1          # learnable mixing scalar init
+  # bottleneck options (only when type=bottleneck):
+  #   bottleneck_ratio: 4      # compression ratio (1024→256 when ratio=4)
+  # houlsby options (only when type=houlsby, combines residual + bottleneck):
+  bottleneck_ratio: 4
+  # alpha_init: 0.1
+
+# -- Skip fusion (EDL path bypasses fusion, so this saves ~1M unused params) ---
+skip_fusion: false             # set true to remove fusion module entirely
+
+projection_dropout:
+  spatial:   0.0
+  frequency: 0.0
+
+# -- Data loading & augmentation (GenD) ---------------------------------------
+train_batchSize: 128
+test_batchSize:  128
+workers:         12
+
+use_data_augmentation: true
+balance_classes:       false
+balance_target_ratio: 0.5
+paired_training: true
+
+data_aug:
+  flip_prob:            0.5
+  rotate_limit:         [-10, 10]
+  affine_translate:     [0.1, 0.1]
+  affine_scale:         [0.9, 1.1]
+  blur_prob:            0.1
+  blur_kernel_size:     7
+  blur_sigma:           [0.1, 2.0]
+  brightness_limit:     0.1
+  contrast_limit:       0.1
+  quality_lower:        65
+  quality_upper:        100
+  gaussian_noise_sigma: 0.0
+
+mean: [0.5, 0.5, 0.5]
+std:  [0.5, 0.5, 0.5]
+
+# -- Precomputed features (for concept + causal branches) ---------------------
+# Fast semantic features only (58-d) — VLM features removed from framework.
+fast_semantic:
+  enabled: true
+  output_dim: 58
+  precomputed_dir: fast_semantic
+
+consistency_rules:
+  enabled: true
+  output_dim: 12
+
+forensic_features:
+  enabled: true
+  output_dim: 83
+  precomputed_dir: forensic_features
+
+# -- Foundation Models (GenD) -------------------------------------------------
+foundation_models:
+  spatial:
+    name:            clip
+    model_path:      openai/clip-vit-large-patch14
+    output_dim:      1024
+    freeze_backbone: true
+    train_layernorms: true
+    normalization:
+      mean: [0.481, 0.458, 0.408]
+      std:  [0.269, 0.261, 0.276]
+
+  frequency:
+    name:             fad_dinov2
+    model_path:       facebook/dinov2-large
+    output_dim:       1024
+    freeze_backbone:  true
+    train_layernorms: false
+    fad_mode:         single
+    fad_learnable:    true
+    freq_emphasis_init: 0.1
+    normalization:
+      keep_raw:       true
+    clip_normalization:
+      mean: [0.481, 0.458, 0.408]
+      std:  [0.269, 0.261, 0.276]
+
+fusion:
+  type:           attention
+  fused_dim:      1024
+  projection_dim: 1024
+  dropout:        0.0
+
+# -- Classifier (GenD linear probe) ------------------------------------------
+classifier:
+  type:         multi_task
+  input_dim:    1024
+  linear_probe: true
+  tasks:
+    - name:        classification
+      type:        binary
+      output_dim:  2
+      loss_weight: 1.0
+  hidden_dims: [512, 256]
+  dropout:     0.3
+
+# -- Loss (EDL + DAG penalty) ------------------------------------------------
+loss_func:
+  classification:         cross_entropy
+  sparse_penalty:         l1_norm
+  weights:
+    classification:     1.0
+
+loss_warmup: {}
+
+# -- Optimizer ----------------------------------------------------------------
+optimizer:
+  type: adam
+  adam:
+    lr: 0.0003
+    beta1: 0.9
+    beta2: 0.999
+    eps: 0.00000001
+    weight_decay: 0.0
+    amsgrad: false
+  module_lr:
+    backbone_layernorms: 0.0003
+    always_trainable:    0.0003
+    phase_proj:          0.0003
+    projection_heads:    0.0003
+    fusion:              0.0003
+    classifier:          0.0003
+    concept_branch:      0.001
+    causal_branch:       0.001
+
+# -- Schedule (GenD) ----------------------------------------------------------
+lr_scheduler:   cosine_warmup
+warmup_epochs:  1
+nEpochs:        100
+start_epoch:    0
+save_epoch:     1
+rec_iter:       100
+logdir:         ./logs
+manualSeed:     3407   # 1024 
+save_ckpt:      true
+save_feat:      true
+grad_clip:      1.0
+freq_grad_clip: 2.0
+
+# -- Metrics ------------------------------------------------------------------
+metric_scoring:     auc
+additional_metrics: [acc, eer, ap]
+
+interpretability:
+  enabled: true
+  save_attention_maps:      false
+  save_causal_graphs:       true  # Enable for explainability
+  save_feature_activations: false
+  save_sae_features:        false
+  visualization_frequency:  500
+  graph_viz_top_k:          20
+  graph_viz_every_n_epochs: 5
+
+# -- Hardware -----------------------------------------------------------------
+cuda:            true
+cudnn:           true
+mixed_precision: true
+
+checkpoint:
+  save_best_only: false
+  save_interval: 5
+  monitor:        val_acc
+  mode:           max
+
+early_stopping:
+  enabled: true
+  patience: 20
+  min_delta: 0.001
