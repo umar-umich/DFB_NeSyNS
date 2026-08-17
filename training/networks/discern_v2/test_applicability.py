@@ -246,12 +246,37 @@ def test_gate_target_is_the_pilot_target():
     # sample 1: specialist far less confident                          -> target 0
     base = to_dirichlet(torch.tensor([[1.0, 1.0], [0.0, 9.0]]))
     spec = to_dirichlet(torch.tensor([[0.0, 9.0], [9.0, 0.0]]))
-    q_hi, q_lo = torch.tensor([1 - 1e-6, 1e-6]), torch.tensor([1e-6, 1 - 1e-6])
-    loss_right = gate.gate_loss("manifold", q_hi, base, spec, labels)
-    loss_wrong = gate.gate_loss("manifold", q_lo, base, spec, labels)
+    # logits now, not probabilities — gate_loss is BCE-with-logits
+    lg_right, lg_wrong = torch.tensor([12.0, -12.0]), torch.tensor([-12.0, 12.0])
+    loss_right = gate.gate_loss("manifold", lg_right, base, spec, labels)
+    loss_wrong = gate.gate_loss("manifold", lg_wrong, base, spec, labels)
     assert loss_right < loss_wrong, (loss_right.item(), loss_wrong.item())
     assert loss_right.item() < 1e-3
     print("  ok: gate loss is minimised by predicting 'specialist wins' correctly")
+
+
+def test_gate_loss_survives_autocast():
+    """Regression: training runs under AMP, and plain binary_cross_entropy raises there.
+
+    The real D4 launch died with "torch.nn.functional.binary_cross_entropy and
+    torch.nn.BCELoss are unsafe to autocast" — a CPU forward pass never exercises
+    autocast, so nothing before this test could have caught it. BCE-with-logits is on
+    the autocast-safe list; the pre-sigmoid form is not, and cannot be made safe.
+    """
+    if not torch.cuda.is_available():
+        print("  skip: no CUDA available to exercise autocast")
+        return
+    gate = ApplicabilityGate(["manifold"], tau=0.95).cuda()
+    labels = torch.tensor([0, 1]).cuda()
+    base = to_dirichlet(torch.tensor([[2.0, 1.0], [1.0, 2.0]]).cuda())
+    spec = to_dirichlet(torch.tensor([[1.0, 2.0], [2.0, 1.0]]).cuda())
+    with torch.autocast(device_type="cuda", dtype=torch.float16):
+        lg = gate.logit("manifold", base, spec)
+        loss = gate.gate_loss("manifold", lg, base, spec, labels)
+    assert torch.isfinite(loss), loss
+    loss.backward()
+    assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in gate.parameters())
+    print("  ok: gate loss computes and backprops under fp16 autocast")
 
 
 def test_freeze_stops_gate_updates():

@@ -132,7 +132,9 @@ class DiscernV2Stack(nn.Module):
             # The mask is hard and detached, so a branch cannot learn to talk its way past
             # the gate; the gate is trained by its own BCE term instead.
             if self.applicability is not None and name in self.applicability.specialists:
-                q = self.applicability.q(name, base_state, state)
+                # one head evaluation: the logit trains the gate, q routes it
+                logit = self.applicability.logit(name, base_state, state)
+                q = torch.sigmoid(logit)
                 route = self.applicability.route(q)
                 contribution = route.unsqueeze(1) * contribution
                 diag[f"{name}_q"] = q.detach()
@@ -141,7 +143,7 @@ class DiscernV2Stack(nn.Module):
                     # NOT detached: this is the term that trains the gate. It is the one
                     # entry in `diag` carrying gradient, hence the distinct key prefix.
                     diag[f"applicability_loss_{name}"] = self.applicability.gate_loss(
-                        name, q, base_state, state, labels)
+                        name, logit, base_state, state, labels)
 
             total_evidence = total_evidence + contribution
             diag[f"{name}_evidence"] = out.evidence

@@ -132,8 +132,13 @@ def _nll(state: DirichletState, labels: torch.Tensor, eps: float = 1e-7) -> torc
 
     This is the `loss_b` the pilot differenced to build its target. Using p (the Dirichlet
     mean) rather than a separate head keeps online and offline definitions aligned.
+
+    Forced to float32: under AMP `p` arrives as fp16, where a confident branch's p_true is
+    small enough that its log loses most of its precision. The target is a *comparison* of
+    two such logs, so fp16 noise flips the label on exactly the borderline samples the gate
+    most needs to learn from.
     """
-    p_true = state.p.gather(1, labels.view(-1, 1).long()).squeeze(1)
+    p_true = state.p.float().gather(1, labels.view(-1, 1).long()).squeeze(1)
     return -torch.log(p_true.clamp_min(eps))
 
 
@@ -205,11 +210,23 @@ class ApplicabilityGate(nn.Module):
     # kept as the old name so callers written against it keep working
     maybe_freeze = set_epoch
 
+    def logit(self, name: str, baseline: DirichletState,
+              specialist: DirichletState) -> torch.Tensor:
+        """Raw head output for branch b, before the sigmoid.
+
+        The logit rather than q is the quantity that leaves this method, because the loss
+        must be `binary_cross_entropy_with_logits`: plain `binary_cross_entropy` raises
+        under AMP ("unsafe to autocast"), since it cannot be made numerically safe in fp16
+        once the sigmoid has already been taken. Fusing the two is both autocast-safe and
+        better conditioned, so q is derived for routing only.
+        """
+        feats = gate_features(baseline, specialist, self.fake_index)
+        return self.heads[name](feats).squeeze(1)
+
     def q(self, name: str, baseline: DirichletState,
           specialist: DirichletState) -> torch.Tensor:
         """Predicted utility q_b in [0, 1] — P(branch b beats the visual baseline here)."""
-        return torch.sigmoid(
-            self.heads[name](gate_features(baseline, specialist, self.fake_index)).squeeze(1))
+        return torch.sigmoid(self.logit(name, baseline, specialist))
 
     def route(self, q: torch.Tensor) -> torch.Tensor:
         """Hard routing mask at tau, with no gradient path (see module docstring).
@@ -225,9 +242,12 @@ class ApplicabilityGate(nn.Module):
             return torch.ones_like(q.detach())
         return (q.detach() >= self.tau).float()
 
-    def gate_loss(self, name: str, q: torch.Tensor, baseline: DirichletState,
+    def gate_loss(self, name: str, logit: torch.Tensor, baseline: DirichletState,
                   specialist: DirichletState, labels: torch.Tensor) -> torch.Tensor:
-        """BCE against the pilot's target: does this specialist beat the visual baseline?
+        """BCE-with-logits against the pilot's target: does this specialist beat the
+        visual baseline on this sample?
+
+        Takes the LOGIT, not q — see `logit()` for why the fused form is required under AMP.
 
         The label enters HERE and only here, as a target. `dloss` is never returned to the
         feature path — see the A2b note in the module docstring.
@@ -235,4 +255,4 @@ class ApplicabilityGate(nn.Module):
         with torch.no_grad():
             dloss = _nll(baseline, labels) - _nll(specialist, labels)
             target = (dloss > 0).float()
-        return F.binary_cross_entropy(q.clamp(1e-6, 1 - 1e-6), target)
+        return F.binary_cross_entropy_with_logits(logit.float(), target)
