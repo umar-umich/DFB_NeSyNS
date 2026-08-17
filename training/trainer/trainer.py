@@ -333,7 +333,16 @@ class Trainer(object):
         """
         if not os.path.isfile(ckpt_path):
             raise FileNotFoundError(f"Resume checkpoint not found: {ckpt_path}")
-        ck = torch.load(ckpt_path, map_location='cpu')
+        # weights_only=False is required, not merely convenient. PyTorch 2.6 flipped this
+        # default to True, which permits only tensors; a resume checkpoint also carries
+        # optimizer/scheduler state and `best_metrics`, whose values are numpy scalars, so
+        # the safe unpickler rejects it with "Unsupported global: numpy.core.multiarray
+        # .scalar" and --resume fails outright. `load_ckpt` above is unaffected because it
+        # reads a plain state_dict.
+        #
+        # Safe here: the path comes from --resume and points at a checkpoint this trainer
+        # wrote. We are not deserialising anything from outside the repo.
+        ck = torch.load(ckpt_path, map_location='cpu', weights_only=False)
         if self.config['ddp']:
             self.model.module.load_state_dict(ck['model'])
         else:
