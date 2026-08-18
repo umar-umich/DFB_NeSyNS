@@ -13,9 +13,8 @@ PY=/data/umar/miniconda3/envs/dfb_nesy/bin/python
 Steps are ordered by dependency. Each says what it writes and roughly what it costs; the cost
 figures are extrapolated from CPU smoke runs and are indicative, not measured on a GPU.
 
-> **One step is not yet built.** Step 3 (Stage B training) has no entry point — see §"Step 3"
-> below. Everything before it is runnable now, and everything after it needs Stage B's
-> checkpoints. This is stated rather than papered over with a command that would fail.
+> Every step below is runnable. Steps 4–9 are marked `TODO(run)` because they consume Stage B's
+> checkpoints, which only exist after step 3 has actually been run.
 
 ---
 
@@ -102,29 +101,46 @@ Seconds; reads only the dataset JSON. Already verified on the real FF++ val spli
 
 ---
 
-## Step 3 — Stage B: train the experts (§9 B, §10) — **NOT YET BUILT**
+## Step 3 — Stage B: train the experts (§9 B, §10)
 
-The model, all three branches, the per-branch auxiliary-loss helper and the §19 guards exist and
-are tested (`training/networks/discern_v2/discern_v1_model.py`). What does not exist is the
-training entry point that wires them to the data: a `train.py` path that
+```bash
+$PY training/train_v1.py \
+    --config training/config/discern_v2/V1_CONFIG.yaml \
+    --detector-config training/config/detector/nesy_defake_d1_v.yaml \
+    --output logs/v1/stage_b_seed42 \
+    --batch-size 32 --workers 12
+```
 
-1. builds `DiscernV1Model` from `training/config/discern_v2/V1_CONFIG.yaml`,
-2. produces the three preprocessing views per batch (§6: `spatial_frames` CLIP-normalized,
-   `raw_frames` for FS-VFM and for the VAE, all from the same source frame),
-3. applies the ported DiCoME augmentation (`semantic_branch.dicome_train_transform()`) and the
-   ported optimizer groups (`semantic_branch.dicome_param_groups`),
-4. computes the per-branch EDL losses masked by `branch_valid_b`, plus the `e_direct` control loss
-   reported separately,
-5. saves **every** epoch (§11 forbids a hardcoded window),
-6. calls `model.assert_frozen_protocol()` once at start-up.
+Depends on steps 1b, 1c and 2 (it refuses to start without the Stage-A artifact, the process
+statistics, or the meta split). Writes `epoch_XXX.pth` for **every** epoch (§11 forbids a fixed
+window), plus `metrics.jsonl` and a config snapshot. Refuses to write into a directory that
+already holds a run unless `--overwrite` is passed, so two runs cannot share one provenance.
 
-Until that exists, steps 4–8 cannot run, because each consumes Stage B's checkpoints.
+What it does, and why each part is not the obvious alternative:
 
----
+- **`model.assert_frozen_protocol()` runs before the first step** (§19), so FS-VFM, `P_R` and the
+  VAE are checked frozen rather than assumed.
+- **One augmented image feeds all three branches.** The dataset's own augmentation is switched
+  off; the ported DiCoME pipeline is applied per sample to the raw [0,1] tensor, and the three
+  views are derived from that single image. Augmenting after the dataset produced separately
+  normalized tensors would give each branch a *differently* augmented image — the mismatch
+  `process_residual.py` warns about, which is invisible during training.
+- **Augmentation is applied per sample, not per batch.** torchvision transforms on a batched
+  tensor draw their random parameters once and apply the same flip/affine/blur/jitter to the whole
+  batch, which would make the ported recipe weaker than the one it reproduces.
+- **The loss is per-branch EDL, masked by `branch_valid_b`** (§9 B), ported from DiCoME's
+  `evidential_loss_dicome` with per-sample reduction added so masking is expressible. The §4.2
+  control head is trained (so the comparison is fair) and reported separately.
+- 🟡 `training.fused_loss_weight` defaults to **0.0** — §9 B's literal reading. Setting it above
+  zero couples the branches through DS during Stage B, so Stage D's gate would then be choosing
+  among experts that already co-adapted. Umar's call.
+
+Validation each epoch runs on **VAL_select only** (13,436 frames, read from `meta_split.json`),
+reporting video AUROC and ECE — the two quantities §11 selects on.
 
 ## Step 4 — checkpoint selection (§11)
 
-`TODO(run)` — depends on step 3. Select on **VAL_select only**: primary video-level AUROC,
+`TODO(run)` — needs step 3's checkpoints. Select on **VAL_select only**: primary video-level AUROC,
 tie-break lower ECE then val loss. Never select using CDF/DFDC/DF40 or any OOD source; save
 epoch-wise OOD scores for later analysis only.
 

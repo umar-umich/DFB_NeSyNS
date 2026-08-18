@@ -104,6 +104,17 @@ training:
   save_every_epoch: true                     # §11: no hardcoded epoch window
   max_epochs: 20                             # 🟡 the "reproduced practical horizon"
 
+  # Loss composition. §9 B names per-branch auxiliary EDL losses and does NOT mention a fused
+  # term in Stage B; DiCoME instead supervises the fused evidence only
+  # (src/model/dicome_module.py:114-140). The default below is §9's literal reading.
+  branch_loss_weight: 1.0
+  direct_probe_loss_weight: 1.0              # §4.2 control: trained so the comparison is fair
+  fused_loss_weight: 0.0                     # 🟡 ASK-UMAR — see below
+  # Setting fused_loss_weight > 0 couples the branches through DS during Stage B, so by Stage D
+  # the gate is choosing among experts that already co-adapted to each other's presence, and
+  # "plain DS vs DS + applicability" stops being a comparison of two ways to combine FIXED
+  # experts. Left at 0 so the reasoning layer is applied, not trained.
+
 # ---------------------------------------------------------------------------
 # §11/§12 — selection and the meta split
 # ---------------------------------------------------------------------------

@@ -206,9 +206,22 @@ frozen representation. The probe arm is `TODO(run)` at a usable subset size — 
 
 ---
 
-## 11. Not yet built
+## 11. Stage B entry point
 
-**Stage B has no training entry point.** All three branches, the fusion layer, the gates and the
-risk model exist and are tested, but nothing yet wires them to `training/train.py`'s loop with the
-three-way preprocessing, the per-branch EDL losses and per-epoch checkpointing. `V1_RUN_COMMANDS.md`
-marks that step accordingly rather than printing a command that does not run.
+`training/train_v1.py` (spec §9 B, §10, §11, §19). Smoke-run end to end on CPU against the real
+FF++ data and the real frozen components: all four per-branch losses computed
+(`loss_sem`, `loss_ref`, `loss_proc`, and the separately-reported `loss_direct`), every epoch
+checkpointed, `metrics.jsonl` written, and VAL_select correctly restricted to **13,436 frames** —
+which independently matches the frame count `meta_split.py` reports for that partition.
+
+Notable choices, each recorded rather than silently taken:
+
+| choice | why |
+|---|---|
+| one augmented image, three normalizations | §6; the alternative gives each branch a differently augmented image, invisible in training |
+| augmentation applied per sample | torchvision transforms on a batched tensor reuse one set of random parameters for the whole batch |
+| per-branch EDL only (`fused_loss_weight: 0.0`) | §9 B's literal reading; a fused term couples the branches through DS before Stage D can measure the gate — 🟡 ASK-UMAR |
+| refuses to reuse an output directory | appending to a previous run would interleave epochs in one metrics log and leave checkpoints from different configurations sharing one provenance |
+
+Remaining before a full V1: nothing in the build. Steps 4–9 of `V1_RUN_COMMANDS.md` are
+`TODO(run)` only because they consume Stage B's checkpoints.
