@@ -76,7 +76,22 @@ def read_cache_manifest(features_path: Path) -> dict | None:
     return None
 
 
-def assert_frozen_feature_space(manifest: dict | None, allow_unprovenanced: bool) -> dict:
+def cache_slice(manifest: dict, features_path: Path) -> dict:
+    """The manifest entry for THIS features file.
+
+    One cache directory holds several slices, so the split and the partial flag are read from
+    the entry whose path matches the file being fitted — a top-level value would describe
+    whichever slice happened to be cached last.
+    """
+    want = str(features_path.parent)
+    for key, entry in manifest.get("datasets", {}).items():
+        if str(entry.get("path", "")).rstrip("/") == want.rstrip("/"):
+            return {"slice": key, **entry}
+    return {"slice": "unlisted"}
+
+
+def assert_frozen_feature_space(manifest: dict | None, features_path: Path,
+                                allow_unprovenanced: bool) -> dict:
     """Refuse to fit on a feature space that is not provably frozen.
 
     `assert_reference_config` already refuses a non-frozen encoder at construction, but it is
@@ -106,9 +121,15 @@ def assert_frozen_feature_space(manifest: dict | None, allow_unprovenanced: bool
             f"from the ones the reference was fit on and every residual is measured against a "
             f"stale manifold. Task 0's dual-encoder option exists precisely so e_sem may be "
             f"tuned while the reference input stays frozen.")
-    if manifest.get("partial"):
-        print("  WARNING: manifest says partial=true (--max-batches was set) — this cache is a "
-              "smoke subset, not the full authentic training split")
+    slice_info = cache_slice(manifest, features_path)
+    if slice_info.get("partial") or (slice_info["slice"] == "unlisted"
+                                     and manifest.get("partial")):
+        print("  WARNING: this slice was cached with --max-batches — it is a smoke subset, not "
+              "the full authentic training split")
+    if slice_info.get("split") not in (None, "train"):
+        print(f"  WARNING: fitting on the {slice_info['split']!r} split. Stage I is specified "
+              f"on FF++ authentic TRAIN features; a reference fit on a test split has seen the "
+              f"data every later audit reports on.")
     print(f"  feature space verified frozen; encoder fingerprint "
           f"{manifest['fingerprint']['all'][:16]}…")
     return {
@@ -116,9 +137,10 @@ def assert_frozen_feature_space(manifest: dict | None, allow_unprovenanced: bool
         "encoder_mode": manifest.get("encoder_mode"),
         "encoder_fingerprint": manifest.get("fingerprint"),
         "encoder_config": manifest.get("config"),
-        "cache_split": manifest.get("split"),
+        "cache_slice": slice_info.get("slice"),
+        "cache_split": slice_info.get("split"),
         "cache_feature": manifest.get("feature"),
-        "cache_partial": bool(manifest.get("partial")),
+        "cache_partial": bool(slice_info.get("partial", manifest.get("partial"))),
         "cache_git_commit": manifest.get("git_commit"),
     }
 
@@ -227,7 +249,7 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     X = load_matrix(args.features, args.feature_key).astype(np.float32)
     print(f"loaded features {X.shape} from {args.features}")
-    encoder = assert_frozen_feature_space(read_cache_manifest(args.features),
+    encoder = assert_frozen_feature_space(read_cache_manifest(args.features), args.features,
                                           args.allow_unprovenanced)
     if args.labels is not None:
         X = reals_only(X, load_matrix(args.labels))

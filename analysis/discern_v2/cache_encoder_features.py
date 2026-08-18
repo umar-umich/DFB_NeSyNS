@@ -319,6 +319,34 @@ def git_commit() -> str:
         return "unknown"
 
 
+def merge_manifest(out: Path, fresh: dict) -> dict:
+    """Accumulate into an existing manifest instead of overwriting it.
+
+    One cache directory is normally filled by several invocations — the FF++ train split for
+    Stage I, then the OOD test splits for the audits. Overwriting would drop the record of the
+    slices already on disk, so an audit could read features whose encoder provenance the
+    manifest no longer describes.
+
+    A fingerprint mismatch is refused rather than merged: two encoder states inside one cache
+    directory is precisely what `cache_io.assert_same_encoder` exists to catch downstream, and
+    catching it at write time keeps the bad artifact from being created at all.
+    """
+    path = out / "manifest.json"
+    if not path.is_file():
+        return fresh
+    existing = json.loads(path.read_text())
+    if existing.get("fingerprint", {}).get("all") != fresh["fingerprint"]["all"]:
+        raise SystemExit(
+            f"{path} already holds a cache from a different encoder state "
+            f"(existing {existing.get('encoder_mode')} "
+            f"{existing.get('fingerprint', {}).get('all', '?')[:12]}… vs new "
+            f"{fresh['encoder_mode']} {fresh['fingerprint']['all'][:12]}…). Residuals across "
+            f"mixed encoder states are not comparable — use a separate --out per encoder.")
+    merged = {**existing, **fresh}
+    merged["datasets"] = {**existing.get("datasets", {}), **fresh["datasets"]}
+    return merged
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--config", type=Path, required=True,
@@ -362,12 +390,11 @@ def main() -> int:
                      "train_layernorms": bool(extractor.train_layernorms),
                      "freeze_backbone": bool(extractor.freeze_backbone)},
         "fingerprint": fingerprint,
-        "split": args.split,
         "feature": "spatial_raw",
         "git_commit": git_commit(),
-        "partial": bool(args.max_batches),
         "datasets": {},
     }
+    manifest = merge_manifest(args.out, manifest)
 
     for name in args.datasets:
         print(f"\n=== {name} / {args.split} ===")
@@ -394,10 +421,16 @@ def main() -> int:
         manifest["datasets"][f"{name}/{args.split}"] = {
             "n": int(features.shape[0]), "dim": int(features.shape[1]),
             "n_real": int((labels == 0).sum()), "n_fake": int((labels == 1).sum()),
+            # split and partial live per slice, not once at the top: one cache directory is
+            # normally filled by several invocations (train for Stage I, test for the audits),
+            # and a single top-level value would describe only the last one.
+            "split": args.split, "partial": bool(args.max_batches),
             "path": str(dest),
         }
         print(f"  wrote {dest}/features.npz  {features.shape}")
 
+    manifest["splits"] = sorted({d["split"] for d in manifest["datasets"].values()})
+    manifest["partial"] = any(d["partial"] for d in manifest["datasets"].values())
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2))
     print(f"\nwrote {args.out}/manifest.json")
     if args.encoder == "frozen" and args.split == "train":
