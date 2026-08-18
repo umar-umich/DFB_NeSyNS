@@ -43,6 +43,17 @@ class DirichletState:
     def num_classes(self) -> int:
         return int(self.evidence.shape[1])
 
+    @property
+    def belief(self) -> torch.Tensor:
+        """belief_k = e_k / S — the subjective-logic mass on each class (V1 spec §7).
+
+        Lives here rather than in the fusion module so that `sum_k belief_k + u == 1` holds by
+        construction from the same alpha/S every branch already shares: computing belief from a
+        separately re-derived strength is how two modules end up with opinions that are each
+        internally consistent and jointly incomparable.
+        """
+        return self.evidence / self.strength
+
     def fake_prob(self, fake_index: int = 1) -> torch.Tensor:
         """p(fake) as a (B,) tensor -- the scalar the analysis exports consume."""
         return self.p[:, fake_index]
