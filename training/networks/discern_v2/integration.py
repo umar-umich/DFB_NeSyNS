@@ -32,13 +32,25 @@ import logging
 import torch
 import torch.nn as nn
 
+from .applicability import ApplicabilityGate
 from .branches import build_branches
+from .dirichlet import to_dirichlet
 
 logger = logging.getLogger(__name__)
 
+# The v2 branches the applicability gate may route over. The visual branch is excluded
+# because it IS the baseline the gate measures everything against.
+ROUTABLE = ("manifold", "process")
+
 
 class DiscernV2Stack(nn.Module):
-    """The enabled v2 branches plus their fusion gates."""
+    """The enabled v2 branches plus their fusion gates.
+
+    With `discern_v2.applicability.enabled` false (D0-D3) the forward pass is exactly what
+    it was before D4 existed: no gate is constructed, no extra parameters enter the
+    optimizer, and every branch contributes unconditionally. D4 is the only rung that
+    changes behaviour here, which is what keeps D4 - D3 a clean measurement of the gate.
+    """
 
     def __init__(self, cfg: dict, gate_init: float = -2.0):
         super().__init__()
@@ -48,18 +60,53 @@ class DiscernV2Stack(nn.Module):
             for name in self.branches})
         v2 = cfg.get("discern_v2", cfg)
         self.manifold_input = str(v2.get("manifold", {}).get("input", "projected"))
+
+        app_cfg = dict(v2.get("applicability", {}) or {})
+        self.applicability: ApplicabilityGate | None = None
+        if app_cfg.pop("enabled", False):
+            routable = [n for n in self.branches if n in ROUTABLE]
+            if not routable:
+                raise ValueError(
+                    "applicability gate is enabled but no routable branch is on. D4 is "
+                    "D3 + routing; with neither manifold_v2 nor process_v2 there is "
+                    "nothing to route and the rung would silently be D0.")
+            self.applicability = ApplicabilityGate(routable, **app_cfg)
+
         logger.info(f"  DISCERN v2      : branches={list(self.branches)} "
-                    f"(gate_init={gate_init}, manifold_input={self.manifold_input})")
+                    f"(gate_init={gate_init}, manifold_input={self.manifold_input}, "
+                    f"applicability={'on' if self.applicability is not None else 'off'})")
 
     def forward(self, total_evidence: torch.Tensor, *, visual_feature: torch.Tensor,
-                images: torch.Tensor | None = None) -> tuple[torch.Tensor, dict]:
+                images: torch.Tensor | None = None,
+                baseline_evidence: torch.Tensor | None = None,
+                labels: torch.Tensor | None = None,
+                epoch: int | None = None) -> tuple[torch.Tensor, dict]:
         """Add gated v2 evidence to the already-fused v1 evidence.
 
         Returns (total_evidence, diagnostics). Diagnostics carry each branch's raw evidence
         and gate so the per-sample logger and the applicability gate can read them without
         re-running the branches.
+
+        D4 only: `baseline_evidence` is the v1 spatial (visual) evidence, which is the
+        reference the gate scores each specialist against; `labels` supervise the gate and
+        are used ONLY as a target (see applicability.py); `epoch` drives the optional
+        freeze. All three are ignored when the gate is off, so D0-D3 call this exactly as
+        they did before.
         """
         diag: dict = {}
+        base_state = None
+        if self.applicability is not None:
+            if baseline_evidence is None:
+                raise ValueError(
+                    "applicability gate is enabled but baseline_evidence is None; the gate "
+                    "scores each specialist relative to the visual baseline and cannot be "
+                    "evaluated without it.")
+            base_state = to_dirichlet(baseline_evidence)
+            if epoch is not None:
+                # drives both the warmup window and the A2b freeze; set on eval passes too
+                # so validation reflects the routing regime the model is actually in
+                self.applicability.set_epoch(epoch)
+
         for name, branch in self.branches.items():
             if name == "manifold":
                 out = branch(visual_feature)
@@ -78,10 +125,29 @@ class DiscernV2Stack(nn.Module):
                 raise KeyError(f"unhandled v2 branch {name!r}")
 
             gate = torch.sigmoid(self.gates[name])
-            total_evidence = total_evidence + gate * out.evidence
+            state = out.state
+            contribution = gate * out.evidence
+
+            # -- D4: per-sample routing -----------------------------------------------
+            # The mask is hard and detached, so a branch cannot learn to talk its way past
+            # the gate; the gate is trained by its own BCE term instead.
+            if self.applicability is not None and name in self.applicability.specialists:
+                # one head evaluation: the logit trains the gate, q routes it
+                logit = self.applicability.logit(name, base_state, state)
+                q = torch.sigmoid(logit)
+                route = self.applicability.route(q)
+                contribution = route.unsqueeze(1) * contribution
+                diag[f"{name}_q"] = q.detach()
+                diag[f"{name}_route"] = route
+                if labels is not None:
+                    # NOT detached: this is the term that trains the gate. It is the one
+                    # entry in `diag` carrying gradient, hence the distinct key prefix.
+                    diag[f"applicability_loss_{name}"] = self.applicability.gate_loss(
+                        name, logit, base_state, state, labels)
+
+            total_evidence = total_evidence + contribution
             diag[f"{name}_evidence"] = out.evidence
             diag[f"{name}_gate"] = gate.detach()
-            state = out.state
             diag[f"{name}_vacuity"] = state.vacuity.detach()
             for k, v in out.diagnostics.items():
                 if torch.is_tensor(v):
