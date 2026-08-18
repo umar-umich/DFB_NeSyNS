@@ -51,7 +51,11 @@ class ReferenceEvidenceBranch(EvidenceBranch):
         self.objective = str(blob["objective"])
         self.artifact_path = str(artifact_path)
 
-        ref: FrozenReference = build_reference(self.arm, feature_dim, latent_dim)
+        # hidden_dim comes from the artifact, not from the module default: Stage A sizes the
+        # AE to its feature space (1024-d FS-VFM), and rebuilding at the default 32 makes the
+        # state_dict load fail. Older artifacts predate the field and fall back to the default.
+        hidden_dim = blob.get("hidden_dim")
+        ref: FrozenReference = build_reference(self.arm, feature_dim, latent_dim, hidden_dim)
         ref.load_state_dict(blob["reference_state"])
         ref.freeze()
         self.reference = ref

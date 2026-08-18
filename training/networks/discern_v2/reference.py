@@ -364,10 +364,22 @@ REFERENCES = {
 }
 
 
-def build_reference(arm: str, feature_dim: int, latent_dim: int = 32) -> FrozenReference:
+def build_reference(arm: str, feature_dim: int, latent_dim: int = 32,
+                    hidden_dim: int | None = None) -> FrozenReference:
+    """Construct one reference arm.
+
+    `hidden_dim` is plumbed rather than left at its default because the default (32) was sized
+    for DiCoME's 64-d feature. On V1's 1024-d FS-VFM space that same 32 would make the encoder a
+    1024 -> 32 bottleneck — a severe compression inherited from a different feature width rather
+    than chosen, which would drive the reconstruction error (and therefore r_ref) far more than
+    anything about authenticity. Callers pass a width matched to their feature space; the
+    default is preserved for the arms already fit at 64-d so their artifacts stay reproducible.
+    """
     if arm not in REFERENCES:
         raise KeyError(f"unknown reference arm {arm!r}; available: {sorted(REFERENCES)}")
     kw = {"feature_dim": feature_dim, "latent_dim": latent_dim}
+    if hidden_dim is not None and arm != "C2_linear":   # PCA has no hidden layer
+        kw["hidden_dim"] = hidden_dim
     return REFERENCES[arm](**kw)
 
 

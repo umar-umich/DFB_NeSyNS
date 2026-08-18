@@ -165,15 +165,17 @@ def reals_only(features: np.ndarray, labels: np.ndarray) -> np.ndarray:
 
 
 def fit_one(arm: str, objective: str, X: np.ndarray, latent_dim: int, epochs: int,
-            lr: float, batch: int, device: str, encoder: dict | None = None
+            lr: float, batch: int, device: str, encoder: dict | None = None,
+            hidden_dim: int | None = None
             ) -> tuple[R.FrozenReference, R.ResidualCalibrator, dict]:
     D = X.shape[1]
     # the guard runs on the construction path, not merely in a docstring: encoder_frozen comes
     # from the cache manifest, so a tuned-encoder cache cannot reach a fit.
     R.assert_reference_config(arm, objective, encoder_frozen=True)
-    ref = R.build_reference(arm, D, latent_dim).to(device)
+    ref = R.build_reference(arm, D, latent_dim, hidden_dim).to(device)
     prov: dict = {"arm": arm, "objective": objective, "n_real": int(X.shape[0]),
-                  "feature_dim": int(D), "latent_dim": latent_dim,
+                  "feature_dim": int(D), "latent_dim": latent_dim, "hidden_dim": hidden_dim,
+                  "n_reference_params": sum(p.numel() for p in ref.parameters()),
                   "encoder": encoder or {"encoder_provenance": "unknown"}}
     Xt = torch.from_numpy(X).float().to(device)
 
@@ -230,11 +232,19 @@ def main() -> int:
     ap.add_argument("--labels", type=Path, default=None,
                     help="(N,) labels; 0 = authentic. Omit only if --features is already reals-only")
     ap.add_argument("--feature-key", default=None, help="key inside an .npz")
-    ap.add_argument("--arms", nargs="+", default=["C1_random", "C2_linear", "C3_ae"],
-                    choices=list(R.ARMS))
-    ap.add_argument("--objectives", nargs="+", default=["cosine", "mse"],
-                    choices=list(R.FIT_OBJECTIVES))
-    ap.add_argument("--latent-dim", type=int, default=32)
+    ap.add_argument("--arms", nargs="+", default=["C3_ae"], choices=list(R.ARMS),
+                    help="V1 Stage A fits C3_ae only (spec §4.1). C1_random / C2_linear are the "
+                         "§24 iterate candidates (FS-VFM alone vs +PCA vs +deterministic AE)")
+    ap.add_argument("--objectives", nargs="+", default=["cosine"],
+                    choices=list(R.FIT_OBJECTIVES),
+                    help="V1 Stage A uses cosine: L_ref = 1 - cos(z_ref.detach(), z_hat)")
+    ap.add_argument("--latent-dim", type=int, default=128,
+                    help="V1 default for the 1024-d FS-VFM space (8x bottleneck). 🟡 ASK-UMAR "
+                         "before changing — it sets how much of the authentic manifold the "
+                         "reference can represent, and therefore what r_ref measures")
+    ap.add_argument("--hidden-dim", type=int, default=256,
+                    help="AE hidden width. The module default (32) was sized for DiCoME's 64-d "
+                         "feature and would be a 1024->32 bottleneck here")
     ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--batch", type=int, default=1024)
@@ -267,10 +277,15 @@ def main() -> int:
             print(f"\n=== {arm} / {obj} ===")
             ref, cal, prov = fit_one(arm, "cosine" if obj == "n/a" else obj, X,
                                      args.latent_dim, args.epochs, args.lr, args.batch,
-                                     args.device, encoder)
+                                     args.device, encoder, args.hidden_dim)
             dest = args.out / f"reference_{arm}_{obj.replace('/', '')}.pt"
             torch.save({"arm": arm, "objective": obj, "feature_dim": int(X.shape[1]),
-                        "latent_dim": args.latent_dim, "encoder": encoder,
+                        # hidden_dim travels WITH the weights: the branch rebuilds the module
+                        # before loading them, and rebuilding at a different width fails the
+                        # load outright — better than loading silently, but it still blocks
+                        # Stage B until the width is recorded here.
+                        "latent_dim": args.latent_dim, "hidden_dim": args.hidden_dim,
+                        "encoder": encoder,
                         "reference_state": ref.state_dict(),
                         "calibrator_state": cal.state_dict(),
                         "provenance": prov}, dest)

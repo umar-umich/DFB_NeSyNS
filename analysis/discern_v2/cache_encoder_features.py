@@ -166,6 +166,41 @@ def encoder_fingerprint(extractor: SpatialFeatureExtractor) -> dict:
     }
 
 
+def build_fsvfm(config: dict, device: str, pooling: str,
+                checkpoint: Path | None) -> tuple[object, dict, callable]:
+    """The V1 reference encoder: frozen FS-VFM ViT-L/16 (spec §4).
+
+    Returns (module, provenance, featurize). `featurize` takes a collated batch and returns
+    (B, 1024) — it starts from `raw_frames` ([0, 1] pixels) and applies FS-VFM's OWN
+    normalization, per §6: never normalise once globally and reuse that tensor across three
+    pretrained models. `spatial_frames` is already normalised with CLIP's constants and would
+    silently degrade a frozen encoder that expects different statistics.
+    """
+    from networks.discern_v2.fsvfm_encoder import FrozenFSVFM
+
+    kwargs = {"pooling": pooling}
+    if checkpoint is not None:
+        kwargs["checkpoint"] = checkpoint
+    encoder = FrozenFSVFM(**kwargs).to(device)
+    encoder.assert_frozen()
+
+    mean = torch.tensor(encoder.mean, device=device).view(1, 3, 1, 1)
+    std = torch.tensor(encoder.std, device=device).view(1, 3, 1, 1)
+
+    def featurize(batch: dict) -> torch.Tensor:
+        x = batch["raw_frames"].to(device)
+        if x.min() < -0.01:
+            raise ValueError(
+                "raw_frames appear pre-normalised (negative values); FS-VFM must receive [0,1] "
+                "pixels so it can apply its own statistics")
+        if x.shape[-1] != 224 or x.shape[-2] != 224:
+            x = torch.nn.functional.interpolate(x, size=(224, 224), mode="bilinear",
+                                                align_corners=False)
+        return encoder((x - mean) / std)
+
+    return encoder, encoder.provenance(), featurize
+
+
 def build_encoder(config: dict, mode: str, checkpoint: Path | None,
                   device: str) -> SpatialFeatureExtractor:
     """Build the spatial extractor in one of the two Task-0 encoder states.
@@ -283,7 +318,7 @@ def path_metadata(path: str) -> tuple[str, str]:
 
 
 @torch.no_grad()
-def extract(extractor: SpatialFeatureExtractor, loader, device: str,
+def extract(featurize, loader, device: str,
             max_batches: int = 0) -> tuple[np.ndarray, np.ndarray, list[str]]:
     from tqdm import tqdm
 
@@ -293,9 +328,7 @@ def extract(extractor: SpatialFeatureExtractor, loader, device: str,
     for i, batch in enumerate(tqdm(loader, desc="  encode")):
         if max_batches and i >= max_batches:
             break
-        # no resize here: SpatialFeatureExtractor.forward() already interpolates to
-        # required_size when needs_resize, which is the same call the detector makes.
-        out = extractor(batch["spatial_frames"].to(device))
+        out = featurize(batch)
         feats.append(out.float().cpu().numpy())
         # binarised here, matching test.py: the cache's `label` is the authenticity label the
         # reference and every audit use; the fine-grained method stays in the metadata column.
@@ -351,7 +384,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--config", type=Path, required=True,
                     help="detector yaml; only foundation_models.spatial and the data keys are used")
+    ap.add_argument("--backbone", choices=("clip", "fsvfm"), default="clip",
+                    help="clip = the CLIP anchor's feature space; fsvfm = the V1 reference "
+                         "encoder (frozen FS-VFM ViT-L/16, spec §4)")
     ap.add_argument("--encoder", choices=("frozen", "tuned"), required=True)
+    ap.add_argument("--pooling", choices=("global_pool", "cls"), default="global_pool",
+                    help="FS-VFM pooling rule; global_pool is the authors' downstream default")
     ap.add_argument("--checkpoint", type=Path, default=None,
                     help="required for --encoder tuned, refused for --encoder frozen")
     ap.add_argument("--datasets", nargs="+", required=True)
@@ -369,11 +407,35 @@ def main() -> int:
     if args.workers is not None:
         config["workers"] = args.workers
 
-    print(f"building {args.encoder} encoder on {args.device}")
-    extractor = build_encoder(config, args.encoder, args.checkpoint, args.device)
-    fingerprint = encoder_fingerprint(extractor)
-    print(f"  fingerprint all={fingerprint['all'][:16]}… "
-          f"layernorm={fingerprint['layernorm'][:16]}…")
+    print(f"building {args.backbone} / {args.encoder} encoder on {args.device}")
+    if args.backbone == "fsvfm":
+        if args.encoder != "frozen":
+            raise SystemExit(
+                "--backbone fsvfm is frozen by definition (spec §4: the reference encoder is "
+                "never fine-tuned). Use --encoder frozen.")
+        extractor, fsvfm_prov, featurize = build_fsvfm(
+            config, args.device, args.pooling, args.checkpoint)
+        # the encoder's own parameter hash, so a cache can be proven to come from this artifact
+        fingerprint = {"all": fsvfm_prov["fingerprint"], "layernorm": None,
+                       "n_params": sum(p.numel() for p in extractor.parameters()),
+                       "n_layernorm_params": None}
+        backbone_desc = {"name": "fsvfm_vit_large_patch16", "pooling": args.pooling,
+                         "checkpoint": fsvfm_prov["checkpoint"], "epoch": fsvfm_prov["epoch"],
+                         "mean": fsvfm_prov["mean"], "std": fsvfm_prov["std"],
+                         "feature": "z_ref"}
+        print(f"  FS-VFM epoch={fsvfm_prov['epoch']} pooling={args.pooling} "
+              f"fingerprint={fingerprint['all'][:16]}…")
+    else:
+        extractor = build_encoder(config, args.encoder, args.checkpoint, args.device)
+        fingerprint = encoder_fingerprint(extractor)
+        featurize = lambda batch: extractor(batch["spatial_frames"].to(args.device))  # noqa: E731
+        fsvfm_prov = None
+        backbone_desc = {**config["foundation_models"]["spatial"],
+                         "train_layernorms": bool(extractor.train_layernorms),
+                         "freeze_backbone": bool(extractor.freeze_backbone),
+                         "feature": "spatial_raw"}
+        print(f"  fingerprint all={fingerprint['all'][:16]}… "
+              f"layernorm={fingerprint['layernorm'][:16]}…")
 
     args.out.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -383,14 +445,19 @@ def main() -> int:
         "encoder_frozen": args.encoder == "frozen",
         "checkpoint": str(args.checkpoint) if args.checkpoint else None,
         "config": str(args.config),
-        # the EFFECTIVE encoder state, read off the built extractor rather than copied from
-        # the yaml: --encoder frozen overrides train_layernorms, and a manifest that reported
-        # the config's value would document the opposite of what produced the features.
-        "backbone": {**config["foundation_models"]["spatial"],
-                     "train_layernorms": bool(extractor.train_layernorms),
-                     "freeze_backbone": bool(extractor.freeze_backbone)},
+        # the EFFECTIVE encoder state, read off the built encoder rather than copied from the
+        # yaml: --encoder frozen overrides train_layernorms, and a manifest that reported the
+        # config's value would document the opposite of what produced the features.
+        "backbone_family": args.backbone,
+        "backbone": backbone_desc,
+        "fsvfm_provenance": fsvfm_prov,
         "fingerprint": fingerprint,
-        "feature": "spatial_raw",
+        "feature": backbone_desc.get("feature", "spatial_raw"),
+        # §6: which pixels the encoder saw, and normalised with whose statistics. Recorded
+        # because feeding one branch's normalised tensor to another degrades a frozen encoder
+        # silently rather than failing.
+        "input": ("aligned crop -> FS-VFM normalization" if args.backbone == "fsvfm"
+                  else "aligned crop -> CLIP normalization"),
         "git_commit": git_commit(),
         "datasets": {},
     }
@@ -403,7 +470,7 @@ def main() -> int:
             dataset, batch_size=args.batch_size, shuffle=False,
             num_workers=int(config["workers"]), collate_fn=dataset.collate_fn,
             drop_last=False)
-        features, labels, names = extract(extractor, loader, args.device, args.max_batches)
+        features, labels, names = extract(featurize, loader, args.device, args.max_batches)
 
         methods, videos = zip(*(path_metadata(p) for p in names)) if names else ((), ())
         meta = pd.DataFrame({"key": names, "label": labels, "method": methods,
