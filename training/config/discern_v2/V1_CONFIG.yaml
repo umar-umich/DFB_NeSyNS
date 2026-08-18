@@ -1,0 +1,158 @@
+# DISCERN v2 — V1 configuration (build spec §26)
+#
+# Single source of truth for the V1 run. Every value here is either traced from validated code
+# (with the file:line recorded) or is a 🟡 choice flagged for Umar. Nothing is a guess.
+#
+# 🔴 Umar launches every stage. 🟡 marks a value that needs Umar's sign-off before the run.
+
+meta:
+  spec: docs/DiCoME_eval/DISCERN_v2_Phase2_V1_BUILD_SPEC.md
+  repo: /data/umar/Repos/DFB_NeSyNS          # confirmed: no ../DISCERN exists; this IS the repo
+  dicome_clone: /data/umar/Repos/DiCoME      # the reproduced clone the recipe is ported from
+  fsfm_clone: /data/umar/Repos/FSFM-CVPR25   # branch FSVFM-extension-R1, commit b84aafa
+  seed: 42                                   # 🟡 fixed; changing it is an ASK-UMAR item
+  env: dfb_nesy                              # torch 2.9.1, transformers 4.44.2, peft 0.14.0
+
+# ---------------------------------------------------------------------------
+# Branch A — semantic anchor (§3). Ported from DiCoME, values traced not assumed.
+# ---------------------------------------------------------------------------
+semantic:
+  backbone: openai/clip-vit-large-patch14    # DiCoME src/config.py:61
+  feature_dim: 64                            # DiCoME src/config.py:62 (the 64-D bottleneck, kept)
+  enable_lora: true
+  lora:                                      # DiCoME src/config.py:38-45
+    target_modules: [q_proj, v_proj]
+    r: 8
+    lora_alpha: 16
+    lora_dropout: 0.1
+    bias: none
+    task_type: FEATURE_EXTRACTION
+  # trainable: 786,432 LoRA + 65,600 projection + 128 norm + 4,290 head = 856,450
+  # frozen:    303,179,776
+
+# ---------------------------------------------------------------------------
+# Branch B — bona-fide reference (§4) + the §4.2 direct-probe control
+# ---------------------------------------------------------------------------
+reference:
+  enabled: true
+  fsvfm_checkpoint: weights/FS-VFM/checkpoint-599.pth
+  fsvfm_sha256: 3fd99324c998ee06e4daa7f9d845e73f65f1628dee741b2c98664d566526bc87
+  mean_std_file: weights/FS-VFM/pretrain_ds_mean_std.txt   # NOT ImageNet; read, never hardcoded
+  pooling: global_pool                       # the authors' downstream default; `cls` is the control
+  input_dim: 1024
+  hidden_dim: 64                             # evidence head width (= the direct probe's)
+  direct_probe: true                         # §4.2 control: logged, compared, NEVER fused
+  artifact_path: configs/discern_v2/reference/reference_C3_ae_cosine.pt   # written by Stage A
+
+  # Stage A — the reals-only fit (§4.1, §9 A)
+  stage_a:
+    arm: C3_ae                               # deterministic AE, reused from DISCERN
+    objective: cosine                        # L_ref = 1 - cos(z_ref.detach(), z_hat)
+    latent_dim: 128                          # 🟡 ASK-UMAR
+    hidden_dim: 256                          # 🟡 ASK-UMAR
+    # The module default (hidden 32) was sized for DiCoME's 64-d feature. On 1024-d FS-VFM that
+    # is a 1024->32 bottleneck inherited from a different feature width, and it dominates the
+    # reconstruction error — which IS r_ref. At equal epochs on the same data the cosine loss
+    # went 0.475 (hidden 32) -> 0.057 (hidden 256), so this is not a cosmetic choice.
+    epochs: 100
+    lr: 1.0e-3
+    batch: 1024
+    # P_R params at these dims: 591,488 (frozen after the fit)
+
+# ---------------------------------------------------------------------------
+# Branch C — generative-process specialist (§5)
+# ---------------------------------------------------------------------------
+process:
+  enabled: true
+  vae_path: /data/umar/Repos/DiCoME/eval_adaptation/data/models/sdxl-vae
+  resolution: 256
+  hidden_dim: 32
+  stats_artifact: configs/discern_v2/process/process_stats.pt   # written by fit_process_stats.py
+  # 83,653,863 frozen VAE params; 290 trainable head params; 6 named statistics
+
+# ---------------------------------------------------------------------------
+# §6 — per-branch preprocessing. Three normalizations, one source frame, never shared.
+# ---------------------------------------------------------------------------
+preprocessing:
+  semantic: {input: spatial_frames, normalization: CLIP}
+  reference: {input: raw_frames, normalization: FS-VFM, crop: aligned}
+  process: {input: raw_frames, normalization: VAE-native, crop: aligned}
+  # DEVIATION from §8, decided by Umar 2026-08-18: the reference branch reads the EXISTING
+  # aligned crop rather than §8's native DLIB+30% default, to avoid a second crop cache across
+  # every split. The §8 parity control measures the cost. Note native crops are only reachable
+  # for FF++, CDF v1-v3, DFD and Deepfake-Eval-2024 — DFDC, DFDCP and UADFV exist locally only
+  # as 256x256 crops with no source frames.
+
+# ---------------------------------------------------------------------------
+# §10 — Stage B recipe, traced from the reproduced DiCoME code
+# ---------------------------------------------------------------------------
+training:
+  train_dataset: [FaceForensics++]           # §1: main supervised training is FF++ c23 only
+  compression: c23
+  optimizer: AdamW                           # DiCoME src/model/dicome_module.py:513
+  lr: 1.0e-4                                 # src/config.py:72
+  betas: [0.9, 0.999]                        # src/config.py:77
+  weight_decay: 0.01                         # src/config.py:76
+  exclude_from_weight_decay: [bias, norm, bn]   # dicome_module.py:508 — it really does
+  scheduler: {type: CosineAnnealingLR, interval: step, min_lr: 1.0e-6}
+  augmentation:                              # src/dataset/base.py:67-78, in this order
+    - {op: RandomHorizontalFlip, p: 0.5}
+    - {op: RandomAffine, degrees: 10, translate: [0.1, 0.1], scale: [0.9, 1.1]}
+    - {op: GaussianBlur, kernel_size: [3, 7], sigma: [0.1, 2.0]}    # unconditional
+    - {op: ColorJitter, brightness: 0.2, contrast: 0.2}             # unconditional
+  # §10: do NOT add MixUp/CutMix/random-erasing — they destroy the process residual.
+  save_every_epoch: true                     # §11: no hardcoded epoch window
+  max_epochs: 20                             # 🟡 the "reproduced practical horizon"
+
+# ---------------------------------------------------------------------------
+# §11/§12 — selection and the meta split
+# ---------------------------------------------------------------------------
+selection:
+  split: VAL_select
+  primary_metric: video_auroc
+  tie_break: [ece, val_loss]
+  forbidden_sources: [CDFv1, CDFv2, CDFv3, DFDC, DFDCP, DFD, DF40, Deepfake-Eval-2024]
+
+meta_split:
+  file: configs/discern_v2/meta_split.json   # written by analysis/discern_v2/meta_split.py
+  source: FF++ val only
+  val_select_fraction: 0.60
+  n_folds: 5
+  unit: identity group (union-find over every id in the video name)
+  # measured on the real split: 700 videos -> 70 groups -> 420 / 280 (60.0%),
+  # per-subset balance 84/84/84/84/84 vs 56/56/56/56/56, folds 60/60/60/50/50,
+  # zero identities shared across partitions or folds
+
+# ---------------------------------------------------------------------------
+# §13/§14/§17/§18 — the reasoning layer
+# ---------------------------------------------------------------------------
+applicability:
+  delta: 0.0                                 # §13: config, never tuned on OOD
+  hidden: 32
+  epochs: 200
+  lr: 1.0e-2
+  features: [p_sem_fake, u_sem, p_b_fake, u_b, abs_disagree, js_disagree, b_margin, sem_margin]
+  # 321 params per gate; label-free by name, asserted at construction
+
+fusion:
+  order: [sem, ref, proc]                    # §15: fixed and recorded; order-invariance tested
+  conflict_eps: 1.0e-6                       # §14.2: DiCoME's divisor is unclamped; ours is not
+  q_sem: 1.0                                 # the anchor is never gated
+
+risk:
+  features: [V, C, A, fused_margin]
+  model: logistic_regression                 # §18: no large MLP in V1
+  abstention_budget: 0.10
+  threshold_source: FF++ VAL_meta (out-of-fold q)   # frozen for every OOD source
+
+# ---------------------------------------------------------------------------
+# §21 — evaluation
+# ---------------------------------------------------------------------------
+evaluation:
+  video_aggregation: mean_frame_fake_probability
+  sources: [FaceForensics++, Celeb-DF-v1, Celeb-DF-v2, Celeb-DF-v3, DeepFakeDetection,
+            DFDCP, DFDC, UADFV, Deepfake-Eval-2024, DF40]
+  primary_metric: video_auroc
+  significance_rule: |
+    §22: |delta AUC| < 0.01, or inconsistent family-level effects, requires a second seed
+    before any promotion, removal, or architecture change.
