@@ -13,15 +13,23 @@ accident.
 Inputs
 ------
 A cached CLIP feature matrix for FF++ authentic **training** frames, from a FROZEN encoder.
-Supply it as an .npz/.npy of shape (N, D) via --features, together with a boolean/int label
-vector (--labels) so this script can enforce reals-only itself rather than trusting the caller.
+Build it with `analysis/discern_v2/cache_encoder_features.py --encoder frozen --split train`;
+that writes `features.npz` (key `f0`), `labels.npy`, and the `manifest.json` this script reads
+to *verify* the encoder was frozen and to stamp the encoder fingerprint into the artifact.
+Without a manifest the fit is refused unless --allow-unprovenanced is passed, because
+"fit on a frozen encoder" would otherwise be an unverified assertion.
+
+Labels are supplied separately (--labels) so this script can enforce reals-only itself rather
+than trusting the caller.
 
 Outputs, per (arm, objective), under --out:
     reference_<arm>_<objective>.pt     state_dict + calibrator buffers + provenance
     fit_report.json                    losses, residual statistics, PCA explained variance
 
     python analysis/discern_v2/fit_reference.py \
-        --features cache/ffpp_train_clip.npz --labels cache/ffpp_train_labels.npy \
+        --features cache/discern_v2/clip_frozen/FaceForensics++_train/features.npz \
+        --feature-key f0 \
+        --labels cache/discern_v2/clip_frozen/FaceForensics++_train/labels.npy \
         --arms C1_random C2_linear C3_ae --objectives cosine mse
 
 🔴 UMAR-RUNS. Nothing here launches training; it fits a small head on cached features.
@@ -55,6 +63,66 @@ def load_matrix(path: Path, key: str | None = None) -> np.ndarray:
     return np.load(path, allow_pickle=False)
 
 
+def read_cache_manifest(features_path: Path) -> dict | None:
+    """Find the `manifest.json` that `cache_encoder_features.py` wrote beside this cache.
+
+    Searched two levels up: the cache layout is `<out>/<dataset>_<split>/features.npz` with
+    the manifest at `<out>/manifest.json`.
+    """
+    for parent in (features_path.parent, features_path.parent.parent):
+        candidate = parent / "manifest.json"
+        if candidate.is_file():
+            return json.loads(candidate.read_text())
+    return None
+
+
+def assert_frozen_feature_space(manifest: dict | None, allow_unprovenanced: bool) -> dict:
+    """Refuse to fit on a feature space that is not provably frozen.
+
+    `assert_reference_config` already refuses a non-frozen encoder at construction, but it is
+    told `encoder_frozen` by its caller — so it can only enforce what someone asserts. This
+    checks the cache's own manifest, which records the encoder state that actually produced
+    the features, and carries the fingerprint into the artifact so Stage II can prove it is
+    reading the same encoder rather than assuming it. A reference fit on a drifting encoder
+    fails silently: the residuals stay finite and plausible while measuring against a stale
+    manifold, which is the Phase-1 bug.
+    """
+    if manifest is None:
+        if not allow_unprovenanced:
+            raise SystemExit(
+                "no manifest.json beside --features, so the encoder state that produced these "
+                "features is unknown and 'fit on a frozen encoder' cannot be verified. Build "
+                "the cache with analysis/discern_v2/cache_encoder_features.py --encoder frozen, "
+                "or pass --allow-unprovenanced for a synthetic/smoke matrix (recorded as such "
+                "in the artifact).")
+        print("  WARNING: unprovenanced features — artifact marked encoder_provenance=unknown")
+        return {"encoder_provenance": "unknown"}
+
+    if not manifest.get("encoder_frozen", False):
+        raise SystemExit(
+            f"the cache at {manifest.get('config')} was built with encoder_mode="
+            f"{manifest.get('encoder_mode')!r}. The reals-only reference must be fit on a "
+            f"FROZEN encoder feature space — with a tuned encoder the features drift away "
+            f"from the ones the reference was fit on and every residual is measured against a "
+            f"stale manifold. Task 0's dual-encoder option exists precisely so e_sem may be "
+            f"tuned while the reference input stays frozen.")
+    if manifest.get("partial"):
+        print("  WARNING: manifest says partial=true (--max-batches was set) — this cache is a "
+              "smoke subset, not the full authentic training split")
+    print(f"  feature space verified frozen; encoder fingerprint "
+          f"{manifest['fingerprint']['all'][:16]}…")
+    return {
+        "encoder_provenance": "verified",
+        "encoder_mode": manifest.get("encoder_mode"),
+        "encoder_fingerprint": manifest.get("fingerprint"),
+        "encoder_config": manifest.get("config"),
+        "cache_split": manifest.get("split"),
+        "cache_feature": manifest.get("feature"),
+        "cache_partial": bool(manifest.get("partial")),
+        "cache_git_commit": manifest.get("git_commit"),
+    }
+
+
 def reals_only(features: np.ndarray, labels: np.ndarray) -> np.ndarray:
     """Keep label == 0. Enforced here rather than trusting the caller.
 
@@ -75,11 +143,16 @@ def reals_only(features: np.ndarray, labels: np.ndarray) -> np.ndarray:
 
 
 def fit_one(arm: str, objective: str, X: np.ndarray, latent_dim: int, epochs: int,
-            lr: float, batch: int, device: str) -> tuple[R.FrozenReference, R.ResidualCalibrator, dict]:
+            lr: float, batch: int, device: str, encoder: dict | None = None
+            ) -> tuple[R.FrozenReference, R.ResidualCalibrator, dict]:
     D = X.shape[1]
+    # the guard runs on the construction path, not merely in a docstring: encoder_frozen comes
+    # from the cache manifest, so a tuned-encoder cache cannot reach a fit.
+    R.assert_reference_config(arm, objective, encoder_frozen=True)
     ref = R.build_reference(arm, D, latent_dim).to(device)
     prov: dict = {"arm": arm, "objective": objective, "n_real": int(X.shape[0]),
-                  "feature_dim": int(D), "latent_dim": latent_dim}
+                  "feature_dim": int(D), "latent_dim": latent_dim,
+                  "encoder": encoder or {"encoder_provenance": "unknown"}}
     Xt = torch.from_numpy(X).float().to(device)
 
     if arm == "C1_random":
@@ -146,18 +219,24 @@ def main() -> int:
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--out", type=Path,
                     default=Path("configs/discern_v2/reference"))
+    ap.add_argument("--allow-unprovenanced", action="store_true",
+                    help="fit on features with no cache manifest (synthetic/smoke only); the "
+                         "artifact records encoder_provenance=unknown")
     args = ap.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
     X = load_matrix(args.features, args.feature_key).astype(np.float32)
     print(f"loaded features {X.shape} from {args.features}")
+    encoder = assert_frozen_feature_space(read_cache_manifest(args.features),
+                                          args.allow_unprovenanced)
     if args.labels is not None:
         X = reals_only(X, load_matrix(args.labels))
     else:
         print("  no --labels given; treating the matrix as already reals-only")
 
     report = {"features": str(args.features), "n_real": int(X.shape[0]),
-              "feature_dim": int(X.shape[1]), "latent_dim": args.latent_dim, "arms": {}}
+              "feature_dim": int(X.shape[1]), "latent_dim": args.latent_dim,
+              "encoder": encoder, "arms": {}}
 
     for arm in args.arms:
         # C1/C2 have no objective; fit once and record it under "n/a" rather than duplicating
@@ -166,10 +245,10 @@ def main() -> int:
             print(f"\n=== {arm} / {obj} ===")
             ref, cal, prov = fit_one(arm, "cosine" if obj == "n/a" else obj, X,
                                      args.latent_dim, args.epochs, args.lr, args.batch,
-                                     args.device)
+                                     args.device, encoder)
             dest = args.out / f"reference_{arm}_{obj.replace('/', '')}.pt"
             torch.save({"arm": arm, "objective": obj, "feature_dim": int(X.shape[1]),
-                        "latent_dim": args.latent_dim,
+                        "latent_dim": args.latent_dim, "encoder": encoder,
                         "reference_state": ref.state_dict(),
                         "calibrator_state": cal.state_dict(),
                         "provenance": prov}, dest)
