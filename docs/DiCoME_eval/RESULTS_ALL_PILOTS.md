@@ -102,3 +102,17 @@ Why in-domain validation cannot rank these models.
 
 - **VALmix** (`eval_adaptation/data/h5/VALmix.h5`, 1,350 videos / 40,142 frames): leak-free out-of-domain validation from Celeb-DF-v2 non-test + DFDCP official-train + Deepfake-Eval-2024 finetuning-train. Adopting it requires retraining the suite for comparability, **and makes Deepfake-Eval-2024's test AUC no longer strictly zero-shot** (it becomes a held-out test with in-distribution model selection).
 - **DF40 train split** (31 methods, pre-cropped, at `/data/saad/datasets/video/df40/train`): candidate *training* data for the process-diverse direction. Deliberately NOT used for validation — it shares all 31 generators with the DF40 test split.
+
+
+| Dataset | CLIP Visual Only | Visual + β-TCVAE Residual* | β-TCVAE Residual Only* | Visual + LDM-AE Residual | Visual + β-TCVAE + LDM-AE* | Visual + MR-VAE + LDM-AE* |
+|---|---:|---:|---:|---:|---:|---:|
+| FF++ | 0.9445 | 0.9322 | 0.9415 | 0.9458 | 0.9347 | 0.9377 |
+| Celeb-DF-v1 | 0.9024 | **0.9167** | 0.8830 | 0.8839 | 0.8855 | 0.9007 |
+| Celeb-DF-v2 | 0.8828 | 0.8894 | **0.8932** | 0.8842 | 0.8835 | 0.8870 |
+| Celeb-DF-v3 | 0.8117 | 0.8199 | **0.8236** | 0.8217 | 0.8098 | 0.8185 |
+| DFD | 0.8785 | **0.8874** | 0.8802 | 0.8746 | 0.8858 | 0.8872 |
+| DFDCP | 0.8244 | 0.8340 | **0.8445** | 0.8353 | 0.8349 | 0.8281 |
+| DFDC | 0.8018 | 0.8130 | **0.8188** | 0.8033 | 0.8033 | 0.8103 |
+| UADFV | 0.9849 | 0.9841 | 0.9836 | 0.9846 | 0.9843 | **0.9857** |
+| **Mean excl. FF++** | 0.8695 | **0.8778** | 0.8753 | 0.8696 | 0.8696 | 0.8739 |
+
