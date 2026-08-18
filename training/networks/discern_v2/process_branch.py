@@ -86,6 +86,12 @@ class ProcessEvidenceBranch(nn.Module):
             nn.Linear(self.n_stats, hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, num_classes))
 
+        # The operator wrapper inherits nn.Module's default training=True even though its VAE is
+        # constructed in eval, so a model that is built and used without an explicit .train() or
+        # .eval() call would report a frozen branch sitting in train mode. Established here, at
+        # construction, rather than left to whoever remembers to call train() first.
+        self.operator.eval()
+
     # ------------------------------------------------------------------ calibration
 
     def load_stats(self, artifact: str | Path) -> "ProcessEvidenceBranch":
@@ -114,8 +120,13 @@ class ProcessEvidenceBranch(nn.Module):
         live_cal = [n for n, p in self.calibrator.named_parameters() if p.requires_grad]
         if live_cal:
             raise RuntimeError(f"the process calibrator has trainable params: {live_cal}")
-        if self.operator.training:
-            raise RuntimeError("the process VAE is in train mode; it must stay in eval")
+        # both flags: the wrapper's mode is what propagates from model.train(), while the VAE's
+        # own mode is what actually decides whether its norm layers update
+        if self.operator.training or self.operator.vae.training:
+            raise RuntimeError(
+                f"the process operator is in train mode (wrapper={self.operator.training}, "
+                f"vae={self.operator.vae.training}); it must stay in eval or its norm layers "
+                f"drift and the residual moves over a run for reasons unrelated to the data")
 
     # ------------------------------------------------------------------ forward
 
