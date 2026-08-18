@@ -561,7 +561,30 @@ def main():
                 f"===> Epoch[{epoch}] end with testing "
                 f"{metric_scoring}: {parse_metric_for_print(best_metric)}!")
 
-            # Periodic checkpoint saving removed — only best checkpoint is saved
+            # -- Early-epoch checkpoints (Phase 2) -------------------------------
+            # Phase 2's cheapest experiment is "score epochs 3-8 and see whether stopping
+            # before FF++ overfitting recovers DiCoME's cross-dataset edge" — no retraining
+            # required, IF the checkpoints exist. They did not: only best_avg was kept, so the
+            # test was impossible on every run to date. Saving a bounded window costs a few
+            # files per run and makes it free from here on.
+            #
+            # Bounded on purpose: `early_epochs` (default 3-8 inclusive) rather than every
+            # epoch, because these checkpoints are ~1.2 GB each and an unbounded interval
+            # would fill the disk over a multi-arm sweep.
+            ee_cfg = config.get('early_epoch_checkpoints', {}) or {}
+            if ee_cfg.get('enabled', True):
+                lo = int(ee_cfg.get('first', 3))
+                hi = int(ee_cfg.get('last', 8))
+                if lo <= epoch <= hi:
+                    ep_path = os.path.join(
+                        trainer.log_dir if hasattr(trainer, 'log_dir') else '.',
+                        f'epoch_{epoch:03d}.pth')
+                    try:
+                        torch.save(trainer.model.state_dict(), ep_path)
+                        logger.info(f"  Early-epoch checkpoint saved: {ep_path}")
+                    except Exception as exc:      # noqa: BLE001
+                        # never let checkpoint bookkeeping kill a training run
+                        logger.warning(f"  Early-epoch checkpoint failed ({exc}) — continuing")
 
             # Early stopping check on avg AUC
             if es_enabled and 'avg' in best_metric:
