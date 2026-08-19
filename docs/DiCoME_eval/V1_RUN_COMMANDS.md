@@ -165,6 +165,63 @@ so neither needs another forward pass.
 
 Pick the GPU explicitly. The script never chooses one.
 
+## Step 3c — DF40 and Deepfake-Eval-2024
+
+**Deepfake-Eval-2024 needs nothing special.** Its JSON is already in the configured folder and its
+frame paths resolve: 428 real + 386 fake test videos, 32 frames each. Add it to `--datasets` in
+step 3b.
+
+**DF40 needs `--df40`**, because three things about it differ from every other source:
+
+```bash
+$PY training/eval_v1.py \
+    --checkpoint logs/v1/stage_b_seed42/epoch_001.pth \
+    --df40 \
+    --datasets danet_cdf danet_ff fomm_cdf fomm_ff tpsm_cdf tpsm_ff \
+               facedancer_cdf faceswap_cdf inswap_cdf simswap_cdf \
+               blendface_cdf mcnet_cdf sadtalker_cdf wav2lip_cdf \
+               stargan StyleGAN2_ff MidJourney CollabDiff \
+    --output logs/v1/eval/epoch_001_df40 \
+    --batch-size 16 --workers 4 --device cuda:N
+```
+
+1. Its JSONs live in `/data/umar/Datasets/df40/dataset_json/`, not the configured folder.
+2. Its frame paths are relative to a root that does not exist here, and the rewrite is
+   **not one rule**: authentic halves are borrowed from FF++/CDFv2 (`df40/real/…`), video methods
+   sit at `df40/test/<m>/<subset>/frames/…`, and image methods at
+   `df40/test/<m>/<half>/<half>/…` with a doubled directory. `--df40` resolves by trying
+   candidates and reports the per-method resolution rate; a method missing frames is warned
+   about, because an AUROC over a partial method otherwise looks like a complete one.
+3. Its labels are per method (`danet_Real`, `stargan_Fake`, …) and the loader RAISES on a label
+   absent from `config['label_dict']`. `--df40` injects them for that run only, so the shared
+   `training/config/test_config.yaml` is untouched.
+
+Check coverage before committing to a method list:
+
+```bash
+$PY training/dataset/df40_paths.py       # per-method resolution rates and families
+```
+
+Measured: **60 of 81 method JSONs resolve fully** (52 face-manipulation, 8 whole-image), 21 are
+excluded with their rates recorded. `DF40_all.json` is unusable regardless — every entry sits
+under `train` and its `test` split is empty, so use the per-method JSONs, which is also what
+§21's family/method breakdown asks for.
+
+**Report DF40's two families separately.** Its face-swap and reenactment methods manipulate real
+footage and are comparable to FF++/CDF. Its whole-image generators (MidJourney, StyleGAN2/3/XL,
+VQGAN, CollabDiff, DiT, SiT, RDDM) emit entire synthetic images up to 1024×1024 — not manipulated
+face crops. One pooled "DF40 AUROC" averages over two different tasks.
+
+Because DF40 uses its own JSON folder, run it as a separate invocation and pass **both** exports
+to the audit, which accepts several: FF++ comes from the main run and supplies `p(r | R_FF++)`.
+
+```bash
+$PY analysis/discern_v2/domain_audit.py \
+    --parquet logs/v1/eval/epoch_001/per_sample_epoch_1.parquet \
+              logs/v1/eval/epoch_001_df40/per_sample_epoch_1.parquet \
+    --out analysis/discern_v2/V1_domain_audit
+```
+
 ## Step 4 — checkpoint selection (§11)
 
 `TODO(run)` — needs step 3's checkpoints. Select on **VAL_select only**: primary video-level AUROC,

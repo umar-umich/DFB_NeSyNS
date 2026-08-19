@@ -137,6 +137,29 @@ def evaluate_dataset(model, loader, views, device: str, dataset: str,
     return pd.concat(rows, ignore_index=True)
 
 
+def fix_degenerate_video_ids(df: pd.DataFrame, dataset: str) -> tuple[pd.DataFrame, str | None]:
+    """Fall back to per-file ids where the parent directory is not a video.
+
+    `video_of()` takes the parent directory, which is the video for every frame-extracted corpus.
+    DF40's whole-image generators are stored flat as `<method>/<half>/<half>/<n>.jpg`, so the
+    parent directory IS the class: every real image becomes one "video" called `real` and every
+    fake one called `fake`. Video AUROC over two points whose scores are the class means is then
+    exactly 1.0 or 0.0 — a spectacular-looking number that measures nothing at all, which is
+    worse than a missing one because it looks like a result.
+
+    Detected from the data rather than from a method whitelist, so any flat corpus is caught:
+    a handful of distinct ids covering many frames is not a video structure.
+    """
+    n_ids = df["video_id"].nunique()
+    if n_ids > 4 or len(df) < 4 * max(n_ids, 1):
+        return df, None
+    df = df.assign(video_id=[Path(k).stem for k in df["key"]])
+    note = (f"{dataset}: only {n_ids} distinct parent directories over {len(df)} frames — the "
+            f"layout is flat (each file is its own sample), so video aggregation now uses the "
+            f"file name. A 2-point video AUROC over class means would have been 1.0 or 0.0.")
+    return df, note
+
+
 def metrics_for(df: pd.DataFrame, score_col: str) -> dict:
     """Frame and video AUROC. Video aggregation is mean frame p(fake), per §21."""
     from sklearn.metrics import roc_auc_score
@@ -168,6 +191,11 @@ def main() -> int:
     ap.add_argument("--max-batches", type=int, default=0)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu",
                     help="pick the GPU explicitly; this script never chooses one for you")
+    ap.add_argument("--df40", action="store_true",
+                    help="treat --datasets as DF40 per-method names: use DF40's json folder, "
+                         "inject its per-method label_dict, and remap its relative frame paths")
+    ap.add_argument("--dataset-json-folder", type=Path, default=None,
+                    help="override the json folder (DF40 keeps its own)")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -178,18 +206,48 @@ def main() -> int:
     clip_norm = data_cfg["foundation_models"]["spatial"]["normalization"]
     views = ViewMaker(clip_norm["mean"], clip_norm["std"], args.device, augment=False)
 
+    df40 = None
+    if args.df40:
+        from dataset import df40_paths as df40
+
+        json_dir = args.dataset_json_folder or df40.DF40_JSON_DIR
+        data_cfg["dataset_json_folder"] = str(json_dir)
+        # DF40 labels are per method and absent from the shared config, which RAISES on unknown
+        # keys; injected for this run only so test_config.yaml stays untouched.
+        data_cfg["label_dict"] = {**data_cfg.get("label_dict", {}),
+                                  **df40.label_dict_for(args.datasets, json_dir)}
+        print(f"DF40 mode: json folder {json_dir}, "
+              f"{len(data_cfg['label_dict'])} label keys after injection")
+    elif args.dataset_json_folder:
+        data_cfg["dataset_json_folder"] = str(args.dataset_json_folder)
+
     from dataset.nesy_defake_dataset import NeSyDeFakeDataset
 
     results: dict[str, dict] = {}
+    resolution: dict[str, dict] = {}
+    aggregation_notes: dict[str, str] = {}
     frames: list[pd.DataFrame] = []
     for name in args.datasets:
         print(f"\n=== {name} ===")
         cfg_ds = {**data_cfg, "test_dataset": name}
         dataset = NeSyDeFakeDataset(cfg_ds, mode="test")
+        if df40 is not None:
+            report = df40.remap_dataset(dataset)
+            resolution[name] = {**report, "family": df40.family_of(name)}
+            print(f"  path remap: kept {report['kept']}, dropped {report['dropped']} "
+                  f"(rate {report['resolution_rate']:.3f}, family {resolution[name]['family']})")
+            if report["resolution_rate"] < 0.99:
+                print(f"  WARNING: {name} is missing "
+                      f"{(1 - report['resolution_rate']) * 100:.1f}% of its frames — the AUROC "
+                      f"below is computed over a partial method")
         loader = torch.utils.data.DataLoader(
             dataset, batch_size=args.batch_size, shuffle=False,
             num_workers=int(data_cfg["workers"]), collate_fn=dataset.collate_fn)
         df = evaluate_dataset(model, loader, views, args.device, name, args.max_batches)
+        df, note = fix_degenerate_video_ids(df, name)
+        if note:
+            print(f"  NOTE {note}")
+            aggregation_notes[name] = note
         frames.append(df)
 
         per_source = {"fused_ungated": metrics_for(df, "prob_fused")}
@@ -225,6 +283,8 @@ def main() -> int:
         "selection_note": ("§11: OOD scores are for later analysis only and must not select an "
                            "epoch, a hyperparameter, or a threshold."),
         "video_aggregation": "mean frame p(fake) (§21)",
+        "df40_path_resolution": resolution or None,
+        "video_aggregation_notes": aggregation_notes or None,
         "results": results,
     }
     (args.output / f"results_epoch_{epoch}.json").write_text(json.dumps(payload, indent=2))
