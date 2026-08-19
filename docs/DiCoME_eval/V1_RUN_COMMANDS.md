@@ -138,6 +138,33 @@ What it does, and why each part is not the obvious alternative:
 Validation each epoch runs on **VAL_select only** (13,436 frames, read from `meta_split.json`),
 reporting video AUROC and ECE — the two quantities §11 selects on.
 
+## Step 3b — epoch-wise OOD scoring (§11: **analysis only**)
+
+```bash
+$PY training/eval_v1.py \
+    --checkpoint logs/v1/stage_b_seed42/epoch_001.pth \
+    --datasets FaceForensics++ Celeb-DF-v2 Celeb-DF-v3 DFDC DFDCP \
+    --output logs/v1/eval/epoch_001 \
+    --batch-size 32 --workers 12 --device cuda:N
+```
+
+Can be run on any epoch's checkpoint, including while Stage B is still training. §11 explicitly
+permits this — "save epoch-wise OOD scores for later analysis only" — and it must not select an
+epoch, a hyperparameter or a threshold.
+
+**These are not "DISCERN-v2 V1" numbers.** At Stage B there is no applicability gate (Stage D) and
+no defer policy (Stage E), so fusion runs **ungated at q = 1**, which is *plain DS over three
+ungated experts* — the baseline the applicability layer is later supposed to beat. The output JSON
+says so in an `IMPORTANT` field so a number cannot be lifted into a results table without it.
+
+Writes, per source: fused-ungated frame/video AUROC, the same for each branch separately
+(`sem`, `ref`, `proc`), the §4.2 `direct_probe_control`, mean V/C/A, the DS degenerate-fusion
+rate, and branch-validity rates. Plus `per_sample_epoch_N.parquet` — the §20 instrumentation, one
+row per frame, which is the input to the domain-detector audit and the contribution diagnostics,
+so neither needs another forward pass.
+
+Pick the GPU explicitly. The script never chooses one.
+
 ## Step 4 — checkpoint selection (§11)
 
 `TODO(run)` — needs step 3's checkpoints. Select on **VAL_select only**: primary video-level AUROC,
@@ -173,11 +200,14 @@ policy = freeze_thresholds(labels, prob_fake, risk, abstention_budget=0.10)
 
 ## Step 7 — FF++ test
 
-`TODO(run)`.
+`TODO(run)` — same command as step 3b on the **selected** checkpoint, with
+`--datasets FaceForensics++`. Once Stages D and E exist, the gated/deferring system is scored by
+applying the frozen gates and `DeferPolicy` to the same per-sample export rather than by a second
+forward pass.
 
 ## Step 8 — the OOD suite (§21)
 
-`TODO(run)`. Sources: Celeb-DF-v1/v2/v3 (CDFv3 with FS/FR/TF breakdown), DFD, DFDCP, DFDC, UADFV,
+`TODO(run)` — step 3b's command on the selected checkpoint, across every source. Sources: Celeb-DF-v1/v2/v3 (CDFv3 with FS/FR/TF breakdown), DFD, DFDCP, DFDC, UADFV,
 Deepfake-Eval-2024, DF40 by family/method. Video AUC is primary; report frame AUC where available.
 No OOD result may change a checkpoint or hyperparameter after the fact.
 
