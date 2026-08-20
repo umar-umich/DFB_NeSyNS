@@ -153,10 +153,17 @@ def fix_degenerate_video_ids(df: pd.DataFrame, dataset: str) -> tuple[pd.DataFra
     n_ids = df["video_id"].nunique()
     if n_ids > 4 or len(df) < 4 * max(n_ids, 1):
         return df, None
-    df = df.assign(video_id=[Path(k).stem for k in df["key"]])
+    # The FULL path minus its suffix, not the bare file stem. DF40's flat methods store the two
+    # classes as .../<half>/<half>/<n>.jpg, so `real/real/1332.jpg` and `fake/fake/1332.jpg` share
+    # the stem `1332`: grouping on it pairs each real with its fake, label=max() marks every group
+    # fake, and the video-level array becomes single-class -> AUROC nan for every branch while the
+    # frame AUROC still looks fine. The path is unique per file by construction.
+    df = df.assign(video_id=[str(Path(k).with_suffix("")) for k in df["key"]])
     note = (f"{dataset}: only {n_ids} distinct parent directories over {len(df)} frames — the "
-            f"layout is flat (each file is its own sample), so video aggregation now uses the "
-            f"file name. A 2-point video AUROC over class means would have been 1.0 or 0.0.")
+            f"layout is flat, so each file is its own sample and video aggregation now uses the "
+            f"full file path. Video AUROC therefore EQUALS frame AUROC here: there is no video "
+            f"level in this corpus. Grouping on the parent would have given a 2-point AUROC of "
+            f"1.0 or 0.0, and grouping on the bare stem gives nan (real and fake share stems).")
     return df, note
 
 
@@ -169,7 +176,14 @@ def metrics_for(df: pd.DataFrame, score_col: str) -> dict:
 
     video = df.groupby(["dataset", "video_id"], as_index=False).agg(
         score=(score_col, "mean"), label=("label", "max"))
+    # DF40's whole-image methods list the same authentic image under several entries, so the
+    # frame-level number double-counts those reals while the grouped number counts each file
+    # once. Reported so the gap between the two is explained rather than puzzling.
+    duplicates = int(len(df) - df["key"].nunique())
+    conflicting = int((df.groupby("key")["label"].nunique() > 1).sum())
     return {
+        "duplicate_keys": duplicates,
+        "keys_with_conflicting_labels": conflicting,
         "frame_auroc": auc(df["label"].to_numpy(), df[score_col].to_numpy()),
         "video_auroc": auc(video["label"].to_numpy(), video["score"].to_numpy()),
         "n_frames": int(len(df)),
