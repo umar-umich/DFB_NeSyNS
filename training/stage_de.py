@@ -30,7 +30,7 @@ Which data calibrates the gates
 `--val-protocol ffpp` (the default, and what §1/§11/§18 require) uses FF++ VAL_meta only, so no
 OOD sample touches the gates, the risk model or either threshold.
 
-`--val-protocol earlier` reproduces the protocol in
+`--val-protocol diverse` reproduces the protocol in
 `analysis/discern_v2/SELECTION_PROTOCOL_RESULT.md` — FF++ **and** Celeb-DF-v2, with the remaining
 sources untouched. That is a deliberate deviation from the V1 spec, and it has a price that is
 computed rather than described: for every corpus here except FF++ the shipped `val` split IS the
@@ -88,12 +88,12 @@ def resolve_checkpoint(run: Path, explicit: Path | None) -> tuple[Path, dict | N
     return Path(selection["checkpoint"]), selection
 
 
-# The protocol from analysis/discern_v2/SELECTION_PROTOCOL_RESULT.md: selection/calibration saw
-# FF++ and Celeb-DF-v2, and the other six sources were never touched. Named here so "the diverse
-# validation split we used earlier" resolves to something specific rather than to a memory.
+# `diverse` is the protocol recorded in analysis/discern_v2/SELECTION_PROTOCOL_RESULT.md:
+# calibration saw FF++ and Celeb-DF-v2, and the other six sources were never touched. Named
+# explicitly so "the diverse validation split" resolves to specific slices rather than to a memory.
 VAL_PROTOCOLS = {
     "ffpp": ["FaceForensics++:val"],
-    "earlier": ["FaceForensics++:val", "Celeb-DF-v2:val"],
+    "diverse": ["FaceForensics++:val", "Celeb-DF-v2:val"],
 }
 # A2b_PROTOCOL.md: "No DF40, CDFv3, or Deepfake-Eval-2024 data at any stage of gate fitting,
 # including scaler and calibrator fitting." Refused unless explicitly forced.
@@ -168,6 +168,13 @@ def load_calibration(data_cfg: dict, split_file: Path, targets: list[str],
         else:
             videos = sorted({video_of(p if isinstance(p, str) else p[0])
                              for p in dataset.image_list})
+            clash = sorted(set(videos) & set(folds))
+            if clash:
+                raise SystemExit(
+                    f"{target}: {len(clash)} video names collide with an earlier calibration "
+                    f"source (e.g. {clash[:3]}). Folds are keyed by video name, so one source's "
+                    f"assignment would silently overwrite the other's and frames of the same "
+                    f"video could land in different folds.")
             for i, video in enumerate(videos):
                 folds[video] = i % 5              # grouped by video, deterministic
             ov = overlaps[target]
@@ -254,7 +261,7 @@ def main() -> int:
     ap.add_argument("--split-file", type=Path,
                     default=REPO / "configs/discern_v2/meta_split.json")
     ap.add_argument("--val-protocol", choices=sorted(VAL_PROTOCOLS), default="ffpp",
-                    help="ffpp = FF++ VAL_meta only (the V1 spec); earlier = FF++ + Celeb-DF-v2, "
+                    help="ffpp = FF++ VAL_meta only (the V1 spec); diverse = FF++ + Celeb-DF-v2, "
                          "the protocol from SELECTION_PROTOCOL_RESULT.md")
     ap.add_argument("--val-sources", nargs="+", default=None,
                     help="explicit SOURCE:SPLIT calibration slices, overriding --val-protocol")
@@ -356,9 +363,16 @@ def main() -> int:
     risk_model, risk_info = R.fit_risk_model(features, wrong)
     with torch.no_grad():
         risk = risk_model(features)
+    # The provenance string must name the sources that ACTUALLY calibrated the policy. It used to
+    # say "FF++ VAL_meta" unconditionally, which under --val-protocol diverse would have shipped a
+    # frozen policy claiming FF++-only provenance while Celeb-DF-v2 test videos were in the fit —
+    # the one thing a provenance field exists to prevent.
+    calibrated_on = " + ".join(targets)
+    if compromised:
+        calibrated_on += f" [NOT zero-shot for: {', '.join(sorted(compromised))}]"
     policy = R.freeze_thresholds(labels, gated["prob"], risk,
                                  abstention_budget=args.abstention_budget,
-                                 source=f"FF++ VAL_meta (out-of-fold q, epoch {epoch})")
+                                 source=f"{calibrated_on} (out-of-fold q, epoch {epoch})")
     report = R.report(risk, wrong, labels, gated["prob"], args.abstention_budget)
     applied = R.evaluate_policy(policy, labels, gated["prob"], risk)
 
