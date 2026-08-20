@@ -224,36 +224,49 @@ $PY analysis/discern_v2/domain_audit.py \
 
 ## Step 4 — checkpoint selection (§11)
 
-`TODO(run)` — needs step 3's checkpoints. Select on **VAL_select only**: primary video-level AUROC,
-tie-break lower ECE then val loss. Never select using CDF/DFDC/DF40 or any OOD source; save
-epoch-wise OOD scores for later analysis only.
-
-## Step 5 — applicability gates (§13, §12 cross-fit)
-
-`TODO(run)` — depends on step 4. With the selected checkpoint frozen, score VAL_meta, then:
-
-```python
-from networks.discern_v2.applicability_gate import cross_fit, fusion_utility_target, gate_features
-target = fusion_utility_target(sem_opinion, spec_opinion, labels)["target"]
-result = cross_fit(gate_features(sem_opinion, spec_opinion), target, folds)
-# result["q_out_of_fold"] feeds step 6; result["gate"] is the deployment gate
+```bash
+$PY analysis/discern_v2/select_checkpoint.py --run logs/v1/stage_b_seed42
 ```
 
-Log gate AUROC and accuracy against the fusion-utility target, alongside the always-admit
-baseline the metrics helper reports.
+Seconds, no GPU. Writes `SELECTED.json` + `SELECTION.md` into the run directory. Selects on
+**VAL_select only** — video AUROC, tie-broken by ECE then val loss — and refuses to run if the
+metrics file carries anything resembling an OOD source, or duplicate epochs from two runs sharing
+a directory.
 
-## Step 6 — risk / defer calibration (§18)
+It also reports how many epochs fall inside §22's 0.01 noise floor. On the seed-42 run **all 20
+do** (spread 0.0041), so the primary metric orders the epochs without ranking them, and the two
+defensible readings disagree: literal §11 picks **epoch 7**, noise-aware §11+§22 picks **epoch 4**
+(better ECE). `--noise-aware` switches. 🟡 The choice binds Stages D and E, because §13's target is
+defined from the frozen selected experts.
 
-`TODO(run)` — depends on step 5, and must use the **out-of-fold** `q`:
+## Steps 5 and 6 — Stages D and E (§12, §13, §18)
 
-```python
-from networks.discern_v2.risk_model import fit_risk_model, freeze_thresholds, risk_features
-features = risk_features(V, C, A, prob_fake)
-model, info = fit_risk_model(features, wrong)
-policy = freeze_thresholds(labels, prob_fake, risk, abstention_budget=0.10)
+```bash
+$PY training/stage_de.py \
+    --run logs/v1/stage_b_seed42 \
+    --output logs/v1/stage_de/epoch_007 \
+    --batch-size 32 --workers 12 --device cuda:N
 ```
 
-`policy` is immutable and carries its provenance; it is applied unchanged to every OOD source.
+One script, because the two stages share one forward pass over VAL_meta and Stage E must consume
+Stage D's **out-of-fold** `q`. It reads `SELECTED.json` rather than guessing an epoch, freezes the
+experts (`set_stage("D")`, then asserts nothing is trainable), and touches no OOD source.
+
+What it produces:
+
+- **Stage D** — §13's fusion-utility target from undiscounted pairwise DS, gate features, 5-fold
+  cross-fitting over `meta_split.json`'s folds, out-of-fold `q` per specialist, plus a deployment
+  gate refit on all of VAL_meta. Logs each gate's out-of-fold AUROC and accuracy **against the
+  always-admit baseline**, since a gate can score well on accuracy alone when the target is mostly 1.
+- **plain DS vs DS + applicability** on VAL_meta, with the caveat printed: it is in-sample for the
+  gates and on FF++ validation, so it is not the applicability layer's benefit — the OOD suite
+  decides that.
+- **Stage E** — the logistic risk model on `[V, C, A, fused_margin]`, the frozen `DeferPolicy`
+  (EER decision threshold + abstention-budget quantile, both from FF++ validation), the
+  risk-coverage curve, and selective risk at the fixed budget.
+
+Artifacts: `stage_de.pt` (gates + risk model + policy), `stage_de.json`, and
+`val_meta_per_sample.parquet`.
 
 ## Step 7 — FF++ test
 
