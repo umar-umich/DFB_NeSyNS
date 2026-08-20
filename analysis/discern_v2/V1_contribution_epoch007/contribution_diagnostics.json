@@ -1,0 +1,296 @@
+{
+  "meta": {
+    "parquet": [
+      "logs/v1/eval/epoch_007_gated_diverse/per_sample_epoch_7.parquet"
+    ],
+    "n_frames": 387913,
+    "not_zero_shot": [
+      "Celeb-DF-v2:val"
+    ],
+    "not_zero_shot_sources": [
+      "Celeb-DF-v2"
+    ]
+  },
+  "results": {
+    "Celeb-DF-v2": {
+      "scores": {
+        "sem_only": 0.9224553866490416,
+        "sem+ref": 0.9259418374091211,
+        "ref_only": 0.74477858559154,
+        "sem+proc": 0.9218935888962326,
+        "proc_only": 0.6695472571050893,
+        "full_plain_ds": 0.9246364838070059,
+        "full_applicability": 0.9247521480502313,
+        "direct_probe_only": 0.6725214805023132
+      },
+      "deltas": {
+        "applicability_vs_plain_ds": {
+          "delta": 0.00011566424322539959,
+          "question": "does the applicability layer beat plain DS? (\u00a724)",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_contribution": {
+          "delta": 0.0034864507600794736,
+          "question": "does the reference add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "process_contribution": {
+          "delta": -0.0005617977528089568,
+          "question": "does the process branch add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "full_vs_sem_only": {
+          "delta": 0.002181097157964329,
+          "question": "do both specialists together beat the anchor?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_vs_direct_probe": {
+          "delta": 0.07225710508922678,
+          "question": "does P_R beat the capacity-matched direct probe? (\u00a74.2)",
+          "verdict": "ref_only better"
+        }
+      },
+      "n_frames": 16572
+    },
+    "Celeb-DF-v3": {
+      "scores": {
+        "sem_only": 0.9271087770721381,
+        "sem+ref": 0.9228613689409977,
+        "ref_only": 0.7438799326928296,
+        "sem+proc": 0.9195910003799599,
+        "proc_only": 0.6148971394452587,
+        "full_plain_ds": 0.9143733376757314,
+        "full_applicability": 0.9215518645171796,
+        "direct_probe_only": 0.7062774792379092
+      },
+      "deltas": {
+        "applicability_vs_plain_ds": {
+          "delta": 0.007178526841448263,
+          "question": "does the applicability layer beat plain DS? (\u00a724)",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_contribution": {
+          "delta": -0.00424740813114044,
+          "question": "does the reference add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "process_contribution": {
+          "delta": -0.007517776692178235,
+          "question": "does the process branch add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "full_vs_sem_only": {
+          "delta": -0.012735439396406756,
+          "question": "do both specialists together beat the anchor?",
+          "verdict": "sem_only better"
+        },
+        "reference_vs_direct_probe": {
+          "delta": 0.037602453454920415,
+          "question": "does P_R beat the capacity-matched direct probe? (\u00a74.2)",
+          "verdict": "ref_only better"
+        }
+      },
+      "n_frames": 173295
+    },
+    "DFDC": {
+      "scores": {
+        "sem_only": 0.8476677211155883,
+        "sem+ref": 0.8499443543888611,
+        "ref_only": 0.7447842749390431,
+        "sem+proc": 0.8468724996767942,
+        "proc_only": 0.5958505822673574,
+        "full_plain_ds": 0.8485516319849706,
+        "full_applicability": 0.8468327205234213,
+        "direct_probe_only": 0.7197560453012231
+      },
+      "deltas": {
+        "applicability_vs_plain_ds": {
+          "delta": -0.001718911461549344,
+          "question": "does the applicability layer beat plain DS? (\u00a724)",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_contribution": {
+          "delta": 0.0022766332732727657,
+          "question": "does the reference add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "process_contribution": {
+          "delta": -0.0007952214387940693,
+          "question": "does the process branch add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "full_vs_sem_only": {
+          "delta": 0.0008839108693823317,
+          "question": "do both specialists together beat the anchor?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_vs_direct_probe": {
+          "delta": 0.025028229637820032,
+          "question": "does P_R beat the capacity-matched direct probe? (\u00a74.2)",
+          "verdict": "ref_only better"
+        }
+      },
+      "n_frames": 132116
+    },
+    "DFDCP": {
+      "scores": {
+        "sem_only": 0.8912837420152482,
+        "sem+ref": 0.9030393570987019,
+        "ref_only": 0.7110653204203585,
+        "sem+proc": 0.8958170203997526,
+        "proc_only": 0.7112919843395837,
+        "full_plain_ds": 0.9026066350710902,
+        "full_applicability": 0.8970430661446527,
+        "direct_probe_only": 0.6567174943334021
+      },
+      "deltas": {
+        "applicability_vs_plain_ds": {
+          "delta": -0.005563568926437501,
+          "question": "does the applicability layer beat plain DS? (\u00a724)",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_contribution": {
+          "delta": 0.011755615083453685,
+          "question": "does the reference add over the anchor alone?",
+          "verdict": "sem+ref better"
+        },
+        "process_contribution": {
+          "delta": 0.004533278384504458,
+          "question": "does the process branch add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "full_vs_sem_only": {
+          "delta": 0.011322893055841998,
+          "question": "do both specialists together beat the anchor?",
+          "verdict": "full_plain_ds better"
+        },
+        "reference_vs_direct_probe": {
+          "delta": 0.05434782608695643,
+          "question": "does P_R beat the capacity-matched direct probe? (\u00a74.2)",
+          "verdict": "ref_only better"
+        }
+      },
+      "n_frames": 17222
+    },
+    "Deepfake-Eval-2024": {
+      "scores": {
+        "sem_only": 0.6356835020095879,
+        "sem+ref": 0.6282565008958404,
+        "ref_only": 0.569651590721999,
+        "sem+proc": 0.6336618081448842,
+        "proc_only": 0.4913745097089729,
+        "full_plain_ds": 0.62806280567527,
+        "full_applicability": 0.6298121156360467,
+        "direct_probe_only": 0.5638770519587429
+      },
+      "deltas": {
+        "applicability_vs_plain_ds": {
+          "delta": 0.0017493099607767126,
+          "question": "does the applicability layer beat plain DS? (\u00a724)",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_contribution": {
+          "delta": -0.0074270011137475,
+          "question": "does the reference add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "process_contribution": {
+          "delta": -0.002021693864703744,
+          "question": "does the process branch add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "full_vs_sem_only": {
+          "delta": -0.007620696334317945,
+          "question": "do both specialists together beat the anchor?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_vs_direct_probe": {
+          "delta": 0.005774538763256065,
+          "question": "does P_R beat the capacity-matched direct probe? (\u00a74.2)",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        }
+      },
+      "n_frames": 23209
+    },
+    "FaceForensics++": {
+      "scores": {
+        "sem_only": 0.9983163265306123,
+        "sem+ref": 0.9973469387755103,
+        "ref_only": 0.8962755102040816,
+        "sem+proc": 0.9971428571428572,
+        "proc_only": 0.6321938775510205,
+        "full_plain_ds": 0.9959693877551021,
+        "full_applicability": 0.9971938775510204,
+        "direct_probe_only": 0.8880102040816327
+      },
+      "deltas": {
+        "applicability_vs_plain_ds": {
+          "delta": 0.001224489795918271,
+          "question": "does the applicability layer beat plain DS? (\u00a724)",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_contribution": {
+          "delta": -0.0009693877551020247,
+          "question": "does the reference add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "process_contribution": {
+          "delta": -0.0011734693877550884,
+          "question": "does the process branch add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "full_vs_sem_only": {
+          "delta": -0.0023469387755101767,
+          "question": "do both specialists together beat the anchor?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_vs_direct_probe": {
+          "delta": 0.008265306122448912,
+          "question": "does P_R beat the capacity-matched direct probe? (\u00a74.2)",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        }
+      },
+      "n_frames": 22400
+    },
+    "UADFV": {
+      "scores": {
+        "sem_only": 0.9958350687213662,
+        "sem+ref": 0.9975010412328197,
+        "ref_only": 0.8467305289462723,
+        "sem+proc": 0.9970845481049563,
+        "proc_only": 0.6426488962932112,
+        "full_plain_ds": 0.9975010412328197,
+        "full_applicability": 0.9970845481049563,
+        "direct_probe_only": 0.9054560599750103
+      },
+      "deltas": {
+        "applicability_vs_plain_ds": {
+          "delta": -0.0004164931278634043,
+          "question": "does the applicability layer beat plain DS? (\u00a724)",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_contribution": {
+          "delta": 0.0016659725114535062,
+          "question": "does the reference add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "process_contribution": {
+          "delta": 0.001249479383590102,
+          "question": "does the process branch add over the anchor alone?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "full_vs_sem_only": {
+          "delta": 0.0016659725114535062,
+          "question": "do both specialists together beat the anchor?",
+          "verdict": "inside \u00a722's noise floor \u2014 needs a second seed"
+        },
+        "reference_vs_direct_probe": {
+          "delta": -0.05872553102873801,
+          "question": "does P_R beat the capacity-matched direct probe? (\u00a74.2)",
+          "verdict": "direct_probe_only better"
+        }
+      },
+      "n_frames": 3099
+    }
+  }
+}
