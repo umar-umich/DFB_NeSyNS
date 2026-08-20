@@ -46,6 +46,7 @@ sys.path.insert(0, str(REPO / "training"))
 sys.path.insert(0, str(REPO / "analysis" / "discern_v2"))
 
 from networks.discern_v2.discern_v1_model import build_v1_model  # noqa: E402
+from networks.discern_v2 import risk_model as R  # noqa: E402
 from networks.discern_v2.dirichlet import to_dirichlet  # noqa: E402
 from train_v1 import ViewMaker, prepare_dataset_config, video_of  # noqa: E402
 
@@ -82,9 +83,59 @@ def load_model(checkpoint: Path, device: str):
     return model, cfg, blob.get("epoch")
 
 
+def load_stage_de(path: Path, device: str) -> dict:
+    """The frozen Stage-D gates, Stage-E risk model and defer policy.
+
+    Loaded read-only and applied unchanged: §18's policy carries the thresholds it was frozen
+    with, and re-deriving either of them on an evaluation source is the leak §11 and §18 forbid.
+    """
+    from networks.discern_v2.applicability_gate import ApplicabilityGate
+    from networks.discern_v2.risk_model import DeferPolicy, RiskModel
+
+    blob = torch.load(str(path), map_location="cpu", weights_only=False)
+    gates = {}
+    for name, state in blob["gates"].items():
+        gate = ApplicabilityGate(n_features=len(blob["gate_feature_names"]))
+        gate.load_state_dict(state)
+        gate.eval()
+        gates[name] = gate.to(device)
+    risk = RiskModel(len(blob["risk_feature_names"]))
+    risk.load_state_dict(blob["risk_model"])
+    risk.eval()
+    policy = DeferPolicy(**blob["policy"])
+    print(f"  Stage D/E: gates {sorted(gates)} from epoch {blob.get('epoch')}; "
+          f"policy {policy.as_dict()}")
+    return {"gates": gates, "risk": risk.to(device), "policy": policy,
+            "epoch": blob.get("epoch"), "source": str(path)}
+
+
+@torch.no_grad()
+def apply_gates(model, branches: dict, stage_de: dict) -> dict:
+    """q_b from the frozen gates, then the model's own fusion path with those weights.
+
+    `model.fuse` is reused rather than reimplemented so the evaluated fusion is byte-for-byte the
+    deployment fusion; a second implementation here could drift from the one Stage E calibrated
+    against, and the defer thresholds would then be applied to a slightly different quantity.
+    """
+    from networks.discern_v2.applicability_gate import gate_features
+    from networks.discern_v2.ds_fusion import Opinion, apply_validity
+
+    def opinion_of(name: str) -> Opinion:
+        b = branches[name]
+        return apply_validity(Opinion.from_evidence(b["evidence"]), b["valid"].float())
+
+    sem = opinion_of("sem")
+    q = {}
+    for name, gate in stage_de["gates"].items():
+        if name in branches:
+            q[name] = gate(gate_features(sem, opinion_of(name)))
+    fusion_set = {k: v for k, v in branches.items() if k != "direct"}
+    return {**model.fuse(fusion_set, q), "q": q}
+
+
 @torch.no_grad()
 def evaluate_dataset(model, loader, views, device: str, dataset: str,
-                     max_batches: int = 0) -> pd.DataFrame:
+                     max_batches: int = 0, stage_de: dict | None = None) -> pd.DataFrame:
     from tqdm import tqdm
 
     rows: list[dict] = []
@@ -131,6 +182,23 @@ def evaluate_dataset(model, loader, views, device: str, dataset: str,
                              ("reference_angle", "ref_angle")):
                 if key in diag:
                     record[col] = diag[key].cpu().numpy()
+
+        if stage_de is not None:
+            gated = apply_gates(model, branches, stage_de)
+            risk_features = R.risk_features(gated["V"], gated["C"], gated["A"], gated["prob"])
+            risk = stage_de["risk"](risk_features)
+            decision = stage_de["policy"].decide(gated["prob"], risk)
+            record.update({
+                "prob_gated": gated["prob"].cpu().numpy(),
+                "u_gated": gated["fused"].vacuity.squeeze(1).cpu().numpy(),
+                "V_gated": gated["V"].cpu().numpy(),
+                "C_gated": gated["C"].cpu().numpy(),
+                "A_gated": gated["A"].cpu().numpy(),
+                "risk": risk.cpu().numpy(),
+                "decision": decision.cpu().numpy(),
+            })
+            for name, values in gated["q"].items():
+                record[f"q_{name}"] = values.cpu().numpy()
         rows.append(pd.DataFrame(record))
     if not rows:
         raise RuntimeError(f"{dataset}: no batches produced predictions")
@@ -193,6 +261,36 @@ def metrics_for(df: pd.DataFrame, score_col: str) -> dict:
     }
 
 
+def selective_summary(df: pd.DataFrame) -> dict:
+    """Coverage and selective accuracy under the FROZEN policy, at video level (§18, §21).
+
+    Coverage is expected to DIFFER from the calibration budget on every OOD source: the threshold
+    was frozen on FF++ validation, so a harder source defers more. Coverage pinned at the budget
+    everywhere would mean the threshold had been retuned per source.
+    """
+    from networks.discern_v2.risk_model import DEFER, DECISION_NAMES
+
+    # Frame-level decisions are authoritative — the policy is applied per frame — so a video is
+    # answered when fewer than half its frames were deferred.
+    video = df.groupby(["dataset", "video_id"], as_index=False).agg(
+        prob=("prob_gated", "mean"), label=("label", "max"),
+        defer_frac=("decision", lambda d: float((d == DEFER).mean())))
+    answered = video["defer_frac"] < 0.5
+    predicted = (video["prob"] >= 0.5).astype(int)
+    correct = (predicted == video["label"]) & answered
+    return {
+        "frame_level": {DECISION_NAMES[k]: int((df["decision"] == k).sum())
+                        for k in DECISION_NAMES},
+        "frame_coverage": float((df["decision"] != DEFER).mean()),
+        "video_coverage": float(answered.mean()),
+        "video_selective_accuracy": (float(correct.sum() / answered.sum())
+                                     if int(answered.sum()) else float("nan")),
+        "n_videos": int(len(video)),
+        "note": ("coverage is expected to differ from the calibration budget — the threshold is "
+                 "frozen on FF++ validation, so a harder source defers more"),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--checkpoint", type=Path, required=True)
@@ -210,6 +308,9 @@ def main() -> int:
                          "inject its per-method label_dict, and remap its relative frame paths")
     ap.add_argument("--dataset-json-folder", type=Path, default=None,
                     help="override the json folder (DF40 keeps its own)")
+    ap.add_argument("--stage-de", type=Path, default=None,
+                    help="stage_de.pt from training/stage_de.py: apply the FROZEN gates and defer "
+                         "policy, giving true V1 numbers alongside the ungated baseline")
     ap.add_argument("--overwrite", action="store_true",
                     help="discard existing results for this epoch in --output instead of refusing")
     args = ap.parse_args()
@@ -234,6 +335,13 @@ def main() -> int:
     data_cfg = prepare_dataset_config(args.detector_config, args.batch_size, args.workers)
     clip_norm = data_cfg["foundation_models"]["spatial"]["normalization"]
     views = ViewMaker(clip_norm["mean"], clip_norm["std"], args.device, augment=False)
+
+    stage_de = load_stage_de(args.stage_de, args.device) if args.stage_de else None
+    if stage_de and stage_de.get("epoch") not in (None, epoch):
+        raise SystemExit(
+            f"the Stage-D/E artifact was built on epoch {stage_de['epoch']} but this checkpoint is "
+            f"epoch {epoch}. §13's gate target is defined from the frozen SELECTED experts, so "
+            f"gates from one epoch applied to another describe a model that was never calibrated.")
 
     df40 = None
     if args.df40:
@@ -272,7 +380,8 @@ def main() -> int:
         loader = torch.utils.data.DataLoader(
             dataset, batch_size=args.batch_size, shuffle=False,
             num_workers=int(data_cfg["workers"]), collate_fn=dataset.collate_fn)
-        df = evaluate_dataset(model, loader, views, args.device, name, args.max_batches)
+        df = evaluate_dataset(model, loader, views, args.device, name, args.max_batches,
+                              stage_de=stage_de)
         df, note = fix_degenerate_video_ids(df, name)
         if note:
             print(f"  NOTE {note}")
@@ -286,6 +395,17 @@ def main() -> int:
         if "p_direct" in df:
             per_source["direct_probe_control"] = metrics_for(df, "p_direct")
         per_source["reliability_means"] = {k: float(df[k].mean()) for k in ("V", "C", "A")}
+        if stage_de is not None:
+            per_source["fused_gated"] = metrics_for(df, "prob_gated")
+            per_source["gate_means"] = {c: float(df[c].mean()) for c in df.columns
+                                        if c.startswith("q_")}
+            per_source["reliability_means_gated"] = {
+                k: float(df[f"{k}_gated"].mean()) for k in ("V", "C", "A")}
+            per_source["selective"] = selective_summary(df)
+            # the §20 diagnostic §24 hinges on: does applicability beat plain DS on this source?
+            per_source["applicability_delta_video_auroc"] = (
+                per_source["fused_gated"]["video_auroc"]
+                - per_source["fused_ungated"]["video_auroc"])
         per_source["ds_degenerate_rate"] = float(df["ds_degenerate"].mean())
         per_source["branch_validity"] = {
             f"valid_{b}": float(df[f"valid_{b}"].mean()) for b in BRANCHES
@@ -295,6 +415,14 @@ def main() -> int:
         f = per_source["fused_ungated"]
         print(f"  fused (ungated)  video AUROC {f['video_auroc']:.4f}  "
               f"frame {f['frame_auroc']:.4f}  ({f['n_videos']} videos)")
+        if stage_de is not None:
+            g = per_source["fused_gated"]
+            sel = per_source["selective"]
+            print(f"  fused (GATED)    video AUROC {g['video_auroc']:.4f}  frame "
+                  f"{g['frame_auroc']:.4f}   applicability delta "
+                  f"{per_source['applicability_delta_video_auroc']:+.4f}")
+            print(f"  defer            video coverage {sel['video_coverage']:.3f}, selective "
+                  f"accuracy {sel['video_selective_accuracy']:.4f}")
         for key in [*BRANCHES, "direct_probe_control"]:
             if key in per_source:
                 print(f"  {key:22s} video AUROC {per_source[key]['video_auroc']:.4f}")
@@ -305,10 +433,18 @@ def main() -> int:
     payload = {
         "checkpoint": str(args.checkpoint),
         "epoch": epoch,
-        "IMPORTANT": ("Stage-B checkpoint scored with UNGATED fusion (q=1): no applicability gate "
-                      "(Stage D) and no defer policy (Stage E) exist yet. These are plain-DS "
-                      "numbers over three ungated experts — the baseline the applicability layer "
-                      "must beat, NOT the V1 system."),
+        "IMPORTANT": (
+            "`fused_ungated` is plain DS over three ungated experts (q=1) — the baseline the "
+            "applicability layer must beat, NOT the V1 system. `fused_gated` (present only with "
+            "--stage-de) is the V1 system: frozen Stage-D gates and the frozen Stage-E defer "
+            "policy, neither retuned on any evaluation source."
+            if stage_de else
+            "Stage-B checkpoint scored with UNGATED fusion (q=1): no applicability gate (Stage D) "
+            "and no defer policy (Stage E) were supplied. These are plain-DS numbers over three "
+            "ungated experts — the baseline the applicability layer must beat, NOT the V1 system. "
+            "Pass --stage-de to score the V1 system."),
+        "stage_de": ({"source": stage_de["source"], "epoch": stage_de["epoch"],
+                      "policy": stage_de["policy"].as_dict()} if stage_de else None),
         "selection_note": ("§11: OOD scores are for later analysis only and must not select an "
                            "epoch, a hyperparameter, or a threshold."),
         "video_aggregation": "mean frame p(fake) (§21)",

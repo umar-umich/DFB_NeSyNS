@@ -25,11 +25,24 @@ defer policy would look better offline than it can behave. §12's cross-fitting 
 this, and §18 says to use its output; the deployment gates (refit on everything) are saved
 separately and are what inference uses.
 
-What this script deliberately does not do
------------------------------------------
-It never touches an OOD source. The gates, the risk model and both thresholds come from FF++
-validation, and §11's checkpoint selection has already happened on VAL_select — a disjoint
-partition, by identity, verified by `meta_split.py`.
+Which data calibrates the gates
+-------------------------------
+`--val-protocol ffpp` (the default, and what §1/§11/§18 require) uses FF++ VAL_meta only, so no
+OOD sample touches the gates, the risk model or either threshold.
+
+`--val-protocol earlier` reproduces the protocol in
+`analysis/discern_v2/SELECTION_PROTOCOL_RESULT.md` — FF++ **and** Celeb-DF-v2, with the remaining
+sources untouched. That is a deliberate deviation from the V1 spec, and it has a price that is
+computed rather than described: for every corpus here except FF++ the shipped `val` split IS the
+test split (Celeb-DF-v1/v2/v3, DFD and UADFV are exact copies; DFDCP differs by two videos). Any
+source used for calibration therefore stops being zero-shot, and the artifact records it under
+`sources_no_longer_zero_shot` so a results table can label it instead of implying otherwise.
+
+The motivation is real and documented in this repo: `A2_gate/A2b_PROTOCOL.md` records that
+"in-domain FF++ validation cannot rank cross-domain detectors", and on this run FF++ VAL_meta is
+saturated — plain and gated fusion both reach 1.0000 video AUROC, and the gates learn to admit
+almost everything. A2b also forbids DF40, CDFv3 and Deepfake-Eval-2024 at any stage of gate
+fitting; those are refused unless `--force-forbidden-sources` is passed.
 """
 
 from __future__ import annotations
@@ -75,24 +88,94 @@ def resolve_checkpoint(run: Path, explicit: Path | None) -> tuple[Path, dict | N
     return Path(selection["checkpoint"]), selection
 
 
-def load_val_meta(data_cfg: dict, split_file: Path):
-    """FF++ val restricted to VAL_meta, with each frame's fold attached."""
+# The protocol from analysis/discern_v2/SELECTION_PROTOCOL_RESULT.md: selection/calibration saw
+# FF++ and Celeb-DF-v2, and the other six sources were never touched. Named here so "the diverse
+# validation split we used earlier" resolves to something specific rather than to a memory.
+VAL_PROTOCOLS = {
+    "ffpp": ["FaceForensics++:val"],
+    "earlier": ["FaceForensics++:val", "Celeb-DF-v2:val"],
+}
+# A2b_PROTOCOL.md: "No DF40, CDFv3, or Deepfake-Eval-2024 data at any stage of gate fitting,
+# including scaler and calibrator fitting." Refused unless explicitly forced.
+A2B_FORBIDDEN = ("DF40", "Celeb-DF-v3", "Deepfake-Eval-2024")
+
+
+def calibration_overlap(source: str, split: str, data_cfg: dict) -> dict:
+    """How many calibration videos of `source` also appear in that source's TEST split.
+
+    Reported because for every corpus here except FF++ the shipped `val` split IS the test split
+    (Celeb-DF-v1/v2/v3, DFD and UADFV are exact copies; DFDCP differs by 2 videos). Calibrating
+    on such a slice means the source's own test numbers are no longer zero-shot, so the number is
+    computed and carried into the artifact rather than left as a caveat someone has to remember.
+    """
+    folder = Path(data_cfg["dataset_json_folder"])
+    candidates = [folder / f"{source}.json"]
+    blob = next((json.loads(c.read_text()) for c in candidates if c.is_file()), None)
+    if blob is None:
+        return {"status": "no json", "source": source}
+    root = blob[next(iter(blob))]
+    vids = {"val": set(), "test": set()}
+    for _label, splits in root.items():
+        for name in vids:
+            section = splits.get(name) or {}
+            if section and all(k in ("c23", "c40", "raw") for k in list(section)[:2]):
+                section = section.get(data_cfg.get("compression", "c23"), {})
+            vids[name] |= set(section)
+    shared = vids[split] & vids["test"]
+    return {"source": source, "split": split, "n_calibration_videos": len(vids[split]),
+            "n_test_videos": len(vids["test"]), "n_shared_with_test": len(shared),
+            "fraction_of_test_seen": (len(shared) / len(vids["test"])) if vids["test"] else 0.0,
+            "zero_shot_after_calibration": len(shared) == 0}
+
+
+def load_calibration(data_cfg: dict, split_file: Path, targets: list[str],
+                     force: bool = False) -> tuple[list, dict, dict]:
+    """Build the calibration set from one or more SOURCE:SPLIT slices.
+
+    FF++ keeps its identity-disjoint VAL_meta restriction and the folds `meta_split.py` verified.
+    Any other source has no such split file, so its folds are assigned by video group here —
+    grouped, so no video's frames straddle two folds, but NOT identity-disjoint across the corpus
+    the way FF++'s are.
+    """
     import cache_encoder_features as CE
 
     mapping = json.loads(split_file.read_text())
-    partition, folds = mapping["video_to_partition"], mapping["video_to_fold"]
+    partition, ffpp_folds = mapping["video_to_partition"], mapping["video_to_fold"]
 
-    dataset = CE.load_split(data_cfg, "FaceForensics++", "val")
-    keep = [i for i, p in enumerate(dataset.image_list)
-            if partition.get(video_of(p if isinstance(p, str) else p[0])) == "VAL_meta"]
-    if not keep:
-        raise SystemExit("no VAL_meta frames matched the split file")
-    dataset.image_list = [dataset.image_list[i] for i in keep]
-    dataset.label_list = [dataset.label_list[i] for i in keep]
-    dataset.data_dict = {"image": dataset.image_list, "label": dataset.label_list}
-    dataset._build_source_video_maps()
-    print(f"  VAL_meta: {len(keep)} frames")
-    return dataset, folds
+    datasets, folds, overlaps = [], {}, {}
+    for target in targets:
+        source, split = target.rsplit(":", 1)
+        if any(bad.lower() in source.lower() for bad in A2B_FORBIDDEN) and not force:
+            raise SystemExit(
+                f"{source} is forbidden as calibration data by A2b_PROTOCOL.md (\"No DF40, CDFv3, "
+                f"or Deepfake-Eval-2024 data at any stage of gate fitting\"). Pass "
+                f"--force-forbidden-sources to override, and expect to drop it from the zero-shot "
+                f"claims.")
+        overlaps[target] = calibration_overlap(source, split, data_cfg)
+
+        dataset = CE.load_split(data_cfg, source, split)
+        if source == "FaceForensics++":
+            keep = [i for i, p in enumerate(dataset.image_list)
+                    if partition.get(video_of(p if isinstance(p, str) else p[0])) == "VAL_meta"]
+            if not keep:
+                raise SystemExit("no VAL_meta frames matched the split file")
+            dataset.image_list = [dataset.image_list[i] for i in keep]
+            dataset.label_list = [dataset.label_list[i] for i in keep]
+            dataset.data_dict = {"image": dataset.image_list, "label": dataset.label_list}
+            dataset._build_source_video_maps()
+            folds.update(ffpp_folds)
+            print(f"  {target}: {len(keep)} frames (VAL_meta, identity-disjoint folds)")
+        else:
+            videos = sorted({video_of(p if isinstance(p, str) else p[0])
+                             for p in dataset.image_list})
+            for i, video in enumerate(videos):
+                folds[video] = i % 5              # grouped by video, deterministic
+            ov = overlaps[target]
+            print(f"  {target}: {len(dataset.image_list)} frames, {len(videos)} videos "
+                  f"(folds by video group) — shares {ov.get('n_shared_with_test', '?')} of "
+                  f"{ov.get('n_test_videos', '?')} test videos with its own test split")
+        datasets.append(dataset)
+    return datasets, folds, overlaps
 
 
 @torch.no_grad()
@@ -170,6 +253,14 @@ def main() -> int:
                     default=REPO / "training/config/detector/nesy_defake_d1_v.yaml")
     ap.add_argument("--split-file", type=Path,
                     default=REPO / "configs/discern_v2/meta_split.json")
+    ap.add_argument("--val-protocol", choices=sorted(VAL_PROTOCOLS), default="ffpp",
+                    help="ffpp = FF++ VAL_meta only (the V1 spec); earlier = FF++ + Celeb-DF-v2, "
+                         "the protocol from SELECTION_PROTOCOL_RESULT.md")
+    ap.add_argument("--val-sources", nargs="+", default=None,
+                    help="explicit SOURCE:SPLIT calibration slices, overriding --val-protocol")
+    ap.add_argument("--force-forbidden-sources", action="store_true",
+                    help="allow DF40 / CDFv3 / Deepfake-Eval-2024 as calibration data, which "
+                         "A2b_PROTOCOL.md forbids")
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--workers", type=int, default=None)
@@ -193,10 +284,24 @@ def main() -> int:
     data_cfg = prepare_dataset_config(args.detector_config, args.batch_size, args.workers)
     clip_norm = data_cfg["foundation_models"]["spatial"]["normalization"]
     views = ViewMaker(clip_norm["mean"], clip_norm["std"], args.device, augment=False)
-    dataset, folds = load_val_meta(data_cfg, args.split_file)
+    targets = args.val_sources or VAL_PROTOCOLS[args.val_protocol]
+    print(f"calibration sources: {targets}")
+    datasets, folds, overlaps = load_calibration(data_cfg, args.split_file, targets,
+                                                 args.force_forbidden_sources)
+    compromised = {t: ov for t, ov in overlaps.items()
+                   if ov.get("n_shared_with_test", 0) > 0}
+    if compromised:
+        print("\n  !! these sources are NO LONGER ZERO-SHOT — their test videos were used to "
+              "calibrate:")
+        for target, ov in compromised.items():
+            print(f"     {target}: {ov['n_shared_with_test']}/{ov['n_test_videos']} test videos "
+                  f"seen ({ov['fraction_of_test_seen']:.0%}). Report it as calibrated, not OOD.")
+    dataset = (datasets[0] if len(datasets) == 1
+               else torch.utils.data.ConcatDataset(datasets))
+    collate = datasets[0].collate_fn
     loader = torch.utils.data.DataLoader(
         dataset, batch_size=args.batch_size, shuffle=False,
-        num_workers=int(data_cfg["workers"]), collate_fn=dataset.collate_fn)
+        num_workers=int(data_cfg["workers"]), collate_fn=collate)
 
     scored = score(model, loader, views, args.device, folds, args.max_batches)
     opinions, labels, fold = scored["opinions"], scored["labels"], scored["fold"]
@@ -269,6 +374,8 @@ def main() -> int:
     torch.save({
         "epoch": epoch, "checkpoint": str(checkpoint),
         "gates": {n: g.state_dict() for n, g in gates.items()},
+        "calibration_sources": targets,
+        "sources_no_longer_zero_shot": sorted(compromised),
         "gate_feature_names": list(G.FEATURE_NAMES),
         "risk_model": risk_model.state_dict(),
         "risk_feature_names": list(R.FEATURE_NAMES),
@@ -279,6 +386,17 @@ def main() -> int:
     payload = {
         "checkpoint": str(checkpoint), "epoch": epoch,
         "selection": selection,
+        "calibration": {
+            "protocol": args.val_protocol if not args.val_sources else "explicit",
+            "sources": targets,
+            "overlap_with_test": overlaps,
+            "sources_no_longer_zero_shot": sorted(compromised),
+            "note": ("every source listed under sources_no_longer_zero_shot had its own TEST "
+                     "videos used for calibration; its numbers must be reported as calibrated "
+                     "rather than zero-shot (§1, §11, §18 require FF++-only calibration, so this "
+                     "is a recorded deviation)")
+            if compromised else "calibration touched no test video",
+        },
         "n_frames": int(len(labels)), "n_videos": len(set(videos)),
         "stage_d": gate_report,
         "plain_vs_applicability_on_VAL_meta": {
