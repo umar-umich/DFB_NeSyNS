@@ -196,11 +196,26 @@ def main() -> int:
                          "inject its per-method label_dict, and remap its relative frame paths")
     ap.add_argument("--dataset-json-folder", type=Path, default=None,
                     help="override the json folder (DF40 keeps its own)")
+    ap.add_argument("--overwrite", action="store_true",
+                    help="discard existing results for this epoch in --output instead of refusing")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
     model, cfg, epoch = load_model(args.checkpoint, args.device)
     print(f"loaded epoch {epoch} from {args.checkpoint}")
+
+    # Outputs are named by epoch, so a second invocation for the SAME epoch into the SAME
+    # directory silently overwrites the first run's results and per-sample export — which is
+    # exactly what a follow-up run (say, adding DF40) looks like. Refused rather than clobbered;
+    # domain_audit.py accepts several parquets, so separate directories are the natural pattern.
+    existing = [p for p in (args.output / f"results_epoch_{epoch}.json",
+                            args.output / f"per_sample_epoch_{epoch}.parquet") if p.exists()]
+    if existing and not args.overwrite:
+        raise SystemExit(
+            f"{args.output} already holds results for epoch {epoch} "
+            f"({', '.join(p.name for p in existing)}). Use a different --output (e.g. "
+            f"{args.output}_df40) and pass both parquets to domain_audit.py, or --overwrite to "
+            f"discard what is there.")
 
     data_cfg = prepare_dataset_config(args.detector_config, args.batch_size, args.workers)
     clip_norm = data_cfg["foundation_models"]["spatial"]["normalization"]
