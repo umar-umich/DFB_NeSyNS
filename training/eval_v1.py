@@ -50,7 +50,7 @@ from networks.discern_v2 import risk_model as R  # noqa: E402
 from networks.discern_v2.dirichlet import to_dirichlet  # noqa: E402
 from train_v1 import ViewMaker, prepare_dataset_config, video_of  # noqa: E402
 
-BRANCHES = ("sem", "ref", "proc")
+BRANCHES = ("sem", "ref", "proc", "rate")
 
 
 def load_model(checkpoint: Path, device: str):
@@ -83,7 +83,7 @@ def load_model(checkpoint: Path, device: str):
     return model, cfg, blob.get("epoch")
 
 
-def load_stage_de(path: Path, device: str) -> dict:
+def load_stage_de(path: Path, device: str, arm: str | None = None) -> dict:
     """The frozen Stage-D gates, Stage-E risk model and defer policy.
 
     Loaded read-only and applied unchanged: §18's policy carries the thresholds it was frozen
@@ -93,20 +93,51 @@ def load_stage_de(path: Path, device: str) -> dict:
     from networks.discern_v2.risk_model import DeferPolicy, RiskModel
 
     blob = torch.load(str(path), map_location="cpu", weights_only=False)
+
+    # Two artifact formats. V1's `stage_de.pt` holds one gate set, one risk model and one policy;
+    # phase-2's `stage567.pt` holds a gate set PER fusion operator and a risk model and policy per
+    # ARM, because V and the fused margin are operator-dependent. Detected from the blob rather
+    # than from a flag, so an artifact from either stage can be applied without the caller having
+    # to know which produced it.
+    phase2 = "risk_models" in blob
+    if phase2:
+        arm = arm or blob.get("primary_arm")
+        if arm not in blob["risk_models"]:
+            raise SystemExit(
+                f"arm {arm!r} is not in this artifact; available: "
+                f"{sorted(blob['risk_models'])}. The arm decides which fusion operator and which "
+                f"frozen policy are applied, so it cannot be guessed.")
+        operator = "ccf" if arm.endswith("ccf") else "ds"
+        # Gates were cross-fit under a specific operator; the arm names which. `equal_*` arms have
+        # no gate at all — every specialist enters at q = 1 by definition.
+        gate_states = {} if arm.startswith("equal") else blob["gates"][operator]
+        risk_state = blob["risk_models"][arm]
+        policy_dict = blob["policies"][arm]
+    else:
+        arm, operator = "v1_ds", "ds"
+        gate_states = blob["gates"]
+        risk_state = blob["risk_model"]
+        policy_dict = blob["policy"]
+
     gates = {}
-    for name, state in blob["gates"].items():
+    for name, state in gate_states.items():
         gate = ApplicabilityGate(n_features=len(blob["gate_feature_names"]))
         gate.load_state_dict(state)
         gate.eval()
         gates[name] = gate.to(device)
     risk = RiskModel(len(blob["risk_feature_names"]))
-    risk.load_state_dict(blob["risk_model"])
+    risk.load_state_dict(risk_state)
     risk.eval()
-    policy = DeferPolicy(**blob["policy"])
-    print(f"  Stage D/E: gates {sorted(gates)} from epoch {blob.get('epoch')}; "
-          f"policy {policy.as_dict()}")
-    return {"gates": gates, "risk": risk.to(device), "policy": policy,
-            "epoch": blob.get("epoch"), "source": str(path)}
+    policy = DeferPolicy(**policy_dict)
+    print(f"  frozen policy [{arm} / {operator}]: gates {sorted(gates) or 'none (q = 1)'} "
+          f"from epoch {blob.get('epoch')}; policy {policy.as_dict()}")
+    if blob.get("sources_no_longer_zero_shot"):
+        print(f"  !! calibrated on {blob['sources_no_longer_zero_shot']} — those sources are "
+              f"NOT zero-shot in any table built from this run")
+    return {"gates": gates, "risk": risk.to(device), "policy": policy, "arm": arm,
+            "operator": operator, "epoch": blob.get("epoch"), "source": str(path),
+            "calibration_sources": blob.get("calibration_sources"),
+            "sources_no_longer_zero_shot": blob.get("sources_no_longer_zero_shot") or []}
 
 
 @torch.no_grad()
@@ -130,7 +161,9 @@ def apply_gates(model, branches: dict, stage_de: dict) -> dict:
         if name in branches:
             q[name] = gate(gate_features(sem, opinion_of(name)))
     fusion_set = {k: v for k, v in branches.items() if k != "direct"}
-    return {**model.fuse(fusion_set, q), "q": q}
+    # The operator travels with the artifact: a policy frozen against CCF's vacuity must be
+    # applied to CCF's vacuity, or two of the risk model's four inputs are on the wrong scale.
+    return {**model.fuse(fusion_set, q, operator=stage_de.get("operator", "ds")), "q": q}
 
 
 @torch.no_grad()
@@ -182,10 +215,20 @@ def evaluate_dataset(model, loader, views, device: str, dataset: str,
                              ("reference_angle", "ref_angle")):
                 if key in diag:
                     record[col] = diag[key].cpu().numpy()
+        if "rate" in branches and "raw_stats" in branches["rate"]["diagnostics"]:
+            # The K rate-distortion components, one column each. Exported RAW rather than
+            # standardized: Stage 2.3 asks whether R(x) carries family-specific SHAPE, and
+            # exporting only the head's summary would answer a different question — the head is
+            # trained to separate real from fake, so its output cannot show whether the curve
+            # itself was structured.
+            for sname, values in branches["rate"]["diagnostics"]["raw_stats"].items():
+                record[sname] = values.cpu().numpy()
 
         if stage_de is not None:
             gated = apply_gates(model, branches, stage_de)
-            risk_features = R.risk_features(gated["V"], gated["C"], gated["A"], gated["prob"])
+            # `A` and `U_sup` are the same tensor (renamed in phase 2); read the canonical name
+            risk_features = R.risk_features(gated["V"], gated["C"],
+                                            gated.get("U_sup", gated["A"]), gated["prob"])
             risk = stage_de["risk"](risk_features)
             decision = stage_de["policy"].decide(gated["prob"], risk)
             record.update({
@@ -308,6 +351,9 @@ def main() -> int:
                          "inject its per-method label_dict, and remap its relative frame paths")
     ap.add_argument("--dataset-json-folder", type=Path, default=None,
                     help="override the json folder (DF40 keeps its own)")
+    ap.add_argument("--arm", default=None,
+                    help="phase-2 stage567.pt only: which fusion arm's frozen gates, risk model "
+                         "and policy to apply (default: the artifact's primary_arm)")
     ap.add_argument("--stage-de", type=Path, default=None,
                     help="stage_de.pt from training/stage_de.py: apply the FROZEN gates and defer "
                          "policy, giving true V1 numbers alongside the ungated baseline")
@@ -336,7 +382,8 @@ def main() -> int:
     clip_norm = data_cfg["foundation_models"]["spatial"]["normalization"]
     views = ViewMaker(clip_norm["mean"], clip_norm["std"], args.device, augment=False)
 
-    stage_de = load_stage_de(args.stage_de, args.device) if args.stage_de else None
+    stage_de = (load_stage_de(args.stage_de, args.device, args.arm)
+                if args.stage_de else None)
     if stage_de and stage_de.get("epoch") not in (None, epoch):
         raise SystemExit(
             f"the Stage-D/E artifact was built on epoch {stage_de['epoch']} but this checkpoint is "
@@ -444,6 +491,10 @@ def main() -> int:
             "ungated experts — the baseline the applicability layer must beat, NOT the V1 system. "
             "Pass --stage-de to score the V1 system."),
         "stage_de": ({"source": stage_de["source"], "epoch": stage_de["epoch"],
+                      "arm": stage_de.get("arm"), "operator": stage_de.get("operator"),
+                      "calibration_sources": stage_de.get("calibration_sources"),
+                      "sources_no_longer_zero_shot":
+                          stage_de.get("sources_no_longer_zero_shot", []),
                       "policy": stage_de["policy"].as_dict()} if stage_de else None),
         "selection_note": ("§11: OOD scores are for later analysis only and must not select an "
                            "epoch, a hyperparameter, or a threshold."),
