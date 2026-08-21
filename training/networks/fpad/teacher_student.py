@@ -136,7 +136,7 @@ class FPADTeacherStudent(nn.Module):
     def __init__(self, checkpoint: str | Path = DEFAULT_CHECKPOINT,
                  layers: tuple[int, ...] = DEFAULT_LAYERS,
                  lora: dict | None = None, img_size: int = 224,
-                 pooling: str = "global_pool"):
+                 pooling: str = "global_pool", token_layer: int | None = None):
         super().__init__()
         from peft import LoraConfig, get_peft_model
 
@@ -154,6 +154,7 @@ class FPADTeacherStudent(nn.Module):
             self._resize_position_embedding(vit, img_size)
 
         self.layers = tuple(int(i) for i in layers)
+        self.token_layer = int(token_layer) if token_layer is not None else self.layers[-1]
         depth = len(vit.blocks)
         bad = [i for i in self.layers if not 0 <= i < depth]
         if bad:
@@ -264,10 +265,18 @@ class FPADTeacherStudent(nn.Module):
             raise RuntimeError(f"{n_patches} patch tokens is not a square grid")
         patch_map = patch_delta.mean(dim=1).reshape(-1, side, side)         # (B, g, g)
 
+        # The student's patch TOKENS at one layer, for a spatial readout (rung B5). Only one
+        # layer is returned: all six would be (B, 6, 196, 1024) and B5 pools over patches, not
+        # over depth. Default is the deepest selected layer, where the representation is most
+        # task-specific.
+        token_index = (self.layers.index(self.token_layer) if self.token_layer in self.layers
+                       else len(self.layers) - 1)
         return {
             # `D` is returned once and used for BOTH the trajectory readout and L_preserve, so
             # the quantity preserved is provably the quantity measured.
             "D": D,
+            "patch_tokens": s_patch[:, token_index],          # (B, N, C)
+            "token_layer": self.layers[token_index],
             "D_cls": D_cls,
             "patch_delta": patch_delta,
             "patch_map": patch_map,
@@ -316,6 +325,7 @@ def build_teacher_student(cfg: dict | None = None) -> FPADTeacherStudent:
         checkpoint=cfg.get("checkpoint", DEFAULT_CHECKPOINT),
         layers=tuple(cfg.get("layers", DEFAULT_LAYERS)),
         lora=cfg.get("lora"),
+        token_layer=cfg.get("token_layer"),
         img_size=int(cfg.get("img_size", 224)),
         pooling=cfg.get("pooling", "global_pool"))
     counts = model.trainable_parameters()

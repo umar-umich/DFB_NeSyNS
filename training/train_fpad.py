@@ -64,7 +64,8 @@ from dataset.nesy_defake_dataset import NeSyDeFakeDataset  # noqa: E402
 from dataset.paired_sampler import (  # noqa: E402
     MatchedAugment, PairedBatchSampler, pair_keys_for_paths, source_ids_for)
 from networks.fpad import (  # noqa: E402
-    DEFAULT_LAYERS, DirectEvidenceHead, FPADTeacherStudent, TrajectoryEvidenceHead)
+    DEFAULT_LAYERS, DirectEvidenceHead, FPADTeacherStudent, SpatialEvidenceHead,
+    TrajectoryEvidenceHead)
 from train_v1 import (  # noqa: E402
     _restrict_to_val_select, edl_loss, expected_calibration_error, load_split,
     prepare_dataset_config, video_level, video_of)
@@ -350,6 +351,99 @@ def stage_b_epoch(head, D, labels, device, optimizer, epoch, total_epochs, batch
 
 # ---------------------------------------------------------------------------
 
+def stage_b_spatial(model, cfg, args, train_loader, val_loader, views, run_meta) -> int:
+    """Rung B5: train ONLY a spatial head on the frozen student, streaming the encoder.
+
+    `D(x)` is six numbers per frame and caches happily; the patch tokens a spatial readout needs
+    are (196, 1024) per frame, which for one FF++ epoch is ~46 GB. So this path re-runs the frozen
+    student every step instead of caching. The student is frozen, so the cost is a forward pass and
+    only the head's gradient — roughly half a Stage-A step.
+    """
+    from tqdm import tqdm
+
+    head = SpatialEvidenceHead(
+        n_layers=len(model.layers), feature_dim=model.embed_dim,
+        hidden_dim=int(cfg["heads"]["hidden_dim"]),
+        mode=str(cfg["heads"].get("spatial_mode", "attention")),
+        top_k_fraction=float(cfg["heads"].get("top_k_fraction", 0.25))).to(args.device)
+    # The six layer logits get their own, higher learning rate. They feed a weighted SUM against
+    # a 65k-parameter head, so their gradient is tiny by comparison and at the head's lr they
+    # barely leave the uniform initialisation (measured: 0.1667 -> 0.1652 over five short epochs).
+    # A separate group for a small number of highly-influential parameters is standard; it lets
+    # the head actually express a layer preference instead of being pinned to the equal-weight
+    # mean by an optimisation artifact. It is NOT a thumb on the scale: the direction is still
+    # learned from the classification objective alone.
+    base_lr = float(cfg["heads"]["lr"])
+    layer_lr = float(cfg["heads"].get("layer_lr", base_lr * 20))
+    optimizer = torch.optim.AdamW(
+        [{"params": [head.layer_logits], "lr": layer_lr, "weight_decay": 0.0},
+         {"params": [q for n, q in head.named_parameters() if n != "layer_logits"],
+          "lr": base_lr, "weight_decay": float(cfg["training"]["weight_decay"])}])
+    epochs = int(cfg["heads"].get("spatial_epochs", 5))
+    print(f"  layer-logit lr {layer_lr:g} (head lr {base_lr:g})")
+    run_meta["readout"] = "spatial"
+    run_meta["head"] = head.describe()
+    (args.output / "run_meta.json").write_text(json.dumps(run_meta, indent=2, default=str))
+    log = args.output / "metrics.jsonl"
+    print(f"  B5 spatial head: {head.describe()} · "
+          f"{sum(p.numel() for p in head.parameters()):,} trainable, student FROZEN")
+
+    for epoch in range(epochs):
+        for phase, loader, train in (("train", train_loader, True), ("val", val_loader, False)):
+            head.train(train)
+            total, n = 0.0, 0
+            probs, labels_all, videos = [], [], []
+            for i, batch in enumerate(tqdm(loader, desc=f"B5/{phase}", leave=False)):
+                if args.max_batches and i >= args.max_batches:
+                    break
+                labels = torch.where(batch["label"] != 0, 1, 0).to(args.device)
+                with torch.no_grad():
+                    out = model(views(batch, args.device))
+                with torch.set_grad_enabled(train):
+                    r = head(out["patch_delta"], out["patch_tokens"])
+                    loss = edl_loss(r["evidence"], labels, current_epoch=epoch,
+                                    total_epochs=epochs)
+                if train:
+                    optimizer.zero_grad(set_to_none=True)
+                    loss.backward()
+                    optimizer.step()
+                total += float(loss.detach())
+                n += 1
+                if not train:
+                    probs.append(r["prob"].detach().cpu().numpy())
+                    labels_all.append(labels.cpu().numpy())
+                    videos.extend(video_of(pth) for pth in batch["name"])
+            metrics = {"loss": total / max(1, n), "n_batches": n}
+            if not train and probs:
+                from sklearn.metrics import roc_auc_score
+                pr = np.concatenate(probs)
+                y = np.concatenate(labels_all)
+                vp, vy = video_level(pr, y, videos)
+                metrics["frame_auroc"] = (float(roc_auc_score(y, pr))
+                                          if len(np.unique(y)) > 1 else float("nan"))
+                metrics["video_auroc"] = (float(roc_auc_score(vy, vp))
+                                          if len(np.unique(vy)) > 1 else float("nan"))
+                metrics["ece"] = expected_calibration_error(pr, y)
+                val_metrics = metrics
+            else:
+                train_metrics = metrics
+        record = {"epoch": epoch, "train": train_metrics, "val_select": val_metrics,
+                  "layer_weights": head.describe()["layer_weights"]}
+        with open(log, "a") as f:
+            f.write(json.dumps(record) + "\n")
+        print(f"  B5 epoch {epoch}  loss {train_metrics['loss']:.4f}  "
+              f"VAL vAUROC {val_metrics.get('video_auroc', float('nan')):.4f}  "
+              f"layer weights {head.describe()['layer_weights']}")
+        torch.save({"epoch": epoch, "spatial_head": head.state_dict(),
+                    "head_describe": head.describe(), "run_meta": run_meta,
+                    "metrics": record}, args.output / f"epoch_{epoch:03d}.pth")
+    print(f"\nwrote {log} and {epochs} checkpoints to {args.output}")
+    print("Learned layer weights are the reportable evidence: the per-layer localization probe "
+          "measured L20 at 2.64x chance and L8/L12 at or below it, so a head that concentrates "
+          "on L20 has rediscovered that from the classification objective alone.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--stage", choices=("A", "B"), required=True)
@@ -364,6 +458,11 @@ def main() -> int:
                          "preservation student (rung B3's). These two, at the same seed, are the "
                          "matched pair the Stage-2 gate compares.")
     ap.add_argument("--sampling", choices=("paired", "random"), default="paired")
+    ap.add_argument("--readout", choices=("traj", "spatial"), default="traj",
+                    help="Stage B only. `traj` is rungs B2/B3: H_traj over the cached trajectory "
+                         "D(x). `spatial` is rung B5: a spatial readout over the patch adaptation "
+                         "map, which cannot be cached (the patch tokens for one epoch would be "
+                         "~46 GB) and so streams through the frozen student each step.")
     ap.add_argument("--frames-per-video", type=int, default=None,
                     help="subsample the TRAIN split to N evenly-spaced frames per video "
                          "(validation is left at its full count so the selection metric keeps "
@@ -580,6 +679,9 @@ def main() -> int:
                            "lambda_preserve": blob["run_meta"].get("lambda_preserve")}
     print(f"  Stage B: interpreting the FROZEN student from {selected[-1].name} "
           f"[{run_meta['student']['arm']}]")
+
+    if args.readout == "spatial":
+        return stage_b_spatial(model, cfg, args, train_loader, val_loader, eval_views, run_meta)
 
     D_tr, y_tr, v_tr, _ = collect_trajectories(model, train_loader, eval_views, args.device,
                                                args.max_batches)

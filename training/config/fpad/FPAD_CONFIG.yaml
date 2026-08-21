@@ -55,6 +55,14 @@ heads:
                                 # representable and not just level
   lr: 1.0e-3
   epochs: 200                   # H_traj is tiny and trains on cached D(x)
+  # Rung B5 — spatial readout over the patch adaptation map. Stage-B change ONLY: the frozen
+  # preservation student is not re-adapted, only this head trains. Layer weights are LEARNED
+  # (softmax over the six, uniform at init) rather than pinned to L20, so the head has to
+  # rediscover what the localization probe measured — L20 at 2.64x chance, L8/L12 at or below it.
+  spatial_mode: attention       # `attention` = softmax(g(a_j)) over patches; `topk` = top-k mean
+  top_k_fraction: 0.25
+  spatial_epochs: 5             # ~24 min/epoch: forward-only through the frozen student
+  layer_lr: 2.0e-2              # the 6 layer logits only; see the note in train_fpad.py
 
 # ---------------------------------------------------------------------------
 # Stage A — adapt. Recipe carried from the validated V1/DiCoME path.
@@ -152,3 +160,4 @@ robustness:
     audit_at_lowest: true
   h264_c40:
     status: TODO(run)            # pending the FF++ c40 download + crop pipeline
+

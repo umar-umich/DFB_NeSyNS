@@ -167,6 +167,61 @@ def faithfulness(model, direct, traj, pixels: torch.Tensor, patch_map: torch.Ten
     return results
 
 
+@torch.no_grad()
+def insertion(model, direct, traj, pixels: torch.Tensor, patch_map: torch.Tensor,
+              device: str, fractions=(0.1, 0.2, 0.3), seed: int = 42) -> dict:
+    """Insertion: start from a blank image and ADD the map's top patches back.
+
+    The complement of deletion, and more sensitive on a saturated model. Deletion asks "does
+    removing this hurt", which at p(fake) = 0.99 leaves the model plenty of remaining evidence to
+    stay confident on. Insertion asks "is this ENOUGH on its own", which starts from no evidence
+    and so has the whole range to move through.
+
+    Sign convention is the mirror of deletion: here the map's top patches should produce MORE
+    evidence than the same number of random patches, so gain = top - random.
+    """
+    g = patch_map.shape[-1]
+    side = pixels.shape[-1] // g
+    rng = np.random.default_rng(seed)
+    fill = pixels.mean(dim=(2, 3), keepdim=True)
+
+    def score(x):
+        out = model(x)
+        return (traj(out["D"])["prob"] if traj is not None
+                else direct(out["h_student"])["prob"])
+
+    def logodds(p_fake):
+        q = p_fake.clamp(1e-6, 1 - 1e-6)
+        return torch.log(q / (1 - q))
+
+    blank = fill.expand_as(pixels).clone()
+    results = {"blank_p_fake": float(score(blank).mean()),
+               "blank_logodds": float(logodds(score(blank)).mean()),
+               "full_logodds": float(logodds(score(pixels)).mean())}
+    flat = patch_map.flatten(1)
+    for frac in fractions:
+        k = max(1, int(round(frac * flat.shape[1])))
+        top = flat.topk(k, dim=1).indices
+        rand = torch.stack([torch.from_numpy(
+            rng.choice(flat.shape[1], size=k, replace=False)) for _ in range(flat.shape[0])]
+        ).to(top.device)
+        pct = int(frac * 100)
+        for tag, idx in (("top", top), ("random", rand)):
+            x = blank.clone()
+            for b in range(x.shape[0]):
+                for cell in idx[b].tolist():
+                    r, c = divmod(int(cell), g)
+                    x[b, :, r * side:(r + 1) * side, c * side:(c + 1) * side] = \
+                        pixels[b, :, r * side:(r + 1) * side, c * side:(c + 1) * side]
+            s_ = score(x)
+            results[f"p_fake_insert_{tag}_{pct}pct"] = float(s_.mean())
+            results[f"logodds_insert_{tag}_{pct}pct"] = float(logodds(s_).mean())
+        results[f"insertion_logodds_gain_{pct}pct"] = (
+            results[f"logodds_insert_top_{pct}pct"]
+            - results[f"logodds_insert_random_{pct}pct"])
+    return results
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--student", type=Path, required=True)
@@ -241,6 +296,10 @@ def main() -> int:
             per_manip[manip] = {"status": "no (frame, mask) pairs found"}
             continue
         scores, labels, ious = [], [], []
+        # per-LAYER patch maps, so "which depth localizes" is measured rather than assumed. Three
+        # prior analyses put the usable signal at layer 20; this either confirms or refutes it,
+        # and it decides what a spatial readout should aggregate over.
+        layer_scores: dict[str, list] = {}
         for i in range(0, len(pairs), args.batch_size):
             chunk = pairs[i:i + args.batch_size]
             pixels, masks = load_batch(chunk)
@@ -248,6 +307,8 @@ def main() -> int:
             with torch.no_grad():
                 out = model(pixels)
             pm = out["patch_map"].cpu()
+            pd_layers = out["patch_delta"].cpu()          # (B, L, N)
+            layer_names = [f"d_l{l + 1}" for l in model.layers]
             g = pm.shape[-1]
             for b, mask in enumerate(masks):
                 lab = mask_to_patch_labels(mask, g).flatten().numpy()
@@ -257,6 +318,9 @@ def main() -> int:
                     continue
                 scores.append(s)
                 labels.append(binary)
+                for li, lname in enumerate(layer_names):
+                    layer_scores.setdefault(lname, []).append(
+                        (pd_layers[b, li].numpy(), binary))
                 pred = s >= np.quantile(s, 1 - binary.mean())
                 inter = np.logical_and(pred, binary).sum()
                 union = np.logical_or(pred, binary).sum()
@@ -264,6 +328,8 @@ def main() -> int:
             if i == 0:
                 faith_all[manip] = faithfulness(model, direct, traj, pixels, pm.to(args.device),
                                                 args.device)
+                faith_all[manip].update(
+                    insertion(model, direct, traj, pixels, pm.to(args.device), args.device))
         if not scores:
             per_manip[manip] = {"status": "no frame had a mixed patch mask"}
             continue
@@ -278,7 +344,18 @@ def main() -> int:
             "positive_patch_fraction": float(flat_y.mean()),
             "chance_auprc": float(flat_y.mean()),
         }
+        per_manip[manip]["per_layer"] = {}
+        for lname, pairs in layer_scores.items():
+            ls = np.concatenate([a for a, _ in pairs])
+            ly = np.concatenate([b for _, b in pairs])
+            per_manip[manip]["per_layer"][lname] = {
+                "patch_auprc": float(average_precision_score(ly, ls)),
+                "patch_auroc": float(roc_auc_score(ly, ls))}
         m = per_manip[manip]
+        best = max(m["per_layer"], key=lambda k: m["per_layer"][k]["patch_auprc"])
+        print(f"    per-layer AUPRC: " + " ".join(
+            f"{k.replace('d_l','L')}={v['patch_auprc']:.3f}" for k, v in m["per_layer"].items())
+            + f"   best={best.replace('d_l','L')} · aggregate={m['patch_auprc']:.3f}")
         print(f"  {manip:18s} AUPRC {m['patch_auprc']:.4f} (chance {m['chance_auprc']:.4f}) · "
               f"AUROC {m['patch_auroc']:.4f} · IoU {m['patch_iou_at_oracle_k']:.4f} · "
               f"{m['n_frames']} frames")
@@ -307,6 +384,12 @@ def main() -> int:
               + " · ".join(f"{k.split('_')[-1]} {v:+.3f}" for k, v in lg.items()))
         print(f"      log-odds lost to deletion    "
               + " · ".join(f"{k.split('_')[-1]} {v:+.3f}" for k, v in dr.items()))
+        ig = {k: v for k, v in f.items() if k.startswith("insertion_logodds_gain")}
+        if ig:
+            print(f"      INSERTION top-vs-random gain "
+                  + " · ".join(f"{k.split('_')[-1]} {v:+.3f}" for k, v in ig.items())
+                  + f"   (blank log-odds {f['blank_logodds']:+.2f} -> full "
+                    f"{f['full_logodds']:+.2f})")
     print(f"\nwrote {args.output}/localization.json")
     return 0
 
