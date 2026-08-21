@@ -47,16 +47,23 @@ from .branches import BranchOutput
 from .dirichlet import to_dirichlet
 from .ds_fusion import Opinion, apply_validity, discount, ds_combine, reliability
 from .process_branch import ProcessEvidenceBranch
+from .rate_branch import RateEvidenceBranch, build_rate_branch
 from .reference_branch import ReferenceEvidenceBranch
 from .semantic_branch import SemanticEvidenceBranch
 
 logger = logging.getLogger(__name__)
 
 STAGES = ("B", "D", "E")
-SPECIALISTS = ("ref", "proc")
-# The order DS folds the opinions in. Fixed and recorded rather than incidental: §15 requires
-# the order to be documented and its effect measured (`assert_order_invariant`).
-FUSION_ORDER = ("sem", "ref", "proc")
+# `rate` is the phase-2 MR-VAE specialist (brief Stage 2). It is OPTIONAL: Stage 3 is a hard gate
+# that may drop any specialist, so every specialist has to be constructible and removable by
+# config alone. A branch that is absent must be absent from the fusion set too, which is why
+# both tuples are filtered against what was actually built rather than assumed complete.
+SPECIALISTS = ("ref", "proc", "rate")
+# The order the opinions are folded in. Fixed and recorded rather than incidental: §15 requires
+# the order to be documented and its effect measured (`assert_order_invariant`). CCF is
+# non-associative but symmetric, so the order matters for DS chaining and not for CCF — measured
+# either way rather than argued.
+FUSION_ORDER = ("sem", "ref", "proc", "rate")
 
 
 class DiscernV1Model(nn.Module):
@@ -65,6 +72,7 @@ class DiscernV1Model(nn.Module):
     def __init__(self, semantic: SemanticEvidenceBranch,
                  reference: ReferenceEvidenceBranch | None = None,
                  process: ProcessEvidenceBranch | None = None,
+                 rate: 'RateEvidenceBranch | None' = None,
                  fsvfm=None, direct_probe: nn.Module | None = None,
                  num_classes: int = 2, stage: str = "B"):
         super().__init__()
@@ -72,6 +80,7 @@ class DiscernV1Model(nn.Module):
         self.semantic = semantic
         self.reference = reference
         self.process = process
+        self.rate = rate
         self.fsvfm = fsvfm                       # frozen FS-VFM encoder, shared by ref + direct
         self.direct_probe = direct_probe         # §4.2 control head on z_ref; never fused
         self.set_stage(stage)
@@ -91,7 +100,8 @@ class DiscernV1Model(nn.Module):
         if stage != "B":
             # §19: after checkpoint selection the experts are frozen. Enforced here so a later
             # stage cannot keep training them through a forgotten optimizer group.
-            for module in (self.semantic, self.reference, self.process, self.direct_probe):
+            for module in (self.semantic, self.reference, self.process, self.rate,
+                           self.direct_probe):
                 if module is not None:
                     for p in module.parameters():
                         p.requires_grad_(False)
@@ -100,7 +110,8 @@ class DiscernV1Model(nn.Module):
     def trainable_parameters(self) -> dict:
         return {name: sum(p.numel() for p in m.parameters() if p.requires_grad)
                 for name, m in (("semantic", self.semantic), ("reference", self.reference),
-                                ("process", self.process), ("direct_probe", self.direct_probe))
+                                ("process", self.process), ("rate", self.rate),
+                                ("direct_probe", self.direct_probe))
                 if m is not None}
 
     def assert_frozen_protocol(self) -> None:
@@ -111,6 +122,8 @@ class DiscernV1Model(nn.Module):
             self.reference.assert_frozen()
         if self.process is not None:
             self.process.assert_frozen()
+        if self.rate is not None:
+            self.rate.assert_frozen()
         if self.stage == "B":
             self.semantic.assert_lora_only()
 
@@ -160,17 +173,43 @@ class DiscernV1Model(nn.Module):
                 valid = valid & batch["branch_valid_proc"].bool()
             out["proc"] = {"evidence": proc["evidence"], "feature": proc["feature"],
                            "valid": valid, "diagnostics": {"raw_stats": proc["raw_stats"]}}
+
+        if self.rate is not None:
+            # The MR-VAE is hosted on the SAME frozen FS-VFM embedding as the reference, so the
+            # encoder runs once per batch and both specialists read the identical tensor. That is
+            # deliberate: it costs nothing, and it means any difference between e_ref and e_rate
+            # is the operator, not two independent forward passes of a large encoder.
+            z = self._z_ref(batch)
+            rate = self.rate(z)
+            valid = rate["valid"]
+            if batch.get("branch_valid_rate") is not None:
+                valid = valid & batch["branch_valid_rate"].bool()
+            out["rate"] = {"evidence": rate["evidence"], "feature": rate["feature"],
+                           "valid": valid,
+                           "diagnostics": {"raw_stats": rate["raw_stats"]}}
         return out
 
     # ------------------------------------------------------------------ fusion
 
-    def fuse(self, branches: dict, q: dict[str, torch.Tensor] | None = None) -> dict:
-        """Opinions -> validity -> discounting -> DS -> back to EDL -> V/C/A.
+    def fuse(self, branches: dict, q: dict[str, torch.Tensor] | None = None,
+             operator: str = "ds") -> dict:
+        """Opinions -> validity -> discounting -> fusion -> back to EDL -> V/C/U_sup.
 
         `q` is optional: in Stage B there is no gate yet and every specialist enters at q = 1,
         which is deliberate. It keeps the auxiliary per-branch losses consistent with the
         opinion each branch will actually contribute, and it means "the gate helped" is later
         measured against a fusion that differs ONLY by the gate.
+
+        `operator` selects Dempster-Shafer (`ds`, the V1 default and the phase-2 baseline) or
+        multi-source Consensus & Compromise Fusion (`ccf`, the phase-2 primary candidate). It
+        lives here rather than in the evaluator so that the fusion a policy was calibrated
+        against and the fusion applied at inference are the same code — a second implementation
+        in the eval path could drift, and the defer thresholds would then be applied to a
+        slightly different quantity than the one they were frozen on.
+
+        `A` is also returned as `U_sup`; they are the same tensor. The rename avoids the
+        collision with aleatoric uncertainty, and both keys are present so no existing reader
+        breaks.
         """
         names = [n for n in FUSION_ORDER if n in branches]
         opinions, weights = {}, {}
@@ -191,7 +230,22 @@ class DiscernV1Model(nn.Module):
 
         discounted = {n: (opinions[n] if n == "sem" else discount(opinions[n], weights[n]))
                       for n in names}
-        fused, diagnostics = ds_combine([discounted[n] for n in names])
+        parts = [discounted[n] for n in names]
+        if operator == "ds":
+            fused, diagnostics = ds_combine(parts)
+        elif operator == "ccf":
+            from .ccf_fusion import ccf_combine
+            fused = ccf_combine(parts)
+            # CCF has no renormalisation-conflict scalar: conflicting belief is routed to the
+            # composite and lands in vacuity (equation 11) instead of being divided away. So
+            # there is no analogue of ds_conflict, and reporting 0 would read as "no conflict"
+            # rather than "not applicable to this operator".
+            diagnostics = {"ds_conflict_max": torch.full_like(fused.vacuity.squeeze(1),
+                                                              float("nan")),
+                           "degenerate": torch.zeros_like(fused.vacuity.squeeze(1),
+                                                          dtype=torch.bool)}
+        else:
+            raise ValueError(f"unknown fusion operator {operator!r}; expected 'ds' or 'ccf'")
         state = fused.to_dirichlet()                        # §16
         rel = reliability(opinions, weights, fused, specialists=SPECIALISTS)
 
@@ -201,7 +255,8 @@ class DiscernV1Model(nn.Module):
             "alpha": state.alpha,
             "p": state.p,
             "prob": fused.fake_prob(),
-            "V": rel["V"], "C": rel["C"], "A": rel["A"],
+            "V": rel["V"], "C": rel["C"], "A": rel["A"], "U_sup": rel["A"],
+            "operator": operator,
             "weights": rel["weights"],
             "q": {n: weights[n] for n in names},
             "opinions": opinions,
@@ -308,7 +363,28 @@ def build_v1_model(cfg: dict, stage: str = "B") -> DiscernV1Model:
                 "will refuse at forward time. Run analysis/discern_v2/fit_process_stats.py "
                 "before Stage B.")
 
-    model = DiscernV1Model(semantic=semantic, reference=reference, process=process,
+    rate = None
+    rate_cfg = cfg.get("rate", {})
+    if rate_cfg.get("enabled", False):
+        # Default OFF, unlike the other specialists: `rate` only enters the architecture if the
+        # Stage 3 gate says it carries recoverable conditional information. Defaulting it on
+        # would let it appear in a run whose gate decision was never made.
+        artifact = rate_cfg.get("artifact_path")
+        if not artifact:
+            raise ValueError(
+                "rate.artifact_path is required: the MR-VAE is fit and frozen offline "
+                "(analysis/discern_v2/phase2/fit_rate_operator.py) and loaded read-only here. "
+                "There is deliberately no path that constructs an unfitted rate operator.")
+        rate = build_rate_branch(artifact, hidden_dim=int(rate_cfg.get("hidden_dim", 32)),
+                                 use_slopes=bool(rate_cfg.get("use_slopes", True)))
+        if fsvfm is None:
+            # The rate branch reads `_z_ref`, so without the encoder it would fail at forward
+            # time with an attribute error rather than here with a reason.
+            raise ValueError(
+                "rate.enabled requires the FS-VFM encoder, which is built with the reference "
+                "branch. Enable reference, or host the operator elsewhere.")
+
+    model = DiscernV1Model(semantic=semantic, reference=reference, process=process, rate=rate,
                            fsvfm=fsvfm, direct_probe=direct, stage=stage)
     logger.info(f"  DISCERN V1 [{stage}] trainable: {model.trainable_parameters()}")
     return model
@@ -322,4 +398,5 @@ def default_artifact_paths() -> dict:
         "reference_artifact": root / "configs" / "discern_v2" / "reference"
         / "reference_C3_ae_cosine.pt",
         "process_stats": root / "configs" / "discern_v2" / "process" / "process_stats.pt",
+        "rate_operator": root / "configs" / "discern_v2" / "rate" / "rate_operator_mrvae.pt",
     }
