@@ -32,7 +32,8 @@ from pathlib import Path
 
 # Fields that must agree for the comparison to isolate L_preserve. `lambda_preserve` is
 # deliberately absent: it is the one thing that is SUPPOSED to differ.
-MUST_MATCH = ("seed", "sampling", "layers", "lora", "readout", "batch_size", "epochs")
+MUST_MATCH = ("seed", "sampling", "layers", "lora", "readout", "batch_size", "epochs",
+              "frames_per_video", "amp")
 
 
 def load(run: Path) -> dict:

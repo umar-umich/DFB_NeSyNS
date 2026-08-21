@@ -284,6 +284,14 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
                 # In this case, we select self.frame_num frames from the original 270 frames
                 total_frames = len(frame_paths)
                 if self.frame_num < total_frames:
+                    # `n_available` is captured BEFORE total_frames is overwritten. Without it
+                    # `step = total_frames // self.frame_num` evaluates to 1, because by then
+                    # total_frames IS frame_num — so the "evenly distributed" branch silently
+                    # returned the first `frame_num` CONTIGUOUS frames instead. Harmless while
+                    # frame_num equals the number extracted (the branch never fires), but wrong
+                    # the moment a run subsamples, and contiguous frames are far more redundant
+                    # than spaced ones. The video_level branch is left exactly as it was.
+                    n_available = total_frames
                     total_frames = self.frame_num
                     if self.video_level:
                         # Select clip_size continuous frames
@@ -291,8 +299,8 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
                         frame_paths = frame_paths[start_frame:start_frame + self.frame_num]  # update total_frames
                     else:
                         # Select self.frame_num frames evenly distributed throughout the video
-                        step = total_frames // self.frame_num
-                        frame_paths = [frame_paths[i] for i in range(0, total_frames, step)][:self.frame_num]
+                        step = max(1, n_available // self.frame_num)
+                        frame_paths = [frame_paths[i] for i in range(0, n_available, step)][:self.frame_num]
                 
                 # If video-level methods, crop clips from the selected frames if needed
                 if self.video_level:

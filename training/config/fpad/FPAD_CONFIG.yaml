@@ -68,8 +68,13 @@ training:
   weight_decay: 0.01
   min_lr: 1.0e-6
   scheduler: CosineAnnealingLR
-  max_epochs: 20                # 🟡
+  max_epochs: 10                # 🟡 reduced from 20 by Umar 2026-08-21 for the sprint
   sampling: paired              # primary; `random` is the recorded control
+  # TRAIN split only; validation keeps its full 32 so the selection metric keeps one definition.
+  # 32 frames are extracted per video and 16 is every SECOND frame, not the first sixteen —
+  # abstract_dataset's even-spacing branch had `step` collapse to 1, which is fixed. Halves the
+  # epoch: 96 -> ~48 min at the observed 1.0 s/it. Set by Umar 2026-08-21.
+  frames_per_video: 16
   # lambda_preserve has NO default and must be given on the command line. It is the only thing
   # separating the two matched students, so it is stated at the call site, not inherited.
   lambda_preserve_sweep: [0.1, 0.5, 1.0, 2.0]   # 🟡 the small recorded sweep the brief asks for

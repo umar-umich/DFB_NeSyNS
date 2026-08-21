@@ -130,9 +130,22 @@ def batch_fingerprint(names: list[str]) -> str:
     return h.hexdigest()[:16]
 
 
-def make_loaders(cfg: dict, data_cfg: dict, batch_size: int, sampling: str, seed: int):
+def make_loaders(cfg: dict, data_cfg: dict, batch_size: int, sampling: str, seed: int,
+                 frames_per_video: int | None = None):
+    """Build the FF++ loaders. `frames_per_video` subsamples the TRAIN split only.
+
+    Train only, deliberately: validation keeps its full frame count so the selection metric
+    means the same thing across runs with different training budgets. Subsampling is EVEN over
+    each video (`abstract_dataset.py`), so 16 of 32 is every second frame rather than the first
+    sixteen — contiguous frames are near-duplicates and would not halve the information.
+    """
+    cfg_val_data = data_cfg
+    if frames_per_video:
+        data_cfg = {**data_cfg,
+                    "frame_num": {**data_cfg["frame_num"], "train": int(frames_per_video)}}
     train_set = load_split(data_cfg, "FaceForensics++", "train")
-    val_set = load_split(data_cfg, "FaceForensics++", "val")
+    # val is built from the ORIGINAL config, so its frame count is untouched
+    val_set = load_split(cfg_val_data, "FaceForensics++", "val")
     val_select = _restrict_to_val_select(val_set, cfg)
 
     sampler = None
@@ -162,7 +175,8 @@ def make_loaders(cfg: dict, data_cfg: dict, batch_size: int, sampling: str, seed
 # ---------------------------------------------------------------------------
 
 def stage_a_epoch(model, direct, loader, views, device, optimizer, scheduler, epoch, cfg,
-                  lambda_preserve: float, train: bool, max_batches: int = 0) -> dict:
+                  lambda_preserve: float, train: bool, max_batches: int = 0,
+                  amp: bool = False) -> dict:
     from tqdm import tqdm
 
     model.train(train)
@@ -181,8 +195,13 @@ def stage_a_epoch(model, direct, loader, views, device, optimizer, scheduler, ep
         names_seen.extend(str(k) for k in batch["name"])
 
         with torch.set_grad_enabled(train):
-            out = model(pixels)
-            head = direct(out["h_student"])
+            with torch.autocast(pixels.device.type, dtype=torch.bfloat16, enabled=amp):
+                out = model(pixels)
+            # D is the measurement, so it is always read in fp32 regardless of autocast. This
+            # does NOT undo bf16's damage — both representations were already rounded before the
+            # difference was taken — it only keeps the pooling and cosine from adding more.
+            out["D"] = out["D"].float()
+            head = direct(out["h_student"].float())
             loss_cls = edl_loss(head["evidence"], labels, current_epoch=epoch,
                                 total_epochs=total_epochs)
             parts = {"loss_cls_direct": loss_cls}
@@ -311,12 +330,29 @@ def main() -> int:
                          "preservation student (rung B3's). These two, at the same seed, are the "
                          "matched pair the Stage-2 gate compares.")
     ap.add_argument("--sampling", choices=("paired", "random"), default="paired")
+    ap.add_argument("--frames-per-video", type=int, default=None,
+                    help="subsample the TRAIN split to N evenly-spaced frames per video "
+                         "(validation is left at its full count so the selection metric keeps "
+                         "one definition). 32 are extracted, so 16 halves the epoch.")
+    ap.add_argument("--resume", action="store_true",
+                    help="continue from the latest epoch_*.pth in --output, restoring the "
+                         "optimizer, scheduler and RNG state. Mutually exclusive with "
+                         "--overwrite.")
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--max-batches", type=int, default=0)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--overwrite", action="store_true")
+    ap.add_argument("--amp", action="store_true",
+                    help="bf16 autocast. OFF by default and it should usually stay off: measured "
+                         "on this model, bf16 introduces up to 80.8%% RELATIVE error in `D`, "
+                         "because the teacher and student representations differ by ~1e-5 early "
+                         "in training and bf16 rounds both to ~3 significant digits before the "
+                         "difference is taken. Casting up afterwards cannot recover it. It buys "
+                         "2.1x (37 -> 18 min/epoch); take that trade only once a run has shown "
+                         "`D` reaching a scale where 0.4%% relative precision is harmless, and "
+                         "the per-epoch d_layer* values in metrics.jsonl are how to check.")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(args.config.read_text())
@@ -333,13 +369,16 @@ def main() -> int:
     # downstream, matched students included, rests on this line.
     random.seed(seed)
 
+    if args.resume and args.overwrite:
+        raise SystemExit("--resume and --overwrite are contradictory; pick one")
     args.output.mkdir(parents=True, exist_ok=True)
     existing = sorted(args.output.glob("epoch_*.pth"))
-    if existing and not args.overwrite:
+    if existing and not (args.overwrite or args.resume):
         raise SystemExit(
             f"{args.output} already holds {len(existing)} checkpoints. Appending would interleave "
             f"two runs' epochs in metrics.jsonl and leave checkpoints from different "
-            f"configurations sharing one directory. Pass --overwrite or choose a new directory.")
+            f"configurations sharing one directory. Pass --overwrite, --resume, or choose a new "
+            f"directory.")
 
     model = FPADTeacherStudent(
         checkpoint=cfg["encoder"]["checkpoint"] if cfg["encoder"].get("checkpoint") else
@@ -354,8 +393,9 @@ def main() -> int:
     print(f"  LoRA {counts['lora']:,} trainable / {counts['frozen']:,} frozen")
 
     data_cfg = prepare_dataset_config(args.detector_config, args.batch_size, args.workers)
+    frames_per_video = args.frames_per_video or cfg["training"].get("frames_per_video")
     train_loader, val_loader, sampler = make_loaders(cfg, data_cfg, args.batch_size,
-                                                     args.sampling, seed)
+                                                     args.sampling, seed, frames_per_video)
     train_views = FpadViews(augment=True, matched=(args.sampling == "paired"), seed=seed)
     eval_views = FpadViews(augment=False, matched=False)
 
@@ -364,7 +404,11 @@ def main() -> int:
         "layers": list(model.layers), "layers_one_indexed": [i + 1 for i in model.layers],
         "lora": model.lora_config, "readout": "mean-pooled patch tokens (CLS reported beside)",
         "encoder": model.provenance, "batch_size": args.batch_size, "epochs": epochs,
-        "config": str(args.config),
+        "config": str(args.config), "amp": bool(args.amp),
+        "frames_per_video": frames_per_video,
+        "precision_note": ("bf16 autocast ENABLED — measured up to 80.8% relative error in D on "
+                           "this model; verify the d_layer* scale justifies it"
+                           if args.amp else "fp32 throughout; D is the measurement"),
     }
 
     if args.stage == "A":
@@ -389,17 +433,55 @@ def main() -> int:
             optimizer, T_max=steps, eta_min=float(cfg["training"]["min_lr"]))
 
         log = args.output / "metrics.jsonl"
+
+        # ---- resume -----------------------------------------------------------------------
+        start_epoch = 0
+        if args.resume and existing:
+            blob = torch.load(str(existing[-1]), map_location=args.device, weights_only=False)
+            prior = blob.get("run_meta", {})
+            # A resume that silently changes the recipe is worse than no resume: the run would
+            # carry one run_meta while half its epochs were trained under another.
+            for field in ("seed", "sampling", "layers", "lora", "lambda_preserve",
+                          "frames_per_video", "batch_size"):
+                if prior.get(field) != run_meta.get(field):
+                    raise SystemExit(
+                        f"cannot resume: `{field}` differs from the checkpoint "
+                        f"({prior.get(field)!r} vs {run_meta.get(field)!r}). Resuming into a "
+                        f"different recipe would produce a run whose epochs were not trained "
+                        f"under one configuration.")
+            model.load_state_dict(blob["lora"], strict=False)
+            direct.load_state_dict(blob["direct_head"])
+            optimizer.load_state_dict(blob["optimizer"])
+            if blob.get("scheduler") is not None:
+                scheduler.load_state_dict(blob["scheduler"])
+            rng = blob.get("rng", {})
+            if rng:
+                # Restored so the remaining epochs are the ones the run WOULD have produced.
+                # The paired sampler and MatchedAugment are seeded per epoch and so are exact
+                # regardless; this covers the random-sampling arm's DataLoader shuffle.
+                torch.set_rng_state(rng["torch"].cpu() if hasattr(rng["torch"], "cpu")
+                                    else rng["torch"])
+                np.random.set_state(rng["numpy"])
+                random.setstate(rng["python"])
+            start_epoch = int(blob["epoch"]) + 1
+            print(f"  RESUMED from {existing[-1].name}; continuing at epoch {start_epoch}"
+                  f"/{epochs}")
+            if start_epoch >= epochs:
+                print("  nothing to do: the run already reached --epochs")
+                return 0
+
         (args.output / "run_meta.json").write_text(json.dumps(run_meta, indent=2, default=str))
-        for epoch in range(epochs):
+        for epoch in range(start_epoch, epochs):
             started = time.time()
             if sampler is not None:
                 sampler.set_epoch(epoch)
             train_views.set_epoch(epoch)
             tr = stage_a_epoch(model, direct, train_loader, train_views, args.device, optimizer,
                                scheduler, epoch, cfg, lam, train=True,
-                               max_batches=args.max_batches)
+                               max_batches=args.max_batches, amp=args.amp)
             va = stage_a_epoch(model, direct, val_loader, eval_views, args.device, None, None,
-                               epoch, cfg, lam, train=False, max_batches=args.max_batches)
+                               epoch, cfg, lam, train=False, max_batches=args.max_batches,
+                               amp=args.amp)
             if sampler is not None:
                 tr["pair_fraction"] = round(sampler.pair_fraction(), 4)
                 tr["matched_aug_fraction"] = round(train_views.matched_fraction(), 4)
@@ -411,10 +493,17 @@ def main() -> int:
             print(f"epoch {epoch:3d}  loss {tr['loss']:.4f}  "
                   f"VAL video AUROC {va.get('video_auroc', float('nan')):.4f}  "
                   f"D=[{profile}]  fp {tr['batch_order_fingerprint']}")
-            torch.save({"epoch": epoch, "lora": {k: v for k, v in model.state_dict().items()
-                                                 if "lora_" in k},
-                        "direct_head": direct.state_dict(), "run_meta": run_meta,
-                        "metrics": record},
+            torch.save({"epoch": epoch,
+                        "lora": {k: v for k, v in model.state_dict().items() if "lora_" in k},
+                        "direct_head": direct.state_dict(),
+                        # optimizer/scheduler/RNG so a resume continues the run rather than
+                        # restarting the trajectory with a cold optimizer
+                        "optimizer": optimizer.state_dict(),
+                        "scheduler": scheduler.state_dict() if scheduler is not None else None,
+                        "rng": {"torch": torch.get_rng_state(),
+                                "numpy": np.random.get_state(),
+                                "python": random.getstate()},
+                        "run_meta": run_meta, "metrics": record},
                        args.output / f"epoch_{epoch:03d}.pth")
         print(f"\nwrote {log} and {epochs} checkpoints to {args.output}")
         print("Student is now trainable-frozen for Stage B. Select on FF++ VAL_select ONLY; "
