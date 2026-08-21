@@ -121,8 +121,23 @@ def faithfulness(model, direct, traj, pixels: torch.Tensor, patch_map: torch.Ten
         return (traj(out["D"])["prob"] if traj is not None
                 else direct(out["h_student"])["prob"])
 
+    def logodds(p_fake: torch.Tensor) -> torch.Tensor:
+        """log p/(1-p). Reported instead of the probability because the probability SATURATES.
+
+        The first run of this test measured probability drops and returned 0.0000 for every
+        deletion fraction, at a baseline p(fake) of 0.99. That is not a faithfulness failure, it
+        is a ceiling: at p = 0.99 removing a third of the patches cannot move the number much even
+        if it moves the evidence a great deal. Log-odds has headroom where probability does not,
+        so a real effect becomes visible and a real absence stays visible too.
+        """
+        q = p_fake.clamp(1e-6, 1 - 1e-6)
+        return torch.log(q / (1 - q))
+
     base = score(pixels)
-    results = {"baseline_p_fake": float(base.mean())}
+    base_lo = logodds(base)
+    results = {"baseline_p_fake": float(base.mean()),
+               "baseline_logodds": float(base_lo.mean()),
+               "metric": "log-odds drop; probability saturates at this confidence"}
     flat = patch_map.flatten(1)
     for frac in fractions:
         k = max(1, int(round(frac * flat.shape[1])))
@@ -135,11 +150,20 @@ def faithfulness(model, direct, traj, pixels: torch.Tensor, patch_map: torch.Ten
                 for cell in idx[b].tolist():
                     r, c = divmod(int(cell), g)
                     x[b, :, r * side:(r + 1) * side, c * side:(c + 1) * side] = fill[b]
-            results[f"p_fake_delete_{tag}_{int(frac * 100)}pct"] = float(score(x).mean())
+            s_ = score(x)
+            pct = int(frac * 100)
+            results[f"p_fake_delete_{tag}_{pct}pct"] = float(s_.mean())
+            results[f"logodds_delete_{tag}_{pct}pct"] = float(logodds(s_).mean())
     for frac in fractions:
-        t = results[f"p_fake_delete_top_{int(frac * 100)}pct"]
-        r = results[f"p_fake_delete_random_{int(frac * 100)}pct"]
-        results[f"faithfulness_gain_{int(frac * 100)}pct"] = (r - t)
+        pct = int(frac * 100)
+        # the faithfulness quantity: deleting the map's OWN top patches should cost more evidence
+        # than deleting the same number at random
+        results[f"faithfulness_gain_{pct}pct"] = (
+            results[f"p_fake_delete_random_{pct}pct"] - results[f"p_fake_delete_top_{pct}pct"])
+        results[f"faithfulness_logodds_gain_{pct}pct"] = (
+            results[f"logodds_delete_random_{pct}pct"] - results[f"logodds_delete_top_{pct}pct"])
+        results[f"logodds_drop_top_{pct}pct"] = (
+            results["baseline_logodds"] - results[f"logodds_delete_top_{pct}pct"])
     return results
 
 
@@ -272,11 +296,17 @@ def main() -> int:
     (args.output / "localization.json").write_text(json.dumps(payload, indent=2, default=str))
     if rows:
         pd.DataFrame(rows).to_csv(args.output / "localization.csv", index=False)
-    print("\nfaithfulness (deletion; positive gain = the map explains the decision):")
+    print("\nfaithfulness (deletion; positive = deleting the map's own top patches costs more "
+          "evidence than deleting at random):")
     for manip, f in faith_all.items():
-        gains = {k: v for k, v in f.items() if k.startswith("faithfulness_gain")}
-        print(f"  {manip:18s} baseline p(fake) {f['baseline_p_fake']:.4f} · "
-              + " · ".join(f"{k.split('_')[-1]} {v:+.4f}" for k, v in gains.items()))
+        lg = {k: v for k, v in f.items() if k.startswith("faithfulness_logodds_gain")}
+        dr = {k: v for k, v in f.items() if k.startswith("logodds_drop_top")}
+        print(f"  {manip:18s} baseline p {f['baseline_p_fake']:.4f} "
+              f"(log-odds {f['baseline_logodds']:+.2f})")
+        print(f"      top-vs-random log-odds gain  "
+              + " · ".join(f"{k.split('_')[-1]} {v:+.3f}" for k, v in lg.items()))
+        print(f"      log-odds lost to deletion    "
+              + " · ".join(f"{k.split('_')[-1]} {v:+.3f}" for k, v in dr.items()))
     print(f"\nwrote {args.output}/localization.json")
     return 0
 
