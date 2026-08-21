@@ -46,6 +46,33 @@ DF40_ROOT = Path("/data/umar/Datasets/df40")
 DF40_JSON_DIR = DF40_ROOT / "dataset_json"
 RELATIVE_ROOT = "deepfakes_detection_datasets/"
 
+# Some JSONs store the path with a leading `./`, and e4e's store the authors' full cluster path.
+# Both mean the same relative location; stripped so one set of rules covers all of them.
+ABSOLUTE_PREFIXES = (
+    "/Youtu_Pangu_Security_Public/youtu-pangu-public/zhiyuanyan/",
+    "./",
+)
+
+# Method directories whose on-disk name is not the JSON's method name. Every entry below was
+# confirmed by listing the directory, not inferred from the name — `whichisreal` in particular
+# ships under `whichfaceisreal`, and the extra nesting levels (`heygen/heygen_new`,
+# `styleclip/styleclip`) are archive-extraction artifacts that no naming rule predicts.
+METHOD_DIR_ALIASES = {
+    "heygen": "heygen/heygen_new",
+    "styleclip": "styleclip/styleclip",
+    "whichisreal": "whichfaceisreal/whichfaceisreal",
+    "rddm": "RDDM",
+}
+
+# DF40's Celeb-DF-driven halves name the SOURCE pool in the JSON (`cdf/Celeb-real/...`) but are
+# stored under a directory that names what they are (`cdf/Fake_from_Celeb-real/...`). Note the
+# capitalisation change on the second one: the archive writes `Youtube`, the JSON writes
+# `YouTube`, so this cannot be a case-insensitive lookup on one rule.
+CDF_SOURCE_DIRS = {
+    "Celeb-real": "Fake_from_Celeb-real",
+    "YouTube-real": "Fake_from_Youtube-real",
+}
+
 # §21 asks for a family/method breakdown. This is a COARSE two-way split by task type, not
 # DF40's own four-family taxonomy (face swapping / face reenactment / entire face synthesis /
 # face editing) — it separates "entire image is synthetic" from "real footage was manipulated",
@@ -57,36 +84,78 @@ WHOLE_IMAGE_SYNTHESIS = {
 }
 
 
+def _normalise(path: str) -> str:
+    """Strip the prefixes that stop a path being recognised as relative at all.
+
+    `e4e_ff` writes `./deepfakes_detection_datasets/...` and `e4e_cdf` writes the authors'
+    absolute cluster path. Both previously fell through `startswith(RELATIVE_ROOT)` and were
+    returned verbatim, so BOTH e4e arms resolved at exactly 0.0 — not because the frames were
+    missing (they are on disk) but because two characters at the front of the string sent the
+    path down the "already absolute, another corpus" branch.
+    """
+    for prefix in ABSOLUTE_PREFIXES:
+        if path.startswith(prefix):
+            path = path[len(prefix):]
+    return path
+
+
 def candidates(path: str, root: Path = DF40_ROOT) -> list[str]:
     """Every plausible on-disk location for one DF40 frame path, most likely first.
 
     DF40's generated halves are NOT laid out uniformly, which is why this returns candidates
     instead of one rewrite:
 
-        video methods (danet, fomm, …)   DF40/<m>/<subset>/frames/<vid>/<f>.png
-                                     ->  test/<m>/<subset>/frames/<vid>/<f>.png
-        image methods (stargan, …)       DF40/<m>/<half>/<f>.jpg
-                                     ->  test/<m>/<half>/<half>/<f>.jpg      (doubled)
+        video methods (danet, fomm, ...)  DF40/<m>/<subset>/frames/<vid>/<f>.png
+                                     ->   test/<m>/<subset>/frames/<vid>/<f>.png
+        image methods (stargan, ...)      DF40/<m>/<half>/<f>.jpg
+                                     ->   test/<m>/<half>/<half>/<f>.jpg      (doubled half)
+        extracted archives                DF40/<m>/<half>/<f>.jpg
+                                     ->   test/<m>/<m>/<half>/<f>.jpg         (doubled method)
+        cdf-driven synthesis              DF40/<m>/cdf/Celeb-real/<vid>/<f>.png
+                                     ->   test/<m>/cdf/Fake_from_Celeb-real/<vid>/<f>.png
 
-    A single rule derived from one method silently loses the other's frames — which is exactly
+    A single rule derived from one method silently loses the other's frames -- which is exactly
     what happened here: the doubled rule generalised from `stargan` resolved only 21.6% of
     `danet_cdf`, i.e. its authentic half and none of its fakes.
     """
+    path = _normalise(path)
     if not path.startswith(RELATIVE_ROOT):
         return [path]                                  # already absolute, or another corpus
     tail = path[len(RELATIVE_ROOT):]
     out: list[str] = []
     if tail.startswith("DF40/"):
         inner = tail[len("DF40/"):]
-        out.append(str(root / "test" / inner))          # video-method layout
         parts = inner.split("/")
-        if len(parts) >= 3:                             # image-method doubled layout
-            method, half, rest = parts[0], parts[1], parts[2:]
-            out.append(str(root / "test" / method / half / half / "/".join(rest)))
+        method, rest = parts[0], parts[1:]
+        # Every spelling of the method directory worth trying, in order of likelihood.
+        method_dirs = [method]
+        alias = METHOD_DIR_ALIASES.get(method)
+        if alias:
+            method_dirs.insert(0, alias)
+        method_dirs.append(f"{method}/{method}")       # archive extracted into its own name
+
+        for mdir in method_dirs:
+            out.append(str(root / "test" / mdir / "/".join(rest)))
+            if len(rest) >= 2:                         # doubled-half image layout
+                out.append(str(root / "test" / mdir / rest[0] / rest[0] / "/".join(rest[1:])))
+            if len(rest) >= 2 and rest[1] in CDF_SOURCE_DIRS:
+                renamed = [rest[0], CDF_SOURCE_DIRS[rest[1]], *rest[2:]]
+                out.append(str(root / "test" / mdir / "/".join(renamed)))
     else:
+        # Pre-DF40-namespace methods: `simswap/cdfv2/frames/...` is stored as
+        # `test/simswap/cdf/frames/...`.
+        parts = tail.split("/")
+        if len(parts) >= 2 and parts[1] == "cdfv2":
+            out.append(str(root / "test" / parts[0] / "cdf" / "/".join(parts[2:])))
         out.append(str(root / "real" / tail))           # borrowed authentic halves
         out.append(str(Path("/data/umar/Datasets/preprocessed") / tail))
-    return out
+    # de-duplicate, preserving order: several rules coincide for the simple layouts
+    seen, unique = set(), []
+    for c in out:
+        if c not in seen:
+            seen.add(c)
+            unique.append(c)
+    return unique
 
 
 def resolve(path: str, root: Path = DF40_ROOT) -> str:
