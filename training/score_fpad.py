@@ -63,7 +63,7 @@ def real_source_of(path: str) -> str:
 
 @torch.no_grad()
 def score_dataset(model, direct, loader, views, device: str, name: str,
-                  max_batches: int = 0) -> pd.DataFrame:
+                  max_batches: int = 0, traj=None) -> pd.DataFrame:
     from tqdm import tqdm
 
     model.eval()
@@ -93,6 +93,12 @@ def score_dataset(model, direct, loader, views, device: str, name: str,
         record["d_mean"] = D.mean(axis=1)
         record["d_early"] = D[:, : max(1, len(layers_1x) // 2)].mean(axis=1)
         record["d_late"] = D[:, len(layers_1x) // 2:].mean(axis=1)
+        if traj is not None:
+            # The rung's prediction for B2/B3. Read from the SAME `D` the profile records, so the
+            # table and the diagnostics cannot describe different quantities.
+            t = traj(out["D"])
+            record["p_traj"] = t["prob"].cpu().numpy()
+            record["u_traj"] = t["u"].cpu().numpy()
         pm = out["patch_map"].flatten(1).cpu().numpy()
         record["patch_max"] = pm.max(axis=1)
         record["patch_std"] = pm.std(axis=1)
@@ -119,6 +125,10 @@ def main() -> int:
     ap.add_argument("--split", default="test")
     ap.add_argument("--df40", action="store_true",
                     help="treat --datasets as DF40 per-method names")
+    ap.add_argument("--traj-head", type=Path, default=None,
+                    help="a Stage-B run directory. With it the scorer also emits `p_traj`, the "
+                         "trajectory readout that rungs B2/B3 are scored on. Without it only the "
+                         "direct readout `p_direct` is emitted, which is what B0/B1 use.")
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--workers", type=int, default=8)
@@ -151,6 +161,32 @@ def main() -> int:
         p.requires_grad_(False)
     model.eval()
 
+    traj = None
+    if args.traj_head:
+        from networks.fpad import TrajectoryEvidenceHead
+        heads = sorted(args.traj_head.glob("epoch_*.pth"))
+        if not heads:
+            raise SystemExit(f"no Stage-B checkpoints in {args.traj_head}")
+        hb = torch.load(str(heads[-1]), map_location="cpu", weights_only=False)
+        desc = hb["head_describe"]
+        if desc["n_layers"] != len(model.layers):
+            raise SystemExit(
+                f"the trajectory head expects {desc['n_layers']} layers but this student has "
+                f"{len(model.layers)}. A head applied to a different layer set reads a different "
+                f"signal.")
+        student_of_head = (hb["run_meta"].get("student") or {}).get("run")
+        if student_of_head and Path(student_of_head).resolve() != args.student.resolve():
+            raise SystemExit(
+                f"this trajectory head was trained on the student at {student_of_head}, not on "
+                f"{args.student}. H_traj is fit to one frozen adaptation; applying it to another "
+                f"student's trajectory is not that rung.")
+        traj = TrajectoryEvidenceHead(
+            n_layers=desc["n_layers"], hidden_dim=int(cfg["heads"]["hidden_dim"]),
+            use_slopes=desc["use_slopes"], use_calibrator=desc["use_calibrator"])
+        traj.load_state_dict(hb["traj_head"])
+        traj = traj.to(args.device).eval()
+        print(f"  trajectory readout from {heads[-1].name}: {desc}")
+
     data_cfg = prepare_dataset_config(args.detector_config, args.batch_size, args.workers)
     views = FpadViews(augment=False, matched=False)
 
@@ -175,7 +211,7 @@ def main() -> int:
             dataset, batch_size=args.batch_size, shuffle=False,
             num_workers=int(data_cfg["workers"]), collate_fn=dataset.collate_fn)
         frames.append(score_dataset(model, direct, loader, views, args.device, name,
-                                    args.max_batches))
+                                    args.max_batches, traj=traj))
         got = frames[-1]
         print(f"  {name}: {len(got)} frames · real_source "
               f"{got.groupby('real_source').size().to_dict()} · "
@@ -190,6 +226,8 @@ def main() -> int:
         "datasets": args.datasets, "split": args.split, "df40": bool(args.df40),
         "df40_resolution": resolution or None, "n_frames": int(len(table)),
         "layers_one_indexed": [i + 1 for i in model.layers],
+        "traj_head": str(args.traj_head) if args.traj_head else None,
+        "readouts": ["p_direct"] + (["p_traj"] if traj is not None else []),
     }, indent=2, default=str))
     print(f"\nwrote {dest} ({len(table)} frames)")
     return 0

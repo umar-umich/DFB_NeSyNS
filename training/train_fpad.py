@@ -334,6 +334,11 @@ def main() -> int:
                     help="subsample the TRAIN split to N evenly-spaced frames per video "
                          "(validation is left at its full count so the selection metric keeps "
                          "one definition). 32 are extracted, so 16 halves the epoch.")
+    ap.add_argument("--freeze-student", action="store_true",
+                    help="rung B0: train ONLY the direct head on the frozen FS-VFM feature, with "
+                         "no LoRA adaptation at all. `D` stays identically zero, so B0 has no "
+                         "trajectory readout by construction — it is the frozen-prior baseline "
+                         "the ladder starts from, not a degenerate B1.")
     ap.add_argument("--resume", action="store_true",
                     help="continue from the latest epoch_*.pth in --output, restoring the "
                          "optimizer, scheduler and RNG state. Mutually exclusive with "
@@ -386,6 +391,15 @@ def main() -> int:
         layers=tuple(cfg["encoder"]["layers"]),
         lora=cfg["lora"],
         img_size=int(cfg["encoder"].get("img_size", 224))).to(args.device)
+    if args.freeze_student:
+        # B0. Disabling the adapters' gradient rather than rebuilding without LoRA keeps the
+        # module identical to B1's, so the two rungs differ ONLY in whether the student adapts.
+        for name, param in model.peft.named_parameters():
+            param.requires_grad_(False)
+        if args.lambda_preserve not in (None, 0.0):
+            raise SystemExit(
+                "--freeze-student with a non-zero --lambda-preserve is contradictory: there is no "
+                "adaptation to preserve against. B0 takes --lambda-preserve 0.")
     model.assert_teacher_frozen()
     counts = model.trainable_parameters()
     print(f"FPAD teacher-student: layers {model.layers} "
@@ -419,12 +433,16 @@ def main() -> int:
                 "compares, so it must be stated at the call site.")
         lam = args.lambda_preserve
         run_meta["lambda_preserve"] = lam
-        run_meta["arm"] = "ordinary_lora" if lam == 0 else "preservation"
+        run_meta["arm"] = ("frozen_b0" if args.freeze_student else
+                           "ordinary_lora" if lam == 0 else "preservation")
+        run_meta["freeze_student"] = bool(args.freeze_student)
         print(f"  Stage A [{run_meta['arm']}]: lambda_preserve = {lam}")
 
         direct = DirectEvidenceHead(feature_dim=model.embed_dim,
                                     hidden_dim=int(cfg["heads"]["hidden_dim"])).to(args.device)
         params = [p for p in model.parameters() if p.requires_grad] + list(direct.parameters())
+        if not params:
+            raise SystemExit("nothing to optimize")
         optimizer = torch.optim.AdamW(params, lr=float(cfg["training"]["lr"]),
                                       betas=tuple(cfg["training"]["betas"]),
                                       weight_decay=float(cfg["training"]["weight_decay"]))
