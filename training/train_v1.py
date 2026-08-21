@@ -66,6 +66,8 @@ sys.path.insert(0, str(REPO / "training"))
 sys.path.insert(0, str(REPO / "analysis" / "discern_v2"))
 
 from dataset.nesy_defake_dataset import NeSyDeFakeDataset  # noqa: E402
+from dataset.paired_sampler import (  # noqa: E402
+    MatchedAugment, PairedBatchSampler, pair_keys_for_paths, source_ids_for)
 from networks.discern_v2.discern_v1_model import build_v1_model  # noqa: E402
 from networks.discern_v2.semantic_branch import (  # noqa: E402
     dicome_param_groups, dicome_train_transform)
@@ -138,12 +140,46 @@ def prepare_dataset_config(detector_config: Path, batch_size: int, workers: int 
 
 
 class ViewMaker:
-    """One augmented image -> the three branch-specific views (§6)."""
+    """One augmented image -> the three branch-specific views (§6).
 
-    def __init__(self, clip_mean, clip_std, device: str, augment: bool):
+    `matched` selects how the augmentation is drawn (brief Stage 4):
+
+        False  independent per image — DiCoME's recipe, and the random-sampling CONTROL arm
+        True   shared within a source group — the source-paired PRIMARY arm
+
+    Matched augmentation is not a refinement of the pairing, it is what makes the pairing mean
+    anything: a fake and its source real that receive different flips, affines, blurs and jitters
+    differ by a nuisance factor again, and the model can separate them on that instead of on the
+    manipulation. `matched_fraction` is accumulated so the run reports how much of each batch
+    actually shared a draw rather than assuming all of it did.
+    """
+
+    def __init__(self, clip_mean, clip_std, device: str, augment: bool,
+                 matched: bool = False, seed: int = 42):
         self.mean = torch.tensor(clip_mean, device=device).view(1, 3, 1, 1)
         self.std = torch.tensor(clip_std, device=device).view(1, 3, 1, 1)
-        self.transform = dicome_train_transform() if augment else None
+        self.augment = augment
+        self.matched = matched and augment
+        # Per SAMPLE, not per batch. torchvision transforms applied to a batched tensor draw their
+        # random parameters ONCE and apply the same flip/affine/blur/jitter to every image in the
+        # batch, which is far less augmentation than DiCoME's per-image pipeline and would make
+        # the ported recipe weaker than the one it reproduces.
+        self.transform = dicome_train_transform() if (augment and not self.matched) else None
+        self.matched_augment = MatchedAugment(seed=seed) if self.matched else None
+        self._extract = NeSyDeFakeDataset._extract_source_video
+        self.step = 0
+        self.matched_seen = 0.0
+        self.matched_batches = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        if self.matched_augment is not None:
+            self.matched_augment.set_epoch(epoch)
+        self.step = 0
+        self.matched_seen = 0.0
+        self.matched_batches = 0
+
+    def matched_fraction(self) -> float:
+        return self.matched_seen / self.matched_batches if self.matched_batches else 0.0
 
     def __call__(self, batch: dict, device: str) -> dict:
         raw = batch["raw_frames"].to(device)
@@ -151,12 +187,15 @@ class ViewMaker:
             raise ValueError(
                 "raw_frames are not in [0, 1]; the three views must be derived from unnormalized "
                 "pixels or each branch receives another branch's normalization")
-        if self.transform is not None:
-            # Per SAMPLE, not per batch. torchvision transforms applied to a batched tensor draw
-            # their random parameters ONCE and apply the same flip/affine/blur/jitter to every
-            # image in the batch, which is far less augmentation than DiCoME's per-image pipeline
-            # and would make the ported recipe weaker than the one it reproduces. The cost is one
-            # transform call per image, which is noise next to a ViT-L forward pass.
+        if self.matched_augment is not None:
+            # Keys come from the paths the batch already carries, so nothing has to survive
+            # collation or a worker boundary to stay in sync with the images.
+            keys = pair_keys_for_paths(batch["name"], self._extract)
+            self.matched_seen += self.matched_augment.matched_fraction(keys)
+            self.matched_batches += 1
+            raw = self.matched_augment(raw, keys, step=self.step)
+            self.step += 1
+        elif self.transform is not None:
             raw = torch.stack([self.transform(img) for img in raw])
         return {
             "spatial_frames": (raw - self.mean) / self.std,   # Branch A: CLIP statistics
@@ -283,6 +322,11 @@ def main() -> int:
     ap.add_argument("--max-batches", type=int, default=0, help="0 = full epoch; >0 smoke test")
     ap.add_argument("--overwrite", action="store_true",
                     help="discard an existing run in --output instead of refusing")
+    ap.add_argument("--sampling", choices=("paired", "random"), default="paired",
+                    help="brief Stage 4: `paired` is the PRIMARY arm (source-paired batches with "
+                         "matched augmentation, which attacks the provenance shortcut at the "
+                         "sampler); `random` is the recorded control. Both must exist before the "
+                         "comparison means anything.")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(args.config.read_text())
@@ -334,9 +378,27 @@ def main() -> int:
     val_set = load_split(data_cfg, "FaceForensics++", "val")
     val_select = _restrict_to_val_select(val_set, cfg)
 
-    train_loader = torch.utils.data.DataLoader(
-        train_set, batch_size=args.batch_size, shuffle=True,
-        num_workers=int(data_cfg["workers"]), collate_fn=train_set.collate_fn, drop_last=True)
+    pair_sampler = None
+    if args.sampling == "paired":
+        pair_sampler = PairedBatchSampler(
+            labels=train_set.label_list, source_ids=source_ids_for(train_set),
+            batch_size=args.batch_size, seed=seed, drop_last=True)
+        train_loader = torch.utils.data.DataLoader(
+            train_set, batch_sampler=pair_sampler,
+            num_workers=int(data_cfg["workers"]), collate_fn=train_set.collate_fn)
+        print(f"  sampling: source-paired — {pair_sampler.n_pairs} pairs, "
+              f"{len(pair_sampler.unpaired)} unpaired frames "
+              f"({pair_sampler.pair_fraction():.1%} of samples have a partner)")
+        if pair_sampler.pair_fraction() < 0.5:
+            print("    ⚠️  fewer than half the training samples have a source partner, so most "
+                  "of the epoch is NOT paired. Report this fraction beside any claim that "
+                  "pairing removed the provenance shortcut.")
+    else:
+        train_loader = torch.utils.data.DataLoader(
+            train_set, batch_size=args.batch_size, shuffle=True,
+            num_workers=int(data_cfg["workers"]), collate_fn=train_set.collate_fn,
+            drop_last=True)
+        print("  sampling: random (the Stage 4 CONTROL arm)")
     val_loader = torch.utils.data.DataLoader(
         val_select, batch_size=args.batch_size, shuffle=False,
         num_workers=int(data_cfg["workers"]), collate_fn=val_select.collate_fn)
@@ -348,19 +410,28 @@ def main() -> int:
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=steps, eta_min=float(cfg["training"]["scheduler"]["min_lr"]))
 
-    train_views = ViewMaker(clip_norm["mean"], clip_norm["std"], args.device, augment=True)
+    train_views = ViewMaker(clip_norm["mean"], clip_norm["std"], args.device, augment=True,
+                            matched=(args.sampling == "paired"), seed=seed)
     eval_views = ViewMaker(clip_norm["mean"], clip_norm["std"], args.device, augment=False)
 
     log_path = args.output / "metrics.jsonl"
     print(f"training {epochs} epochs; every epoch is checkpointed (§11 forbids a fixed window)")
     for epoch in range(epochs):
         started = time.time()
+        if pair_sampler is not None:
+            pair_sampler.set_epoch(epoch)
+        train_views.set_epoch(epoch)
         train_metrics = run_epoch(model, _capped(train_loader, args.max_batches), train_views,
                                   args.device, optimizer, scheduler, epoch, cfg, train=True)
+        train_metrics["sampling"] = args.sampling
+        if pair_sampler is not None:
+            train_metrics["pair_fraction"] = round(pair_sampler.pair_fraction(), 4)
+            train_metrics["matched_aug_fraction"] = round(train_views.matched_fraction(), 4)
         val_metrics = run_epoch(model, _capped(val_loader, args.max_batches), eval_views,
                                 args.device, None, None, epoch, cfg, train=False)
 
         record = {"epoch": epoch, "seconds": round(time.time() - started, 1),
+                  "sampling": args.sampling,
                   "train": train_metrics, "val_select": val_metrics,
                   "lr": optimizer.param_groups[0]["lr"]}
         with open(log_path, "a") as f:
@@ -378,6 +449,15 @@ def main() -> int:
 
     print(f"\nwrote {log_path} and {epochs} checkpoints to {args.output}")
     print("Next: §11 checkpoint selection on VAL_select ONLY — never on an OOD source.")
+    # The brief asks for this to be recorded in the result file rather than discovered later.
+    print("\nOn reading the selection: V1 diagnostics showed in-domain validation saturating in "
+          "epoch 0 with a between-model to within-model signal ratio near 2. Treat checkpoint "
+          "selection as close to arbitrary and do not over-read small validation differences.")
+    if args.sampling == "paired":
+        print("This is the PRIMARY (source-paired) arm. The random-sampling control must also "
+              "exist before any claim that pairing helped: rerun with --sampling random.")
+    else:
+        print("This is the CONTROL arm (random sampling). The primary arm is --sampling paired.")
     return 0
 
 
