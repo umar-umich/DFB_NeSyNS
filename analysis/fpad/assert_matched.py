@@ -96,16 +96,32 @@ def main() -> int:
             f"two students did not see the same data in the same order, so any difference "
             f"between their deltas includes a data difference.")
 
-    # 5. step-1 classification loss. Same data and same init => identical, since L_preserve has
-    # not yet moved anything and contributes no gradient at D = 0.
+    # 5. Epoch-0 classification loss: INFORMATIONAL, not a criterion.
+    #
+    # An earlier version asserted these must be equal, reasoning that L_preserve is ~0 at
+    # initialization because the teacher and student start bit-identical. That reasoning is right
+    # for the FIRST optimizer step and wrong for the logged quantity, which is the MEAN over an
+    # epoch: from step 2 onward the preservation student's weights have already been steered by
+    # L_preserve, so its classification loss legitimately diverges over the remaining steps.
+    # Divergence here is the mechanism working. The check was rejecting correctly-matched runs.
+    #
+    # It is still worth reporting: a LARGE gap would suggest something other than L_preserve is
+    # differing. The guarantees that actually matter are the config, the step counts and the
+    # batch-order fingerprints above, all of which are exact.
+    notes = []
     if a["rows"] and b["rows"]:
         ca = a["rows"][0]["train"].get("loss_cls_direct")
         cb = b["rows"][0]["train"].get("loss_cls_direct")
-        if ca is not None and cb is not None and abs(ca - cb) > 1e-6:
-            problems.append(
-                f"epoch-0 L_cls_direct differs ({ca:.8f} vs {cb:.8f}). With identical data and "
-                f"identical initialization these must agree — L_preserve is ~0 at init because "
-                f"the teacher and student start bit-identical.")
+        if ca is not None and cb is not None:
+            rel = abs(ca - cb) / max(abs(ca), abs(cb), 1e-12)
+            notes.append(
+                f"epoch-0 mean L_cls_direct {ca:.6f} vs {cb:.6f} ({rel:.1%} apart) — expected to "
+                f"differ, since L_preserve steers the preservation student from step 2 onward")
+            if rel > 0.25:
+                problems.append(
+                    f"epoch-0 mean L_cls_direct differs by {rel:.0%} ({ca:.6f} vs {cb:.6f}). "
+                    f"L_preserve should perturb the classification loss, not dominate it; a gap "
+                    f"this large suggests the two runs differ in more than the preservation term.")
 
     report = {
         "runs": [str(a["run"]), str(b["run"])],
@@ -113,10 +129,13 @@ def main() -> int:
         "epochs": len(a["rows"]),
         "matched": not problems,
         "problems": problems,
+        "notes": notes,
     }
     print(f"run A: {a['run']}  lambda_preserve = {la}")
     print(f"run B: {b['run']}  lambda_preserve = {lb}")
     print(f"epochs: {len(a['rows'])} / {len(b['rows'])}")
+    for n in notes:
+        print(f"  note: {n}")
     if problems:
         print(f"\nNOT MATCHED — {len(problems)} problem(s):")
         for p in problems:
