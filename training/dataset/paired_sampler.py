@@ -41,6 +41,7 @@ an ordinary independent draw rather than being dropped.
 from __future__ import annotations
 
 import random
+import zlib
 from typing import Iterator, Sequence
 
 import torch
@@ -208,8 +209,12 @@ class MatchedAugment:
                 params = cache[key]                       # the partner's exact draw
             else:
                 token = key if key is not None else f"__solo_{i}"
-                gen = torch.Generator().manual_seed(
-                    abs(hash((self.seed, self.epoch, step, token))) % (2 ** 31))
+                # crc32, NOT hash(). Python randomizes string hashing per process unless
+                # PYTHONHASHSEED is set, so `hash()` here made augmentation differ between two
+                # runs of the same seed — which silently broke the matched-student guarantee the
+                # Stage-2 gate depends on. crc32 is stable across processes and machines.
+                stamp = f"{self.seed}|{self.epoch}|{step}|{token}".encode()
+                gen = torch.Generator().manual_seed(zlib.crc32(stamp))
                 params = self._params(gen, height, width)
                 if key is not None:
                     cache[key] = params

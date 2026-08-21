@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import os
 import sys
 import time
@@ -336,6 +337,12 @@ def main() -> int:
     seed = int(cfg["meta"].get("seed", 42))
     torch.manual_seed(seed)
     np.random.seed(seed)
+    # `random` too, and it is NOT redundant: abstract_dataset.py:346 shuffles the collected
+    # (label, path, video) lists with `random.shuffle` on the GLOBAL module RNG. Seeding only
+    # torch and numpy leaves the dataset ORDER process-dependent — measured: the same 115,198
+    # FF++ train frames hashed to two different orders across two runs. Every "same seed" claim
+    # downstream, matched students included, rests on this line.
+    random.seed(seed)
 
     args.output.mkdir(parents=True, exist_ok=True)
     # Refuse to append to a previous run's log. Silently continuing one would interleave two
