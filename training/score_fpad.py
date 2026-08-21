@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -133,8 +134,26 @@ def main() -> int:
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--max-batches", type=int, default=0)
+    ap.add_argument("--jpeg-quality", type=int, default=None,
+                    help="Stage 6 compression probe: JPEG-encode and decode every frame at this "
+                         "quality before the encoder sees it. NOTE our frames are PNG crops "
+                         "already derived from H.264 c23 video, so this is a SECOND, additional "
+                         "compression — a JPEG probe, not a substitute for c40.")
+    ap.add_argument("--seed", type=int, default=42,
+                    help="seeds the dataset shuffle so two scoring runs cover "
+                         "the SAME frames — required for the JPEG probe, which "
+                         "compares one frame with and without compression")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
+
+    # `abstract_dataset.py:346` shuffles the collected frame list with `random.shuffle` on the
+    # GLOBAL module RNG, so an unseeded scoring process covers a DIFFERENT subset of frames than
+    # the next one. With --max-batches that is not cosmetic: the JPEG probe compares the same
+    # frame with and without compression, and two unseeded runs shared only 132 of 1,280 frames,
+    # silently shrinking the audit to a tenth of its intended power.
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
     checkpoints = sorted(args.student.glob("epoch_*.pth"))
     if not checkpoints:
@@ -188,7 +207,9 @@ def main() -> int:
         print(f"  trajectory readout from {heads[-1].name}: {desc}")
 
     data_cfg = prepare_dataset_config(args.detector_config, args.batch_size, args.workers)
-    views = FpadViews(augment=False, matched=False)
+    views = FpadViews(augment=False, matched=False, jpeg_quality=args.jpeg_quality)
+    if args.jpeg_quality is not None:
+        print(f"  JPEG probe: re-encoding every frame at quality {args.jpeg_quality}")
 
     df40 = None
     resolution = {}
@@ -227,6 +248,10 @@ def main() -> int:
         "df40_resolution": resolution or None, "n_frames": int(len(table)),
         "layers_one_indexed": [i + 1 for i in model.layers],
         "traj_head": str(args.traj_head) if args.traj_head else None,
+        "jpeg_quality": args.jpeg_quality,
+        "compression_note": (None if args.jpeg_quality is None else
+                             f"additional JPEG at quality {args.jpeg_quality} applied on top of "
+                             f"c23-derived PNG crops; NOT equivalent to H.264 c40"),
         "readouts": ["p_direct"] + (["p_traj"] if traj is not None else []),
     }, indent=2, default=str))
     print(f"\nwrote {dest} ({len(table)} frames)")

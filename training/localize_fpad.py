@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -153,8 +154,21 @@ def main() -> int:
     ap.add_argument("--per-video", type=int, default=4)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--output", type=Path, required=True)
+    ap.add_argument("--seed", type=int, default=42,
+                    help="seeds the dataset shuffle so two scoring runs cover "
+                         "the SAME frames — required for the JPEG probe, which "
+                         "compares one frame with and without compression")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
+
+    # `abstract_dataset.py:346` shuffles the collected frame list with `random.shuffle` on the
+    # GLOBAL module RNG, so an unseeded scoring process covers a DIFFERENT subset of frames than
+    # the next one. With --max-batches that is not cosmetic: the JPEG probe compares the same
+    # frame with and without compression, and two unseeded runs shared only 132 of 1,280 frames,
+    # silently shrinking the audit to a tenth of its intended power.
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
     refused = [m for m in args.manipulations if m in WITHOUT_MASKS]
     if refused:

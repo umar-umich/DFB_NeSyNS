@@ -84,7 +84,13 @@ class FpadViews:
     statistics are read from file. Nothing here can hand the encoder another model's constants.
     """
 
-    def __init__(self, augment: bool, matched: bool, seed: int = 42):
+    def __init__(self, augment: bool, matched: bool, seed: int = 42,
+                 jpeg_quality: int | None = None):
+        # Stage 6's compression probe. Applied to the PIXELS, before FS-VFM's normalization,
+        # because that is what a compressed input actually looks like to the encoder. Done in
+        # memory rather than by caching re-encoded frames: /data sits at 99% full, and a cached
+        # copy is one more thing that can silently drift from the originals.
+        self.jpeg_quality = jpeg_quality
         self.augment = augment
         self.matched = matched and augment
         self.matched_augment = MatchedAugment(seed=seed) if self.matched else None
@@ -107,8 +113,36 @@ class FpadViews:
     def matched_fraction(self) -> float:
         return self.matched_seen / self.batches if self.batches else 0.0
 
+    @staticmethod
+    def jpeg_roundtrip(frames: torch.Tensor, quality: int) -> torch.Tensor:
+        """Encode each [0,1] CHW frame to JPEG at `quality` and decode it back.
+
+        A real round trip through libjpeg, not a blur or a noise proxy: the artifacts that matter
+        are 8x8 block structure and chroma subsampling, and an approximation would not answer the
+        reviewer's question about compression.
+        """
+        import io
+
+        import numpy as np
+        from PIL import Image
+
+        out = torch.empty_like(frames)
+        for i, img in enumerate(frames):
+            arr = (img.permute(1, 2, 0).cpu().numpy() * 255.0).round().clip(0, 255).astype("uint8")
+            buf = io.BytesIO()
+            Image.fromarray(arr).save(buf, format="JPEG", quality=int(quality))
+            buf.seek(0)
+            dec = np.asarray(Image.open(buf).convert("RGB"), dtype=np.float32) / 255.0
+            out[i] = torch.from_numpy(dec).permute(2, 0, 1).to(frames.dtype)
+        return out
+
     def __call__(self, batch: dict, device: str) -> torch.Tensor:
-        raw = batch["raw_frames"].to(device)
+        raw = batch["raw_frames"]
+        if self.jpeg_quality is not None:
+            # before .to(device): PIL works on CPU, and re-encoding after normalization would
+            # compress a normalized tensor, which is not a thing that happens to an image
+            raw = self.jpeg_roundtrip(raw, self.jpeg_quality)
+        raw = raw.to(device)
         if raw.min() < -0.01:
             raise ValueError("raw_frames are not in [0, 1]; FS-VFM must apply its own statistics")
         if self.matched_augment is not None:
