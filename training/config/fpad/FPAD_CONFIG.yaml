@@ -1,0 +1,163 @@
+# FPAD — Face-Prior Adaptation Dynamics. Single source of truth for the WACV run.
+#
+# Every value here is either traced from validated code (file:line recorded) or is a 🟡 choice
+# flagged for Umar. 🔴 Umar launches every training run.
+
+meta:
+  brief: docs/DiCoME_eval/fpad-wacv-brief.md
+  repo: /data/umar/Repos/DFB_NeSyNS
+  seed: 42                      # 🟡 the two matched Stage-A students MUST share this
+  env: dfb_nesy                 # torch 2.9.1, peft 0.14.0
+
+# ---------------------------------------------------------------------------
+# The teacher-student encoder. One model, read twice (adapters off / on).
+# ---------------------------------------------------------------------------
+encoder:
+  checkpoint: null              # null -> weights/FS-VFM/checkpoint-599.pth
+  # sha256 3fd99324c998ee06e4daa7f9d845e73f65f1628dee741b2c98664d566526bc87
+  # NOT encoder-only: the blob also carries decoder / rep_decoder / projector / predictor, which
+  # the loader ignores. 24 encoder blocks, embed_dim 1024.
+  pooling: global_pool
+  img_size: 224
+  # ZERO-BASED block indices. The brief writes the layer set 1-indexed as {4,8,12,16,20,24};
+  # these are the corresponding indices. Recorded because an off-by-one shifts every per-layer
+  # claim in the paper.
+  layers: [3, 7, 11, 15, 19, 23]
+  # `h^(l)` is the MEAN of the patch tokens, not CLS. This checkpoint loads with
+  # global_pool=True, which deletes `self.norm` and adds `fc_norm` (fsvfm/models_vit.py:37-42),
+  # so the representation FS-VFM was pretrained and evaluated through is the patch mean. CLS is
+  # computed as `D_cls` and reported beside it. Decided with Umar 2026-08-21.
+  readout: mean_pool
+
+# ---------------------------------------------------------------------------
+# LoRA on the student. DEVIATION from the DiCoME recipe, forced by the architecture.
+# ---------------------------------------------------------------------------
+lora:
+  # DiCoME adapted q_proj and v_proj only. Those are HuggingFace CLIP names; this timm-derived
+  # ViT has a FUSED `attn.qkv` (3072x1024), so adapting attention necessarily adapts q, k AND v
+  # together — peft cannot address slices of a fused Linear. Recorded as the stated deviation.
+  target_modules: [qkv, proj, fc1, fc2]
+  r: 8                          # DiCoME src/config.py:38-45, carried over unchanged
+  lora_alpha: 16
+  lora_dropout: 0.1
+  bias: none
+  # 3,160,064 trainable (1.03%) against 303,301,632 frozen.
+  # BOTH matched Stage-A students must use this identical target set — the ordinary-LoRA and
+  # preservation students may differ ONLY in lambda_preserve.
+
+# ---------------------------------------------------------------------------
+# Heads. Same capacity class on purpose: `B2 - B1` is a readout-only comparison, so a capacity
+# difference between the direct and trajectory heads would contaminate the paper's headline.
+# ---------------------------------------------------------------------------
+heads:
+  hidden_dim: 64
+  use_slopes: true              # D plus its successive differences, so curve SHAPE is
+                                # representable and not just level
+  lr: 1.0e-3
+  epochs: 200                   # H_traj is tiny and trains on cached D(x)
+  # Rung B5 — spatial readout over the patch adaptation map. Stage-B change ONLY: the frozen
+  # preservation student is not re-adapted, only this head trains. Layer weights are LEARNED
+  # (softmax over the six, uniform at init) rather than pinned to L20, so the head has to
+  # rediscover what the localization probe measured — L20 at 2.64x chance, L8/L12 at or below it.
+  spatial_mode: attention       # `attention` = softmax(g(a_j)) over patches; `topk` = top-k mean
+  top_k_fraction: 0.25
+  spatial_epochs: 5             # ~24 min/epoch: forward-only through the frozen student
+  layer_lr: 2.0e-2              # the 6 layer logits only; see the note in train_fpad.py
+
+# ---------------------------------------------------------------------------
+# Stage A — adapt. Recipe carried from the validated V1/DiCoME path.
+# ---------------------------------------------------------------------------
+training:
+  train_dataset: [FaceForensics++]
+  compression: c23              # the ONLY compression staged on this machine; see wacv/REPO_MAP.md
+  optimizer: AdamW
+  lr: 1.0e-4
+  betas: [0.9, 0.999]
+  weight_decay: 0.01
+  min_lr: 1.0e-6
+  scheduler: CosineAnnealingLR
+  max_epochs: 10                # 🟡 reduced from 20 by Umar 2026-08-21 for the sprint
+  sampling: paired              # primary; `random` is the recorded control
+  # TRAIN split only; validation keeps its full 32 so the selection metric keeps one definition.
+  # 32 frames are extracted per video and 16 is every SECOND frame, not the first sixteen —
+  # abstract_dataset's even-spacing branch had `step` collapse to 1, which is fixed. Halves the
+  # epoch: 96 -> ~48 min at the observed 1.0 s/it. Set by Umar 2026-08-21.
+  frames_per_video: 16
+  # lambda_preserve has NO default and must be given on the command line. It is the only thing
+  # separating the two matched students, so it is stated at the call site, not inherited.
+  lambda_preserve_sweep: [0.1, 0.5, 1.0, 2.0]   # 🟡 the small recorded sweep the brief asks for
+
+# ---------------------------------------------------------------------------
+# Selection and the split (reused from V1 verbatim)
+# ---------------------------------------------------------------------------
+meta_split:
+  file: configs/discern_v2/meta_split.json
+selection:
+  split: VAL_select
+  primary_metric: video_auroc
+  note: |
+    In-domain validation saturates and V1 measured a between-model to within-model signal ratio
+    near 2, so treat checkpoint selection as close to arbitrary and do not over-read small
+    validation differences. Recorded in every result file rather than rediscovered.
+
+# ---------------------------------------------------------------------------
+# Stage 2 — the mechanism gate
+# ---------------------------------------------------------------------------
+gate:
+  # Single-axis, on CLEAN OOD reals. The brief names "DF40-Dev reals and the FF++ compression
+  # shift"; only c23 is staged, so the compression axis is unavailable (wacv/REPO_MAP.md item 8).
+  # Decided with Umar 2026-08-21: use the Celeb-DF-SOURCED DF40-Dev reals as the domain axis.
+  # The -ff reals overlap FF++-only training and would understate domain separability, weakening
+  # the gate; the -cdf reals are genuinely out of distribution.
+  domain_axis: df40_dev_cdf_reals
+  forbidden: [Celeb-DF-v2, Celeb-DF-v3, DFDC, DFDCP, DeepFakeDetection, Deepfake-Eval-2024]
+  # Touching any of the above here would reclassify it as development data and forfeit its
+  # zero-shot status in the final table.
+
+# ---------------------------------------------------------------------------
+# Stage 4 — rescue. Defined relative to B1, this paper's own baseline.
+# ---------------------------------------------------------------------------
+rescue:
+  # The eight P0-DS inverted rows, kept as a LINEAGE reference set only. They were measured on
+  # DiCoME's operator, not on B1, so they say where the anchor family failed — not where B1
+  # fails. A row DiCoME inverted that B1 already handles is not a rescue for this paper.
+  p0ds_reference_rows:
+    - {method: sadtalker_ff,     p0ds_auroc: 0.2534}
+    - {method: danet_cdf,        p0ds_auroc: 0.2855}
+    - {method: tpsm_ff,          p0ds_auroc: 0.2903}
+    - {method: danet_ff,         p0ds_auroc: 0.4007}
+    - {method: mcnet_cdf,        p0ds_auroc: 0.4042}
+    - {method: mcnet_ff,         p0ds_auroc: 0.4320}
+    - {method: facevid2vid_ff,   p0ds_auroc: 0.4796}
+    - {method: tpsm_cdf,         p0ds_auroc: 0.4997}
+  # The HEADLINE rescue number is B1-relative: compute B1's per-row DF40-Dev AUROC first, define
+  # B1's own weak and inverted rows from it, then report B1 -> B2 -> B3 on that set.
+  definition: b1_relative
+  weak_threshold: 0.70          # B1 rows below this are "weak"
+  inverted_threshold: 0.50      # below this, "inverted"
+
+# ---------------------------------------------------------------------------
+# Stage 5 — localization
+# ---------------------------------------------------------------------------
+localization:
+  # Genuine FF++ masks ARE staged, already warped through the same crop transform as the frames.
+  mask_root: /data/umar/Datasets/preprocessed/FaceForensics++/manipulated_sequences
+  with_masks: [Deepfakes, Face2Face, FaceSwap, NeuralTextures, DeepFakeDetection]
+  without_masks: [FaceShifter]   # EXCLUDE from the localization table; never pseudo-mask it in
+  primary_metric: patch_auprc    # 14x14 grid; AUPRC is robust to the coarse discretisation
+  secondary_metric: patch_iou    # reported WITH the grid resolution stated
+  mask_downsample: to_patch_grid # downsample masks to 14x14 for the AUPRC labels
+  faithfulness: deletion         # needs no mask; runs regardless
+
+# ---------------------------------------------------------------------------
+# Stage 6 — robustness. Two independent routes; whichever lands first fills the row.
+# ---------------------------------------------------------------------------
+robustness:
+  jpeg_probe:
+    # Runs immediately, zero download. NOT identical to H.264 c40 and must be labelled a
+    # JPEG-compression probe, but it answers "is your signal just reading compression".
+    quality_ladder: [95, 85, 75, 65, 50, 35, 20]
+    audit_at_lowest: true
+  h264_c40:
+    status: TODO(run)            # pending the FF++ c40 download + crop pipeline
+

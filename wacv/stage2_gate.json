@@ -1,0 +1,579 @@
+{
+  "decision": {
+    "proceed": false,
+    "verdict": "BORDERLINE \u2014 re-run before committing the paper's framing",
+    "justification": "preservation improves the forensic-minus-domain gap on 5 of 6 layers (median +0.0276), and clears the 0.02 bar on 3 of 6 \u2014 which misses the \"more than half\" rule by 0 layer. A margin that small does not distinguish the two outcomes.",
+    "next": "Do NOT commit the framing on this. Re-run at the final Stage-A epoch on the full scoring set: this read is one layer from flipping, and both the epoch count and the sample cap are things that move it. Report the per-layer table either way \u2014 it is informative regardless of which side the verdict lands on.",
+    "borderline": true,
+    "n_layers_improved_any": 5,
+    "margin_layers": 0.0,
+    "per_layer": {
+      "d_l4": {
+        "gap_ordinary": -0.13704075069259303,
+        "gap_preserve": -0.09775141746039206,
+        "improvement": 0.03928933323220096,
+        "verdict_ordinary": "DATASET DETECTOR",
+        "verdict_preserve": "DATASET DETECTOR",
+        "forensic_in_domain_ordinary": 0.5588036176323973,
+        "forensic_in_domain_preserve": 0.5289332799454257
+      },
+      "d_l8": {
+        "gap_ordinary": 0.02965995879717165,
+        "gap_preserve": 0.044676943850078144,
+        "improvement": 0.015016985052906495,
+        "verdict_ordinary": "BORDERLINE",
+        "verdict_preserve": "BORDERLINE",
+        "forensic_in_domain_ordinary": 0.5003209343176585,
+        "forensic_in_domain_preserve": 0.5627062293307232
+      },
+      "d_l12": {
+        "gap_ordinary": 0.11379846635206148,
+        "gap_preserve": 0.12972052704011983,
+        "improvement": 0.015922060688058348,
+        "verdict_ordinary": "pass",
+        "verdict_preserve": "pass",
+        "forensic_in_domain_ordinary": 0.6647978730980131,
+        "forensic_in_domain_preserve": 0.5688611321202415
+      },
+      "d_l16": {
+        "gap_ordinary": 0.10806290985592448,
+        "gap_preserve": 0.16395204005428676,
+        "improvement": 0.05588913019836228,
+        "verdict_ordinary": "pass",
+        "verdict_preserve": "pass",
+        "forensic_in_domain_ordinary": 0.7706658437581598,
+        "forensic_in_domain_preserve": 0.8207009758123118
+      },
+      "d_l20": {
+        "gap_ordinary": 0.14079489651363808,
+        "gap_preserve": 0.11625045171171688,
+        "improvement": -0.024544444801921195,
+        "verdict_ordinary": "pass",
+        "verdict_preserve": "pass",
+        "forensic_in_domain_ordinary": 0.9673164478837799,
+        "forensic_in_domain_preserve": 0.9649122807017544
+      },
+      "d_l24": {
+        "gap_ordinary": -0.07134439828250105,
+        "gap_preserve": -0.018016731279188902,
+        "improvement": 0.05332766700331215,
+        "verdict_ordinary": "DATASET DETECTOR",
+        "verdict_preserve": "DATASET DETECTOR",
+        "forensic_in_domain_ordinary": 0.7846397797137228,
+        "forensic_in_domain_preserve": 0.9522067001824086
+      }
+    },
+    "n_layers_improved": 3,
+    "n_early_mid_improved": 1,
+    "fraction_improved": 0.5,
+    "both_fail_audit": false,
+    "equal_in_domain_forensic": false,
+    "thresholds": {
+      "meaningful_gap_improvement": 0.02,
+      "majority": 0.5,
+      "noise": 0.01
+    }
+  },
+  "ordinary": {
+    "per_layer": {
+      "d_l4": {
+        "domain_separability": 0.6493061037580777,
+        "forensic_separability": 0.5122653530654847,
+        "forensic_minus_domain": -0.13704075069259303,
+        "shift_ood_real": 0.5266553133175869,
+        "shift_ood_fake": 0.49815272319534265,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959,
+        "forensic_in_domain": 0.5588036176323973
+      },
+      "d_l8": {
+        "domain_separability": 0.6200370442514771,
+        "forensic_separability": 0.6496970030486487,
+        "forensic_minus_domain": 0.02965995879717165,
+        "shift_ood_real": -0.4014084214850922,
+        "shift_ood_fake": 0.04452704103757183,
+        "verdict": "BORDERLINE",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959,
+        "forensic_in_domain": 0.5003209343176585
+      },
+      "d_l12": {
+        "domain_separability": 0.6271830990728685,
+        "forensic_separability": 0.74098156542493,
+        "forensic_minus_domain": 0.11379846635206148,
+        "shift_ood_real": -0.40878605120211753,
+        "shift_ood_fake": 0.5088232941409886,
+        "verdict": "pass",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959,
+        "forensic_in_domain": 0.6647978730980131
+      },
+      "d_l16": {
+        "domain_separability": 0.6339327393950578,
+        "forensic_separability": 0.7419956492509823,
+        "forensic_minus_domain": 0.10806290985592448,
+        "shift_ood_real": -0.43126226196474865,
+        "shift_ood_fake": 0.5401093434493799,
+        "verdict": "pass",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959,
+        "forensic_in_domain": 0.7706658437581598
+      },
+      "d_l20": {
+        "domain_separability": 0.6246422871749657,
+        "forensic_separability": 0.7654371836886038,
+        "forensic_minus_domain": 0.14079489651363808,
+        "shift_ood_real": -0.31918352623734664,
+        "shift_ood_fake": 1.0962058017831793,
+        "verdict": "pass",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959,
+        "forensic_in_domain": 0.9673164478837799
+      },
+      "d_l24": {
+        "domain_separability": 0.623913362927726,
+        "forensic_separability": 0.552568964645225,
+        "forensic_minus_domain": -0.07134439828250105,
+        "shift_ood_real": -0.4370228857503444,
+        "shift_ood_fake": -0.547746664621344,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959,
+        "forensic_in_domain": 0.7846397797137228
+      }
+    },
+    "aggregate": {
+      "d_mean": {
+        "domain_separability": 0.6279820793307429,
+        "forensic_separability": 0.5406887174409094,
+        "forensic_minus_domain": -0.0872933618898335,
+        "shift_ood_real": -0.4451322864411161,
+        "shift_ood_fake": -0.5293238822318694,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959
+      },
+      "d_early": {
+        "domain_separability": 0.5044186547195538,
+        "forensic_separability": 0.6435616580602788,
+        "forensic_minus_domain": 0.13914300334072494,
+        "shift_ood_real": -0.016057314276629604,
+        "shift_ood_fake": 0.429428772715685,
+        "verdict": "pass",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959
+      },
+      "d_late": {
+        "domain_separability": 0.6272487125072193,
+        "forensic_separability": 0.5441841645784676,
+        "forensic_minus_domain": -0.08306454792875162,
+        "shift_ood_real": -0.44372972653802945,
+        "shift_ood_fake": -0.5372609415894362,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959
+      },
+      "patch_top10_share": {
+        "domain_separability": 0.6461720370579209,
+        "forensic_separability": 0.6264091963958247,
+        "forensic_minus_domain": -0.019762840662096215,
+        "shift_ood_real": 0.4891723755220971,
+        "shift_ood_fake": 0.8594490787557686,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959
+      }
+    },
+    "cls_diagnostic": {
+      "d_cls_l4": {
+        "domain_separability": 0.7727482118630458,
+        "forensic_separability": 0.5354555401892567,
+        "forensic_minus_domain": -0.2372926716737891,
+        "shift_ood_real": 1.0687118065193737,
+        "shift_ood_fake": 0.9400823705490794,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959
+      },
+      "d_cls_l8": {
+        "domain_separability": 0.7120024741732537,
+        "forensic_separability": 0.5382889982684727,
+        "forensic_minus_domain": -0.17371347590478103,
+        "shift_ood_real": 0.6575575977206735,
+        "shift_ood_fake": 0.7776282658295101,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959
+      },
+      "d_cls_l12": {
+        "domain_separability": 0.5132802274599058,
+        "forensic_separability": 0.5060804914369259,
+        "forensic_minus_domain": -0.007199736022979852,
+        "shift_ood_real": -0.0667520559103648,
+        "shift_ood_fake": -0.029622891150815983,
+        "verdict": "UNINFORMATIVE",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959
+      },
+      "d_cls_l16": {
+        "domain_separability": 0.5082303851713639,
+        "forensic_separability": 0.5582088958252241,
+        "forensic_minus_domain": 0.049978510653860275,
+        "shift_ood_real": -0.042922206994618906,
+        "shift_ood_fake": 0.14346389540608107,
+        "verdict": "BORDERLINE",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959
+      },
+      "d_cls_l20": {
+        "domain_separability": 0.6186191789435553,
+        "forensic_separability": 0.5752294368190821,
+        "forensic_minus_domain": -0.04338974212447322,
+        "shift_ood_real": -0.309905659120923,
+        "shift_ood_fake": -0.09683660535889803,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959
+      },
+      "d_cls_l24": {
+        "domain_separability": 0.6790146365801731,
+        "forensic_separability": 0.5090243281509097,
+        "forensic_minus_domain": -0.16999030842926344,
+        "shift_ood_real": -0.6364442778785521,
+        "shift_ood_fake": -0.5487106685061272,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 515,
+        "n_ood_real": 2841,
+        "n_ood_fake": 9959
+      }
+    },
+    "direct_readout": {
+      "domain_separability": 0.6094428667603025,
+      "forensic_separability": 0.6394932175103422,
+      "forensic_minus_domain": 0.0300503507500397,
+      "shift_ood_real": -0.02881178699457657,
+      "shift_ood_fake": 0.6801639688029332,
+      "verdict": "BORDERLINE",
+      "n_ffpp_real": 515,
+      "n_ood_real": 2841,
+      "n_ood_fake": 9959,
+      "forensic_in_domain": 0.9798865335770409
+    },
+    "counts": {
+      "ffpp_real": 515,
+      "ffpp_fake": 2045,
+      "ood_real": 2841,
+      "ood_fake": 9959
+    }
+  },
+  "preserve": {
+    "per_layer": {
+      "d_l4": {
+        "domain_separability": 0.7083926301905331,
+        "forensic_separability": 0.610641212730141,
+        "forensic_minus_domain": -0.09775141746039206,
+        "shift_ood_real": 0.08205238121464295,
+        "shift_ood_fake": 0.22001700331437432,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984,
+        "forensic_in_domain": 0.5289332799454257
+      },
+      "d_l8": {
+        "domain_separability": 0.6050041652426521,
+        "forensic_separability": 0.6496811090927302,
+        "forensic_minus_domain": 0.044676943850078144,
+        "shift_ood_real": 0.2804428124399489,
+        "shift_ood_fake": 0.8696779890629157,
+        "verdict": "BORDERLINE",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984,
+        "forensic_in_domain": 0.5627062293307232
+      },
+      "d_l12": {
+        "domain_separability": 0.5338155625213603,
+        "forensic_separability": 0.6635360895614801,
+        "forensic_minus_domain": 0.12972052704011983,
+        "shift_ood_real": 0.05993514672572188,
+        "shift_ood_fake": 0.4031391871204196,
+        "verdict": "pass",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984,
+        "forensic_in_domain": 0.5688611321202415
+      },
+      "d_l16": {
+        "domain_separability": 0.5010880361414901,
+        "forensic_separability": 0.6650400761957769,
+        "forensic_minus_domain": 0.16395204005428676,
+        "shift_ood_real": -0.008708315147776452,
+        "shift_ood_fake": 0.21504156038529143,
+        "verdict": "pass",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984,
+        "forensic_in_domain": 0.8207009758123118
+      },
+      "d_l20": {
+        "domain_separability": 0.5243967073222829,
+        "forensic_separability": 0.6406471590339998,
+        "forensic_minus_domain": 0.11625045171171688,
+        "shift_ood_real": 0.027449936046921555,
+        "shift_ood_fake": 0.5310669800668868,
+        "verdict": "pass",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984,
+        "forensic_in_domain": 0.9649122807017544
+      },
+      "d_l24": {
+        "domain_separability": 0.5922611260039303,
+        "forensic_separability": 0.5742443947247414,
+        "forensic_minus_domain": -0.018016731279188902,
+        "shift_ood_real": 0.2959782008165307,
+        "shift_ood_fake": 2.2664901902914973,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984,
+        "forensic_in_domain": 0.9522067001824086
+      }
+    },
+    "aggregate": {
+      "d_mean": {
+        "domain_separability": 0.5117290963559467,
+        "forensic_separability": 0.6512998034070421,
+        "forensic_minus_domain": 0.13957070705109542,
+        "shift_ood_real": 0.30506038102400934,
+        "shift_ood_fake": 2.295930992478689,
+        "verdict": "pass",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984
+      },
+      "d_early": {
+        "domain_separability": 0.6521598518668831,
+        "forensic_separability": 0.6446695216607936,
+        "forensic_minus_domain": -0.007490330206089468,
+        "shift_ood_real": 0.1275988678217961,
+        "shift_ood_fake": 0.4390583074625467,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984
+      },
+      "d_late": {
+        "domain_separability": 0.5835091101332878,
+        "forensic_separability": 0.6131795069554469,
+        "forensic_minus_domain": 0.029670396822159106,
+        "shift_ood_real": 0.2938186788219304,
+        "shift_ood_fake": 2.2712270861007187,
+        "verdict": "BORDERLINE",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984
+      },
+      "patch_top10_share": {
+        "domain_separability": 0.508346505468216,
+        "forensic_separability": 0.6195053065017665,
+        "forensic_minus_domain": 0.11115880103355047,
+        "shift_ood_real": -0.018479971117127323,
+        "shift_ood_fake": 0.3126633567243594,
+        "verdict": "pass",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984
+      }
+    },
+    "cls_diagnostic": {
+      "d_cls_l4": {
+        "domain_separability": 0.6813202217190704,
+        "forensic_separability": 0.5856403626484192,
+        "forensic_minus_domain": -0.09567985907065113,
+        "shift_ood_real": 0.024839942569698903,
+        "shift_ood_fake": 0.06996861431037993,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984
+      },
+      "d_cls_l8": {
+        "domain_separability": 0.749849143455229,
+        "forensic_separability": 0.6097809229141627,
+        "forensic_minus_domain": -0.14006822054106627,
+        "shift_ood_real": 0.024572249713823387,
+        "shift_ood_fake": 0.0596959571421496,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984
+      },
+      "d_cls_l12": {
+        "domain_separability": 0.6099353719882091,
+        "forensic_separability": 0.5426928646914608,
+        "forensic_minus_domain": -0.0672425072967483,
+        "shift_ood_real": -0.02095612574610672,
+        "shift_ood_fake": -0.007678033230736765,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984
+      },
+      "d_cls_l16": {
+        "domain_separability": 0.5191798076512303,
+        "forensic_separability": 0.5307988342427429,
+        "forensic_minus_domain": 0.011619026591512593,
+        "shift_ood_real": -0.04112147582573035,
+        "shift_ood_fake": -0.026854496554097794,
+        "verdict": "UNINFORMATIVE",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984
+      },
+      "d_cls_l20": {
+        "domain_separability": 0.5910445947966507,
+        "forensic_separability": 0.5851172956275495,
+        "forensic_minus_domain": -0.0059272991691011745,
+        "shift_ood_real": -0.19158547232279194,
+        "shift_ood_fake": -0.02841179659151352,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984
+      },
+      "d_cls_l24": {
+        "domain_separability": 0.594699194719754,
+        "forensic_separability": 0.5673799670381702,
+        "forensic_minus_domain": -0.02731922768158379,
+        "shift_ood_real": -0.1408696281583796,
+        "shift_ood_fake": 0.3894433078528831,
+        "verdict": "DATASET DETECTOR",
+        "n_ffpp_real": 532,
+        "n_ood_real": 2816,
+        "n_ood_fake": 9984
+      }
+    },
+    "direct_readout": {
+      "domain_separability": 0.6235702003588517,
+      "forensic_separability": 0.6600818233890133,
+      "forensic_minus_domain": 0.036511623030161644,
+      "shift_ood_real": 0.08272877880810568,
+      "shift_ood_fake": 0.898810685543056,
+      "verdict": "BORDERLINE",
+      "n_ffpp_real": 532,
+      "n_ood_real": 2816,
+      "n_ood_fake": 9984,
+      "forensic_in_domain": 0.981512583233231
+    },
+    "counts": {
+      "ffpp_real": 532,
+      "ffpp_fake": 2028,
+      "ood_real": 2816,
+      "ood_fake": 9984
+    }
+  },
+  "layers": [
+    "d_l4",
+    "d_l8",
+    "d_l12",
+    "d_l16",
+    "d_l20",
+    "d_l24"
+  ],
+  "matched": true,
+  "epoch": 1,
+  "provenance_cost": {
+    "corpus": "Celeb-DF-v2",
+    "n_real_videos_read": 178,
+    "n_real_frames_read": 2841,
+    "videos": [
+      "00011",
+      "00021",
+      "00023",
+      "00024",
+      "00036",
+      "00047",
+      "00048",
+      "00061",
+      "00063",
+      "00076",
+      "00082",
+      "00092",
+      "00095",
+      "00106",
+      "00119",
+      "00133",
+      "00138",
+      "00168",
+      "00170",
+      "00188",
+      "00193",
+      "00194",
+      "00197",
+      "00202",
+      "00207",
+      "00208",
+      "00213",
+      "00227",
+      "00236",
+      "00244",
+      "00250",
+      "00251",
+      "00252",
+      "00253",
+      "00254",
+      "00255",
+      "00256",
+      "00257",
+      "00258",
+      "00259",
+      "00260",
+      "00261",
+      "00262",
+      "00263",
+      "00264",
+      "00265",
+      "00266",
+      "00267",
+      "00268",
+      "00269"
+    ],
+    "fakes_read": 0,
+    "anything_fit_on_them": false,
+    "wording_for_the_paper": "Celeb-DF-v2 REAL frames reached through DF40-Dev's borrowed authentic half were read as the domain axis of the Stage-2 mechanism gate. No Celeb-DF-v2 fake was read and nothing was fit on them. Its final-table row is therefore not strictly zero-shot on the real side, and should be footnoted as such rather than presented as unseen."
+  },
+  "runs": {
+    "ordinary": "logs/fpad/studentA_ordinary_seed42",
+    "preserve": "logs/fpad/studentA_preserve_seed42",
+    "lambda_ordinary": 0.0,
+    "lambda_preserve": 1.0
+  },
+  "profiles": {
+    "ordinary": [
+      "logs/fpad/score/ordinary_ffppval/profile_epoch_001.parquet",
+      "logs/fpad/score/ordinary_df40dev/profile_epoch_001.parquet"
+    ],
+    "preserve": [
+      "logs/fpad/score/preserve_ffppval/profile_epoch_001.parquet",
+      "logs/fpad/score/preserve_df40dev/profile_epoch_001.parquet"
+    ]
+  }
+}
