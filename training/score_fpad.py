@@ -64,7 +64,8 @@ def real_source_of(path: str) -> str:
 
 @torch.no_grad()
 def score_dataset(model, direct, loader, views, device: str, name: str,
-                  max_batches: int = 0, traj=None, spatial=None) -> pd.DataFrame:
+                  max_batches: int = 0, traj=None, spatial=None, rate=None,
+                  rate_probe=None) -> pd.DataFrame:
     from tqdm import tqdm
 
     model.eval()
@@ -94,6 +95,18 @@ def score_dataset(model, direct, loader, views, device: str, name: str,
         record["d_mean"] = D.mean(axis=1)
         record["d_early"] = D[:, : max(1, len(layers_1x) // 2)].mean(axis=1)
         record["d_late"] = D[:, len(layers_1x) // 2:].mean(axis=1)
+        if rate is not None:
+            # h_teacher is the FROZEN FS-VFM pooled feature — exactly the space the operator was
+            # fit on. Reusing it means the rate expert rides this pass for free.
+            R = rate(out["h_teacher"])
+            for j in range(R.shape[1]):
+                record[f"rate_r_{j}"] = R[:, j].cpu().numpy()
+            if rate_probe is not None:
+                z = (R.cpu().numpy() - rate_probe["mu"]) / rate_probe["sigma"]
+                logit = z @ rate_probe["coef"] + rate_probe["intercept"]
+                p_rate = 1.0 / (1.0 + np.exp(-logit))
+                record["p_rate"] = p_rate
+                record["u_rate"] = np.full(len(p_rate), np.nan)
         if spatial is not None:
             sp = spatial(out["patch_delta"], out["patch_tokens"])
             record["p_spatial"] = sp["prob"].cpu().numpy()
@@ -134,6 +147,17 @@ def main() -> int:
                     help="a Stage-B run directory. With it the scorer also emits `p_traj`, the "
                          "trajectory readout that rungs B2/B3 are scored on. Without it only the "
                          "direct readout `p_direct` is emitted, which is what B0/B1 use.")
+    ap.add_argument("--rate-operator", type=Path, default=None,
+                    help="a frozen MR-VAE artifact. Emits the rate response `rate_r_*` from the "
+                         "FROZEN-teacher FS-VFM feature this pass already computes, so the rate "
+                         "expert costs no extra forward pass. With --rate-probe it also emits "
+                         "`p_rate`.")
+    ap.add_argument("--rate-probe", type=Path, default=None,
+                    help="a logistic probe over the standardized rate response, fit on FF++ train "
+                         "(see analysis/tbiom/fit_rate_probe.py). Stage 1 uses this as a cheap, "
+                         "honest stand-in for a trained EDL head: it is a LOWER BOUND, so an "
+                         "expert that shows no complementarity here would not gain it from a "
+                         "bigger head.")
     ap.add_argument("--spatial-head", type=Path, default=None,
                     help="rung B5: emit `p_spatial` from a spatial readout head")
     ap.add_argument("--output", type=Path, required=True)
@@ -227,6 +251,19 @@ def main() -> int:
         spatial = spatial.to(args.device).eval()
         print(f"  B5 spatial readout: {d}")
 
+    rate = rate_probe = None
+    if args.rate_operator:
+        from networks.discern_v2.rate_branch import FrozenRateOperator
+        rate = FrozenRateOperator(args.rate_operator).to(args.device)
+        rate.assert_frozen()
+        print(f"  rate operator: beta grid {rate.beta_grid}, hidden {rate.hidden_dim}")
+        if args.rate_probe:
+            rate_probe = json.loads(args.rate_probe.read_text())
+            rate_probe = {k: np.asarray(v) if isinstance(v, list) else v
+                          for k, v in rate_probe.items()}
+            print(f"  rate probe: FF++-train logistic, train AUROC "
+                  f"{rate_probe.get('train_auroc')}")
+
     data_cfg = prepare_dataset_config(args.detector_config, args.batch_size, args.workers)
     views = FpadViews(augment=False, matched=False, jpeg_quality=args.jpeg_quality)
     if args.jpeg_quality is not None:
@@ -253,7 +290,8 @@ def main() -> int:
             dataset, batch_size=args.batch_size, shuffle=False,
             num_workers=int(data_cfg["workers"]), collate_fn=dataset.collate_fn)
         frames.append(score_dataset(model, direct, loader, views, args.device, name,
-                                    args.max_batches, traj=traj, spatial=spatial))
+                                    args.max_batches, traj=traj, spatial=spatial,
+                                    rate=rate, rate_probe=rate_probe))
         got = frames[-1]
         print(f"  {name}: {len(got)} frames · real_source "
               f"{got.groupby('real_source').size().to_dict()} · "

@@ -1,0 +1,30 @@
+{
+  "mu": [
+    0.006187366787344217,
+    0.006184143479913473,
+    0.006181306671351194,
+    0.0061788600869476795,
+    0.006176759488880634
+  ],
+  "sigma": [
+    0.002439287258312106,
+    0.0024361766409128904,
+    0.0024331575259566307,
+    0.0024301516823470592,
+    0.002427177270874381
+  ],
+  "coef": [
+    1.9207552823706275,
+    0.9746894032772793,
+    0.035310263354643524,
+    -0.9232981508161484,
+    -1.8997531923732784
+  ],
+  "intercept": 1.380700420853841,
+  "train_auroc": 0.5371941886026591,
+  "n_train": 40000,
+  "operator": "configs/discern_v2/rate/rate_operator_mrvae.pt",
+  "features": "cache/discern_v2/fsvfm_frozen/FaceForensics++_train/features.npz",
+  "standardization": "authentic FF++ train rows only",
+  "role": "LOWER BOUND stand-in for a trained EDL head, for the Stage 1 membership test"
+}
