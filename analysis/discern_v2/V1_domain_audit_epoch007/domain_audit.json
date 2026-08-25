@@ -1,0 +1,1098 @@
+{
+  "meta": {
+    "parquet": [
+      "logs/v1/eval/epoch_007_gated_diverse/per_sample_epoch_7.parquet"
+    ],
+    "n_rows": 387913,
+    "datasets": [
+      "Celeb-DF-v2",
+      "Celeb-DF-v3",
+      "DFDC",
+      "DFDCP",
+      "Deepfake-Eval-2024",
+      "FaceForensics++",
+      "UADFV"
+    ]
+  },
+  "figures": {
+    "ref_residual_norm": "analysis/discern_v2/V1_domain_audit_epoch007/distributions_ref_residual_norm.png",
+    "ref_angle": "analysis/discern_v2/V1_domain_audit_epoch007/distributions_ref_angle.png",
+    "proc_mse_mean": "analysis/discern_v2/V1_domain_audit_epoch007/distributions_proc_mse_mean.png",
+    "p_ref": "analysis/discern_v2/V1_domain_audit_epoch007/distributions_p_ref.png",
+    "p_proc": "analysis/discern_v2/V1_domain_audit_epoch007/distributions_p_proc.png",
+    "tsne": {
+      "n_points": 5600,
+      "n_columns": 27,
+      "columns": [
+        "u_fused",
+        "V",
+        "C",
+        "A",
+        "p_sem",
+        "u_sem",
+        "e_sem_real",
+        "e_sem_fake",
+        "p_ref",
+        "u_ref",
+        "e_ref_real",
+        "e_ref_fake",
+        "p_proc",
+        "u_proc",
+        "e_proc_real",
+        "e_proc_fake",
+        "p_direct",
+        "u_direct",
+        "proc_mse_mean",
+        "proc_mse_std",
+        "proc_mse_max",
+        "proc_mse_p90",
+        "proc_lpips_proxy",
+        "proc_center_ratio",
+        "ref_residual_norm",
+        "ref_angle",
+        "u_gated"
+      ],
+      "perplexity": 30.0
+    }
+  },
+  "results": {
+    "ref": {
+      "Celeb-DF-v2": {
+        "quantities": {
+          "ref_residual_norm": {
+            "domain_separability": 0.80523545734615,
+            "forensic_separability": 0.5998454680976396,
+            "forensic_minus_domain": -0.20538998924851037,
+            "shift_ood_real": 1.218658890199528,
+            "shift_ood_fake": 1.5617963210954522,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "ref_angle": {
+            "domain_separability": 0.7884184452175986,
+            "forensic_separability": 0.6050396050571494,
+            "forensic_minus_domain": -0.18337884016044925,
+            "shift_ood_real": 1.094161160283829,
+            "shift_ood_fake": 1.4587294735136582,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "p_ref": {
+            "domain_separability": 0.5477004065856841,
+            "forensic_separability": 0.6996312791301518,
+            "forensic_minus_domain": 0.1519308725444677,
+            "shift_ood_real": 0.15994968109835955,
+            "shift_ood_fake": 0.8184809761996739,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "u_ref": {
+            "domain_separability": 0.5236559103942877,
+            "forensic_separability": 0.618746253772064,
+            "forensic_minus_domain": 0.09509034337777633,
+            "shift_ood_real": 0.09380878151045721,
+            "shift_ood_fake": -0.35600105677264093,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "ref_residual_norm"
+      },
+      "Celeb-DF-v3": {
+        "quantities": {
+          "ref_residual_norm": {
+            "domain_separability": 0.80523545734615,
+            "forensic_separability": 0.6513112279696153,
+            "forensic_minus_domain": -0.15392422937653472,
+            "shift_ood_real": 1.218658890199528,
+            "shift_ood_fake": 1.7444535254025375,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "ref_angle": {
+            "domain_separability": 0.7884184452175986,
+            "forensic_separability": 0.6630163313132262,
+            "forensic_minus_domain": -0.1254021139043724,
+            "shift_ood_real": 1.094161160283829,
+            "shift_ood_fake": 1.6747694486394664,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "p_ref": {
+            "domain_separability": 0.5477004065856841,
+            "forensic_separability": 0.6981984801793922,
+            "forensic_minus_domain": 0.15049807359370815,
+            "shift_ood_real": 0.15994968109835955,
+            "shift_ood_fake": 0.8073133031464192,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "u_ref": {
+            "domain_separability": 0.5236559103942877,
+            "forensic_separability": 0.6328989165781607,
+            "forensic_minus_domain": 0.10924300618387295,
+            "shift_ood_real": 0.09380854530673292,
+            "shift_ood_fake": -0.4529418996672248,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "ref_residual_norm"
+      },
+      "DFDC": {
+        "quantities": {
+          "ref_residual_norm": {
+            "domain_separability": 0.7998016227800296,
+            "forensic_separability": 0.5192992049008277,
+            "forensic_minus_domain": -0.28050241787920194,
+            "shift_ood_real": 1.5206388248843303,
+            "shift_ood_fake": 1.6691155893765746,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "ref_angle": {
+            "domain_separability": 0.8039363882506689,
+            "forensic_separability": 0.527346011489999,
+            "forensic_minus_domain": -0.2765903767606699,
+            "shift_ood_real": 1.612263556090635,
+            "shift_ood_fake": 1.844384389385982,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "p_ref": {
+            "domain_separability": 0.6450494853704937,
+            "forensic_separability": 0.7332252891138729,
+            "forensic_minus_domain": 0.08817580374337919,
+            "shift_ood_real": 0.5028172535072031,
+            "shift_ood_fake": 1.208909010009676,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "u_ref": {
+            "domain_separability": 0.6865991425664156,
+            "forensic_separability": 0.7279914827536588,
+            "forensic_minus_domain": 0.04139234018724314,
+            "shift_ood_real": -0.7182407263113115,
+            "shift_ood_fake": -1.6371974569704875,
+            "verdict": "BORDERLINE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "ref_residual_norm"
+      },
+      "DFDCP": {
+        "quantities": {
+          "ref_residual_norm": {
+            "domain_separability": 0.8313575407921175,
+            "forensic_separability": 0.5584582902584814,
+            "forensic_minus_domain": -0.2728992505336362,
+            "shift_ood_real": 1.9606171642026862,
+            "shift_ood_fake": 2.5911557506207323,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "ref_angle": {
+            "domain_separability": 0.8319852340402353,
+            "forensic_separability": 0.5648143578478695,
+            "forensic_minus_domain": -0.2671708761923658,
+            "shift_ood_real": 2.1890031472044225,
+            "shift_ood_fake": 3.0946414093368877,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "p_ref": {
+            "domain_separability": 0.7096916646996876,
+            "forensic_separability": 0.6932648123415384,
+            "forensic_minus_domain": -0.016426852358149224,
+            "shift_ood_real": 0.7296584472719907,
+            "shift_ood_fake": 1.2855830299295683,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "u_ref": {
+            "domain_separability": 0.7362477341915414,
+            "forensic_separability": 0.6694380069485887,
+            "forensic_minus_domain": -0.06680972724295275,
+            "shift_ood_real": -0.9832740599692927,
+            "shift_ood_fake": -1.627866110740426,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "ref_residual_norm"
+      },
+      "Deepfake-Eval-2024": {
+        "quantities": {
+          "ref_residual_norm": {
+            "domain_separability": 0.7882902815326951,
+            "forensic_separability": 0.5219407096136255,
+            "forensic_minus_domain": -0.2663495719190696,
+            "shift_ood_real": 2.2657521486355727,
+            "shift_ood_fake": 1.8194275866600114,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "ref_angle": {
+            "domain_separability": 0.76898318753731,
+            "forensic_separability": 0.5206337452633129,
+            "forensic_minus_domain": -0.24834944227399713,
+            "shift_ood_real": 2.7200319044304253,
+            "shift_ood_fake": 2.0414760247427024,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "p_ref": {
+            "domain_separability": 0.6227371391691923,
+            "forensic_separability": 0.5429254299391324,
+            "forensic_minus_domain": -0.07981170923005987,
+            "shift_ood_real": 0.43271462766436697,
+            "shift_ood_fake": 0.6114390187063932,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "u_ref": {
+            "domain_separability": 0.632620425219268,
+            "forensic_separability": 0.5416797564281666,
+            "forensic_minus_domain": -0.09094066879110141,
+            "shift_ood_real": -0.6054553375911458,
+            "shift_ood_fake": -0.8142759641269556,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "ref_residual_norm"
+      },
+      "UADFV": {
+        "quantities": {
+          "ref_residual_norm": {
+            "domain_separability": 0.6328633288344407,
+            "forensic_separability": 0.5176753099192486,
+            "forensic_minus_domain": -0.11518801891519215,
+            "shift_ood_real": 0.5244131445565428,
+            "shift_ood_fake": 0.5757106763864043,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "ref_angle": {
+            "domain_separability": 0.6337708217977114,
+            "forensic_separability": 0.5281674155375293,
+            "forensic_minus_domain": -0.10560340626018205,
+            "shift_ood_real": 0.5065814074108521,
+            "shift_ood_fake": 0.582935780985439,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "p_ref": {
+            "domain_separability": 0.5965770204641934,
+            "forensic_separability": 0.8219032648770401,
+            "forensic_minus_domain": 0.22532624441284677,
+            "shift_ood_real": -0.3321850176130183,
+            "shift_ood_fake": 0.88524115922327,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "u_ref": {
+            "domain_separability": 0.5553385416666667,
+            "forensic_separability": 0.718787329005043,
+            "forensic_minus_domain": 0.1634487873383763,
+            "shift_ood_real": 0.19599618152903964,
+            "shift_ood_fake": -0.8125365599012611,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "ref_residual_norm"
+      }
+    },
+    "proc": {
+      "Celeb-DF-v2": {
+        "quantities": {
+          "proc_mse_mean": {
+            "domain_separability": 0.7793324041888364,
+            "forensic_separability": 0.5953143165975983,
+            "forensic_minus_domain": -0.18401808759123817,
+            "shift_ood_real": -0.310297998003298,
+            "shift_ood_fake": -0.36652605536434224,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "proc_mse_std": {
+            "domain_separability": 0.7877460768873608,
+            "forensic_separability": 0.5853283988621801,
+            "forensic_minus_domain": -0.20241767802518063,
+            "shift_ood_real": -0.3828971668780745,
+            "shift_ood_fake": -0.44130903427451496,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "proc_mse_max": {
+            "domain_separability": 0.7657634501116856,
+            "forensic_separability": 0.5635697741412096,
+            "forensic_minus_domain": -0.202193675970476,
+            "shift_ood_real": -0.5521100878268189,
+            "shift_ood_fake": -0.6281203318237794,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "proc_mse_p90": {
+            "domain_separability": 0.7556506116040056,
+            "forensic_separability": 0.6011059446178331,
+            "forensic_minus_domain": -0.15454466698617253,
+            "shift_ood_real": -0.27501170832006994,
+            "shift_ood_fake": -0.33360946367971056,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "proc_lpips_proxy": {
+            "domain_separability": 0.7864497712955527,
+            "forensic_separability": 0.6031738705122773,
+            "forensic_minus_domain": -0.18327590078327538,
+            "shift_ood_real": -0.2915100180628125,
+            "shift_ood_fake": -0.33470898858808684,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "proc_center_ratio": {
+            "domain_separability": 0.5193046043632668,
+            "forensic_separability": 0.597182909256025,
+            "forensic_minus_domain": 0.07787830489275827,
+            "shift_ood_real": -0.003212253073930447,
+            "shift_ood_fake": -0.3083529027000792,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "p_proc": {
+            "domain_separability": 0.6608366182800421,
+            "forensic_separability": 0.6539437930170311,
+            "forensic_minus_domain": -0.006892825263011049,
+            "shift_ood_real": 0.5216803181230653,
+            "shift_ood_fake": 0.8978998029488863,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "u_proc": {
+            "domain_separability": 0.6512699332082622,
+            "forensic_separability": 0.6522351739799925,
+            "forensic_minus_domain": 0.0009652407717303246,
+            "shift_ood_real": -0.45126729510693964,
+            "shift_ood_fake": -0.8372633498144448,
+            "verdict": "BORDERLINE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "proc_mse_std"
+      },
+      "Celeb-DF-v3": {
+        "quantities": {
+          "proc_mse_mean": {
+            "domain_separability": 0.7793279336286517,
+            "forensic_separability": 0.6836715466381967,
+            "forensic_minus_domain": -0.09565638699045498,
+            "shift_ood_real": -0.310293763336404,
+            "shift_ood_fake": -0.4400111570914416,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "proc_mse_std": {
+            "domain_separability": 0.7877378416449152,
+            "forensic_separability": 0.6234183633228354,
+            "forensic_minus_domain": -0.16431947832207983,
+            "shift_ood_real": -0.38288957132835466,
+            "shift_ood_fake": -0.5010108707022404,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "proc_mse_max": {
+            "domain_separability": 0.7657460384562293,
+            "forensic_separability": 0.5657648332371478,
+            "forensic_minus_domain": -0.19998120521908158,
+            "shift_ood_real": -0.5520944153283941,
+            "shift_ood_fake": -0.6559464084535824,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "proc_mse_p90": {
+            "domain_separability": 0.755648337108473,
+            "forensic_separability": 0.7026405006637573,
+            "forensic_minus_domain": -0.05300783644471574,
+            "shift_ood_real": -0.2750119611026313,
+            "shift_ood_fake": -0.39760141505768865,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "proc_lpips_proxy": {
+            "domain_separability": 0.7864489869867484,
+            "forensic_separability": 0.6553019657699377,
+            "forensic_minus_domain": -0.13114702121681066,
+            "shift_ood_real": -0.29150866694930994,
+            "shift_ood_fake": -0.3802411708053392,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "proc_center_ratio": {
+            "domain_separability": 0.5193086239458891,
+            "forensic_separability": 0.5102049633158107,
+            "forensic_minus_domain": -0.009103660630078392,
+            "shift_ood_real": -0.00320793797152627,
+            "shift_ood_fake": 0.043416289284299754,
+            "verdict": "UNINFORMATIVE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "p_proc": {
+            "domain_separability": 0.6608276183365124,
+            "forensic_separability": 0.5746193379270592,
+            "forensic_minus_domain": -0.08620828040945316,
+            "shift_ood_real": 0.5216628076651271,
+            "shift_ood_fake": 0.7020234428379812,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "u_proc": {
+            "domain_separability": 0.6512655999021183,
+            "forensic_separability": 0.5679807234383796,
+            "forensic_minus_domain": -0.08328487646373872,
+            "shift_ood_real": -0.45125142426796777,
+            "shift_ood_fake": -0.6160659467718478,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "proc_mse_max"
+      },
+      "DFDC": {
+        "quantities": {
+          "proc_mse_mean": {
+            "domain_separability": 0.6782125956859468,
+            "forensic_separability": 0.5379842306471243,
+            "forensic_minus_domain": -0.14022836503882252,
+            "shift_ood_real": -0.038757325188648356,
+            "shift_ood_fake": -0.012187271091979986,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "proc_mse_std": {
+            "domain_separability": 0.5986285137770828,
+            "forensic_separability": 0.5487667618836788,
+            "forensic_minus_domain": -0.04986175189340403,
+            "shift_ood_real": -0.1381958275150804,
+            "shift_ood_fake": -0.16335412335368493,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "proc_mse_max": {
+            "domain_separability": 0.584035212569577,
+            "forensic_separability": 0.5515964032638007,
+            "forensic_minus_domain": -0.03243880930577636,
+            "shift_ood_real": -0.24707774552753498,
+            "shift_ood_fake": -0.3354206300633169,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "proc_mse_p90": {
+            "domain_separability": 0.7186245938992446,
+            "forensic_separability": 0.5325516562376224,
+            "forensic_minus_domain": -0.18607293766162225,
+            "shift_ood_real": -0.0014483061954045575,
+            "shift_ood_fake": 0.037688179366980115,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "proc_lpips_proxy": {
+            "domain_separability": 0.6149381075634237,
+            "forensic_separability": 0.5380760779829874,
+            "forensic_minus_domain": -0.07686202958043631,
+            "shift_ood_real": 0.13132306998767718,
+            "shift_ood_fake": 0.16655244710327416,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "proc_center_ratio": {
+            "domain_separability": 0.5902138856115433,
+            "forensic_separability": 0.5711300171787146,
+            "forensic_minus_domain": -0.01908386843282872,
+            "shift_ood_real": 0.33822703797615467,
+            "shift_ood_fake": 0.049501037895494926,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "p_proc": {
+            "domain_separability": 0.5709458213608292,
+            "forensic_separability": 0.5857769462009259,
+            "forensic_minus_domain": 0.014831124840096743,
+            "shift_ood_real": 0.16298296487404415,
+            "shift_ood_fake": 0.43335173146360007,
+            "verdict": "BORDERLINE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "u_proc": {
+            "domain_separability": 0.5707964126237708,
+            "forensic_separability": 0.5903619785042536,
+            "forensic_minus_domain": 0.01956556588048286,
+            "shift_ood_real": -0.2201361269409137,
+            "shift_ood_fake": -0.5135127255545655,
+            "verdict": "BORDERLINE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "proc_mse_p90"
+      },
+      "DFDCP": {
+        "quantities": {
+          "proc_mse_mean": {
+            "domain_separability": 0.6862692763938315,
+            "forensic_separability": 0.5934737346352017,
+            "forensic_minus_domain": -0.09279554175862981,
+            "shift_ood_real": -0.010575541837823062,
+            "shift_ood_fake": -0.09357345941276848,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "proc_mse_std": {
+            "domain_separability": 0.6238940849916479,
+            "forensic_separability": 0.5822970557944864,
+            "forensic_minus_domain": -0.04159702919716146,
+            "shift_ood_real": -0.010996724735380194,
+            "shift_ood_fake": -0.028578383263142812,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "proc_mse_max": {
+            "domain_separability": 0.5972022939513884,
+            "forensic_separability": 0.5713997263776733,
+            "forensic_minus_domain": -0.02580256757371502,
+            "shift_ood_real": -0.18319720745061735,
+            "shift_ood_fake": -0.22975373738471577,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "proc_mse_p90": {
+            "domain_separability": 0.7123503582927833,
+            "forensic_separability": 0.6031410179752268,
+            "forensic_minus_domain": -0.10920934031755647,
+            "shift_ood_real": -0.02418242075575894,
+            "shift_ood_fake": -0.16833866238287468,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "proc_lpips_proxy": {
+            "domain_separability": 0.6325268719587479,
+            "forensic_separability": 0.592707462190717,
+            "forensic_minus_domain": -0.03981940976803089,
+            "shift_ood_real": 0.056688165081106835,
+            "shift_ood_fake": -0.021071885522814533,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "proc_center_ratio": {
+            "domain_separability": 0.5561842764240927,
+            "forensic_separability": 0.6426673223639212,
+            "forensic_minus_domain": 0.08648304593982847,
+            "shift_ood_real": 0.1869072979730066,
+            "shift_ood_fake": -0.48827132455288913,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "p_proc": {
+            "domain_separability": 0.6074981427179413,
+            "forensic_separability": 0.6945419580304959,
+            "forensic_minus_domain": 0.08704381531255456,
+            "shift_ood_real": 0.3980083313202229,
+            "shift_ood_fake": 1.0108918696142704,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "u_proc": {
+            "domain_separability": 0.6013486288643571,
+            "forensic_separability": 0.680845910232076,
+            "forensic_minus_domain": 0.07949728136771883,
+            "shift_ood_real": -0.4024865464357424,
+            "shift_ood_fake": -1.0126043787755288,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "proc_mse_p90"
+      },
+      "Deepfake-Eval-2024": {
+        "quantities": {
+          "proc_mse_mean": {
+            "domain_separability": 0.5895855486149377,
+            "forensic_separability": 0.5023950344454442,
+            "forensic_minus_domain": -0.08719051416949353,
+            "shift_ood_real": 0.03574324464817965,
+            "shift_ood_fake": -0.0058852348089665305,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "proc_mse_std": {
+            "domain_separability": 0.5606043916029526,
+            "forensic_separability": 0.5068542835955242,
+            "forensic_minus_domain": -0.05375010800742841,
+            "shift_ood_real": 0.2683200835432767,
+            "shift_ood_fake": 0.1442669656992304,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "proc_mse_max": {
+            "domain_separability": 0.5506540820734032,
+            "forensic_separability": 0.5050956795500974,
+            "forensic_minus_domain": -0.045558402523305785,
+            "shift_ood_real": 0.1400698040146478,
+            "shift_ood_fake": 0.049174402673558576,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "proc_mse_p90": {
+            "domain_separability": 0.6076384882846582,
+            "forensic_separability": 0.5025133984365144,
+            "forensic_minus_domain": -0.10512508984814373,
+            "shift_ood_real": -0.05885067580243419,
+            "shift_ood_fake": -0.0764786285830459,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "proc_lpips_proxy": {
+            "domain_separability": 0.5689964792269366,
+            "forensic_separability": 0.5058395378130999,
+            "forensic_minus_domain": -0.06315694141383676,
+            "shift_ood_real": 0.13482955234672778,
+            "shift_ood_fake": 0.06976020838448466,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "proc_center_ratio": {
+            "domain_separability": 0.5335660186205631,
+            "forensic_separability": 0.5111451425003617,
+            "forensic_minus_domain": -0.022420876120201383,
+            "shift_ood_real": -0.12246033512401275,
+            "shift_ood_fake": -0.04948286904326681,
+            "verdict": "UNINFORMATIVE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "p_proc": {
+            "domain_separability": 0.6201982022317124,
+            "forensic_separability": 0.5074571777802362,
+            "forensic_minus_domain": -0.11274102445147616,
+            "shift_ood_real": 0.4312329660530809,
+            "shift_ood_fake": 0.40928506623240735,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "u_proc": {
+            "domain_separability": 0.6220546261537402,
+            "forensic_separability": 0.5098699713033013,
+            "forensic_minus_domain": -0.11218465485043894,
+            "shift_ood_real": -0.5265868466849911,
+            "shift_ood_fake": -0.4709029730975128,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "p_proc"
+      },
+      "UADFV": {
+        "quantities": {
+          "proc_mse_mean": {
+            "domain_separability": 0.5125663298265042,
+            "forensic_separability": 0.533368069612503,
+            "forensic_minus_domain": 0.020801739785998863,
+            "shift_ood_real": -0.1333966176842628,
+            "shift_ood_fake": -0.16645022242477162,
+            "verdict": "UNINFORMATIVE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "proc_mse_std": {
+            "domain_separability": 0.5109499007936508,
+            "forensic_separability": 0.5442510624969803,
+            "forensic_minus_domain": 0.03330116170332953,
+            "shift_ood_real": -0.13886872185268015,
+            "shift_ood_fake": -0.1708663769108611,
+            "verdict": "UNINFORMATIVE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "proc_mse_max": {
+            "domain_separability": 0.5226830703211518,
+            "forensic_separability": 0.5422308188265634,
+            "forensic_minus_domain": 0.019547748505411633,
+            "shift_ood_real": -0.15855260760800913,
+            "shift_ood_fake": -0.21518283786982625,
+            "verdict": "UNINFORMATIVE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "proc_mse_p90": {
+            "domain_separability": 0.5039720030454042,
+            "forensic_separability": 0.5346588097701408,
+            "forensic_minus_domain": 0.03068680672473656,
+            "shift_ood_real": -0.12677551019154973,
+            "shift_ood_fake": -0.15909228993118374,
+            "verdict": "UNINFORMATIVE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "proc_lpips_proxy": {
+            "domain_separability": 0.5126720970607235,
+            "forensic_separability": 0.5319948620294983,
+            "forensic_minus_domain": 0.01932276496877483,
+            "shift_ood_real": -0.10192050093015129,
+            "shift_ood_fake": -0.13705497744659662,
+            "verdict": "UNINFORMATIVE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "proc_center_ratio": {
+            "domain_separability": 0.5663145418050941,
+            "forensic_separability": 0.5869344109076915,
+            "forensic_minus_domain": 0.020619869102597388,
+            "shift_ood_real": -0.2607650449442046,
+            "shift_ood_fake": -0.5225620806949661,
+            "verdict": "BORDERLINE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "p_proc": {
+            "domain_separability": 0.558078251891842,
+            "forensic_separability": 0.6232513157302866,
+            "forensic_minus_domain": 0.06517306383844457,
+            "shift_ood_real": 0.20318989470974927,
+            "shift_ood_fake": 0.6235313559252856,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "u_proc": {
+            "domain_separability": 0.5392178704088224,
+            "forensic_separability": 0.6236415782432605,
+            "forensic_minus_domain": 0.08442370783443809,
+            "shift_ood_real": -0.0961745240235495,
+            "shift_ood_fake": -0.5191372128788965,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          }
+        },
+        "verdict": "UNINFORMATIVE",
+        "worst_quantity": "proc_lpips_proxy"
+      }
+    },
+    "sem": {
+      "Celeb-DF-v2": {
+        "quantities": {
+          "p_sem": {
+            "domain_separability": 0.6635110132642305,
+            "forensic_separability": 0.8673034231480716,
+            "forensic_minus_domain": 0.20379240988384117,
+            "shift_ood_real": 0.27230223460792796,
+            "shift_ood_fake": 3.0368858936514034,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          },
+          "u_sem": {
+            "domain_separability": 0.6571455630082321,
+            "forensic_separability": 0.5544023910622753,
+            "forensic_minus_domain": -0.10274317194595683,
+            "shift_ood_real": 0.24924881414309705,
+            "shift_ood_fake": 0.5464497175621917,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 10880
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "u_sem"
+      },
+      "Celeb-DF-v3": {
+        "quantities": {
+          "p_sem": {
+            "domain_separability": 0.6635110132642305,
+            "forensic_separability": 0.8317519836943263,
+            "forensic_minus_domain": 0.1682409704300959,
+            "shift_ood_real": 0.27230223460792796,
+            "shift_ood_fake": 2.6473106824190484,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          },
+          "u_sem": {
+            "domain_separability": 0.6571455630082321,
+            "forensic_separability": 0.5324804941901052,
+            "forensic_minus_domain": -0.12466506881812689,
+            "shift_ood_real": 0.24924881414309705,
+            "shift_ood_fake": 0.713608760600918,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5692,
+            "n_ood_fake": 167603
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "u_sem"
+      },
+      "DFDC": {
+        "quantities": {
+          "p_sem": {
+            "domain_separability": 0.6649195578264895,
+            "forensic_separability": 0.8238587273076294,
+            "forensic_minus_domain": 0.15893916948113995,
+            "shift_ood_real": 0.6723249302510356,
+            "shift_ood_fake": 3.1489094257372248,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          },
+          "u_sem": {
+            "domain_separability": 0.6074335473095032,
+            "forensic_separability": 0.6474683960206636,
+            "forensic_minus_domain": 0.040034848711160476,
+            "shift_ood_real": 0.29035884891764224,
+            "shift_ood_fake": 0.2616821018499663,
+            "verdict": "BORDERLINE",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 63265,
+            "n_ood_fake": 68851
+          }
+        },
+        "verdict": "BORDERLINE",
+        "worst_quantity": "u_sem"
+      },
+      "DFDCP": {
+        "quantities": {
+          "p_sem": {
+            "domain_separability": 0.7077696425545307,
+            "forensic_separability": 0.8631343649024078,
+            "forensic_minus_domain": 0.15536472234787713,
+            "shift_ood_real": 0.7198532581016036,
+            "shift_ood_fake": 3.450922432474125,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          },
+          "u_sem": {
+            "domain_separability": 0.6509956128803834,
+            "forensic_separability": 0.6142228015382211,
+            "forensic_minus_domain": -0.03677281134216237,
+            "shift_ood_real": 0.37203985060109207,
+            "shift_ood_fake": 0.4534636843015425,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 5901,
+            "n_ood_fake": 11321
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "u_sem"
+      },
+      "Deepfake-Eval-2024": {
+        "quantities": {
+          "p_sem": {
+            "domain_separability": 0.7827170455784773,
+            "forensic_separability": 0.6243947655585271,
+            "forensic_minus_domain": -0.1583222800199502,
+            "shift_ood_real": 1.0730569326993027,
+            "shift_ood_fake": 1.828354969192295,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          },
+          "u_sem": {
+            "domain_separability": 0.7471751482355236,
+            "forensic_separability": 0.5281663972572042,
+            "forensic_minus_domain": -0.2190087509783194,
+            "shift_ood_real": 0.7333738527865094,
+            "shift_ood_fake": 0.9253556979652724,
+            "verdict": "DATASET DETECTOR",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 12444,
+            "n_ood_fake": 10765
+          }
+        },
+        "verdict": "DATASET DETECTOR",
+        "worst_quantity": "u_sem"
+      },
+      "UADFV": {
+        "quantities": {
+          "p_sem": {
+            "domain_separability": 0.6652573020487265,
+            "forensic_separability": 0.9872204645831564,
+            "forensic_minus_domain": 0.3219631625344299,
+            "shift_ood_real": -0.10380796070068894,
+            "shift_ood_fake": 4.586731078306353,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          },
+          "u_sem": {
+            "domain_separability": 0.6763788673172758,
+            "forensic_separability": 0.9579430708203593,
+            "forensic_minus_domain": 0.28156420350308353,
+            "shift_ood_real": 0.045157822349228355,
+            "shift_ood_fake": -0.43893438633890747,
+            "verdict": "pass",
+            "n_ffpp_real": 4480,
+            "n_ood_real": 1548,
+            "n_ood_fake": 1551
+          }
+        },
+        "verdict": "pass",
+        "worst_quantity": "u_sem"
+      }
+    }
+  }
+}

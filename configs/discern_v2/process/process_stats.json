@@ -1,0 +1,45 @@
+{
+  "n_real": 23039,
+  "dataset": "FaceForensics++/train",
+  "vae_path": "/data/umar/Repos/DiCoME/eval_adaptation/data/models/sdxl-vae",
+  "resolution": 256,
+  "stat_names": [
+    "mse_mean",
+    "mse_std",
+    "mse_max",
+    "mse_p90",
+    "lpips_proxy",
+    "center_ratio"
+  ],
+  "input_normalization": {
+    "mean": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "std": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "note": "raw_frames in [0,1]; the operator's un-normalisation is the identity and the VAE sees its native scale"
+  },
+  "mean": [
+    0.0008711635018698871,
+    0.0035359689500182867,
+    0.19267761707305908,
+    0.0017262236215174198,
+    0.0016780144069343805,
+    0.6927337646484375
+  ],
+  "std": [
+    0.0010818059090524912,
+    0.00439903000369668,
+    0.18904434144496918,
+    0.0027862885035574436,
+    0.0021977932192385197,
+    0.28401651978492737
+  ],
+  "partial": false,
+  "git_commit": "4c2f39950ed1a55b53a121799e3b642bf1da3990"
+}

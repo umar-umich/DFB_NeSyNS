@@ -38,6 +38,24 @@ def all_in_pool(inputs,pool):
     return True
 
 
+def _frame_sort_key(path: str, sep: str = '/'):
+    """Sort frames numerically when their names are frame indices, lexicographically otherwise.
+
+    Frame-extracted corpora name files by index (`000.png`), and `int()` on that is the correct
+    order — `10` must follow `9`, not precede it. But some DF40 methods are whole-image generators
+    whose files carry the generation prompt (`13592447708_Single_person_black_male_...jpg`), and
+    `int()` raised a ValueError that aborted the whole evaluation.
+
+    The key is a (kind, value) tuple so numeric names keep EXACTLY their previous ordering and
+    non-numeric ones sort as strings after them; existing datasets are unaffected.
+    """
+    stem = path.split(sep)[-1].split('.')[0]
+    try:
+        return (0, int(stem), '')
+    except ValueError:
+        return (1, 0, stem)
+
+
 class DeepfakeAbstractBaseDataset(data.Dataset):
     """
     Abstract base class for all deepfake datasets.
@@ -259,10 +277,8 @@ class DeepfakeAbstractBaseDataset(data.Dataset):
                 # sorted video path to the lists
                 if not frame_paths or len(frame_paths) == 0: # Skip the files where required frames were not extracted successfully
                     continue
-                if '\\' in frame_paths[0]:
-                    frame_paths = sorted(frame_paths, key=lambda x: int(x.split('\\')[-1].split('.')[0]))
-                else:
-                    frame_paths = sorted(frame_paths, key=lambda x: int(x.split('/')[-1].split('.')[0]))
+                sep = '\\' if '\\' in frame_paths[0] else '/'
+                frame_paths = sorted(frame_paths, key=lambda x: _frame_sort_key(x, sep))
 
                 # Consider the case when the actual number of frames (e.g., 270) is larger than the specified (i.e., self.frame_num=32)
                 # In this case, we select self.frame_num frames from the original 270 frames

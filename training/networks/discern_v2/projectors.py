@@ -246,15 +246,23 @@ class MRVAEProjector(ManifoldProjector):
 
     has_rate_response = True
 
-    def __init__(self, feature_dim: int, latent_dim: int):
+    def __init__(self, feature_dim: int, latent_dim: int, hidden_dim: int | None = None):
         super().__init__(feature_dim, latent_dim)
-        self.encoder_mlp = nn.Sequential(nn.Linear(feature_dim, HIDDEN_DIM), nn.ReLU())
-        self.film_enc = FiLM(HIDDEN_DIM)
-        self.fc_mu = nn.Linear(HIDDEN_DIM, latent_dim)
-        self.fc_log_var = nn.Linear(HIDDEN_DIM, latent_dim)
-        self.decoder_in = nn.Sequential(nn.Linear(latent_dim, HIDDEN_DIM), nn.ReLU())
-        self.film_dec = FiLM(HIDDEN_DIM)
-        self.decoder_out = nn.Linear(HIDDEN_DIM, feature_dim)
+        # HIDDEN_DIM = 32 is DiCoME's literal, sized for its 64-d f_s. On a 1024-d encoder
+        # embedding that is a 32x bottleneck inherited from a different feature width, and it
+        # dominates the reconstruction error -- which IS the rate response. The reference AE hit
+        # exactly this: at equal epochs on the same data its cosine loss went 0.475 (hidden 32)
+        # -> 0.057 (hidden 256). The default is unchanged so every D-ladder config keeps its
+        # validated behaviour; hosting the operator on a wide encoder means passing a width.
+        hidden = int(hidden_dim) if hidden_dim else HIDDEN_DIM
+        self.hidden_dim = hidden
+        self.encoder_mlp = nn.Sequential(nn.Linear(feature_dim, hidden), nn.ReLU())
+        self.film_enc = FiLM(hidden)
+        self.fc_mu = nn.Linear(hidden, latent_dim)
+        self.fc_log_var = nn.Linear(hidden, latent_dim)
+        self.decoder_in = nn.Sequential(nn.Linear(latent_dim, hidden), nn.ReLU())
+        self.film_dec = FiLM(hidden)
+        self.decoder_out = nn.Linear(hidden, feature_dim)
         self.last_z: torch.Tensor | None = None
         self.last_beta: torch.Tensor | None = None
         self.init_weights()

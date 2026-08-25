@@ -1,0 +1,703 @@
+{
+  "sealed": "2026-08-20",
+  "spec": "docs/DiCoME_eval/discern-v2-phase2-v2.md Stage 0.1",
+  "rule": "A method in DF40-Dev can never move to DF40-Holdout. No configuration, gate, threshold or promotion decision may read a Holdout number before Stage 8.",
+  "dev_provenance": {
+    "danet": "brief Stage 0.1; inversion rows (danet-cdf, danet-ff); SELECTION.md",
+    "mcnet": "brief Stage 0.1; inversion rows (mcnet-cdf, mcnet-ff); SELECTION.md",
+    "tpsm": "brief Stage 0.1; inversion rows (tpsm-ff, tpsm-cdf); SELECTION.md",
+    "facevid2vid": "brief Stage 0.1; inversion row (facevid2vid-ff); SELECTION.md",
+    "heygen": "brief Stage 0.1 (the harm probe); SELECTION.md; breakout_inversion_and_heygen.csv",
+    "sadtalker": "inversion row (sadtalker-ff); SELECTION.md",
+    "deepfacelab": "RESULTS_ALL_PILOTS.md",
+    "pixart": "RESULTS_ALL_PILOTS.md; README-response-matrix-pilot.md",
+    "stargan": "RESULTS_ALL_PILOTS.md; README-response-matrix-pilot.md",
+    "starganv2": "RESULTS_ALL_PILOTS.md; README-response-matrix-pilot.md",
+    "CollabDiff": "README-response-matrix-pilot.md; DiCome_analysis.md",
+    "MidJourney": "README-response-matrix-pilot.md; DiCome_analysis.md",
+    "styleclip": "README-response-matrix-pilot.md",
+    "blendface": "README-generation-process-pilot.md",
+    "simswap": "README-generation-process-pilot.md",
+    "uniface": "README-generation-process-pilot.md",
+    "SiT": "README-generation-process-pilot.md; A3_VERDICT.md; V1_RUN_COMMANDS.md",
+    "DiT": "V1_RUN_COMMANDS.md",
+    "RDDM": "V1_RUN_COMMANDS.md",
+    "rddm": "V1_RUN_COMMANDS.md (same generator, lowercase JSON stem)",
+    "StyleGAN2": "V1_RUN_COMMANDS.md",
+    "VQGAN": "V1_RUN_COMMANDS.md",
+    "faceswap": "README-dicome-training-audit.md names 'FaceSwap'; sealed conservatively because that reference is ambiguous between FF++'s FaceSwap and DF40's"
+  },
+  "aggregates_excluded": [
+    "EFSAll_cdf",
+    "EFSAll_ff",
+    "FRAll_cdf",
+    "FRAll_ff",
+    "FSAll_cdf",
+    "FSAll_ff"
+  ],
+  "unusable_excluded": {
+    "pixart_cdf": 0.2692,
+    "pixart_ff": 0.5469
+  },
+  "dev": {
+    "CollabDiff": {
+      "family": "whole_image_synthesis",
+      "n_videos": 2000,
+      "videos": {
+        "CollabDiff_Real": 1000,
+        "CollabDiff_Fake": 1000
+      },
+      "resolution_rate": 1.0
+    },
+    "DiT_cdf": {
+      "family": "whole_image_synthesis",
+      "n_videos": 1066,
+      "videos": {
+        "DiT_Real": 178,
+        "DiT_Fake": 888
+      },
+      "resolution_rate": 1.0
+    },
+    "DiT_ff": {
+      "family": "whole_image_synthesis",
+      "n_videos": 280,
+      "videos": {
+        "DiT_Real": 140,
+        "DiT_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "MidJourney": {
+      "family": "whole_image_synthesis",
+      "n_videos": 1882,
+      "videos": {
+        "MidJourney_Real": 1000,
+        "MidJourney_Fake": 882
+      },
+      "resolution_rate": 1.0
+    },
+    "SiT_cdf": {
+      "family": "whole_image_synthesis",
+      "n_videos": 1066,
+      "videos": {
+        "SiT_Real": 178,
+        "SiT_Fake": 888
+      },
+      "resolution_rate": 1.0
+    },
+    "SiT_ff": {
+      "family": "whole_image_synthesis",
+      "n_videos": 280,
+      "videos": {
+        "SiT_Real": 140,
+        "SiT_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "StyleGAN2_cdf": {
+      "family": "whole_image_synthesis",
+      "n_videos": 1066,
+      "videos": {
+        "StyleGAN2_Real": 178,
+        "StyleGAN2_Fake": 888
+      },
+      "resolution_rate": 1.0
+    },
+    "StyleGAN2_ff": {
+      "family": "whole_image_synthesis",
+      "n_videos": 280,
+      "videos": {
+        "StyleGAN2_Real": 140,
+        "StyleGAN2_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "VQGAN_cdf": {
+      "family": "whole_image_synthesis",
+      "n_videos": 1066,
+      "videos": {
+        "VQGAN_Real": 178,
+        "VQGAN_Fake": 888
+      },
+      "resolution_rate": 1.0
+    },
+    "VQGAN_ff": {
+      "family": "whole_image_synthesis",
+      "n_videos": 280,
+      "videos": {
+        "VQGAN_Real": 140,
+        "VQGAN_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "blendface_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 818,
+      "videos": {
+        "blendface_Real": 178,
+        "blendface_Fake": 640
+      },
+      "resolution_rate": 1.0
+    },
+    "blendface_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "blendface_Real": 140,
+        "blendface_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "danet_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 825,
+      "videos": {
+        "danet_Real": 178,
+        "danet_Fake": 647
+      },
+      "resolution_rate": 1.0
+    },
+    "danet_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "danet_Real": 140,
+        "danet_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "deepfacelab": {
+      "family": "face_manipulation",
+      "n_videos": 149,
+      "videos": {
+        "deepfacelab_Real": 49,
+        "deepfacelab_Fake": 100
+      },
+      "resolution_rate": 1.0
+    },
+    "faceswap_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 815,
+      "videos": {
+        "faceswap_Real": 178,
+        "faceswap_Fake": 637
+      },
+      "resolution_rate": 1.0
+    },
+    "faceswap_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "faceswap_Real": 140,
+        "faceswap_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "facevid2vid_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 815,
+      "videos": {
+        "facevid2vid_Real": 178,
+        "facevid2vid_Fake": 637
+      },
+      "resolution_rate": 1.0
+    },
+    "facevid2vid_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "facevid2vid_Real": 140,
+        "facevid2vid_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "heygen": {
+      "family": "face_manipulation",
+      "n_videos": 101,
+      "videos": {
+        "heygen_Real": 50,
+        "heygen_Fake": 51
+      },
+      "resolution_rate": 1.0
+    },
+    "mcnet_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 825,
+      "videos": {
+        "mcnet_Real": 178,
+        "mcnet_Fake": 647
+      },
+      "resolution_rate": 1.0
+    },
+    "mcnet_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "mcnet_Real": 140,
+        "mcnet_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "rddm_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 1066,
+      "videos": {
+        "rddm_Real": 178,
+        "rddm_Fake": 888
+      },
+      "resolution_rate": 1.0
+    },
+    "rddm_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "rddm_Real": 140,
+        "rddm_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "sadtalker_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 838,
+      "videos": {
+        "sadtalker_Real": 178,
+        "sadtalker_Fake": 660
+      },
+      "resolution_rate": 1.0
+    },
+    "sadtalker_ff": {
+      "family": "face_manipulation",
+      "n_videos": 278,
+      "videos": {
+        "sadtalker_Real": 140,
+        "sadtalker_Fake": 138
+      },
+      "resolution_rate": 1.0
+    },
+    "simswap": {
+      "family": "face_manipulation",
+      "n_videos": 390,
+      "videos": {
+        "roop_Real": 178,
+        "roop_Fake": 212
+      },
+      "resolution_rate": 1.0
+    },
+    "simswap_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 819,
+      "videos": {
+        "simswap_Real": 178,
+        "simswap_Fake": 641
+      },
+      "resolution_rate": 1.0
+    },
+    "simswap_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "simswap_Real": 140,
+        "simswap_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "stargan": {
+      "family": "face_manipulation",
+      "n_videos": 3968,
+      "videos": {
+        "stargan_Real": 1984,
+        "stargan_Fake": 1984
+      },
+      "resolution_rate": 1.0
+    },
+    "starganv2": {
+      "family": "face_manipulation",
+      "n_videos": 4000,
+      "videos": {
+        "starganv2_Real": 2000,
+        "starganv2_Fake": 2000
+      },
+      "resolution_rate": 1.0
+    },
+    "styleclip": {
+      "family": "face_manipulation",
+      "n_videos": 3824,
+      "videos": {
+        "styleclip_Real": 1000,
+        "styleclip_Fake": 2824
+      },
+      "resolution_rate": 1.0
+    },
+    "tpsm_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 825,
+      "videos": {
+        "tpsm_Real": 178,
+        "tpsm_Fake": 647
+      },
+      "resolution_rate": 1.0
+    },
+    "tpsm_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "tpsm_Real": 140,
+        "tpsm_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "uniface": {
+      "family": "face_manipulation",
+      "n_videos": 602,
+      "videos": {
+        "roop_Real": 178,
+        "roop_Fake": 424
+      },
+      "resolution_rate": 0.9983
+    },
+    "uniface_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 804,
+      "videos": {
+        "uniface_Real": 178,
+        "uniface_Fake": 626
+      },
+      "resolution_rate": 1.0
+    },
+    "uniface_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "uniface_Real": 140,
+        "uniface_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "uniface_ori": {
+      "family": "face_manipulation",
+      "n_videos": 602,
+      "videos": {
+        "roop_Real": 178,
+        "roop_Fake": 424
+      },
+      "resolution_rate": 0.9983
+    }
+  },
+  "holdout": {
+    "MRAA_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 827,
+      "videos": {
+        "MRAA_Real": 178,
+        "MRAA_Fake": 649
+      },
+      "resolution_rate": 1.0
+    },
+    "MRAA_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "MRAA_Real": 140,
+        "MRAA_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "StyleGAN3_cdf": {
+      "family": "whole_image_synthesis",
+      "n_videos": 1066,
+      "videos": {
+        "StyleGAN3_Real": 178,
+        "StyleGAN3_Fake": 888
+      },
+      "resolution_rate": 1.0
+    },
+    "StyleGAN3_ff": {
+      "family": "whole_image_synthesis",
+      "n_videos": 280,
+      "videos": {
+        "StyleGAN3_Real": 140,
+        "StyleGAN3_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "StyleGANXL_cdf": {
+      "family": "whole_image_synthesis",
+      "n_videos": 1066,
+      "videos": {
+        "StyleGANXL_Real": 178,
+        "StyleGANXL_Fake": 888
+      },
+      "resolution_rate": 1.0
+    },
+    "StyleGANXL_ff": {
+      "family": "whole_image_synthesis",
+      "n_videos": 280,
+      "videos": {
+        "StyleGANXL_Real": 140,
+        "StyleGANXL_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "ddim_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 1066,
+      "videos": {
+        "ddim_Real": 178,
+        "ddim_Fake": 888
+      },
+      "resolution_rate": 1.0
+    },
+    "ddim_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "ddim_Real": 140,
+        "ddim_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "e4e_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 18828,
+      "videos": {
+        "e4e_Real": 178,
+        "e4e_Fake": 18650
+      },
+      "resolution_rate": 1.0
+    },
+    "e4e_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "e4e_Real": 140,
+        "e4e_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "e4s_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 470,
+      "videos": {
+        "e4s_Real": 178,
+        "e4s_Fake": 292
+      },
+      "resolution_rate": 1.0
+    },
+    "e4s_ff": {
+      "family": "face_manipulation",
+      "n_videos": 255,
+      "videos": {
+        "e4s_Real": 140,
+        "e4s_Fake": 115
+      },
+      "resolution_rate": 1.0
+    },
+    "facedancer_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 826,
+      "videos": {
+        "facedancer_Real": 178,
+        "facedancer_Fake": 648
+      },
+      "resolution_rate": 1.0
+    },
+    "facedancer_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "facedancer_Real": 140,
+        "facedancer_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "fomm_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 825,
+      "videos": {
+        "fomm_Real": 178,
+        "fomm_Fake": 647
+      },
+      "resolution_rate": 1.0
+    },
+    "fomm_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "fomm_Real": 140,
+        "fomm_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "fsgan_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 794,
+      "videos": {
+        "fsgan_Real": 178,
+        "fsgan_Fake": 616
+      },
+      "resolution_rate": 1.0
+    },
+    "fsgan_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "fsgan_Real": 140,
+        "fsgan_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "hyperreenact_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 819,
+      "videos": {
+        "hyperreenact_Real": 178,
+        "hyperreenact_Fake": 641
+      },
+      "resolution_rate": 1.0
+    },
+    "hyperreenact_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "hyperreenact_Real": 140,
+        "hyperreenact_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "inswap_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 602,
+      "videos": {
+        "inswap_Real": 178,
+        "inswap_Fake": 424
+      },
+      "resolution_rate": 1.0
+    },
+    "inswap_ff": {
+      "family": "face_manipulation",
+      "n_videos": 258,
+      "videos": {
+        "inswap_Real": 140,
+        "inswap_Fake": 118
+      },
+      "resolution_rate": 1.0
+    },
+    "lia_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 824,
+      "videos": {
+        "lia_Real": 178,
+        "lia_Fake": 646
+      },
+      "resolution_rate": 1.0
+    },
+    "lia_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "lia_Real": 140,
+        "lia_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "mobileswap_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 815,
+      "videos": {
+        "mobileswap_Real": 178,
+        "mobileswap_Fake": 637
+      },
+      "resolution_rate": 1.0
+    },
+    "mobileswap_ff": {
+      "family": "face_manipulation",
+      "n_videos": 998,
+      "videos": {
+        "mobileswap_Real": 140,
+        "mobileswap_Fake": 858
+      },
+      "resolution_rate": 1.0
+    },
+    "one_shot_free_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 825,
+      "videos": {
+        "one_shot_free_Real": 178,
+        "one_shot_free_Fake": 647
+      },
+      "resolution_rate": 1.0
+    },
+    "one_shot_free_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "one_shot_free_Real": 140,
+        "one_shot_free_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "pirender_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 814,
+      "videos": {
+        "pirender_Real": 178,
+        "pirender_Fake": 636
+      },
+      "resolution_rate": 1.0
+    },
+    "pirender_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "pirender_Real": 140,
+        "pirender_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "sd2.1_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 1066,
+      "videos": {
+        "sd2.1_Real": 178,
+        "sd2.1_Fake": 888
+      },
+      "resolution_rate": 1.0
+    },
+    "sd2.1_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "sd2.1_Real": 140,
+        "sd2.1_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "wav2lip_cdf": {
+      "family": "face_manipulation",
+      "n_videos": 844,
+      "videos": {
+        "wav2lip_Real": 178,
+        "wav2lip_Fake": 666
+      },
+      "resolution_rate": 1.0
+    },
+    "wav2lip_ff": {
+      "family": "face_manipulation",
+      "n_videos": 280,
+      "videos": {
+        "wav2lip_Real": 140,
+        "wav2lip_Fake": 140
+      },
+      "resolution_rate": 1.0
+    },
+    "whichisreal": {
+      "family": "whole_image_synthesis",
+      "n_videos": 2001,
+      "videos": {
+        "whichisreal_Real": 1000,
+        "whichisreal_Fake": 1001
+      },
+      "resolution_rate": 1.0
+    }
+  }
+}
