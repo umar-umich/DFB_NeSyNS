@@ -50,7 +50,7 @@ sys.path.insert(0, str(REPO / "analysis" / "discern_v2" / "phase2"))
 
 TODO = "TODO(run)"
 NOISE = 0.01
-READOUTS = {"direct": "p_direct", "traj": "p_traj"}
+READOUTS = {"direct": "p_direct", "traj": "p_traj", "spatial": "p_spatial"}
 OOD_SUITE = ("Celeb-DF-v2", "Celeb-DF-v3", "DFDC", "DFDCP", "DeepFakeDetection", "UADFV",
              "Deepfake-Eval-2024")
 PROTOCOL = "FaceForensics++"
@@ -139,7 +139,7 @@ def contrast(rungs: dict, better: str, worse: str, question: str, sources: list[
 
 
 def render(rungs: dict, rows: dict, contrasts: dict, external: dict, meta: dict) -> str:
-    order = [n for n in ("B0", "B1", "B2", "B3", "B4") if n in rungs]
+    order = [n for n in ("B0", "B1", "B2", "B3", "B4", "B5") if n in rungs]
     sources = list(rows)
 
     lines = [
@@ -153,6 +153,7 @@ def render(rungs: dict, rows: dict, contrasts: dict, external: dict, meta: dict)
         "| B2 | ordinary LoRA | trajectory `D(x)` |",
         "| B3 | LoRA + real-prior preservation | trajectory `D(x)` |",
         "| B4 | B3 + paired ranking objective | trajectory `D(x)` |",
+        "| B5 | B3's frozen student, unchanged | spatial map over patch adaptation |",
         "",
         "> **B1 is the honest baseline.** It is ordinary fine-tuned FS-VFM, already strong on this "
         "task. The headline is `B2 - B1` and `B3 - B2`, not B3 against chance.",

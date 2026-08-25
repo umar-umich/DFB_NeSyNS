@@ -103,7 +103,7 @@ def mask_to_patch_labels(mask: torch.Tensor, grid: int) -> torch.Tensor:
 
 
 @torch.no_grad()
-def faithfulness(model, direct, traj, pixels: torch.Tensor, patch_map: torch.Tensor,
+def faithfulness(model, direct, traj, spatial, pixels: torch.Tensor, patch_map: torch.Tensor,
                  device: str, fractions=(0.1, 0.2, 0.3), seed: int = 42) -> dict:
     """Deletion: suppress the highest-adaptation patches vs random ones, watch fake evidence fall.
 
@@ -118,6 +118,8 @@ def faithfulness(model, direct, traj, pixels: torch.Tensor, patch_map: torch.Ten
 
     def score(x):
         out = model(x)
+        if spatial is not None:
+            return spatial(out["patch_delta"], out["patch_tokens"])["prob"]
         return (traj(out["D"])["prob"] if traj is not None
                 else direct(out["h_student"])["prob"])
 
@@ -168,7 +170,7 @@ def faithfulness(model, direct, traj, pixels: torch.Tensor, patch_map: torch.Ten
 
 
 @torch.no_grad()
-def insertion(model, direct, traj, pixels: torch.Tensor, patch_map: torch.Tensor,
+def insertion(model, direct, traj, spatial, pixels: torch.Tensor, patch_map: torch.Tensor,
               device: str, fractions=(0.1, 0.2, 0.3), seed: int = 42) -> dict:
     """Insertion: start from a blank image and ADD the map's top patches back.
 
@@ -187,6 +189,8 @@ def insertion(model, direct, traj, pixels: torch.Tensor, patch_map: torch.Tensor
 
     def score(x):
         out = model(x)
+        if spatial is not None:
+            return spatial(out["patch_delta"], out["patch_tokens"])["prob"]
         return (traj(out["D"])["prob"] if traj is not None
                 else direct(out["h_student"])["prob"])
 
@@ -226,6 +230,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--student", type=Path, required=True)
     ap.add_argument("--traj-head", type=Path, default=None)
+    ap.add_argument("--spatial-head", type=Path, default=None,
+                    help="rung B5. Localization is then scored on the head's OWN "
+                         "learned-weight adaptation map, not the equal-weight mean — comparing "
+                         "B5's decision to a map it does not use would measure nothing.")
     ap.add_argument("--config", type=Path, default=REPO / "training/config/fpad/FPAD_CONFIG.yaml")
     ap.add_argument("--manipulations", nargs="+", default=list(WITH_MASKS))
     ap.add_argument("--compression", default="c23")
@@ -273,6 +281,27 @@ def main() -> int:
     model.eval()
     direct.eval()
 
+    spatial = None
+    if args.spatial_head:
+        from networks.fpad import SpatialEvidenceHead
+        heads = sorted(args.spatial_head.glob("epoch_*.pth"))
+        if not heads:
+            raise SystemExit(f"no Stage-B checkpoints in {args.spatial_head}")
+        hb = torch.load(str(heads[-1]), map_location="cpu", weights_only=False)
+        d = hb["head_describe"]
+        student_of_head = (hb["run_meta"].get("student") or {}).get("run")
+        if student_of_head and Path(student_of_head).resolve() != args.student.resolve():
+            raise SystemExit(
+                f"this spatial head was trained on the student at {student_of_head}, not on "
+                f"{args.student}. B5's head is fit to one frozen adaptation.")
+        spatial = SpatialEvidenceHead(
+            n_layers=d["n_layers"], feature_dim=model.embed_dim,
+            hidden_dim=int(cfg["heads"]["hidden_dim"]), mode=d["mode"],
+            top_k_fraction=d["top_k_fraction"])
+        spatial.load_state_dict(hb["spatial_head"])
+        spatial = spatial.to(args.device).eval()
+        print(f"  B5 spatial readout: {d}")
+
     traj = None
     if args.traj_head:
         from networks.fpad import TrajectoryEvidenceHead
@@ -306,7 +335,16 @@ def main() -> int:
             pixels = pixels.to(args.device)
             with torch.no_grad():
                 out = model(pixels)
-            pm = out["patch_map"].cpu()
+            if spatial is not None:
+                # B5's own learned-weight map, reshaped to the grid. Scoring B5's localization on
+                # the equal-weight mean would evaluate a map its decision never uses.
+                # no_grad: the head's parameters require grad, and the map is only being read.
+                with torch.no_grad():
+                    a = spatial.adaptation_map(out["patch_delta"])
+                g_ = int(round(a.shape[-1] ** 0.5))
+                pm = a.reshape(-1, g_, g_).cpu()
+            else:
+                pm = out["patch_map"].cpu()
             pd_layers = out["patch_delta"].cpu()          # (B, L, N)
             layer_names = [f"d_l{l + 1}" for l in model.layers]
             g = pm.shape[-1]
@@ -326,10 +364,11 @@ def main() -> int:
                 union = np.logical_or(pred, binary).sum()
                 ious.append(inter / union if union else np.nan)
             if i == 0:
-                faith_all[manip] = faithfulness(model, direct, traj, pixels, pm.to(args.device),
-                                                args.device)
+                faith_all[manip] = faithfulness(model, direct, traj, spatial, pixels,
+                                                pm.to(args.device), args.device)
                 faith_all[manip].update(
-                    insertion(model, direct, traj, pixels, pm.to(args.device), args.device))
+                    insertion(model, direct, traj, spatial, pixels, pm.to(args.device),
+                              args.device))
         if not scores:
             per_manip[manip] = {"status": "no frame had a mixed patch mask"}
             continue
@@ -363,7 +402,9 @@ def main() -> int:
 
     payload = {
         "student": str(args.student), "traj_head": str(args.traj_head) if args.traj_head else None,
-        "readout": "trajectory" if traj is not None else "direct",
+        "readout": ("spatial(B5)" if spatial is not None else
+                    "trajectory" if traj is not None else "direct"),
+        "spatial_head": str(args.spatial_head) if args.spatial_head else None,
         "epoch": int(blob["epoch"]), "grid_note":
             "14x14 patches at 224 input; masks downsampled BY AREA and thresholded at "
             f"{PATCH_LABEL_THRESHOLD}. AUPRC is the headline; IoU is coarse at this resolution.",

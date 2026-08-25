@@ -47,7 +47,7 @@ import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
 TODO = "TODO(run)"
-READOUTS = {"direct": "p_direct", "traj": "p_traj"}
+READOUTS = {"direct": "p_direct", "traj": "p_traj", "spatial": "p_spatial"}
 SPLIT_FILE = REPO / "configs/discern_v2/df40_split.json"
 NOISE = 0.01
 
@@ -165,7 +165,7 @@ def render(parts: dict, holdout: dict, out_dir: Path) -> str:
     lines += ["## Main cross-dataset table", ""]
     if s3:
         rungs, rows, ext = s3["rungs"], s3["rows"], s3.get("external", {})
-        order = [r for r in ("B0", "B1", "B2", "B3", "B4") if r in rungs]
+        order = [r for r in ("B0", "B1", "B2", "B3", "B4", "B5") if r in rungs]
         lines += ["| source | provenance | " + " | ".join(order) +
                   " | FS-VFM linear probe |", "|---|---" + "|---:" * (len(order) + 1) + "|"]
         for source, meta in rows.items():

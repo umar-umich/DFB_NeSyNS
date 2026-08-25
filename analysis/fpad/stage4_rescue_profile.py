@@ -58,7 +58,7 @@ sys.path.insert(0, str(REPO / "analysis" / "discern_v2"))
 
 from domain_audit import separability  # noqa: E402  (reused verbatim)
 
-READOUTS = {"direct": "p_direct", "traj": "p_traj"}
+READOUTS = {"direct": "p_direct", "traj": "p_traj", "spatial": "p_spatial"}
 NOISE = 0.01
 SPLIT_FILE = REPO / "configs/discern_v2/df40_split.json"
 # The Phase-1 P0-DS inversions. LINEAGE ONLY — see the module docstring.

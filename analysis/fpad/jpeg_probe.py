@@ -58,7 +58,7 @@ sys.path.insert(0, str(REPO / "analysis" / "discern_v2"))
 
 from domain_audit import audit_quantity, separability  # noqa: E402  (reused verbatim)
 
-READOUTS = {"direct": "p_direct", "traj": "p_traj"}
+READOUTS = {"direct": "p_direct", "traj": "p_traj", "spatial": "p_spatial"}
 UNCOMPRESSED = 100          # the label used for the no-JPEG baseline
 NOISE = 0.01
 

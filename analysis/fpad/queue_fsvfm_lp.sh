@@ -36,8 +36,14 @@ cp -n /data/umar/Repos/DFB_NeSyNS/weights/FS-VFM/pretrain_ds_mean_std.txt "$OUT/
 # Hyperparameters are the authors' ViT-L values from scripts_DFD/run_LP_DfD-ViT-L.sh, unchanged
 # except --epochs. batch 128 x 2 GPUs = effective 256, which is the batch their blr assumes under
 # the linear scaling rule; running on one GPU would halve the effective lr.
+# torchrun, NOT `python -m torch.distributed.launch`. The 10-epoch run failed on
+# `unrecognized arguments: --local-rank=1`: torch >= 2.0 passes --local-rank (hyphen) while this
+# 2024-era code declares --local_rank (underscore). It does not matter, because
+# `util/misc.py:233` reads LOCAL_RANK from the ENVIRONMENT, which is exactly what torchrun sets
+# and torch.distributed.launch additionally duplicates as a flag. torchrun therefore runs the
+# authors' code unchanged and keeps effective batch 128 x 2 = 256, which their blr assumes.
 ( cd "$FSFM" && CUDA_VISIBLE_DEVICES=$GPUS OMP_NUM_THREADS=1 \
-  $PY -m torch.distributed.launch --nproc_per_node=$NPROC --master_port=${PORT:-29613} \
+  $(dirname $PY)/torchrun --nproc_per_node=$NPROC --master_port=${PORT:-29613} \
     main_linearprobe_DfD.py \
     --accum_iter 1 --apply_simple_augment --batch_size 128 --nb_classes 2 \
     --model vit_large_patch16 --epochs "$EPOCHS" --blr 1e-2 \

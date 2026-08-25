@@ -64,7 +64,7 @@ def real_source_of(path: str) -> str:
 
 @torch.no_grad()
 def score_dataset(model, direct, loader, views, device: str, name: str,
-                  max_batches: int = 0, traj=None) -> pd.DataFrame:
+                  max_batches: int = 0, traj=None, spatial=None) -> pd.DataFrame:
     from tqdm import tqdm
 
     model.eval()
@@ -94,6 +94,10 @@ def score_dataset(model, direct, loader, views, device: str, name: str,
         record["d_mean"] = D.mean(axis=1)
         record["d_early"] = D[:, : max(1, len(layers_1x) // 2)].mean(axis=1)
         record["d_late"] = D[:, len(layers_1x) // 2:].mean(axis=1)
+        if spatial is not None:
+            sp = spatial(out["patch_delta"], out["patch_tokens"])
+            record["p_spatial"] = sp["prob"].cpu().numpy()
+            record["u_spatial"] = sp["u"].cpu().numpy()
         if traj is not None:
             # The rung's prediction for B2/B3. Read from the SAME `D` the profile records, so the
             # table and the diagnostics cannot describe different quantities.
@@ -130,6 +134,8 @@ def main() -> int:
                     help="a Stage-B run directory. With it the scorer also emits `p_traj`, the "
                          "trajectory readout that rungs B2/B3 are scored on. Without it only the "
                          "direct readout `p_direct` is emitted, which is what B0/B1 use.")
+    ap.add_argument("--spatial-head", type=Path, default=None,
+                    help="rung B5: emit `p_spatial` from a spatial readout head")
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--workers", type=int, default=8)
@@ -206,6 +212,21 @@ def main() -> int:
         traj = traj.to(args.device).eval()
         print(f"  trajectory readout from {heads[-1].name}: {desc}")
 
+    spatial = None
+    if args.spatial_head:
+        from networks.fpad import SpatialEvidenceHead
+        heads = sorted(args.spatial_head.glob("epoch_*.pth"))
+        if not heads:
+            raise SystemExit(f"no Stage-B checkpoints in {args.spatial_head}")
+        hb = torch.load(str(heads[-1]), map_location="cpu", weights_only=False)
+        d = hb["head_describe"]
+        spatial = SpatialEvidenceHead(n_layers=d["n_layers"], feature_dim=model.embed_dim,
+                                      hidden_dim=int(cfg["heads"]["hidden_dim"]),
+                                      mode=d["mode"], top_k_fraction=d["top_k_fraction"])
+        spatial.load_state_dict(hb["spatial_head"])
+        spatial = spatial.to(args.device).eval()
+        print(f"  B5 spatial readout: {d}")
+
     data_cfg = prepare_dataset_config(args.detector_config, args.batch_size, args.workers)
     views = FpadViews(augment=False, matched=False, jpeg_quality=args.jpeg_quality)
     if args.jpeg_quality is not None:
@@ -232,7 +253,7 @@ def main() -> int:
             dataset, batch_size=args.batch_size, shuffle=False,
             num_workers=int(data_cfg["workers"]), collate_fn=dataset.collate_fn)
         frames.append(score_dataset(model, direct, loader, views, args.device, name,
-                                    args.max_batches, traj=traj))
+                                    args.max_batches, traj=traj, spatial=spatial))
         got = frames[-1]
         print(f"  {name}: {len(got)} frames · real_source "
               f"{got.groupby('real_source').size().to_dict()} · "
@@ -252,7 +273,9 @@ def main() -> int:
         "compression_note": (None if args.jpeg_quality is None else
                              f"additional JPEG at quality {args.jpeg_quality} applied on top of "
                              f"c23-derived PNG crops; NOT equivalent to H.264 c40"),
-        "readouts": ["p_direct"] + (["p_traj"] if traj is not None else []),
+        "readouts": (["p_direct"] + (["p_traj"] if traj is not None else [])
+                     + (["p_spatial"] if spatial is not None else [])),
+        "spatial_head": str(args.spatial_head) if args.spatial_head else None,
     }, indent=2, default=str))
     print(f"\nwrote {dest} ({len(table)} frames)")
     return 0
