@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -346,6 +347,14 @@ def main() -> int:
     ap.add_argument("--max-batches", type=int, default=0)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu",
                     help="pick the GPU explicitly; this script never chooses one for you")
+    ap.add_argument("--seed", type=int, default=42,
+                    help="seeds the dataset shuffle. `abstract_dataset.py:346` shuffles the "
+                         "collected frame list with the GLOBAL `random` module, so an unseeded "
+                         "run covers a DIFFERENT subset of frames than the next one. With "
+                         "--max-batches that is not cosmetic: this export and a score_fpad.py "
+                         "export of the same sources shared only 11,810 of ~14,000 videos, and "
+                         "any complementarity computed across them would have mixed a sampling "
+                         "difference into the comparison.")
     ap.add_argument("--df40", action="store_true",
                     help="treat --datasets as DF40 per-method names: use DF40's json folder, "
                          "inject its per-method label_dict, and remap its relative frame paths")
@@ -360,6 +369,12 @@ def main() -> int:
     ap.add_argument("--overwrite", action="store_true",
                     help="discard existing results for this epoch in --output instead of refusing")
     args = ap.parse_args()
+
+    # Seed BEFORE any dataset is constructed: the shuffle happens at collection time, so seeding
+    # later would not change which frames this export covers.
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
     args.output.mkdir(parents=True, exist_ok=True)
     model, cfg, epoch = load_model(args.checkpoint, args.device)

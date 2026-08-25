@@ -67,10 +67,39 @@ USEFUL_RECOVERY = 0.25            # fraction of the ceiling-minus-anchor gain a 
 MIN_FAMILIES = 2
 
 
+def consistent_video_id(keys: pd.Series) -> pd.Series:
+    """Derive video identity from the frame path, identically for every export.
+
+    The exports disagree otherwise, and it is not cosmetic. `eval_v1` applies a
+    degenerate-id fix for DF40's flat whole-image methods — where every fake frame lives in
+    `<method>/fake/<n>.jpg`, so the parent directory is the CLASS and all fakes would collapse to
+    one "video" — while `score_fpad` keeps the parent directory. Merging those two on `video_id`
+    silently pairs a per-frame id against a per-class id, which is what produced a label mismatch
+    on 'the same' videos.
+
+    So identity is recomputed here from the key, the one field both exports agree on
+    byte-for-byte.
+
+    It is the full DIRECTORY PATH, not the directory's name. DF40 borrows its authentic halves, so
+    `.../Celeb-DF-v2/Celeb-real/frames/id0_0000` and `.../df40/test/danet/cdf/.../id0_0000` share
+    the basename `id0_0000` while being a real video and a fake one. Grouping on the basename put
+    both under one id, and `max(label)` then depended on which frames each export happened to
+    sample — which is exactly the label mismatch this function exists to prevent.
+    """
+    k = keys.astype(str).str.rstrip("/")
+    directory = k.str.rsplit("/", n=1).str[0]
+    parent_name = directory.str.rsplit("/", n=1).str[-1]
+    # flat whole-image methods: the "directory" is a bare class name, so the frame IS the video
+    degenerate = parent_name.str.lower().isin({"real", "fake", "frames", "images"})
+    stem = k.str.replace(r"\.[A-Za-z0-9]+$", "", regex=True)
+    return directory.where(~degenerate, stem)
+
+
 def video_frame(df: pd.DataFrame, prob_col: str) -> pd.DataFrame:
     """Aggregate to video level once, so every number below is on the same unit."""
-    return df.groupby(["dataset", "video_id"], as_index=False).agg(
-        p=(prob_col, "mean"), y=("label", "max"))
+    out = df.assign(_vid=consistent_video_id(df["key"]))
+    return out.groupby(["dataset", "_vid"], as_index=False).agg(
+        p=(prob_col, "mean"), y=("label", "max")).rename(columns={"_vid": "video_id"})
 
 
 def eer_threshold(y: np.ndarray, p: np.ndarray) -> float:
@@ -118,17 +147,28 @@ def gate_features(expert: pd.DataFrame, prob_col: str, unc_col: str | None) -> n
 
 
 def realizable_gate(anchor_p: np.ndarray, expert_p: np.ndarray, feats: np.ndarray,
-                    y: np.ndarray, groups: np.ndarray, threshold: float) -> dict:
+                    y: np.ndarray, groups: np.ndarray, t_anchor: float, t_expert: float) -> dict:
     """Cross-fit logistic gate, then the ACTUAL fused AUC it delivers.
 
     Target: would routing to the expert have been better on this sample? Grouped
     leave-one-family-out, so no sample scores its own gate and no family's siblings train it.
+
+    Anchor and expert each get their OWN operating threshold, both frozen on FF++ val. Applying
+    the anchor's threshold to the expert measures the expert's calibration offset rather than its
+    complementarity: a branch whose probabilities all sit above the anchor's threshold then reads
+    as rescuing nearly every anchor error while harming nearly every anchor success, which is the
+    signature of a constant predictor, not of a second opinion.
+
+    Because the two probabilities live on different scales, they are blended in MARGIN space
+    (`p - t`, zero at each source's own operating point) rather than raw. A raw blend would be
+    dominated by whichever branch happens to be the more confident-looking.
     """
     from sklearn.linear_model import LogisticRegression
     from sklearn.preprocessing import StandardScaler
 
-    anchor_ok = (anchor_p >= threshold).astype(int) == y
-    expert_ok = (expert_p >= threshold).astype(int) == y
+    anchor_m, expert_m = anchor_p - t_anchor, expert_p - t_expert
+    anchor_ok = (anchor_m >= 0).astype(int) == y
+    expert_ok = (expert_m >= 0).astype(int) == y
     target = (expert_ok & ~anchor_ok).astype(int)     # the expert helps exactly here
 
     q = np.full(len(y), np.nan)
@@ -142,12 +182,13 @@ def realizable_gate(anchor_p: np.ndarray, expert_p: np.ndarray, feats: np.ndarra
                                                       target[~held])
         q[held] = model.predict_proba(scaler.transform(feats[held]))[:, 1]
 
-    # the realizable fused score: q-weighted blend, which is what a deployed gate would give
-    fused = (1 - q) * anchor_p + q * expert_p
-    anchor_auc, fused_auc = auroc(y, anchor_p), auroc(y, fused)
+    # the realizable fused score: q-weighted blend of margins, which is what a deployed gate would
+    # give. Its decision point is 0 by construction, being a convex mix of two zero-centred margins
+    fused = (1 - q) * anchor_m + q * expert_m
+    anchor_auc, fused_auc = auroc(y, anchor_m), auroc(y, fused)
     ceiling_acc = float((anchor_ok | expert_ok).mean())
     anchor_acc = float(anchor_ok.mean())
-    fused_ok = (fused >= threshold).astype(int) == y
+    fused_ok = (fused >= 0).astype(int) == y
     headroom = ceiling_acc - anchor_acc
     return {
         "gate_auroc_vs_target": auroc(target, q),
@@ -203,9 +244,26 @@ def render(payload: dict) -> str:
         "",
         f"Anchor `{payload['anchor']['name']}` scored freshly in this harness "
         f"({payload['anchor']['n_videos']} DF40-Dev videos, "
-        f"{payload['anchor']['n_families']} methods). Operating threshold "
+        f"{payload['anchor']['n_families']} methods). Anchor operating threshold "
         f"**{payload['threshold']:.4f}**, EER on `{payload['threshold_source']}`, frozen across "
         f"every family.",
+        "",
+        "> Each expert carries its OWN operating threshold, the EER on its own FF++ val export "
+        "(listed below), also frozen across families. Both sides stay inside the firewall — no "
+        "threshold sees DF40 — but they are not the same number. Scoring an expert at the "
+        "anchor's threshold measures its calibration offset, not its complementarity: a branch "
+        "whose probabilities all sit above the anchor's threshold reads as rescuing nearly every "
+        "anchor error while harming nearly every anchor success, which is a constant predictor's "
+        "signature. For the same reason the fused score blends MARGINS (`p − t`, zero at each "
+        "source's own operating point), not raw probabilities.",
+        "",
+        "| expert | operating threshold | val export |", "|---|---:|---|",
+        *[f"| `{n}` | {e['operating_threshold']:.4f} | `{e['val_parquet']}` |"
+          for n, e in payload["experts"].items()],
+        "",
+        f"Bars to enter: rescue margin > {MEANINGFUL_RESCUE_MARGIN:.2f} on the pooled set AND on "
+        f"at least {MIN_FAMILIES} families, AND a realizable gate recovering "
+        f"≥ {USEFUL_RECOVERY:.0%} of the accuracy headroom.",
         "",
         "> Rescue rows are recomputed against THIS anchor. They are not inherited from a P0-DS, "
         "B1 or V1 table — that mistake was made twice in this project, and a rescue claim is only "
@@ -282,11 +340,15 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--anchor", nargs=2, required=True, metavar=("NAME", "PARQUET"))
     ap.add_argument("--anchor-col", default="p_sem")
-    ap.add_argument("--expert", nargs=3, action="append", required=True,
-                    metavar=("NAME", "PARQUET", "PROB_COL"))
+    ap.add_argument("--expert", nargs=4, action="append", required=True,
+                    metavar=("NAME", "PARQUET", "PROB_COL", "VAL_PARQUET"),
+                    help="VAL_PARQUET is this expert's OWN scored FF++ val export; its EER fixes "
+                         "the expert's operating point. Required per expert, not shared with the "
+                         "anchor: the anchor's threshold on a differently-calibrated branch "
+                         "measures calibration offset, not complementarity.")
     ap.add_argument("--threshold-source", type=Path, required=True,
-                    help="a scored export from the PERMITTED protocol (FF++ val). One EER "
-                         "threshold is derived here and frozen across every family.")
+                    help="the ANCHOR's scored export from the PERMITTED protocol (FF++ val). Its "
+                         "EER fixes the anchor's operating point, frozen across every family.")
     ap.add_argument("--threshold-col", default=None,
                     help="probability column in the threshold source (default: --anchor-col)")
     ap.add_argument("--out", type=Path, required=True)
@@ -305,28 +367,43 @@ def main() -> int:
         raise SystemExit(f"threshold source has no `{tcol}`")
     tv = video_frame(tsrc, tcol)
     threshold = eer_threshold(tv["y"].to_numpy(), tv["p"].to_numpy())
-    print(f"frozen operating threshold {threshold:.4f} (EER on {args.threshold_source})")
+    print(f"anchor operating threshold {threshold:.4f} (EER on {args.threshold_source})")
 
     experts, decisions = {}, {}
-    for name, path, col in args.expert:
+    for name, path, col, val_path in args.expert:
         edf = pd.read_parquet(path)
         if col not in edf:
             raise SystemExit(f"expert `{name}` export has no `{col}`; columns: "
                              f"{sorted(edf.columns)[:12]}")
+        vdf = pd.read_parquet(val_path)
+        if col not in vdf:
+            raise SystemExit(f"expert `{name}` val export {val_path} has no `{col}`")
+        vv = video_frame(vdf, col)
+        t_expert = eer_threshold(vv["y"].to_numpy(), vv["p"].to_numpy())
         ev = video_frame(edf, col)
         merged = anchor_v.merge(ev, on=["dataset", "video_id"], suffixes=("_a", "_e"))
-        if len(merged) < 0.9 * min(len(anchor_v), len(ev)):
+        coverage = len(merged) / max(1, min(len(anchor_v), len(ev)))
+        # Every number below is computed on the INTERSECTION, which is what removes the sampling
+        # difference rather than averaging over it. The anchor and the experts come through
+        # different loader paths — `eval_v1` builds the dataset in test mode, `score_fpad`
+        # overrides the mode and frame count — so they cover different frames per video even at
+        # the same seed. Intersecting is the fix; the coverage is recorded so a thin intersection
+        # is visible rather than silent.
+        if len(merged) < 2000 or coverage < 0.7:
             raise SystemExit(
-                f"`{name}`: only {len(merged)} videos are common to the anchor "
-                f"({len(anchor_v)}) and the expert ({len(ev)}). Complementarity must be computed "
-                f"on the SAME videos or it mixes a sampling difference into the comparison.")
+                f"`{name}`: only {len(merged)} videos ({coverage:.0%}) are common to the anchor "
+                f"({len(anchor_v)}) and the expert ({len(ev)}). Too thin to compute "
+                f"complementarity on — re-score both through the same loader path.")
+        print(f"  {name}: {len(merged)} videos common to anchor ({len(anchor_v)}) and expert "
+              f"({len(ev)}) — {coverage:.0%}; all numbers below are on this intersection")
+        print(f"    operating threshold {t_expert:.4f} (EER on {val_path})")
         if not (merged["y_a"] == merged["y_e"]).all():
             raise SystemExit(f"`{name}`: label mismatch between the two exports on the same videos")
 
         y = merged["y_a"].to_numpy()
         pa, pe = merged["p_a"].to_numpy(), merged["p_e"].to_numpy()
         a_ok = (pa >= threshold).astype(int) == y
-        e_ok = (pe >= threshold).astype(int) == y
+        e_ok = (pe >= t_expert).astype(int) == y
 
         pooled = rescue_harm(a_ok, e_ok)
         per_family = {}
@@ -336,14 +413,39 @@ def main() -> int:
 
         unc = {"p_direct": "u_direct", "p_traj": "u_traj", "p_spatial": "u_spatial",
                "p_rate": "u_rate", "p_sem": "u_sem"}.get(col)
-        feats = gate_features(
-            edf.groupby(["dataset", "video_id"], as_index=False).agg(
-                **{col: (col, "mean"), **({unc: (unc, "mean")} if unc and unc in edf else {})}
-            ).merge(merged[["dataset", "video_id"]], on=["dataset", "video_id"]), col, unc)
-        gate = realizable_gate(pa, pe, feats, y, merged["dataset"].to_numpy(), threshold)
+        # Aggregate the expert's own evidence with the SAME recomputed video identity used above,
+        # then left-join onto `merged` so the feature rows line up with `pa`/`pe` one-for-one.
+        # Grouping on the export's original `video_id` here produced an empty join, since `merged`
+        # is keyed on the recomputed id.
+        # The rate branch is a logistic probe, not a Dirichlet head, so its `u_rate` column is
+        # written all-NaN. An expert with no evidential uncertainty gets a gate built on its
+        # probability alone; imputing a fake uncertainty would hand the gate a constant feature
+        # and quietly overstate what it had to work with.
+        if unc and (unc not in edf or edf[unc].isna().all()):
+            print(f"    ({name}: no evidential uncertainty — gate uses {col} alone)")
+            unc = None
+        agg_spec = {col: (col, "mean")}
+        if unc:
+            agg_spec[unc] = (unc, "mean")
+        evid = (edf.assign(_vid=consistent_video_id(edf["key"]))
+                   .groupby(["dataset", "_vid"], as_index=False).agg(**agg_spec)
+                   .rename(columns={"_vid": "video_id"}))
+        aligned = merged[["dataset", "video_id"]].merge(evid, on=["dataset", "video_id"],
+                                                        how="left")
+        if len(aligned) != len(merged) or aligned[col].isna().any():
+            raise SystemExit(
+                f"`{name}`: gate features did not align with the compared videos "
+                f"({len(aligned)} rows vs {len(merged)}, {int(aligned[col].isna().sum())} missing). "
+                f"The gate must see the same videos the rescue numbers were computed on.")
+        feats = gate_features(aligned, col, unc)
+        gate = realizable_gate(pa, pe, feats, y, merged["dataset"].to_numpy(),
+                               threshold, t_expert)
 
         experts[name] = {"pooled": pooled, "per_family": per_family, "gate": gate,
-                         "parquet": str(path), "prob_col": col}
+                         "parquet": str(path), "prob_col": col,
+                         "val_parquet": str(val_path), "operating_threshold": t_expert,
+                         "n_videos_compared": int(len(merged)),
+                         "coverage_of_smaller_export": float(coverage)}
         decisions[name] = decide(name, pooled, gate, per_family)
         d = decisions[name]
         print(f"\n  {name}: {'ENTERS' if d['enters'] else 'dropped'} — {d['justification']}")
@@ -355,6 +457,8 @@ def main() -> int:
     payload = {
         "anchor": {"name": a_name, "parquet": str(a_path), "column": args.anchor_col,
                    "n_videos": int(len(anchor_v)),
+                   "note": "experts are compared on the intersection of videos with the anchor; "
+                           "see each expert's `n_videos_compared`",
                    "n_families": int(anchor_v["dataset"].nunique())},
         "threshold": threshold, "threshold_source": str(args.threshold_source),
         "thresholds_policy": {"rescue_margin": MEANINGFUL_RESCUE_MARGIN,
