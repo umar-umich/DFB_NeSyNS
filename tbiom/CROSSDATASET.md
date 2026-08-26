@@ -6,7 +6,7 @@ Blank cells are still scoring.
 
 | model | FF++ (in-domain) | Celeb-DF-v2 | Celeb-DF-v1 | DFDCP | DFDC | DFD | Deepfake-Eval-2024 | UADFV |
 |---|---|---|---|---|---|---|---|---|
-| CLIP anchor | 0.9909 | — | — | — | — | — | 0.6357 | — |
+| CLIP anchor | 0.9909 | 0.9225 | 0.8939 | 0.8912 | 0.8477 | 0.9222 | 0.6357 | 0.9958 |
 | FS-VFM preservation | 0.9867 | 0.8713 | 0.8285 | 0.8397 | 0.8552 | 0.8877 | 0.6821 | 0.9825 |
 | FS-VFM ordinary | 0.9864 | 0.8758 | 0.8646 | 0.8259 | 0.8511 | 0.8884 | 0.6782 | 0.9858 |
 
@@ -41,8 +41,14 @@ Read together: preservation is defensible as the default, but on the strength of
 
 | model | dataset | videos | real / fake | frames |
 |---|---|---:|---|---:|
+| CLIP anchor | Celeb-DF-v1 | 100 | 38 / 62 | 3200 |
+| CLIP anchor | Celeb-DF-v2 | 518 | 178 / 340 | 16572 |
+| CLIP anchor | DFDC | 4704 | 2315 / 2389 | 132116 |
+| CLIP anchor | DFDCP | 654 | 230 / 424 | 17222 |
+| CLIP anchor | DFD | 3431 | 363 / 3068 | 109298 |
 | CLIP anchor | Deepfake-Eval-2024 | 814 | 428 / 386 | 23209 |
 | CLIP anchor | FF++ (in-domain) | 700 | 140 / 560 | 22400 |
+| CLIP anchor | UADFV | 98 | 49 / 49 | 3099 |
 | FS-VFM ordinary | Celeb-DF-v1 | 100 | 38 / 62 | 3200 |
 | FS-VFM ordinary | Celeb-DF-v2 | 518 | 178 / 340 | 16572 |
 | FS-VFM ordinary | DFDC | 4704 | 2315 / 2389 | 132116 |

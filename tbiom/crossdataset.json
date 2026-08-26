@@ -6,12 +6,54 @@
     "real": 140,
     "fake": 560
   },
+  "clip|Celeb_DF_v2": {
+    "auroc": 0.9224553866490416,
+    "videos": 518,
+    "frames": 16572,
+    "real": 178,
+    "fake": 340
+  },
+  "clip|Celeb_DF_v1": {
+    "auroc": 0.8938879456706282,
+    "videos": 100,
+    "frames": 3200,
+    "real": 38,
+    "fake": 62
+  },
+  "clip|DFDCP": {
+    "auroc": 0.8911710418375718,
+    "videos": 654,
+    "frames": 17222,
+    "real": 230,
+    "fake": 424
+  },
+  "clip|DFDC": {
+    "auroc": 0.8476677211155883,
+    "videos": 4704,
+    "frames": 132116,
+    "real": 2315,
+    "fake": 2389
+  },
+  "clip|DeepFakeDetection": {
+    "auroc": 0.9222059399255085,
+    "videos": 3431,
+    "frames": 109298,
+    "real": 363,
+    "fake": 3068
+  },
   "clip|Deepfake_Eval_2024": {
     "auroc": 0.6356835020095879,
     "videos": 814,
     "frames": 23209,
     "real": 428,
     "fake": 386
+  },
+  "clip|UADFV": {
+    "auroc": 0.9958350687213661,
+    "videos": 98,
+    "frames": 3099,
+    "real": 49,
+    "fake": 49
   },
   "preserve|FaceForensics__": {
     "auroc": 0.9867091836734694,
