@@ -1,0 +1,257 @@
+{
+  "anchor": {
+    "name": "clip",
+    "parquet": "logs/tbiom/valmix/clip/per_sample_epoch_7.parquet",
+    "column": "p_sem",
+    "n_videos": 1350,
+    "note": "experts are compared on the intersection of videos with the anchor; see each expert's `n_videos_compared`",
+    "n_families": 3
+  },
+  "threshold": 0.3260068893432617,
+  "threshold_source": "logs/tbiom/score/clip_ffppval_seeded/per_sample_epoch_7.parquet",
+  "thresholds_policy": {
+    "rescue_margin": 0.05,
+    "useful_recovery": 0.25,
+    "min_families": 2
+  },
+  "experts": {
+    "fsvfm_preserve": {
+      "pooled": {
+        "n": 1350,
+        "anchor_accuracy": 0.7881481481481482,
+        "expert_accuracy": 0.74,
+        "n_anchor_wrong": 286,
+        "n_anchor_right": 1064,
+        "p_expert_right_given_anchor_wrong": 0.36013986013986016,
+        "p_expert_wrong_given_anchor_right": 0.15789473684210525,
+        "ceiling_union_correct": 0.8644444444444445,
+        "both_wrong": 0.13555555555555557
+      },
+      "per_family": {
+        "VALmix:CDFv2val": {
+          "n": 450,
+          "anchor_accuracy": 0.8688888888888889,
+          "expert_accuracy": 0.7466666666666667,
+          "n_anchor_wrong": 59,
+          "n_anchor_right": 391,
+          "p_expert_right_given_anchor_wrong": 0.4576271186440678,
+          "p_expert_wrong_given_anchor_right": 0.20971867007672634,
+          "ceiling_union_correct": 0.9288888888888889,
+          "both_wrong": 0.07111111111111111
+        },
+        "VALmix:DFDCPval": {
+          "n": 450,
+          "anchor_accuracy": 0.9111111111111111,
+          "expert_accuracy": 0.8711111111111111,
+          "n_anchor_wrong": 40,
+          "n_anchor_right": 410,
+          "p_expert_right_given_anchor_wrong": 0.475,
+          "p_expert_wrong_given_anchor_right": 0.09024390243902439,
+          "ceiling_union_correct": 0.9533333333333334,
+          "both_wrong": 0.04666666666666667
+        },
+        "VALmix:DFEval24val": {
+          "n": 450,
+          "anchor_accuracy": 0.5844444444444444,
+          "expert_accuracy": 0.6022222222222222,
+          "n_anchor_wrong": 187,
+          "n_anchor_right": 263,
+          "p_expert_right_given_anchor_wrong": 0.3048128342245989,
+          "p_expert_wrong_given_anchor_right": 0.18631178707224336,
+          "ceiling_union_correct": 0.7111111111111111,
+          "both_wrong": 0.28888888888888886
+        }
+      },
+      "gate": {
+        "gate_auroc_vs_target": 0.6469663113803225,
+        "target_positive_rate": 0.07629629629629629,
+        "mean_q": 0.07497600001309884,
+        "anchor_video_auroc": 0.8718748971193415,
+        "fused_video_auroc": 0.8752746227709192,
+        "auroc_gain": 0.0033997256515776453,
+        "anchor_accuracy": 0.7881481481481482,
+        "fused_accuracy": 0.7933333333333333,
+        "ceiling_accuracy": 0.8644444444444445,
+        "accuracy_headroom": 0.0762962962962963,
+        "recovered_fraction": 0.06796116504854363,
+        "no_headroom": false
+      },
+      "parquet": "logs/tbiom/valmix/fsvfm_preserve/profile_epoch_009.parquet",
+      "prob_col": "p_direct",
+      "val_parquet": "logs/tbiom/score/fsvfm_preserve_ffppval/profile_epoch_009.parquet",
+      "operating_threshold": 0.4238850176334381,
+      "n_videos_compared": 1350,
+      "coverage_of_smaller_export": 1.0
+    },
+    "fsvfm_ordinary": {
+      "pooled": {
+        "n": 1350,
+        "anchor_accuracy": 0.7881481481481482,
+        "expert_accuracy": 0.7392592592592593,
+        "n_anchor_wrong": 286,
+        "n_anchor_right": 1064,
+        "p_expert_right_given_anchor_wrong": 0.36713286713286714,
+        "p_expert_wrong_given_anchor_right": 0.16071428571428573,
+        "ceiling_union_correct": 0.8659259259259259,
+        "both_wrong": 0.13407407407407407
+      },
+      "per_family": {
+        "VALmix:CDFv2val": {
+          "n": 450,
+          "anchor_accuracy": 0.8688888888888889,
+          "expert_accuracy": 0.74,
+          "n_anchor_wrong": 59,
+          "n_anchor_right": 391,
+          "p_expert_right_given_anchor_wrong": 0.4406779661016949,
+          "p_expert_wrong_given_anchor_right": 0.21483375959079284,
+          "ceiling_union_correct": 0.9266666666666666,
+          "both_wrong": 0.07333333333333333
+        },
+        "VALmix:DFDCPval": {
+          "n": 450,
+          "anchor_accuracy": 0.9111111111111111,
+          "expert_accuracy": 0.8777777777777778,
+          "n_anchor_wrong": 40,
+          "n_anchor_right": 410,
+          "p_expert_right_given_anchor_wrong": 0.5,
+          "p_expert_wrong_given_anchor_right": 0.08536585365853659,
+          "ceiling_union_correct": 0.9555555555555556,
+          "both_wrong": 0.044444444444444446
+        },
+        "VALmix:DFEval24val": {
+          "n": 450,
+          "anchor_accuracy": 0.5844444444444444,
+          "expert_accuracy": 0.6,
+          "n_anchor_wrong": 187,
+          "n_anchor_right": 263,
+          "p_expert_right_given_anchor_wrong": 0.3155080213903743,
+          "p_expert_wrong_given_anchor_right": 0.19771863117870722,
+          "ceiling_union_correct": 0.7155555555555555,
+          "both_wrong": 0.28444444444444444
+        }
+      },
+      "gate": {
+        "gate_auroc_vs_target": 0.6665442723274049,
+        "target_positive_rate": 0.07777777777777778,
+        "mean_q": 0.07886970129176817,
+        "anchor_video_auroc": 0.8718748971193415,
+        "fused_video_auroc": 0.8773157750342935,
+        "auroc_gain": 0.005440877914951958,
+        "anchor_accuracy": 0.7881481481481482,
+        "fused_accuracy": 0.7962962962962963,
+        "ceiling_accuracy": 0.8659259259259259,
+        "accuracy_headroom": 0.07777777777777772,
+        "recovered_fraction": 0.10476190476190456,
+        "no_headroom": false
+      },
+      "parquet": "logs/tbiom/valmix/fsvfm_ordinary/profile_epoch_009.parquet",
+      "prob_col": "p_direct",
+      "val_parquet": "logs/tbiom/score/fsvfm_ordinary_ffppval/profile_epoch_009.parquet",
+      "operating_threshold": 0.4405089318752289,
+      "n_videos_compared": 1350,
+      "coverage_of_smaller_export": 1.0
+    },
+    "mrvae_rate": {
+      "pooled": {
+        "n": 1350,
+        "anchor_accuracy": 0.7881481481481482,
+        "expert_accuracy": 0.457037037037037,
+        "n_anchor_wrong": 286,
+        "n_anchor_right": 1064,
+        "p_expert_right_given_anchor_wrong": 0.3951048951048951,
+        "p_expert_wrong_given_anchor_right": 0.5263157894736842,
+        "ceiling_union_correct": 0.8718518518518519,
+        "both_wrong": 0.12814814814814815
+      },
+      "per_family": {
+        "VALmix:CDFv2val": {
+          "n": 450,
+          "anchor_accuracy": 0.8688888888888889,
+          "expert_accuracy": 0.4022222222222222,
+          "n_anchor_wrong": 59,
+          "n_anchor_right": 391,
+          "p_expert_right_given_anchor_wrong": 0.3898305084745763,
+          "p_expert_wrong_given_anchor_right": 0.5959079283887468,
+          "ceiling_union_correct": 0.92,
+          "both_wrong": 0.08
+        },
+        "VALmix:DFDCPval": {
+          "n": 450,
+          "anchor_accuracy": 0.9111111111111111,
+          "expert_accuracy": 0.49777777777777776,
+          "n_anchor_wrong": 40,
+          "n_anchor_right": 410,
+          "p_expert_right_given_anchor_wrong": 0.125,
+          "p_expert_wrong_given_anchor_right": 0.4658536585365854,
+          "ceiling_union_correct": 0.9222222222222223,
+          "both_wrong": 0.07777777777777778
+        },
+        "VALmix:DFEval24val": {
+          "n": 450,
+          "anchor_accuracy": 0.5844444444444444,
+          "expert_accuracy": 0.4711111111111111,
+          "n_anchor_wrong": 187,
+          "n_anchor_right": 263,
+          "p_expert_right_given_anchor_wrong": 0.45454545454545453,
+          "p_expert_wrong_given_anchor_right": 0.5171102661596958,
+          "ceiling_union_correct": 0.7733333333333333,
+          "both_wrong": 0.22666666666666666
+        }
+      },
+      "gate": {
+        "gate_auroc_vs_target": 0.28501012297808714,
+        "target_positive_rate": 0.0837037037037037,
+        "mean_q": 0.08726158749873701,
+        "anchor_video_auroc": 0.8718748971193415,
+        "fused_video_auroc": 0.8564345679012346,
+        "auroc_gain": -0.015440329218106896,
+        "anchor_accuracy": 0.7881481481481482,
+        "fused_accuracy": 0.7866666666666666,
+        "ceiling_accuracy": 0.8718518518518519,
+        "accuracy_headroom": 0.08370370370370372,
+        "recovered_fraction": -0.01769911504424834,
+        "no_headroom": false
+      },
+      "parquet": "logs/tbiom/valmix/fsvfm_preserve_rate/profile_epoch_009.parquet",
+      "prob_col": "p_rate",
+      "val_parquet": "logs/tbiom/score/fsvfm_preserve_ffppval/profile_epoch_009.parquet",
+      "operating_threshold": 0.7940134200677802,
+      "n_videos_compared": 1350,
+      "coverage_of_smaller_export": 1.0
+    }
+  },
+  "decisions": {
+    "fsvfm_preserve": {
+      "expert": "fsvfm_preserve",
+      "enters": false,
+      "justification": "the realizable gate recovers only 7% of the headroom",
+      "rescue_margin": 0.2022451232977549,
+      "families_with_rescue": [
+        "VALmix:CDFv2val",
+        "VALmix:DFDCPval",
+        "VALmix:DFEval24val"
+      ],
+      "recovered_fraction": 0.06796116504854363
+    },
+    "fsvfm_ordinary": {
+      "expert": "fsvfm_ordinary",
+      "enters": false,
+      "justification": "the realizable gate recovers only 10% of the headroom",
+      "rescue_margin": 0.2064185814185814,
+      "families_with_rescue": [
+        "VALmix:CDFv2val",
+        "VALmix:DFDCPval",
+        "VALmix:DFEval24val"
+      ],
+      "recovered_fraction": 0.10476190476190456
+    },
+    "mrvae_rate": {
+      "expert": "mrvae_rate",
+      "enters": false,
+      "justification": "rescue margin -0.131 (P(right|anchor wrong) 0.395 vs P(wrong|anchor right) 0.526) on 0 families; the realizable gate recovers only -2% of the headroom",
+      "rescue_margin": -0.13121089436878908,
+      "families_with_rescue": [],
+      "recovered_fraction": -0.01769911504424834
+    }
+  }
+}

@@ -115,19 +115,29 @@ def path_domain(keys: pd.Series) -> pd.Series:
     return out
 
 
-def video_frame(df: pd.DataFrame, prob_col: str) -> pd.DataFrame:
-    """Aggregate to video level once, so every number below is on the same unit.
+def with_group_and_video(df: pd.DataFrame) -> pd.DataFrame:
+    """Add the cross-fitting group (`dataset`) and the video id, identically for every export.
 
     `dataset` doubles as the cross-fitting group. For a per-method export (DF40) it already is
     the method; for VALmix it is one constant name, so the source corpus is substituted — see
     VALMIX_DOMAINS. Substituting only when the column is degenerate leaves every existing export
     untouched.
+
+    This lives in ONE function because the video table and the gate-feature table must be keyed
+    identically. When the substitution was applied only to the former, the two grouped on
+    `VALmix:CDFv2val` and `VALmix` respectively and the join produced 1,350 rows of NaN.
     """
     out = df.assign(_vid=consistent_video_id(df["key"]))
     if out["dataset"].nunique() < 2:
         domains = path_domain(out["key"])
         if domains.nunique() >= 2:
             out = out.assign(dataset=out["dataset"].astype(str) + ":" + domains)
+    return out
+
+
+def video_frame(df: pd.DataFrame, prob_col: str) -> pd.DataFrame:
+    """Aggregate to video level once, so every number below is on the same unit."""
+    out = with_group_and_video(df)
     return out.groupby(["dataset", "_vid"], as_index=False).agg(
         p=(prob_col, "mean"), y=("label", "max")).rename(columns={"_vid": "video_id"})
 
@@ -467,7 +477,7 @@ def main() -> int:
         agg_spec = {col: (col, "mean")}
         if unc:
             agg_spec[unc] = (unc, "mean")
-        evid = (edf.assign(_vid=consistent_video_id(edf["key"]))
+        evid = (with_group_and_video(edf)
                    .groupby(["dataset", "_vid"], as_index=False).agg(**agg_spec)
                    .rename(columns={"_vid": "video_id"}))
         aligned = merged[["dataset", "video_id"]].merge(evid, on=["dataset", "video_id"],
