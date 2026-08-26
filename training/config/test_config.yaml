@@ -41,6 +41,10 @@ label_dict:
   # FF++ (+) DF40 combined training manifest — preprocessing/build_ffpp_df40_manifest.py
   FFPP_DF40_Real: 0
   FFPP_DF40_Fake: 1
+  # VALmix — the diverse validation split (preprocessing/build_valmix_manifest.py).
+  # `val` split only; selection reads this, nothing else ever should.
+  VALmix_Real: 0
+  VALmix_Fake: 1
   # Deepfake-Eval-2024 (in-the-wild deployment benchmark, zero-shot)
   DFEval24_Real: 0
   DFEval24_Fake: 1

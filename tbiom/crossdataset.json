@@ -1,0 +1,128 @@
+{
+  "clip|FaceForensics__": {
+    "auroc": 0.9908801020408163,
+    "videos": 700,
+    "frames": 22400,
+    "real": 140,
+    "fake": 560
+  },
+  "clip|Deepfake_Eval_2024": {
+    "auroc": 0.6356835020095879,
+    "videos": 814,
+    "frames": 23209,
+    "real": 428,
+    "fake": 386
+  },
+  "preserve|FaceForensics__": {
+    "auroc": 0.9867091836734694,
+    "videos": 700,
+    "frames": 22400,
+    "real": 140,
+    "fake": 560
+  },
+  "preserve|Celeb_DF_v2": {
+    "auroc": 0.8713317911434236,
+    "videos": 518,
+    "frames": 16572,
+    "real": 178,
+    "fake": 340
+  },
+  "preserve|Celeb_DF_v1": {
+    "auroc": 0.8285229202037352,
+    "videos": 100,
+    "frames": 3200,
+    "real": 38,
+    "fake": 62
+  },
+  "preserve|DFDCP": {
+    "auroc": 0.8397149302707138,
+    "videos": 654,
+    "frames": 17222,
+    "real": 230,
+    "fake": 424
+  },
+  "preserve|DFDC": {
+    "auroc": 0.8552085828947832,
+    "videos": 4704,
+    "frames": 132116,
+    "real": 2315,
+    "fake": 2389
+  },
+  "preserve|DeepFakeDetection": {
+    "auroc": 0.8876701110907582,
+    "videos": 3431,
+    "frames": 109298,
+    "real": 363,
+    "fake": 3068
+  },
+  "preserve|Deepfake_Eval_2024": {
+    "auroc": 0.682091666263135,
+    "videos": 814,
+    "frames": 23209,
+    "real": 428,
+    "fake": 386
+  },
+  "preserve|UADFV": {
+    "auroc": 0.9825072886297376,
+    "videos": 98,
+    "frames": 3099,
+    "real": 49,
+    "fake": 49
+  },
+  "ordinary|FaceForensics__": {
+    "auroc": 0.9864030612244898,
+    "videos": 700,
+    "frames": 22400,
+    "real": 140,
+    "fake": 560
+  },
+  "ordinary|Celeb_DF_v2": {
+    "auroc": 0.8757600793126239,
+    "videos": 518,
+    "frames": 16572,
+    "real": 178,
+    "fake": 340
+  },
+  "ordinary|Celeb_DF_v1": {
+    "auroc": 0.8646010186757216,
+    "videos": 100,
+    "frames": 3200,
+    "real": 38,
+    "fake": 62
+  },
+  "ordinary|DFDCP": {
+    "auroc": 0.8258818703855619,
+    "videos": 654,
+    "frames": 17222,
+    "real": 230,
+    "fake": 424
+  },
+  "ordinary|DFDC": {
+    "auroc": 0.8511028318236843,
+    "videos": 4704,
+    "frames": 132116,
+    "real": 2315,
+    "fake": 2389
+  },
+  "ordinary|DeepFakeDetection": {
+    "auroc": 0.8884477104816088,
+    "videos": 3431,
+    "frames": 109298,
+    "real": 363,
+    "fake": 3068
+  },
+  "ordinary|Deepfake_Eval_2024": {
+    "auroc": 0.6782480267299404,
+    "videos": 814,
+    "frames": 23209,
+    "real": 428,
+    "fake": 386
+  },
+  "ordinary|UADFV": {
+    "auroc": 0.9858392336526447,
+    "videos": 98,
+    "frames": 3099,
+    "real": 49,
+    "fake": 49
+  }
+}
