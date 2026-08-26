@@ -88,8 +88,27 @@ def main() -> int:
 
     stats: dict[str, dict] = {}
 
-    # ---- FF++ half: reals and the four manipulations, already absolute and resolved ----------
+    # ---- val / test: FF++'s own, verbatim ----------------------------------------------------
+    # The DF40 fakes contribute to TRAIN only. Their held-out portion is evaluated separately as
+    # DF40-Dev/Holdout and must not be reachable through this manifest.
+    #
+    # These splits are populated rather than left empty for two reasons. Mechanically, `load_split`
+    # constructs the dataset in test mode before swapping to the requested split, so an empty
+    # `test` makes the manifest unloadable even for training. Substantively, FF++ val IS the
+    # selection set for every arm — FF++'s splits are fully disjoint (train/val/test overlap 0 in
+    # all three directions, verified) — so making this dataset's val and test exactly FF++'s is
+    # the firewall written into the data rather than relied on by convention.
     ffd = json.load(open(FFPP_JSON))["FaceForensics++"]
+    for split in ("val", "test"):
+        for sub in ("FF-real",) + FFPP_FAKE_SUBSETS:
+            half = real_key if sub == "FF-real" else fake_key
+            for vid, info in ffd[sub][split]["c23"].items():
+                frames = info.get("frames", [])
+                if frames:
+                    out[args.out_name][half][split][f"ffpp_{sub}_{vid}"] = {
+                        "label": half, "frames": frames}
+
+    # ---- FF++ half of TRAIN: reals and the four manipulations, already absolute and resolved --
     for sub in ("FF-real",) + FFPP_FAKE_SUBSETS:
         half = real_key if sub == "FF-real" else fake_key
         node = ffd[sub]["train"]["c23"]

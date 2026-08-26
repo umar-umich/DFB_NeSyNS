@@ -381,7 +381,22 @@ def main() -> int:
     trainable = model.trainable_parameters()
     print(f"  trainable: {trainable} (total {sum(trainable.values()):,})")
 
-    train_set = load_split(data_cfg, "FaceForensics++", "train")
+    # The TRAINING corpus is named by the config; VALIDATION is always FF++ val, whatever the
+    # training arm. That asymmetry is deliberate and is the firewall: selection must be
+    # comparable across arms and must stay inside the permitted protocol, so an arm that trains
+    # on DF40 still picks its checkpoint on FF++ VAL_select and gains no selection advantage.
+    train_name = cfg["training"].get("train_dataset", ["FaceForensics++"])
+    if isinstance(train_name, str):
+        train_name = [train_name]
+    if len(train_name) != 1:
+        raise SystemExit(
+            f"training.train_dataset must name exactly one dataset, got {train_name}. Combining "
+            f"corpora is done by BUILDING a combined manifest (see "
+            f"preprocessing/build_ffpp_df40_manifest.py), not by listing two here — a list would "
+            f"concatenate two datasets whose identity splits were never checked against each "
+            f"other.")
+    print(f"  training corpus: {train_name[0]}")
+    train_set = load_split(data_cfg, train_name[0], "train")
     val_set = load_split(data_cfg, "FaceForensics++", "val")
     val_select = _restrict_to_val_select(val_set, cfg)
 
