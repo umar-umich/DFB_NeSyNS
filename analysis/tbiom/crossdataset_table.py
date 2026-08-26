@@ -107,12 +107,27 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", type=pathlib.Path, default=pathlib.Path("logs/tbiom/crossdataset"))
     ap.add_argument("--out", type=pathlib.Path, default=pathlib.Path("tbiom"))
+    ap.add_argument("--extra", action="append", default=[],
+                    metavar="KEY:LABEL:ROOT:PROBCOL",
+                    help="an additional model whose per-dataset directories live under ROOT and "
+                         "are named by the dataset alone (as eval_ffpp_df40_checkpoint.sh writes "
+                         "them), rather than MODEL_DATASET. Repeatable.")
     args = ap.parse_args()
+
+    # Extra models are laid out as ROOT/<dataset>/ rather than ROOT/<model>_<dataset>/, because
+    # a checkpoint evaluation writes one directory per dataset under its own epoch root.
+    extra_roots: dict[str, pathlib.Path] = {}
+    for spec in args.extra:
+        key, label, root, col = spec.split(":", 3)
+        MODELS[key] = label
+        PROB_COL[key] = col
+        extra_roots[key] = pathlib.Path(root)
 
     cells: dict[tuple[str, str], dict] = {}
     for model in MODELS:
         for ds in DATASETS:
-            d = args.root / f"{model}_{ds}"
+            d = (extra_roots[model] / ds) if model in extra_roots \
+                else args.root / f"{model}_{ds}"
             parquets = sorted(d.glob("*.parquet"))
             if not parquets:
                 continue
