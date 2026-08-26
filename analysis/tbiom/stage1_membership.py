@@ -95,9 +95,39 @@ def consistent_video_id(keys: pd.Series) -> pd.Series:
     return directory.where(~degenerate, stem)
 
 
+# The corpus each VALmix frame actually came from. VALmix is one dataset NAME over three source
+# corpora, and the gate cross-fits leave-one-group-out: with a single group there is nothing to
+# hold out, every sample would score its own gate, and the recovered fraction would be an
+# in-sample number reported as if it were honest. The domain is recovered from the frame path,
+# which is the only field that still carries it after scoring.
+VALMIX_DOMAINS = {
+    "/Celeb-DF-v2/": "CDFv2val",
+    "/DFDCP/": "DFDCPval",
+    "/Deepfake-Eval-2024/": "DFEval24val",
+}
+
+
+def path_domain(keys: pd.Series) -> pd.Series:
+    k = keys.astype(str)
+    out = pd.Series("other", index=k.index)
+    for needle, name in VALMIX_DOMAINS.items():
+        out = out.mask(k.str.contains(needle, regex=False), name)
+    return out
+
+
 def video_frame(df: pd.DataFrame, prob_col: str) -> pd.DataFrame:
-    """Aggregate to video level once, so every number below is on the same unit."""
+    """Aggregate to video level once, so every number below is on the same unit.
+
+    `dataset` doubles as the cross-fitting group. For a per-method export (DF40) it already is
+    the method; for VALmix it is one constant name, so the source corpus is substituted — see
+    VALMIX_DOMAINS. Substituting only when the column is degenerate leaves every existing export
+    untouched.
+    """
     out = df.assign(_vid=consistent_video_id(df["key"]))
+    if out["dataset"].nunique() < 2:
+        domains = path_domain(out["key"])
+        if domains.nunique() >= 2:
+            out = out.assign(dataset=out["dataset"].astype(str) + ":" + domains)
     return out.groupby(["dataset", "_vid"], as_index=False).agg(
         p=(prob_col, "mean"), y=("label", "max")).rename(columns={"_vid": "video_id"})
 
@@ -351,6 +381,10 @@ def main() -> int:
                          "EER fixes the anchor's operating point, frozen across every family.")
     ap.add_argument("--threshold-col", default=None,
                     help="probability column in the threshold source (default: --anchor-col)")
+    ap.add_argument("--min-videos", type=int, default=800,
+                    help="absolute floor on the anchor/expert intersection. A backstop only — "
+                         "COVERAGE is the real test. Sized so VALmix (1,350 videos total) is not "
+                         "rejected as thin when it is in fact complete.")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
 
@@ -389,11 +423,17 @@ def main() -> int:
         # overrides the mode and frame count — so they cover different frames per video even at
         # the same seed. Intersecting is the fix; the coverage is recorded so a thin intersection
         # is visible rather than silent.
-        if len(merged) < 2000 or coverage < 0.7:
+        # COVERAGE is the real test, not a raw count: it catches the failure this guard exists
+        # for, an intersection thinned by mismatched frame sampling. The absolute floor is only a
+        # backstop against a set too small to say anything, and it must not be sized for DF40's
+        # 18k videos — VALmix is 1,350 in total, so a 2,000 floor would reject the entire split
+        # as "too thin" when it is complete.
+        if len(merged) < args.min_videos or coverage < 0.7:
             raise SystemExit(
                 f"`{name}`: only {len(merged)} videos ({coverage:.0%}) are common to the anchor "
                 f"({len(anchor_v)}) and the expert ({len(ev)}). Too thin to compute "
-                f"complementarity on — re-score both through the same loader path.")
+                f"complementarity on — re-score both through the same loader path, or lower "
+                f"--min-videos if the protocol really is this small.")
         print(f"  {name}: {len(merged)} videos common to anchor ({len(anchor_v)}) and expert "
               f"({len(ev)}) — {coverage:.0%}; all numbers below are on this intersection")
         print(f"    operating threshold {t_expert:.4f} (EER on {val_path})")
