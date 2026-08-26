@@ -9,6 +9,7 @@ Blank cells are still scoring.
 | CLIP anchor | 0.9909 | 0.9225 | 0.8939 | 0.8912 | 0.8477 | 0.9222 | 0.6357 | 0.9958 |
 | FS-VFM preservation | 0.9867 | 0.8713 | 0.8285 | 0.8397 | 0.8552 | 0.8877 | 0.6821 | 0.9825 |
 | FS-VFM ordinary | 0.9864 | 0.8758 | 0.8646 | 0.8259 | 0.8511 | 0.8884 | 0.6782 | 0.9858 |
+| V1 FF++(+)DF40 ep2 | 0.9926 | 0.7503 | 0.8306 | 0.7247 | 0.7628 | 0.8414 | 0.6476 | 0.9354 |
 
 ## Preservation minus ordinary
 
@@ -49,6 +50,14 @@ Read together: preservation is defensible as the default, but on the strength of
 | CLIP anchor | Deepfake-Eval-2024 | 814 | 428 / 386 | 23209 |
 | CLIP anchor | FF++ (in-domain) | 700 | 140 / 560 | 22400 |
 | CLIP anchor | UADFV | 98 | 49 / 49 | 3099 |
+| V1 FF++(+)DF40 ep2 | Celeb-DF-v1 | 100 | 38 / 62 | 3200 |
+| V1 FF++(+)DF40 ep2 | Celeb-DF-v2 | 518 | 178 / 340 | 16572 |
+| V1 FF++(+)DF40 ep2 | DFDC | 4704 | 2315 / 2389 | 132116 |
+| V1 FF++(+)DF40 ep2 | DFDCP | 654 | 230 / 424 | 17222 |
+| V1 FF++(+)DF40 ep2 | DFD | 3431 | 363 / 3068 | 109298 |
+| V1 FF++(+)DF40 ep2 | Deepfake-Eval-2024 | 814 | 428 / 386 | 23209 |
+| V1 FF++(+)DF40 ep2 | FF++ (in-domain) | 700 | 140 / 560 | 22400 |
+| V1 FF++(+)DF40 ep2 | UADFV | 98 | 49 / 49 | 3099 |
 | FS-VFM ordinary | Celeb-DF-v1 | 100 | 38 / 62 | 3200 |
 | FS-VFM ordinary | Celeb-DF-v2 | 518 | 178 / 340 | 16572 |
 | FS-VFM ordinary | DFDC | 4704 | 2315 / 2389 | 132116 |

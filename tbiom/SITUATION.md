@@ -146,29 +146,43 @@ Stopped at epoch 3 of 10 (9 h of ~26 h). Checkpoints 0–2 kept.
 Train loss falling, validation loss rising monotonically from epoch 0. Pairing worked perfectly
 (`pair_fraction 1.0`, `matched_aug_fraction 1.0`).
 
-### Out-of-domain result at epoch 2
+### Out-of-domain result at epoch 2 (all eight benchmarks)
 
 | dataset | FF++-only anchor | FF++ ⊕ DF40 ep2 | delta |
 |---|---:|---:|---:|
-| FF++ | 0.9909 | 0.9926 | +0.0017 |
+| FF++ (in-domain) | 0.9909 | 0.9926 | +0.0017 |
 | Celeb-DF-v2 | 0.9225 | 0.7503 | **−0.1722** |
 | Celeb-DF-v1 | 0.8939 | 0.8306 | −0.0633 |
 | DFDCP | 0.8912 | 0.7247 | **−0.1665** |
+| DFDC | 0.8477 | 0.7628 | −0.0849 |
+| DFD | 0.9222 | 0.8414 | −0.0808 |
+| Deepfake-Eval-2024 | 0.6357 | 0.6476 | +0.0119 |
+| UADFV | 0.9958 | 0.9354 | −0.0604 |
+
+**Seven of eight cross-dataset benchmarks down; only in-domain FF++ up.** The single exception,
+Deepfake-Eval-2024 at +0.0119, is the benchmark where every model here is near chance anyway.
 
 AUROC understates it. The score distributions show the actual failure:
 
-| dataset | model | mean p(fake) on REAL | on fake | separation |
-|---|---|---:|---:|---:|
-| FF++ | anchor | 0.071 | 0.935 | +0.864 |
-| FF++ | ep2 | 0.205 | 0.974 | +0.769 |
-| Celeb-DF-v2 | anchor | 0.124 | 0.655 | +0.531 |
-| Celeb-DF-v2 | **ep2** | **0.997** | **0.997** | **+0.000** |
-| Celeb-DF-v1 | **ep2** | **0.997** | **0.997** | **+0.000** |
-| DFDCP | ep2 | 0.879 | 0.985 | +0.106 |
+| dataset | anchor separation | ep2 separation | ep2 mean p(fake) on REAL |
+|---|---:|---:|---:|
+| FF++ | +0.864 | +0.769 | 0.205 |
+| Celeb-DF-v2 | +0.531 | **+0.000** | **0.997** |
+| Celeb-DF-v1 | +0.523 | **+0.000** | **0.997** |
+| DFDCP | +0.491 | +0.106 | 0.879 |
+| DFDC | +0.459 | +0.096 | 0.892 |
+| DFD | +0.570 | +0.334 | 0.575 |
+| Deepfake-Eval-2024 | +0.140 | +0.070 | 0.854 |
+| UADFV | +0.899 | +0.091 | 0.906 |
 
 On both Celeb-DF sets the model emits **0.997 for real and fake alike**. It calls every
 unfamiliar video fake with 99.7% confidence. The residual AUROC is rank noise inside a saturated
 region, not detection. It is not a broken forward pass — FF++ still separates cleanly.
+
+The pattern across all eight is one quantity: **mean p(fake) on REAL videos**. It is 0.205 on
+FF++, whose reals the model trained on, and 0.575–0.997 everywhere else. UADFV is the sharpest
+illustration — separation collapses from +0.899 to +0.091 purely because its reals become
+unrecognisable to the model.
 
 ### Diagnosis
 
