@@ -30,7 +30,8 @@ Which data calibrates the gates
 `--val-protocol ffpp` (the default, and what §1/§11/§18 require) uses FF++ VAL_meta only, so no
 OOD sample touches the gates, the risk model or either threshold.
 
-`--val-protocol diverse` reproduces the protocol in
+`--val-protocol ffpp_cdf2_TESTCONTAMINATED` (formerly `diverse`, and it needs
+--force-forbidden-sources) reproduces the protocol in
 `analysis/discern_v2/SELECTION_PROTOCOL_RESULT.md` — FF++ **and** Celeb-DF-v2, with the remaining
 sources untouched. That is a deliberate deviation from the V1 spec, and it has a price that is
 computed rather than described: for every corpus here except FF++ the shipped `val` split IS the
@@ -88,13 +89,25 @@ def resolve_checkpoint(run: Path, explicit: Path | None) -> tuple[Path, dict | N
     return Path(selection["checkpoint"]), selection
 
 
-# `diverse` is the protocol recorded in analysis/discern_v2/SELECTION_PROTOCOL_RESULT.md:
-# calibration saw FF++ and Celeb-DF-v2, and the other six sources were never touched. Named
-# explicitly so "the diverse validation split" resolves to specific slices rather than to a memory.
+# Formerly `diverse`. RENAMED because that name described an intent and hid two costs, and this
+# is calibration data — what the gates, the risk model and both thresholds are fitted on.
+#
+#   1. Celeb-DF-v2's shipped `val` split IS its `test` split, 518/518 verified. Calibrating here
+#      is calibrating on test, and Celeb-DF-v2 stops being a zero-shot number afterwards.
+#   2. Even with a clean split it breaks the brief's firewall, which puts gates, risk and
+#      thresholds on FF++ VAL_meta ONLY. Diverse-validation labels may select checkpoints and
+#      nothing else.
+#
+# It is kept rather than deleted because it reproduces a recorded historical result
+# (analysis/discern_v2/SELECTION_PROTOCOL_RESULT.md), but it now names its own cost and cannot be
+# selected by accident. Do NOT reach for it to get "more diverse calibration": the diverse split
+# that exists for selection is VALmix
+# (preprocessing/build_valmix_manifest.py, tbiom/VALMIX.md), and it does not belong here either.
 VAL_PROTOCOLS = {
     "ffpp": ["FaceForensics++:val"],
-    "diverse": ["FaceForensics++:val", "Celeb-DF-v2:val"],
+    "ffpp_cdf2_TESTCONTAMINATED": ["FaceForensics++:val", "Celeb-DF-v2:val"],
 }
+RENAMED_PROTOCOLS = {"diverse": "ffpp_cdf2_TESTCONTAMINATED"}
 # A2b_PROTOCOL.md: "No DF40, CDFv3, or Deepfake-Eval-2024 data at any stage of gate fitting,
 # including scaler and calibrator fitting." Refused unless explicitly forced.
 A2B_FORBIDDEN = ("DF40", "Celeb-DF-v3", "Deepfake-Eval-2024")
@@ -260,9 +273,12 @@ def main() -> int:
                     default=REPO / "training/config/detector/nesy_defake_d1_v.yaml")
     ap.add_argument("--split-file", type=Path,
                     default=REPO / "configs/discern_v2/meta_split.json")
-    ap.add_argument("--val-protocol", choices=sorted(VAL_PROTOCOLS), default="ffpp",
-                    help="ffpp = FF++ VAL_meta only (the V1 spec); diverse = FF++ + Celeb-DF-v2, "
-                         "the protocol from SELECTION_PROTOCOL_RESULT.md")
+    ap.add_argument("--val-protocol", choices=sorted(VAL_PROTOCOLS) + sorted(RENAMED_PROTOCOLS),
+                    default="ffpp",
+                    help="ffpp = FF++ VAL_meta only, which the V1 spec and the brief's firewall "
+                         "both require. ffpp_cdf2_TESTCONTAMINATED reproduces the historical "
+                         "SELECTION_PROTOCOL_RESULT.md run and calibrates on Celeb-DF-v2's val "
+                         "split, which IS its test split; it needs --force-forbidden-sources.")
     ap.add_argument("--val-sources", nargs="+", default=None,
                     help="explicit SOURCE:SPLIT calibration slices, overriding --val-protocol")
     ap.add_argument("--force-forbidden-sources", action="store_true",
@@ -291,6 +307,22 @@ def main() -> int:
     data_cfg = prepare_dataset_config(args.detector_config, args.batch_size, args.workers)
     clip_norm = data_cfg["foundation_models"]["spatial"]["normalization"]
     views = ViewMaker(clip_norm["mean"], clip_norm["std"], args.device, augment=False)
+    if args.val_protocol in RENAMED_PROTOCOLS:
+        raise SystemExit(
+            f"`--val-protocol {args.val_protocol}` was renamed to "
+            f"`{RENAMED_PROTOCOLS[args.val_protocol]}`. The old name described the intent and hid "
+            f"the cost: it calibrates the gates, the risk model and both thresholds on "
+            f"Celeb-DF-v2's val split, which IS its test split (518/518), and the brief's "
+            f"firewall puts calibration on FF++ VAL_meta only. Pass the new name with "
+            f"--force-forbidden-sources if you are deliberately reproducing the historical run, "
+            f"or use the default `ffpp`.")
+    if args.val_protocol == "ffpp_cdf2_TESTCONTAMINATED" and not args.force_forbidden_sources:
+        raise SystemExit(
+            "`--val-protocol ffpp_cdf2_TESTCONTAMINATED` calibrates on Celeb-DF-v2's val split, "
+            "which IS its test split (518/518 verified), and breaks the brief's firewall besides "
+            "— gates, risk and thresholds are FF++ VAL_meta only. Re-run with "
+            "--force-forbidden-sources to do it anyway; every Celeb-DF-v2 number afterwards must "
+            "then be labelled as not zero-shot.")
     targets = args.val_sources or VAL_PROTOCOLS[args.val_protocol]
     print(f"calibration sources: {targets}")
     datasets, folds, overlaps = load_calibration(data_cfg, args.split_file, targets,

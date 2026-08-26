@@ -28,6 +28,13 @@ frame_num: {'train': 8, 'test': 32}   # number of frames to use per video in tra
 resolution: 256   # resolution of output image to network
 with_mask: false   # whether to include mask information in the input
 with_landmark: true   # whether to include facial landmark information in the input
+
+# SBI builds its blend hull from dlib's 81 points (sbi_api slices landmark[:68] and indexes
+# 68..80). This repo's `landmarks/` holds the 5-point RetinaFace output of the v2 preprocessing,
+# which cannot make a hull; `landmarks81/` is written by preprocessing/extract_landmarks81.py.
+# Verified on FF++ youtube c23: 99.83% coverage, and 6/6 seeds produce a blend changing 15-28%
+# of pixels. SBIDataset asserts the point count, so a wrong value here fails loudly.
+landmark_dir: landmarks81
 save_ckpt: false   # whether to save checkpoint
 save_feat: false   # whether to save features
 

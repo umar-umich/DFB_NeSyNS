@@ -38,9 +38,25 @@ class SBIDataset(DeepfakeAbstractBaseDataset):
         # Get the real image paths and labels
         real_image_path, real_label = self.real_imglist[index]
 
-        # Get the landmark paths for real images
-        real_landmark_path = real_image_path.replace('frames', 'landmarks').replace('.png', '.npy')
+        # Get the landmark paths for real images.
+        #
+        # The directory is configurable because THIS REPO HAS TWO landmark sets and SBI works with
+        # exactly one of them. `landmarks/` holds the 5-point RetinaFace output of our v2
+        # preprocessing; `sbi_api` needs dlib's 81 points, since it slices `landmark[:68]` and
+        # indexes 68..80 in `reorder_landmark` to build the blend hull. Pointed at the 5-point
+        # files it does not fail loudly — it indexes past the end or hulls three points — so the
+        # default names the set that actually works and the assert below makes a wrong one
+        # unmissable. `landmarks81/` is written by preprocessing/extract_landmarks81.py.
+        landmark_dir = self.config.get('landmark_dir', 'landmarks81')
+        real_landmark_path = real_image_path.replace(
+            '/frames/', f'/{landmark_dir}/').replace('.png', '.npy')
         landmark = self.load_landmark(real_landmark_path).astype(np.int32)
+        if landmark.shape[0] < 81:
+            raise ValueError(
+                f"SBI needs 81-point landmarks, got {landmark.shape[0]} from "
+                f"{real_landmark_path}. `landmark_dir` is '{landmark_dir}'; the 5-point "
+                f"RetinaFace files in 'landmarks/' cannot build a face hull. Run "
+                f"preprocessing/extract_landmarks81.py over this corpus first.")
 
         # Load the real images
         real_image = self.load_rgb(real_image_path)
