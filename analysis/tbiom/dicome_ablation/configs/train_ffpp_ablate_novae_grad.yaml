@@ -1,0 +1,92 @@
+# ABLATION arm for the DFB_NeSyNS recovery brief.
+#
+# IDENTICAL to train_ffpp.yaml — the config that produced P0-DS — in every key (verified: 0
+# differing keys across seed, batch size, LR, schedule, epochs, precision, backbone, feature
+# dim, and the VAE hyperparameters themselves). The ONLY change is the new flag below, so
+# P0-DS IS the baseline of this pair and no baseline retrain is needed.
+#
+# `detach_vae_from_encoder: true` feeds the Semantic Manifold branch a detached CLIP feature
+# and detaches the reconstruction target, so the VAE and alignment terms train the projector
+# but send NO gradient into the shared CLIP encoder. Measured on a forward/backward pass:
+# gradient magnitude into the encoder from the VAE term alone goes 34,873 -> 0 across 98
+# tensors, while the projector receives an IDENTICAL 613.635 in both arms. One path removed,
+# nothing else touched.
+#
+# The question it answers: is the auxiliary objective what makes DiCoME's semantic branch
+# beat a plain CLIP+LoRA port by +0.045 AUROC on Celeb-DF-v2 (Step 1)? If the advantage
+# collapses here, yes. If it survives, the remaining confounders — batch size, precision,
+# augmentation, optimisation dynamics — come next, one at a time.
+run_name: ffpp_ablate_novae_grad_seed42
+run_dir: runs/dicome_train
+seed: 42
+throw_exception_if_run_exists: false
+num_classes: 2
+binary_labels: true
+backbone: openai/clip-vit-large-patch14
+feature_dim: 64
+peft:
+  enabled: true
+  lora:
+    enabled: true
+    target_modules:
+    - q_proj
+    - v_proj
+    rank: 8
+    alpha: 16
+    dropout: 0.1
+    bias: none
+vae_enabled: true
+vae_latent_dim: 32
+beta_kld: 2.0
+lambda_align: 1.0
+lambda_vae: 0.7
+max_epochs: 20
+dicome_epochs: 20
+dicome_learning_rate: 0.0001
+lr_scheduler: cosine
+min_lr: 1.0e-06
+weight_decay: 0.01
+betas:
+- 0.9
+- 0.999
+trn_h5_path: eval_adaptation/data/h5/FFpp_train.h5
+val_h5_path: eval_adaptation/data/h5/FFpp_val.h5
+tst_h5_path: eval_adaptation/data/h5/FFpp.h5
+trn_files:
+- eval_adaptation/data/splits/FFpp_train/Deepfakes.txt
+- eval_adaptation/data/splits/FFpp_train/FFpp-real.txt
+- eval_adaptation/data/splits/FFpp_train/Face2Face.txt
+- eval_adaptation/data/splits/FFpp_train/FaceSwap.txt
+- eval_adaptation/data/splits/FFpp_train/NeuralTextures.txt
+val_files:
+- eval_adaptation/data/splits/FFpp_val/Deepfakes.txt
+- eval_adaptation/data/splits/FFpp_val/FFpp-real.txt
+- eval_adaptation/data/splits/FFpp_val/Face2Face.txt
+- eval_adaptation/data/splits/FFpp_val/FaceSwap.txt
+- eval_adaptation/data/splits/FFpp_val/NeuralTextures.txt
+tst_files:
+  FFpp:
+  - eval_adaptation/data/splits/FFpp/Deepfakes.txt
+  - eval_adaptation/data/splits/FFpp/FFpp-real.txt
+  - eval_adaptation/data/splits/FFpp/Face2Face.txt
+  - eval_adaptation/data/splits/FFpp/FaceSwap.txt
+  - eval_adaptation/data/splits/FFpp/NeuralTextures.txt
+limit_trn_files: null
+limit_val_files: null
+limit_tst_files: null
+batch_size: 128
+mini_batch_size: 128
+num_workers: 2
+devices:
+- 0
+precision: bf16-mixed
+fast_dev_run: false
+overfit_batches: 0.0
+limit_train_batches: 1.0
+limit_val_batches: 1.0
+limit_test_batches: 1.0
+deterministic: null
+detect_anomaly: false
+checkpoint_for_testing: best
+resume_from_checkpoint: null
+detach_vae_from_encoder: true
