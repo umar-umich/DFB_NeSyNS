@@ -33,6 +33,7 @@ Collated batch shapes (for batch_size N frames):
   video_uid      : (N,)
 """
 
+import re
 import os
 from collections import defaultdict
 from typing import Optional
@@ -166,6 +167,15 @@ class NeSyDeFakeDataset(DeepfakeAbstractBaseDataset):
                 frames_idx = pi
                 break
         if frames_idx is None or frames_idx + 1 >= len(parts):
+            # DF40's entire-face-synthesis methods (StyleGAN2/3/XL, DiT, SiT, VQGAN, ddim,
+            # pixart, RDDM, sd2.1) and e4e are generated from a seed rather than extracted from
+            # video, so they have no `frames/` level: the layout is `<method>/<src_id>/<f>.png`
+            # (train) or `<method>/ff/<src_id>/<f>.jpg` (e4e). The parent directory still names
+            # the FF++ source identity, which is exactly what pairing needs. Without this they
+            # fall through as unpaired and roughly a quarter of the DF40 fakes stop being
+            # source-matched — the primary training arm quietly weakening on the new corpus.
+            if len(parts) >= 2 and re.fullmatch(r"\d{3}", parts[-2] or ""):
+                return parts[-2]
             return None
         video_name = parts[frames_idx + 1]
 

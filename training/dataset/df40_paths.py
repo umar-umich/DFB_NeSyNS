@@ -46,6 +46,13 @@ DF40_ROOT = Path("/data/umar/Datasets/df40")
 DF40_JSON_DIR = DF40_ROOT / "dataset_json"
 RELATIVE_ROOT = "deepfakes_detection_datasets/"
 
+# DF40's TRAINING fakes are a separate ~74 GB archive that we never downloaded into our own tree;
+# they live in a colleague's world-readable directory and are read in place. `/data` is at 100%
+# with ~129 GB free, so copying them locally is not worth the space, but that also means this
+# path is outside our control -- hence the env override and the existence check in `verify()`.
+DF40_TRAIN_ROOT = Path(os.environ.get(
+    "DF40_TRAIN_ROOT", "/data/saad/datasets/video/df40/train"))
+
 # Some JSONs store the path with a leading `./`, and e4e's store the authors' full cluster path.
 # Both mean the same relative location; stripped so one set of rules covers all of them.
 ABSOLUTE_PREFIXES = (
@@ -99,6 +106,16 @@ def _normalise(path: str) -> str:
     return path
 
 
+def _method_dirs(method: str) -> list[str]:
+    """Every spelling of a method's directory worth trying, in order of likelihood."""
+    dirs = [method]
+    alias = METHOD_DIR_ALIASES.get(method)
+    if alias:
+        dirs.insert(0, alias)
+    dirs.append(f"{method}/{method}")                  # archive extracted into its own name
+    return dirs
+
+
 def candidates(path: str, root: Path = DF40_ROOT) -> list[str]:
     """Every plausible on-disk location for one DF40 frame path, most likely first.
 
@@ -123,16 +140,31 @@ def candidates(path: str, root: Path = DF40_ROOT) -> list[str]:
         return [path]                                  # already absolute, or another corpus
     tail = path[len(RELATIVE_ROOT):]
     out: list[str] = []
-    if tail.startswith("DF40/"):
+    if tail.startswith("DF40_train/"):
+        # The manipulation methods keep their `frames/<vid>/<f>.png` layout in the train archive,
+        # so only the root and the method-directory spelling change (`rddm` ships as `RDDM`).
+        inner = tail[len("DF40_train/"):]
+        method, rest = inner.split("/", 1) if "/" in inner else (inner, "")
+        for mdir in _method_dirs(method):
+            out.append(str(DF40_TRAIN_ROOT / mdir / rest))
+    elif tail.startswith("DF40/"):
         inner = tail[len("DF40/"):]
         parts = inner.split("/")
         method, rest = parts[0], parts[1:]
-        # Every spelling of the method directory worth trying, in order of likelihood.
-        method_dirs = [method]
-        alias = METHOD_DIR_ALIASES.get(method)
-        if alias:
-            method_dirs.insert(0, alias)
-        method_dirs.append(f"{method}/{method}")       # archive extracted into its own name
+        method_dirs = _method_dirs(method)
+
+        # Entire-face-synthesis methods (StyleGAN2/3/XL, DiT, SiT, VQGAN, ddim, pixart) are
+        # generated from seeds rather than driven by a source video, so DF40 never split their
+        # directories: the JSON writes BOTH halves as `DF40/<m>/ff/<id>/<f>`, and only the id
+        # says which side it is. The train archive drops the `ff/` level entirely.
+        #
+        # Offering the train and test candidates together is safe here, and provably so rather
+        # than by luck: DF40's train ids are FF++'s TRAIN identities (719/719) and its test ids
+        # are FF++'s TEST identities (140/140), with an empty intersection. At most one of the
+        # two candidates can exist for any given id, so the lookup cannot cross the split.
+        if len(rest) >= 2 and rest[0] in ("ff", "cdf"):
+            for mdir in method_dirs:
+                out.append(str(DF40_TRAIN_ROOT / mdir / "/".join(rest[1:])))
 
         for mdir in method_dirs:
             out.append(str(root / "test" / mdir / "/".join(rest)))
