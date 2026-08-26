@@ -39,6 +39,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from health import auroc, dashboard, eer  # noqa: E402
+from video_id import video_id  # noqa: E402
 
 STEP1 = Path("logs/tbiom/step1")
 CROSS = Path("logs/tbiom/crossdataset")
@@ -72,8 +73,7 @@ def dicome_video(ds: str, arm: str, col: str) -> pd.DataFrame | None:
     df = pd.read_csv(p)
     if col not in df:
         return None
-    frame_path = df["key"].astype(str).str.split("::", n=1).str[-1]
-    vid = frame_path.str.rsplit("/", n=1).str[0]
+    vid = video_id(df["key"])
     return pd.DataFrame({"v": vid, "p": df[col], "y": df["label"]}).groupby(
         "v", as_index=False).agg(p=("p", "mean"), y=("y", "max"))
 
@@ -84,13 +84,7 @@ def port_video(ds: str) -> pd.DataFrame | None:
     if not parts:
         return None
     df = pd.concat([pd.read_parquet(x) for x in parts], ignore_index=True)
-    k = df["key"].astype(str).str.rstrip("/")
-    directory = k.str.rsplit("/", n=1).str[0]
-    parent = directory.str.rsplit("/", n=1).str[-1]
-    degenerate = parent.str.lower().isin({"real", "fake", "frames", "images"})
-    stem = k.str.replace(r"\.[A-Za-z0-9]+$", "", regex=True)
-    vid = directory.where(~degenerate, stem)
-    return pd.DataFrame({"v": vid, "p": df["p_sem"], "y": df["label"]}).groupby(
+    return pd.DataFrame({"v": video_id(df["key"]), "p": df["p_sem"], "y": df["label"]}).groupby(
         "v", as_index=False).agg(p=("p", "mean"), y=("y", "max"))
 
 

@@ -23,6 +23,9 @@ import sys
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from video_id import to_video_level  # noqa: E402
+
 MODELS = {"clip": "CLIP anchor", "preserve": "FS-VFM preservation", "ordinary": "FS-VFM ordinary"}
 PROB_COL = {"clip": "p_sem", "preserve": "p_direct", "ordinary": "p_direct"}
 DATASETS = ["FaceForensics__", "Celeb_DF_v2", "Celeb_DF_v1", "DFDCP", "DFDC",
@@ -50,15 +53,12 @@ def auroc(y: np.ndarray, p: np.ndarray) -> float | None:
 
 
 def video_level(df: pd.DataFrame, col: str) -> pd.DataFrame:
-    """Mean fake-probability per video, the aggregation the spec fixes (§21)."""
-    key = df["key"].astype(str).str.rstrip("/")
-    directory = key.str.rsplit("/", n=1).str[0]
-    parent = directory.str.rsplit("/", n=1).str[-1]
-    degenerate = parent.str.lower().isin({"real", "fake", "frames", "images"})
-    stem = key.str.replace(r"\.[A-Za-z0-9]+$", "", regex=True)
-    vid = directory.where(~degenerate, stem)
-    out = pd.DataFrame({"video": vid, "p": df[col].to_numpy(), "y": df["label"].to_numpy()})
-    return out.groupby("video", as_index=False).agg(p=("p", "mean"), y=("y", "max"))
+    """Mean fake-probability per video (§21), via the ONE shared identity rule.
+
+    Not a local copy: a grouping bug does not raise, it silently changes every AUROC below it.
+    See analysis/tbiom/video_id.py and its regression check on per-dataset video counts.
+    """
+    return to_video_level(df, col)
 
 
 def paired_bootstrap_ci(root: pathlib.Path, ds: str, n_boot: int = 2000,

@@ -39,25 +39,17 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-def consistent_video_id(keys: pd.Series) -> pd.Series:
-    """Video identity from the frame path, matching analysis/tbiom/stage1_membership.py.
 
-    The full DIRECTORY PATH, not its basename: DF40 borrows authentic halves, so a real and a
-    fake video can share the basename `id0_0000`. Flat whole-image methods, whose parent is a
-    bare class name, fall back to the frame itself.
-    """
-    k = keys.astype(str).str.rstrip("/")
-    directory = k.str.rsplit("/", n=1).str[0]
-    parent = directory.str.rsplit("/", n=1).str[-1]
-    degenerate = parent.str.lower().isin({"real", "fake", "frames", "images"})
-    stem = k.str.replace(r"\.[A-Za-z0-9]+$", "", regex=True)
-    return directory.where(~degenerate, stem)
+# The video-identity rule lives in ONE place. A wrong grouping does not raise — it silently
+# regroups frames and changes every AUROC below it, which has already reversed two conclusions in
+# this project. See analysis/tbiom/video_id.py and its regression check.
+from video_id import to_video_level, video_id as consistent_video_id  # noqa: E402
 
 
 def video_level(df: pd.DataFrame, prob_col: str) -> pd.DataFrame:
-    out = df.assign(_vid=consistent_video_id(df["key"]))
-    return out.groupby("_vid", as_index=False).agg(p=(prob_col, "mean"), y=("label", "max"))
+    return to_video_level(df, prob_col)
 
 
 def auroc(y: np.ndarray, p: np.ndarray) -> float:

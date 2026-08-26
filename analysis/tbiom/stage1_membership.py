@@ -67,32 +67,11 @@ USEFUL_RECOVERY = 0.25            # fraction of the ceiling-minus-anchor gain a 
 MIN_FAMILIES = 2
 
 
-def consistent_video_id(keys: pd.Series) -> pd.Series:
-    """Derive video identity from the frame path, identically for every export.
-
-    The exports disagree otherwise, and it is not cosmetic. `eval_v1` applies a
-    degenerate-id fix for DF40's flat whole-image methods — where every fake frame lives in
-    `<method>/fake/<n>.jpg`, so the parent directory is the CLASS and all fakes would collapse to
-    one "video" — while `score_fpad` keeps the parent directory. Merging those two on `video_id`
-    silently pairs a per-frame id against a per-class id, which is what produced a label mismatch
-    on 'the same' videos.
-
-    So identity is recomputed here from the key, the one field both exports agree on
-    byte-for-byte.
-
-    It is the full DIRECTORY PATH, not the directory's name. DF40 borrows its authentic halves, so
-    `.../Celeb-DF-v2/Celeb-real/frames/id0_0000` and `.../df40/test/danet/cdf/.../id0_0000` share
-    the basename `id0_0000` while being a real video and a fake one. Grouping on the basename put
-    both under one id, and `max(label)` then depended on which frames each export happened to
-    sample — which is exactly the label mismatch this function exists to prevent.
-    """
-    k = keys.astype(str).str.rstrip("/")
-    directory = k.str.rsplit("/", n=1).str[0]
-    parent_name = directory.str.rsplit("/", n=1).str[-1]
-    # flat whole-image methods: the "directory" is a bare class name, so the frame IS the video
-    degenerate = parent_name.str.lower().isin({"real", "fake", "frames", "images"})
-    stem = k.str.replace(r"\.[A-Za-z0-9]+$", "", regex=True)
-    return directory.where(~degenerate, stem)
+# The video-identity rule lives in ONE place, with a regression check on expected video counts
+# per dataset. Grouping bugs do not raise; they silently change every AUROC below them, and have
+# already reversed two conclusions in this project. See analysis/tbiom/video_id.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from video_id import video_id as consistent_video_id  # noqa: E402
 
 
 # The corpus each VALmix frame actually came from. VALmix is one dataset NAME over three source
