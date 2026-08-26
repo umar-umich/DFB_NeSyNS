@@ -88,6 +88,40 @@ def port_video(ds: str) -> pd.DataFrame | None:
         "v", as_index=False).agg(p=("p", "mean"), y=("y", "max"))
 
 
+STEP2 = Path("logs/tbiom/step2")
+
+
+def dicome_val(arm: str, col: str):
+    """FF++ VAL scores for a DiCoME readout, exported by Step 2."""
+    f = STEP2 / f"{arm}_FFpp_val.csv"
+    if not f.is_file():
+        return None
+    df = pd.read_csv(f)
+    if col not in df:
+        return None
+    return pd.DataFrame({"v": video_id(df["key"]), "p": df[col], "y": df["label"]}).groupby(
+        "v", as_index=False).agg(p=("p", "mean"), y=("y", "max"))
+
+
+def port_val():
+    f = Path("logs/tbiom/score/clip_ffppval_seeded/per_sample_epoch_7.parquet")
+    if not f.is_file():
+        return None
+    df = pd.read_parquet(f)
+    return pd.DataFrame({"v": video_id(df["key"]), "p": df["p_sem"], "y": df["label"]}).groupby(
+        "v", as_index=False).agg(p=("p", "mean"), y=("y", "max"))
+
+
+# where each readout's FF++ VAL scores come from — the tau source, never the test split
+VAL_SOURCE = {
+    "DiCoME-released fused":    lambda: dicome_val("released", "p_fused"),
+    "DiCoME-released semantic": lambda: dicome_val("released", "p_semantic"),
+    "DiCoME-released artifact": lambda: dicome_val("released", "p_artifact"),
+    "DiCoME-P0DS fused":        lambda: dicome_val("p0ds_e01", "p_fused"),
+    "DiCoME-P0DS semantic":     lambda: dicome_val("p0ds_e01", "p_semantic"),
+    "CLIP port":                port_val,
+}
+
 READOUTS = [
     ("DiCoME-released fused",   lambda ds: dicome_video(ds, "released", "p_fused")),
     ("DiCoME-released semantic", lambda ds: dicome_video(ds, "released", "p_semantic")),
@@ -113,10 +147,17 @@ def main() -> int:
         got = auroc(v["y"].to_numpy(), v["p"].to_numpy())
         checks.append((ds, published, got, got - published))
 
-    # --- one tau per readout, from its own FF++ scores ---------------------------------------
+    # --- one tau per readout, from FF++ VAL -----------------------------------------------------
+    # FF++ VAL, not FF++ test. Deriving tau from the test split was a real error in the first
+    # version of this file and it inflated a finding: the released checkpoint happened to take
+    # tau 0.5639 from FF++ test against P0-DS's 0.4279, and a higher threshold mechanically calls
+    # fewer reals fake. That alone produced "P0-DS mean OOD FPR 0.317 vs released 0.116". On the
+    # permitted source the same numbers are 0.270 vs 0.222 — a real but modest gap, not a
+    # dramatic one. The threshold must come from development data for the same reason it must be
+    # frozen: otherwise it is fitted to what it is being used to judge.
     taus = {}
     for name, fn in READOUTS:
-        ff = fn("FFpp")
+        ff = VAL_SOURCE.get(name, lambda: None)()
         if ff is None:
             continue
         _, tau = eer(ff["y"].to_numpy(), ff["p"].to_numpy())
@@ -163,9 +204,12 @@ def main() -> int:
         lines.append("| " + " | ".join(row) + " |")
 
     lines += ["", "## 2. The operational column — FPR on REAL videos at a frozen tau", "",
-              "One tau per readout, the EER on that readout's OWN FF++ scores, frozen across "
-              "every other dataset. Per-readout because the five are differently calibrated; a "
-              "shared tau would measure calibration offset rather than operating quality.", "",
+              "One tau per readout, the EER on that readout's own **FF++ VAL** scores, frozen "
+              "across every dataset below. Per-readout because the five are differently "
+              "calibrated; a shared tau would measure calibration offset rather than operating "
+              "quality. VAL and not test: an earlier version of this table took tau from FF++ "
+              "test, which handed the released checkpoint a higher threshold and inflated the "
+              "real-side gap from 0.048 to 0.201.", "",
               "| readout | tau | " + " | ".join(DATASETS) + " |",
               "|---|---:" + "|---:" * len(DATASETS) + "|"]
     for name, _ in READOUTS:
@@ -232,24 +276,24 @@ def main() -> int:
     rel, p0, prt = (mean_fpr("DiCoME-released fused"), mean_fpr("DiCoME-P0DS fused"),
                     mean_fpr("CLIP port"))
     if rel is not None and p0 is not None and prt is not None:
-        lines += ["", "## 5. The operational finding — and it changes Step 2", "",
-                  f"Mean FPR on REAL videos across the five OOD sets: DiCoME-released "
-                  f"**{rel:.3f}**, our CLIP port **{prt:.3f}**, DiCoME-P0DS **{p0:.3f}**.", "",
-                  "**Our retrain of DiCoME has worse real-side health than our own CLIP port**, "
-                  "on five of six datasets, despite matching or beating it on AUROC. On DFDC the "
-                  "port scores 0.8477 AUROC against P0-DS's 0.8828, yet calls 20.1% of reals fake "
-                  "against P0-DS's 36.6%. On DFDCP: port 0.8912 / 0.217, P0-DS 0.8573 / 0.452.", "",
-                  "The likely cause is checkpoint selection, and it is the failure mode this "
-                  "brief was written around. P0-DS was picked at **epoch 1** on the highest "
-                  "`val_auroc_video` (0.9960) — an in-domain metric that is saturated, where "
-                  "every candidate epoch scores above 0.995 and the ranking among them is noise. "
-                  "The released checkpoint is epoch 4. Two other P0-DS checkpoints exist "
-                  "(epochs 2 and 5) and were never evaluated on anything but that saturated "
-                  "number.", "",
-                  "So Step 2 must not simply adopt P0-DS as the strongest retrainable anchor on "
-                  "the strength of its AUROC. It must re-select among the available P0-DS "
-                  "checkpoints on the health dashboard, with real-side FPR overriding AUROC, "
-                  "exactly as the brief specifies. That is cheap — the checkpoints are on disk."]
+        lines += ["", "## 5. The operational column", "",
+                  f"Mean FPR on REAL videos across the five OOD sets, tau frozen on FF++ VAL: "
+                  f"our CLIP port **{prt:.3f}**, DiCoME-released **{rel:.3f}**, DiCoME-P0DS "
+                  f"**{p0:.3f}**.", "",
+                  "**Correction to an earlier version of this table.** It took tau from FF++ "
+                  "TEST, which handed the released checkpoint a threshold of 0.5639 against "
+                  "P0-DS's 0.4279 — and a higher threshold mechanically calls fewer reals fake. "
+                  "That produced 'released 0.116 vs P0-DS 0.317' and a conclusion that P0-DS had "
+                  "badly broken real-side health. On the permitted development source the gap is "
+                  f"{p0 - rel:+.3f}, not 0.201. The threshold must come from development data for "
+                  "the same reason it must be frozen: otherwise it is fitted to the thing it is "
+                  "being used to judge.", "",
+                  "What survives the correction: P0-DS is still the weakest of the three on "
+                  "real-side health, and our CLIP port is now level with the released checkpoint "
+                  "rather than far behind it. So the port's deficit is a RANKING deficit "
+                  "(-0.045 AUROC on Celeb-DF-v2), not an operational one — which sharpens the "
+                  "recipe question rather than answering it, and is consistent with the gap "
+                  "living inside the learned representation."]
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text("\n".join(lines) + "\n")

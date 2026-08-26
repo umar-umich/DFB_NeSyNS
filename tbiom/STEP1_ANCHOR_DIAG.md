@@ -27,16 +27,16 @@ Does the Celeb-DF-v2 anchor gap belong to the CLIP branch, or to DiCoME's decomp
 
 ## 2. The operational column — FPR on REAL videos at a frozen tau
 
-One tau per readout, the EER on that readout's OWN FF++ scores, frozen across every other dataset. Per-readout because the five are differently calibrated; a shared tau would measure calibration offset rather than operating quality.
+One tau per readout, the EER on that readout's own **FF++ VAL** scores, frozen across every dataset below. Per-readout because the five are differently calibrated; a shared tau would measure calibration offset rather than operating quality. VAL and not test: an earlier version of this table took tau from FF++ test, which handed the released checkpoint a higher threshold and inflated the real-side gap from 0.048 to 0.201.
 
 | readout | tau | FFpp | CDFv2 | DFD | DFDC | DFDCP | DFEval24 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| DiCoME-released fused | 0.5639 | 0.036 | 0.079 | 0.019 | 0.150 | 0.187 | 0.147 |
-| DiCoME-released semantic | 0.6635 | 0.036 | 0.090 | 0.030 | 0.158 | 0.196 | 0.192 |
-| DiCoME-released artifact | 0.3567 | 0.029 | 0.079 | 0.041 | 0.152 | 0.204 | 0.157 |
-| DiCoME-P0DS fused | 0.4279 | 0.036 | 0.169 | 0.209 | 0.366 | 0.452 | 0.388 |
-| DiCoME-P0DS semantic | 0.6099 | 0.029 | 0.219 | 0.220 | 0.367 | 0.448 | 0.439 |
-| CLIP port | 0.3789 | 0.036 | 0.101 | 0.088 | 0.201 | 0.217 | 0.285 |
+| DiCoME-released fused | 0.4069 | 0.036 | 0.180 | 0.091 | 0.239 | 0.309 | 0.292 |
+| DiCoME-released semantic | 0.5164 | 0.043 | 0.242 | 0.099 | 0.257 | 0.339 | 0.346 |
+| DiCoME-released artifact | 0.3455 | 0.029 | 0.084 | 0.050 | 0.160 | 0.217 | 0.164 |
+| DiCoME-P0DS fused | 0.4784 | 0.007 | 0.129 | 0.174 | 0.317 | 0.391 | 0.341 |
+| DiCoME-P0DS semantic | 0.6086 | 0.029 | 0.225 | 0.223 | 0.368 | 0.448 | 0.439 |
+| CLIP port | 0.3260 | 0.050 | 0.124 | 0.124 | 0.229 | 0.239 | 0.336 |
 
 ## 3. Probability separation `d_RF`
 
@@ -58,12 +58,10 @@ On Celeb-DF-v2: DiCoME-fused **0.9731**, DiCoME-semantic-only **0.9675**, our CL
 
 **A genuine recipe gap exists.** DiCoME's own CLIP branch beats our port by more than the noise band on identical LoRA settings, so the difference is in the training recipe — batch size (128 vs 32), precision (bf16-mixed vs fp32), or the VAE/alignment loss terms shaping the shared encoder. Investigate those before choosing a chassis.
 
-## 5. The operational finding — and it changes Step 2
+## 5. The operational column
 
-Mean FPR on REAL videos across the five OOD sets: DiCoME-released **0.116**, our CLIP port **0.179**, DiCoME-P0DS **0.317**.
+Mean FPR on REAL videos across the five OOD sets, tau frozen on FF++ VAL: our CLIP port **0.210**, DiCoME-released **0.222**, DiCoME-P0DS **0.271**.
 
-**Our retrain of DiCoME has worse real-side health than our own CLIP port**, on five of six datasets, despite matching or beating it on AUROC. On DFDC the port scores 0.8477 AUROC against P0-DS's 0.8828, yet calls 20.1% of reals fake against P0-DS's 36.6%. On DFDCP: port 0.8912 / 0.217, P0-DS 0.8573 / 0.452.
+**Correction to an earlier version of this table.** It took tau from FF++ TEST, which handed the released checkpoint a threshold of 0.5639 against P0-DS's 0.4279 — and a higher threshold mechanically calls fewer reals fake. That produced 'released 0.116 vs P0-DS 0.317' and a conclusion that P0-DS had badly broken real-side health. On the permitted development source the gap is +0.048, not 0.201. The threshold must come from development data for the same reason it must be frozen: otherwise it is fitted to the thing it is being used to judge.
 
-The likely cause is checkpoint selection, and it is the failure mode this brief was written around. P0-DS was picked at **epoch 1** on the highest `val_auroc_video` (0.9960) — an in-domain metric that is saturated, where every candidate epoch scores above 0.995 and the ranking among them is noise. The released checkpoint is epoch 4. Two other P0-DS checkpoints exist (epochs 2 and 5) and were never evaluated on anything but that saturated number.
-
-So Step 2 must not simply adopt P0-DS as the strongest retrainable anchor on the strength of its AUROC. It must re-select among the available P0-DS checkpoints on the health dashboard, with real-side FPR overriding AUROC, exactly as the brief specifies. That is cheap — the checkpoints are on disk.
+What survives the correction: P0-DS is still the weakest of the three on real-side health, and our CLIP port is now level with the released checkpoint rather than far behind it. So the port's deficit is a RANKING deficit (-0.045 AUROC on Celeb-DF-v2), not an operational one — which sharpens the recipe question rather than answering it, and is consistent with the gap living inside the learned representation.
