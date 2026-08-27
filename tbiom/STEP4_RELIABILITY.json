@@ -1,0 +1,177 @@
+{
+  "rows": {
+    "p_artifact": {
+      "tau": 0.21864334,
+      "n_meta": 8960,
+      "n_errors": 346,
+      "oof_auroc": 0.9120748452244029,
+      "selective_risk_90": 0.013268849206349206,
+      "base_error": 0.03861607142857143,
+      "coef_V": 1.8964465863219386,
+      "coef_M": 0.4205571205852843,
+      "mean_ood_risk_auroc": 0.722611850619228,
+      "mean_ood_risk_reduction": 0.04437976224406429,
+      "n_domains_risk_increased": 1
+    },
+    "p_fused": {
+      "tau": 0.60010445,
+      "n_meta": 8960,
+      "n_errors": 350,
+      "oof_auroc": 0.9175413970466235,
+      "selective_risk_90": 0.011408730158730158,
+      "base_error": 0.0390625,
+      "coef_V": 0.84792795360699,
+      "coef_M": -0.4612563406911151,
+      "mean_ood_risk_auroc": 0.7480918084138493,
+      "mean_ood_risk_reduction": 0.1402389379557141,
+      "n_domains_risk_increased": 0
+    },
+    "p_semantic": {
+      "tau": 0.8256279,
+      "n_meta": 8960,
+      "n_errors": 354,
+      "oof_auroc": 0.873513223595153,
+      "selective_risk_90": 0.014508928571428572,
+      "base_error": 0.03950892857142857,
+      "coef_V": -0.10146458145692099,
+      "coef_M": -0.8620291471393271,
+      "mean_ood_risk_auroc": 0.7500273947167901,
+      "mean_ood_risk_reduction": 0.11934848272214306,
+      "n_domains_risk_increased": 1
+    }
+  },
+  "per_domain": {
+    "p_artifact": {
+      "Celeb-DF-v2": {
+        "n": 16572,
+        "error_rate": 0.17964035722906108,
+        "risk_auroc": 0.7438166806124137,
+        "selective_risk_90": 0.17847804223935634,
+        "risk_reduction": 0.006470233123744315
+      },
+      "Celeb-DF-v3": {
+        "n": 173295,
+        "error_rate": 0.36744857035690587,
+        "risk_auroc": 0.7138835577829612,
+        "selective_risk_90": 0.4061846812766885,
+        "risk_reduction": -0.10541913629479609
+      },
+      "DFD": {
+        "n": 109298,
+        "error_rate": 0.17887793006276417,
+        "risk_auroc": 0.8985210060296935,
+        "selective_risk_90": 0.15264110279765777,
+        "risk_reduction": 0.14667447938323355
+      },
+      "DFDC": {
+        "n": 132116,
+        "error_rate": 0.2429834387962094,
+        "risk_auroc": 0.6919122083608562,
+        "selective_risk_90": 0.21229731548139677,
+        "risk_reduction": 0.12628894984299374
+      },
+      "DFDCP": {
+        "n": 17222,
+        "error_rate": 0.24700963883404947,
+        "risk_auroc": 0.7202000178661183,
+        "selective_risk_90": 0.23258064516129032,
+        "risk_reduction": 0.05841469887923323
+      },
+      "Deepfake-Eval-2024": {
+        "n": 23209,
+        "error_rate": 0.388039122754104,
+        "risk_auroc": 0.5673376330633247,
+        "selective_risk_90": 0.3749042512447338,
+        "risk_reduction": 0.03384934852997702
+      }
+    },
+    "p_fused": {
+      "Celeb-DF-v2": {
+        "n": 16572,
+        "error_rate": 0.177105961863384,
+        "risk_auroc": 0.7775666936792239,
+        "selective_risk_90": 0.1426081126382836,
+        "risk_reduction": 0.19478649313743238
+      },
+      "Celeb-DF-v3": {
+        "n": 173295,
+        "error_rate": 0.3669119132115756,
+        "risk_auroc": 0.7987559264456235,
+        "selective_risk_90": 0.32604542015567495,
+        "risk_reduction": 0.11137957527243186
+      },
+      "DFD": {
+        "n": 109298,
+        "error_rate": 0.18329704111694634,
+        "risk_auroc": 0.9276948738139965,
+        "selective_risk_90": 0.12727716330513988,
+        "risk_reduction": 0.305623470354139
+      },
+      "DFDC": {
+        "n": 132116,
+        "error_rate": 0.24326349571588604,
+        "risk_auroc": 0.6831381246001089,
+        "selective_risk_90": 0.22057289914552916,
+        "risk_reduction": 0.09327579751981299
+      },
+      "DFDCP": {
+        "n": 17222,
+        "error_rate": 0.24788061781442342,
+        "risk_auroc": 0.7387653041953559,
+        "selective_risk_90": 0.22212903225806452,
+        "risk_reduction": 0.10388704765790886
+      },
+      "Deepfake-Eval-2024": {
+        "n": 23209,
+        "error_rate": 0.3864018268775044,
+        "risk_auroc": 0.5626299277487868,
+        "selective_risk_90": 0.37385101493680584,
+        "risk_reduction": 0.03248124379255945
+      }
+    },
+    "p_semantic": {
+      "Celeb-DF-v2": {
+        "n": 16572,
+        "error_rate": 0.17728699010378954,
+        "risk_auroc": 0.7518468075197023,
+        "selective_risk_90": 0.15876634260811265,
+        "risk_reduction": 0.10446704230713322
+      },
+      "Celeb-DF-v3": {
+        "n": 173295,
+        "error_rate": 0.36809486713407774,
+        "risk_auroc": 0.9523954169239178,
+        "selective_risk_90": 0.3076183270712848,
+        "risk_reduction": 0.16429607001491958
+      },
+      "DFD": {
+        "n": 109298,
+        "error_rate": 0.1842668667313217,
+        "risk_auroc": 0.9423590731988399,
+        "selective_risk_90": 0.12105562784645413,
+        "risk_reduction": 0.3430418067347694
+      },
+      "DFDC": {
+        "n": 132116,
+        "error_rate": 0.2431045444912047,
+        "risk_auroc": 0.6072645181031151,
+        "selective_risk_90": 0.2369558635537913,
+        "risk_reduction": 0.025292332359652128
+      },
+      "DFDCP": {
+        "n": 17222,
+        "error_rate": 0.24880966206015562,
+        "risk_auroc": 0.7305112857759923,
+        "selective_risk_90": 0.22819354838709677,
+        "risk_reduction": 0.08285897542063465
+      },
+      "Deepfake-Eval-2024": {
+        "n": 23209,
+        "error_rate": 0.38566935240639405,
+        "risk_auroc": 0.5157872667791737,
+        "selective_risk_90": 0.38716009191880507,
+        "risk_reduction": -0.0038653305042506306
+      }
+    }
+  }
+}
