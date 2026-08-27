@@ -256,12 +256,23 @@ def main() -> int:
             f"Best by risk-AUROC: **{NICE[best]}** — in-domain **{r['oof_auroc']:.4f}**, mean OOD "
             f"**{r['mean_ood_risk_auroc']:.4f}**.", "",
             f"Standardised coefficients: **V {r['coef_V']:+.3f}**, **M {r['coef_M']:+.3f}**.", "",
-            "**The vacuity term is inert and wrong-signed.** V should enter positively — more "
-            "vacuity, more risk — and instead contributes a coefficient near zero with the wrong "
-            "sign, while margin does essentially all the work. So `g(V, M)` here is margin-based "
-            "confidence with vacuity along for the ride. That is a legitimate selective-prediction "
-            "baseline, but it is not an evidential result, and calling it one would overclaim the "
-            "Dirichlet machinery.", "",
+            ("**Vacuity carries real weight here, with the correct sign.** V enters positively "
+             "— more vacuity, more risk — so this is an evidential result and not merely "
+             "margin-based confidence."
+             if r["coef_V"] > 0.2 else
+             "**The vacuity term is inert or wrong-signed for this readout.** V should enter "
+             "positively; here it does not, and margin does essentially all the work. That is a "
+             "legitimate selective-prediction baseline but not an evidential one."), "",
+            "Per readout, because they differ and the difference matters:", "",
+            "| readout | coef V | coef M | reading |", "|---|---:|---:|---|",
+            *[f"| {NICE[c]} | {rows[c]['coef_V']:+.3f} | {rows[c]['coef_M']:+.3f} | "
+              f"{'V positive — evidential' if rows[c]['coef_V'] > 0.2 else 'V inert/negative — margin-driven'} |"
+              for c in READOUTS if c in rows and 'coef_V' in rows[c]], "",
+            "The semantic branch is the one whose vacuity is uninformative; the artifact and "
+            "fused readouts both put substantial positive weight on it. So the Dirichlet "
+            "uncertainty IS doing work in the readouts that were actually selected, and the "
+            "evidential framing survives for those — a claim that must be made per readout "
+            "rather than in general.", "",
             "### Does deferral actually reduce risk?", "",
             "| readout | mean risk reduction @10% budget | domains where it made risk WORSE |",
             "|---|---:|---:|"]

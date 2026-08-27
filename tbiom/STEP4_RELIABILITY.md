@@ -61,7 +61,17 @@ Best by risk-AUROC: **fused (DS)** — in-domain **0.9175**, mean OOD **0.7481**
 
 Standardised coefficients: **V +0.848**, **M -0.461**.
 
-**The vacuity term is inert and wrong-signed.** V should enter positively — more vacuity, more risk — and instead contributes a coefficient near zero with the wrong sign, while margin does essentially all the work. So `g(V, M)` here is margin-based confidence with vacuity along for the ride. That is a legitimate selective-prediction baseline, but it is not an evidential result, and calling it one would overclaim the Dirichlet machinery.
+**Vacuity carries real weight here, with the correct sign.** V enters positively — more vacuity, more risk — so this is an evidential result and not merely margin-based confidence.
+
+Per readout, because they differ and the difference matters:
+
+| readout | coef V | coef M | reading |
+|---|---:|---:|---|
+| artifact view (Step-3 pick) | +1.896 | +0.421 | V positive — evidential |
+| fused (DS) | +0.848 | -0.461 | V positive — evidential |
+| semantic (CLIP branch) | -0.101 | -0.862 | V inert/negative — margin-driven |
+
+The semantic branch is the one whose vacuity is uninformative; the artifact and fused readouts both put substantial positive weight on it. So the Dirichlet uncertainty IS doing work in the readouts that were actually selected, and the evidential framing survives for those — a claim that must be made per readout rather than in general.
 
 ### Does deferral actually reduce risk?
 
