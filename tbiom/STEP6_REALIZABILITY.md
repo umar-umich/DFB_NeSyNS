@@ -35,3 +35,26 @@ On `G3 branch diagnostics`. `t_b = 1[phi_b > 0]` gives opposite labels to sample
 Every rung, including one with per-layer adaptation and rate statistics, leaves the gate unable to tell where the expert applies. Combined with Steps 1-5 this is a characterised negative rather than an absence of evidence: the complementarity is measurable and stable (rescue margin +0.22), the ceiling is real, and what is missing is any test-time-observable signal that locates it.
 
 **The paper is therefore the single-anchor reliability result** from Step 4 — margin-and-vacuity selective prediction that degrades gracefully under shift — with this realizability gap reported as the negative result it is. Do NOT manufacture a fusion story from a rung that only passed by reading provenance.
+
+### What the target variants reveal — the mechanism, not just the number
+
+| target | gate AUROC | reading |
+|---|---:|---|
+| binary `1[phi > 0]` | 0.784 | looks like real skill |
+| margin-filtered (ties dropped) | 0.519 | **chance** |
+| continuous regression of `phi` | 0.267 | below chance |
+
+This is the most informative row in the step. The binary target's apparent 0.784 does **not**
+come from predicting where the expert helps. It comes from predicting the **ties** — the large
+mass of videos where anchor and expert agree, so `phi = 0` and the label is 0 by construction.
+Remove those and the gate falls to 0.519, indistinguishable from chance; ask it to regress the
+signed quantity and it does worse than chance.
+
+So the gate can tell *whether the two branches will agree*, and cannot tell *who is right when
+they disagree* — which is precisely the quantity applicability discounting needs. That is a
+sharper statement of the negative than "rho is low", and it is the sentence the paper should
+carry: the failure is not that the signal is weak, it is that the observable structure encodes
+agreement rather than correctness.
+
+It also explains the negative rho values. A gate that fires on agreement routes to the expert on
+exactly the samples where routing cannot help, and occasionally where it hurts.
