@@ -1,0 +1,66 @@
+{
+  "fsvfm_preserve": {
+    "n": 18575,
+    "methods": 34,
+    "pooled": {
+      "n": 18575,
+      "anchor_accuracy": 0.7672139973082099,
+      "expert_accuracy": 0.6619650067294751,
+      "n_anchor_wrong": 4324,
+      "n_anchor_right": 14251,
+      "p_expert_right_given_anchor_wrong": 0.28237742830712304,
+      "p_expert_wrong_given_anchor_right": 0.2228615535751877,
+      "ceiling_union_correct": 0.8329475100942126,
+      "both_wrong": 0.16705248990578736
+    },
+    "gate": {
+      "gate_auroc_vs_target": 0.6162540845034794,
+      "target_positive_rate": 0.06573351278600269,
+      "mean_q": 0.06661181920663732,
+      "anchor_video_auroc": 0.8314211086647569,
+      "fused_video_auroc": 0.8406865677388391,
+      "auroc_gain": 0.00926545907408216,
+      "anchor_accuracy": 0.7672139973082099,
+      "fused_accuracy": 0.7697442799461642,
+      "ceiling_accuracy": 0.8329475100942126,
+      "accuracy_headroom": 0.0657335127860027,
+      "recovered_fraction": 0.03849303849303934,
+      "no_headroom": false
+    },
+    "margin": 0.05951587473193534,
+    "families_ok": 24,
+    "enters": false
+  },
+  "fsvfm_ordinary": {
+    "n": 18575,
+    "methods": 34,
+    "pooled": {
+      "n": 18575,
+      "anchor_accuracy": 0.7672139973082099,
+      "expert_accuracy": 0.6496366083445492,
+      "n_anchor_wrong": 4324,
+      "n_anchor_right": 14251,
+      "p_expert_right_given_anchor_wrong": 0.2555504162812211,
+      "p_expert_wrong_given_anchor_right": 0.23079082169672305,
+      "ceiling_union_correct": 0.8267025572005383,
+      "both_wrong": 0.17329744279946163
+    },
+    "gate": {
+      "gate_auroc_vs_target": 0.5732173836466911,
+      "target_positive_rate": 0.059488559892328395,
+      "mean_q": 0.060389824594853675,
+      "anchor_video_auroc": 0.8314211086647569,
+      "fused_video_auroc": 0.8385809746635426,
+      "auroc_gain": 0.007159865998785708,
+      "anchor_accuracy": 0.7672139973082099,
+      "fused_accuracy": 0.768021534320323,
+      "ceiling_accuracy": 0.8267025572005383,
+      "accuracy_headroom": 0.059488559892328374,
+      "recovered_fraction": 0.013574660633485142,
+      "no_headroom": false
+    },
+    "margin": 0.024759594584498057,
+    "families_ok": 24,
+    "enters": false
+  }
+}
