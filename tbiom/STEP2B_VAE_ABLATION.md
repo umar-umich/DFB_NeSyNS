@@ -3,6 +3,24 @@
 Does the auxiliary objective explain why DiCoME's semantic branch beats a plain CLIP+LoRA port
 by +0.045 AUROC on Celeb-DF-v2 (Step 1)?
 
+## Correction to an earlier claim in this file
+
+An earlier version said BOTH detachments were necessary — the projector's input and the
+reconstruction target — and that detaching only the input would let gradient back into CLIP
+through the target. **That is wrong.** `aligned_vae_loss_func` already does
+`z_original.detach()` internally, so the target detach was redundant. Measured, gradient into the
+CLIP encoder from the VAE/alignment term alone:
+
+| what is detached | gradient into CLIP |
+|---|---:|
+| nothing (baseline) | 34,873 |
+| target only | 34,873 — no effect |
+| **projector input only** | **0** |
+| both (what the ablation ran) | 0 |
+
+The ablation itself is unaffected: it ran with both detaches and gradient was 0, so the -0.0211
+result stands. Only the explanation of why was wrong.
+
 ## The manipulation
 
 One variable. `detach_vae_from_encoder: true` feeds the Semantic Manifold branch a detached CLIP
