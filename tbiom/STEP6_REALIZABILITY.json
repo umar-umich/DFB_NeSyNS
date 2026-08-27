@@ -1,0 +1,51 @@
+{
+  "rungs": {
+    "G0 confidence only": {
+      "n_features": 2,
+      "gate_auroc_vs_target": 0.5255765920826162,
+      "rho_realize": 0.0,
+      "err_anchor": 0.19407407407407407,
+      "err_gated": 0.19407407407407407,
+      "err_oracle": 0.11629629629629634,
+      "domain_auroc": 0.6632633744855968,
+      "audit_pass": true
+    },
+    "G1 cross-branch": {
+      "n_features": 4,
+      "gate_auroc_vs_target": 0.6345687511952572,
+      "rho_realize": -0.009523809523809115,
+      "err_anchor": 0.19407407407407407,
+      "err_gated": 0.19481481481481477,
+      "err_oracle": 0.11629629629629634,
+      "domain_auroc": 0.7642683127572018,
+      "audit_pass": true
+    },
+    "G2 relational": {
+      "n_features": 6,
+      "gate_auroc_vs_target": 0.826758462421113,
+      "rho_realize": -0.18095238095238178,
+      "err_anchor": 0.19407407407407407,
+      "err_gated": 0.2081481481481482,
+      "err_oracle": 0.11629629629629634,
+      "domain_auroc": 0.7653769547325102,
+      "audit_pass": true
+    },
+    "G3 branch diagnostics": {
+      "n_features": 23,
+      "gate_auroc_vs_target": 0.7840963855421687,
+      "rho_realize": -0.2095238095238091,
+      "err_anchor": 0.19407407407407407,
+      "err_gated": 0.21037037037037032,
+      "err_oracle": 0.11629629629629634,
+      "domain_auroc": 0.8441777777777778,
+      "audit_pass": false
+    }
+  },
+  "target_variants": {
+    "binary 1[phi>0]": 0.7840963855421687,
+    "margin-filtered (drop ties)": 0.5191948944526263,
+    "continuous regression of phi": 0.26724039013195644
+  },
+  "err_anchor": 0.19407407407407407,
+  "err_oracle": 0.11629629629629634
+}
