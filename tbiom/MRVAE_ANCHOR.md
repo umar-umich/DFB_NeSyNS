@@ -48,6 +48,54 @@ point. On Celeb-DF-v2 fused it gives up 0.0141 AUROC and halves FPR_real, 0.129 
 lowest real-side FPR measured on any anchor in this project is MR-VAE's artifact readout at
 **0.051** on Celeb-DF-v2 and **0.107** on VALmix.
 
+## Complete — all six OOD datasets, fused readout
+
+τ frozen per anchor on its own FF++ val. Port verified against every published P1d number first
+(max deviation 0.0010).
+
+| dataset | MR-VAE AUROC | β-VAE AUROC | Δ AUROC | **MR-VAE FPR_real** | **β-VAE FPR_real** | **Δ FPR** |
+|---|---:|---:|---:|---:|---:|---:|
+| Celeb-DF-v2 | 0.9505 | **0.9646** | −0.0141 | **0.067** | 0.129 | **−0.062** |
+| Celeb-DF-v3 | **0.8849** | 0.8409 | +0.0441 | **0.067** | 0.129 | **−0.062** |
+| DFD | 0.9349 | **0.9421** | −0.0073 | **0.058** | 0.174 | **−0.116** |
+| DFDC | 0.8700 | **0.8828** | −0.0128 | **0.254** | 0.317 | **−0.064** |
+| DFDCP | **0.8957** | 0.8573 | +0.0384 | **0.252** | 0.391 | **−0.139** |
+| Deepfake-Eval-2024 | 0.6635 | **0.6922** | −0.0287 | **0.280** | 0.341 | **−0.061** |
+| **mean** | | | **+0.0033** | | | **−0.084** |
+
+**MR-VAE has lower real-side FPR on 6 of 6 datasets**, by 0.061–0.139, mean −0.084. That result
+does not depend on any disputed number: both anchors were scored by the same exporter, on the
+same videos, on the same day.
+
+## A discrepancy that must be resolved before the AUROC mean is quoted
+
+The mean AUROC delta reads **+0.0033** here against the pilot table's **−0.0127**, and the whole
+difference is Celeb-DF-v3:
+
+| | pilot table | re-measured here |
+|---|---:|---:|
+| P0-DS CDFv3 | 0.9516 | **0.8409** |
+| P1d CDFv3 | 0.8852 | 0.8849 ✓ |
+
+**P1d reproduces to 0.0003; P0-DS is off by 0.11 on the same 5,418 videos (178 real / 5,240
+fake).** Both were scored through the same exporter in the same run, so this is not an evaluation
+difference between the two arms.
+
+The likely cause: `DiCoME/eval_adaptation/RESULTS.md` records that CDFv3 was once "face-swap-family
+only (8 generators)", and the current config spans more. If the pilot table's CDFv3 column came
+from that older, easier subset, its P0-DS entry is not comparable to today's — but then P1d's
+should have shifted too, and it did not. **Unexplained, and it decides the sign of the mean:**
+
+| basis | mean Δ AUROC |
+|---|---:|
+| all six, re-measured | +0.0033 |
+| excluding CDFv3 | −0.0049 |
+| pilot table (7 sources) | −0.0127 |
+
+So the honest statement is: **MR-VAE is unambiguously better on real-side FPR, and its AUROC
+standing ranges from −0.005 to +0.003 depending on a CDFv3 number that does not currently
+reconcile.** It is not the −0.0127 penalty the pilot table implies, on any reading.
+
 ## What this does and does not establish
 
 **Does:** the P1d rejection was made on a metric that could not see this. On the operational axis
