@@ -55,9 +55,17 @@ ARMS = {
                        {d: S23 / f"stage2_{d}.csv" for d in DATASETS}),
     "Stage 3 (β-VAE + rate)": (S23 / "stage3_FFpp_val.csv",
                        {d: S23 / f"stage3_{d}.csv" for d in DATASETS}),
+    # SENSITIVITY, not a competing arm. The brief selects on VALmix macro AUROC, which picks
+    # Stage 3's epoch 6 -- the WORST of its four candidates on real-side FPR (0.246 vs e10's
+    # 0.188). Since Stage 3's case rests on a real-side benefit, that rule works against the arm
+    # it is judging. e10 is carried so the decision can be read against the selection rule
+    # instead of resting on it silently. It never replaces e06 in the verdict.
+    "Stage 3 @e10 (sensitivity)": (S23 / "stage3e10_FFpp_val.csv",
+                       {d: S23 / f"stage3e10_{d}.csv" for d in DATASETS}),
 }
 BASE, RATE = "P0-DS (β-VAE)", "Stage 3 (β-VAE + rate)"
 PROJ, BOTH = "Stage 2 (MR-VAE proj only)", "P1d (MR-VAE+rate)"
+SENS = "Stage 3 @e10 (sensitivity)"   # reported alongside; never substituted into the verdict
 
 
 def vid(path: Path, col: str) -> pd.DataFrame | None:
@@ -136,6 +144,8 @@ def main() -> int:
           "| dataset | P0-DS | Stage 2 (projector) | Stage 3 (rate) | P1d (both) | "
           "Δ projector | Δ rate | additive? |", "|---|---:|---:|---:|---:|---:|---:|---|"]
     for ds in ("DFDCP", "CDFv3", "CDFv2", "DFD", "DFDC", "DFEval24", "VALmix"):
+        # the sensitivity arm is deliberately absent here: attribution compares the two halves
+        # of P1d, and a second checkpoint of one half is not a third mechanism
         got = {a: cells.get((a, col, ds)) for a in (BASE, PROJ, RATE, BOTH)}
         if not all(got.values()):
             L.append(f"| {ds} | " + " | ".join(
@@ -200,6 +210,43 @@ def main() -> int:
                          if (mp > mr and dp_c3 > -BAND) else "**Stage 2 does not qualify.**")]
     else:
         L.append("TODO(run) — Stage 2/3 exports incomplete; decision deferred.")
+
+    # ---- sensitivity: does the verdict survive the other Stage-3 checkpoint? -------------------
+    if any((SENS, col, d) in cells for d in DATASETS):
+        ok = [d for d in DATASETS if (SENS, col, d) in cells and (BASE, col, d) in cells]
+        if ok:
+            L += ["", "## Sensitivity — Stage 3 at epoch 10", "",
+                  "The brief selects on VALmix macro AUROC, which picks Stage 3's **epoch 6** — "
+                  "the worst of its four candidates on real-side FPR (0.246 vs epoch 10's 0.188). "
+                  "Stage 3's case rests on a real-side benefit, so that rule works against the arm "
+                  "it is judging. Epoch 10 is reported here so the verdict can be read against the "
+                  "selection rule rather than resting on it silently. **It does not replace epoch "
+                  "6 in the decision.**", "",
+                  "| dataset | e06 AUROC | e10 AUROC | e06 FPR_real | e10 FPR_real | "
+                  "P0-DS AUROC | P0-DS FPR_real |", "|---|---:|---:|---:|---:|---:|---:|"]
+            for d in ok:
+                a6, a10, b = cells.get((RATE, col, d)), cells[(SENS, col, d)], cells[(BASE, col, d)]
+                L.append(f"| {d} | " + (f"{a6['auroc']:.4f}" if a6 else "—") +
+                         f" | {a10['auroc']:.4f} | " +
+                         (f"{a6['fpr_real_at_tau']:.3f}" if a6 else "—") +
+                         f" | {a10['fpr_real_at_tau']:.3f} | {b['auroc']:.4f} | "
+                         f"{b['fpr_real_at_tau']:.3f} |")
+            m10a = np.mean([cells[(SENS, col, d)]["auroc"] for d in ok])
+            m10f = np.mean([cells[(SENS, col, d)]["fpr_real_at_tau"] for d in ok])
+            mba = np.mean([cells[(BASE, col, d)]["auroc"] for d in ok])
+            mbf = np.mean([cells[(BASE, col, d)]["fpr_real_at_tau"] for d in ok])
+            c3 = cells.get((SENS, col, "CDFv3"))
+            c3b = cells.get((BASE, col, "CDFv3"))
+            L += ["", f"e10 vs P0-DS: mean Δ AUROC **{m10a-mba:+.4f}**, mean Δ FPR_real "
+                      f"**{m10f-mbf:+.3f}**"
+                      + (f"; CDFv3 Δ AUROC **{c3['auroc']-c3b['auroc']:+.4f}**, Δ FPR_real "
+                         f"**{c3['fpr_real_at_tau']-c3b['fpr_real_at_tau']:+.3f}**"
+                         if c3 and c3b else ""), ""]
+            agree = ((m10a - mba) >= -BAND) and ((m10f - mbf) <= 0.02)
+            L.append("**The verdict is robust to the checkpoint choice.**" if agree else
+                     "**The two Stage-3 checkpoints disagree.** The selection rule is doing real "
+                     "work here, so the Branch-2 decision should be reported with that dependence "
+                     "stated explicitly rather than as a clean result.")
 
     if missing:
         L += ["", "## Missing exports", ""] + [f"- {m}" for m in missing[:40]]

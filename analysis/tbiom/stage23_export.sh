@@ -16,9 +16,13 @@ OUT=/data/umar/Repos/DFB_NeSyNS/logs/tbiom/stage23
 PY=/data/umar/miniconda3/envs/discern_ext/bin/python
 export CUDA_VISIBLE_DEVICES=1
 
-arm=${1:?usage: stage23_export.sh <stage2|stage3> <select|test> [ckpt]}
+arm=${1:?usage: stage23_export.sh <stage2|stage3> <select|test> [ckpt] [tag]}
 phase=${2:?}
 ckpt=${3:-}
+# Optional output tag. Defaults to the arm, which is what the Stage-4 primary uses. A second
+# checkpoint of the SAME arm (e.g. the e10 sensitivity check) needs a distinct tag or it would
+# overwrite the primary's exports -- same architecture, same configs, different weights.
+tag=${4:-$arm}
 
 case "$arm" in
   stage2) RUN=stage2_mrvae_projonly_seed42 ;;
@@ -53,9 +57,9 @@ if [ "$phase" = "select" ]; then
   done
 elif [ "$phase" = "test" ]; then
   [ -n "$ckpt" ] || { echo "phase test needs a checkpoint path"; exit 2; }
-  for ds in CDFv2 CDFv3 DFD DFDC DFDCP DFEval24; do run_one "$arm" "$ds" "$ckpt"; done
-  # re-export the development sources under the plain arm tag so the dashboard has all seven
-  for ds in FFpp_val VALmix; do run_one "$arm" "$ds" "$ckpt"; done
+  for ds in CDFv2 CDFv3 DFD DFDC DFDCP DFEval24; do run_one "$tag" "$ds" "$ckpt"; done
+  # re-export the development sources under the same tag so the dashboard has all seven
+  for ds in FFpp_val VALmix; do run_one "$tag" "$ds" "$ckpt"; done
 else
   echo "unknown phase $phase"; exit 2
 fi
