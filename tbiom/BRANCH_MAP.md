@@ -106,3 +106,42 @@ port is the work of Stage 5, and it carries one hazard the source file names exp
 > before. `assert_cache_safe()` exists to make the rule checkable. **No caching in Stage 5.**
 
 Neither blocks Stage 1, 2, 3 or 4, which touch Branch 2 only.
+
+---
+
+## Update — both reported blockers are now resolved in code
+
+Recorded here rather than in a new file, because Stage 0's job is to be the map that stays true.
+
+**1. DS fusion now takes N views.** `DS_Combin` folds left over the sorted opinions —
+`combine(combine(v0, v1), v2)`. The orthogonal sum is associative, so this is the definition
+rather than an approximation. Verified: the two-view path is unchanged, the three-view fold is
+associative to 7.2e-07 (float32), the result is invariant across all 6 orderings of three views,
+and a single view is still rejected.
+
+**2. Branch 3 is ported.** `DISCERN_Ext/src/modules/process_residual.py` (operator, construction
+byte-identical to the validated version) and `process_branch.py` (evidence branch, rewritten
+against this chassis's DS fusion). Two things had to change for this chassis and both were
+failure modes that do not raise:
+
+| | V1 chassis | DISCERN_Ext |
+|---|---|---|
+| operator input | raw `[0,1]` frames, mean 0 / std 1 | **CLIP-normalized**, CLIP constants |
+| standardizer source | `ResidualCalibrator` + `process_stats.pt` | `FrozenStandardizer` + `tools/fit_process_stats.py` |
+
+The statistics must be **refit for this chassis** — the existing `process_stats.pt` was fit on
+V1's crops through V1's normalization, and reusing it would standardize against the wrong
+distribution silently. `tools/fit_process_stats.py` does it, reals-only, enforced in the script.
+
+**Why Branch 3 does not reuse the rate block's BatchNorm trick.** FF++'s paired sampler makes
+training batches ~50/50, so a running estimate inside the branch would standardize against a
+half-fake reference — exactly the error the reals-only rule exists to prevent. The rate block can
+use BatchNorm because it standardizes a *feature*, not a *deviation from authenticity*.
+
+Verified end-to-end: three branches produce evidence, the SDXL-VAE stays frozen and in eval
+through `model.train()`, `assert_frozen()` passes before and after, an unprocessable sample gets
+a **vacuous** opinion (evidence zeroed, which is DS's identity) rather than a guessed one, and
+P0-DS / P1d / Stage 3 all still return `aux=None`/`{"rate"}` exactly as before.
+
+Branch 3's trainable footprint is **290 parameters** — `Linear(6,32) + Linear(32,2)`. Deliberate:
+capacity there would let it memorise FF++ instead of reading the process signal.
