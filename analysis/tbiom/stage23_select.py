@@ -52,7 +52,7 @@ def vid(path: Path, col: str) -> pd.DataFrame | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--arm", required=True, choices=["stage2", "stage3"])
+    ap.add_argument("--arm", required=True, choices=["stage2", "stage3", "stage5"])
     ap.add_argument("--col", default="p_fused", help="readout to select on")
     args = ap.parse_args()
 
