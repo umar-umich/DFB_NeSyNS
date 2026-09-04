@@ -31,6 +31,8 @@ case "$arm" in
   stage5) RUN=stage5_three_branch_seed42 ;;
   run1fusedonly) RUN=run1_fusedonly_seed42 ;;
   run1auxedl)    RUN=run1_auxedl_seed42 ;;
+  run1cft)       RUN=run1c_ft_seed42 ;;
+  run1dce)       RUN=run1d_simplece_seed42 ;;
   *) echo "unknown arm $arm"; exit 2 ;;
 esac
 

@@ -199,9 +199,13 @@ def main() -> int:
         m = {o: np.mean([rows[(o, d)]["auroc"] for d in done]) for o in ("F1", "F2", "F3")}
         win = max(m, key=m.get)
         L += ["", "## Verdict", ""]
-        if win == "F3":
-            L.append(f"**DS is the strongest simple operator** (mean {m['F3']:.4f} vs F1 "
-                     f"{m['F1']:.4f}, F2 {m['F2']:.4f}). No second defect is isolated here.")
+        gap = m[win] - m["F3"]
+        if win == "F3" or gap < 0.005:
+            L.append(f"**No second defect isolated.** Best is {win} at {m[win]:.4f} against DS's "
+                     f"{m['F3']:.4f} — a gap of {gap:+.4f}, which is inside the noise band and "
+                     f"NOT evidence that DS combines these experts poorly. F1 {m['F1']:.4f}, "
+                     f"F2 {m['F2']:.4f}, F3 {m['F3']:.4f}. A difference has to clear ~0.005 "
+                     f"before it says anything; anything smaller is operator-choice noise.")
         else:
             L.append(f"**{win} beats DS** ({m[win]:.4f} vs {m['F3']:.4f}, "
                      f"**{m[win]-m['F3']:+.4f}**). That isolates a second problem: DS combines "

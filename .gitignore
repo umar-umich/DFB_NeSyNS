@@ -16,3 +16,6 @@ results/
 # Encoder feature caches — regenerable by analysis/discern_v2/cache_encoder_features.py,
 # and large (521 MB at the time of writing).
 cache/
+
+# Model weights — 3.6 GB FSFM fine-tuned checkpoint, fetched from HF, not source
+weights/FS-VFM-FT/
