@@ -16,21 +16,38 @@ mean OOD AUROC **0.8633**, mean real-side FPR **0.247**.
 
 ## 1. Headline
 
+### The four arms
+
+All four are **three-view** models — CLIP semantic + β-VAE artifact + a Branch 3 — trained
+identically apart from the column that names them. `run_name` is the directory under
+`DISCERN_Ext/runs/discern_ext_train/`.
+
+| arm | run_name | Branch 3 | fusion | loss |
+|---|---|---|---|---|
+| **A** *(control)* | `run1_fusedonly_seed42` | LoRA preservation student | DS | EDL on the **fused output only** |
+| **B** *(intervention)* | `run1_auxedl_seed42` | LoRA preservation student | DS | fused **+ per-branch EDL** |
+| **C** | `run1c_ft_seed42` | **FSFM released fine-tuned** | DS | fused + per-branch EDL |
+| **D** | `run1d_simplece_seed42` | FSFM released fine-tuned | **mean of logits** | **cross-entropy** |
+
+A and B differ by **one config line** (`aux_edl: false` / `true`) and isolate per-branch
+supervision. B and C differ by **one line** (the Branch-3 checkpoint) and isolate which third
+view. C and D swap the entire evidential apparatus for a plain baseline.
+
 | arm | Branch 3 | fusion | loss | mean AUROC | vs P0-DS | mean FPR_real |
 |---|---|---|---|---:|---:|---:|
 | P0-DS | — (two views) | DS | EDL | 0.8633 | — | 0.247 |
-| armA | LoRA student | DS | EDL, **fused-only** | 0.8301 | −0.0332 | **0.169** |
-| **armB** | LoRA student | DS | EDL **+ per-branch** | **0.8729** | **+0.0096** | 0.177 |
-| 1c | FSFM released FT | DS | EDL + per-branch | 0.8620 | −0.0013 | 0.256 |
-| 1d | FSFM released FT | mean logits | **cross-entropy** | 0.8689 | +0.0056 | 0.274 |
+| **A** | LoRA student | DS | EDL, **fused-only** | 0.8301 | −0.0332 | **0.169** |
+| **B** | LoRA student | DS | EDL **+ per-branch** | **0.8729** | **+0.0096** | 0.177 |
+| **C** | FSFM released FT | DS | EDL + per-branch | 0.8620 | −0.0013 | 0.256 |
+| **D** | FSFM released FT | mean logits | **cross-entropy** | 0.8689 | +0.0056 | 0.274 |
 
-**armB is the configuration that clears the bar.** It also satisfies the real-side condition —
+**B is the configuration that clears the bar.** It also satisfies the real-side condition —
 FPR does not regress on Celeb-DF-v2 (0.067 vs 0.129), Celeb-DF-v3 (0.067 vs 0.129) or DFDC
 (0.228 vs 0.317). With F1 or F2 fusion it reaches **+0.0145**.
 
 ### Per dataset
 
-| dataset | P0-DS | armA | **armB** | 1c | 1d |
+| dataset | P0-DS | A | **B** | C | D |
 |---|---:|---:|---:|---:|---:|
 | Celeb-DF-v2 | **0.9646** | 0.8638 | 0.9523 | 0.9555 | 0.9461 |
 | Celeb-DF-v3 | 0.8409 | 0.8626 | **0.8888** | 0.8807 | 0.8782 |
@@ -40,7 +57,7 @@ FPR does not regress on Celeb-DF-v2 (0.067 vs 0.129), Celeb-DF-v3 (0.067 vs 0.12
 | Deepfake-Eval-2024 | **0.6922** | 0.6789 | 0.6755 | 0.6669 | 0.6863 |
 | VALmix *(dev)* | **0.8852** | 0.8276 | 0.8823 | 0.8766 | 0.8742 |
 
-armB's profile is large gains where P0-DS is weakest (**CDFv3 +0.0479**, **DFDCP +0.0418**) and
+B's profile is large gains where P0-DS is weakest (**CDFv3 +0.0479**, **DFDCP +0.0418**) and
 small losses where it is strongest. That anti-correlation is the signature of a genuinely
 complementary third view rather than a uniformly better model.
 
@@ -176,7 +193,7 @@ so Branch 3 emits Dirichlet evidence like the other two views.
 
 **Yes, and it is the largest effect measured.** Per-branch vacuity by epoch:
 
-| epoch | armA semantic | armA artifact | armA fsvfm | armB semantic | armB artifact | armB fsvfm |
+| epoch | A semantic | A artifact | A fsvfm | B semantic | B artifact | B fsvfm |
 |---:|---:|---:|---:|---:|---:|---:|
 | 0 | 0.756 | 0.618 | 0.092 | 0.330 | 0.384 | 0.097 |
 | 2 | 0.983 | 0.952 | 0.015 | 0.148 | 0.142 | 0.017 |
@@ -195,20 +212,20 @@ Standalone branch AUROC shows the cost:
 
 | arm | semantic | artifact | fsvfm |
 |---|---:|---:|---:|
-| armA fused-only | 0.5539 | **0.3906** | 0.8301 |
-| **armB aux-EDL** | **0.8657** | **0.8686** | 0.8314 |
-| 1c | 0.8421 | 0.8509 | 0.8539 |
-| 1d simple-CE | 0.7975 | 0.7983 | 0.8496 |
+| A (fused-only) | 0.5539 | **0.3906** | 0.8301 |
+| **B (per-branch)** | **0.8657** | **0.8686** | 0.8314 |
+| C | 0.8421 | 0.8509 | 0.8539 |
+| D (simple CE) | 0.7975 | 0.7983 | 0.8496 |
 
-armA's artifact view at **0.3906 is below chance**, because a vacuous head's probability ordering
-carries no information. **armA → armB is +0.0428 mean AUROC.**
+A's artifact view at **0.3906 is below chance**, because a vacuous head's probability ordering
+carries no information. **A → B is +0.0428 mean AUROC.**
 
 ### The simple-CE baseline
 
-1d strips the evidential apparatus entirely — `LinearHead` logits, mean-of-logits fusion, plain
+D strips the evidential apparatus entirely — `LinearHead` logits, mean-of-logits fusion, plain
 cross-entropy — with an identical head trunk so the comparison isolates the parameterisation, not
 capacity. It lands at **+0.0056**: it partially reproduces the effect but lets both CLIP views
-decay to **0.798** (against armB's 0.866/0.869) and has the **worst real-side FPR of any arm,
+decay to **0.798** (against B's 0.866/0.869) and has the **worst real-side FPR of any arm,
 0.274, worse than P0-DS's 0.247**.
 
 So per-branch supervision is the load-bearing change, and the evidential parameterisation adds a
@@ -223,16 +240,16 @@ and applied unchanged; no OOD export is opened during fitting.
 
 | arm | F1 averaging | F2 learned | F3 DS | F2 weights (sem / art / fsvfm) | verdict |
 |---|---:|---:|---:|---|---|
-| armA | 0.8298 | 0.8301 | 0.8301 | 0.218 / 0.000 / 0.782 | no difference |
-| **armB** | 0.8778 | 0.8774 | 0.8768 | 0.000 / 0.809 / 0.191 | **no second defect** — spread 0.0010 |
-| 1c | 0.8708 | **0.8778** | 0.8701 | 0.000 / 0.536 / 0.464 | **F2 +0.0077**, clears the band |
-| 1d | 0.8648 | 0.8702 | 0.8639 | 0.116 / 0.255 / 0.629 | F2 +0.0063 |
+| A | 0.8298 | 0.8301 | 0.8301 | 0.218 / 0.000 / 0.782 | no difference |
+| **B** | 0.8778 | 0.8774 | 0.8768 | 0.000 / 0.809 / 0.191 | **no second defect** — spread 0.0010 |
+| C | 0.8708 | **0.8778** | 0.8701 | 0.000 / 0.536 / 0.464 | **F2 +0.0077**, clears the band |
+| D | 0.8648 | 0.8702 | 0.8639 | 0.116 / 0.255 / 0.629 | F2 +0.0063 |
 
-**For armB the operator choice is noise.** DS is not the bottleneck there, and a 0.0005 gap says
+**For B the operator choice is noise.** DS is not the bottleneck there, and a 0.0005 gap says
 nothing. *(An earlier version of `fusion_replay.py` auto-reported that gap as "a second problem
 isolated"; the threshold is now explicit at ~0.005 and all four reports were regenerated.)*
 
-F2 zeroes the semantic weight on armB, 1c and armA — unsurprising, since semantic and artifact
+F2 zeroes the semantic weight on B, C and A — unsurprising, since semantic and artifact
 both derive from the same CLIP trunk and the artifact view dominates it.
 
 ---
@@ -244,13 +261,13 @@ view's own FF++ val EER):
 
 | arm | mean margin | positive on | framework AUROC |
 |---|---:|---:|---:|
-| armB (student) | +0.120 | 6/7 | **0.8729** |
-| **1c (FSFM FT)** | **+0.335** | **7/7** | 0.8620 |
+| B (student) | +0.120 | 6/7 | **0.8729** |
+| **C (FSFM FT)** | **+0.335** | **7/7** | 0.8620 |
 
-1c per dataset: CDFv2 rescue 0.712 / harm 0.122 / margin **+0.590** / overlap 0.288; DFDCP
+C per dataset: CDFv2 rescue 0.712 / harm 0.122 / margin **+0.590** / overlap 0.288; DFDCP
 +0.408; DFDC +0.394; VALmix +0.349; DFD +0.277; CDFv3 +0.250; DFEval24 +0.077.
 
-**The more complementary third view produces the worse framework under DS.** On Celeb-DF-v2 1c's
+**The more complementary third view produces the worse framework under DS.** On Celeb-DF-v2 C's
 Branch 3 rescues **71%** of the pair's errors at 12% harm, and fused CDFv2 still lands below
 P0-DS. F2 recovers most of that gap (0.9660 against DS's 0.9582).
 
@@ -259,7 +276,7 @@ motivation for a conflict-aware operator — on the arm with the most to convert
 assumed one.
 
 **Corollary: standalone strength did not predict framework contribution.** The FSFM checkpoint
-beat P0-DS standalone on DFDCP (+0.048) and CDFv3 (+0.034), yet in-framework 1c sits below armB,
+beat P0-DS standalone on DFDCP (+0.048) and CDFv3 (+0.034), yet in-framework C sits below B,
 whose Branch 3 is the weaker student.
 
 ---
@@ -284,19 +301,19 @@ could be verified; the other six pilots' cells are unverified.
 
 ## 8. What is not established
 
-1. **Arm ordering needs a confirming seed.** armB's +0.0096 against P0-DS clears the ±0.01 band;
-   every arm-vs-arm difference (armB > 1d > 1c, margins 0.004–0.011) does not. Under §22 the
-   ordering is an observation, not a claim. One seed-43 run of armB (~5 h) settles the headline.
+1. **Arm ordering needs a confirming seed.** B's +0.0096 against P0-DS clears the ±0.01 band;
+   every arm-vs-arm difference (B > D > C, margins 0.004–0.011) does not. Under §22 the
+   ordering is an observation, not a claim. One seed-43 run of B (~5 h) settles the headline.
 2. **Deepfake-Eval-2024 is the one set where every arm loses to P0-DS** (best 0.6863 against
    0.6922). Nothing here helps on modern in-the-wild data.
 3. **DFD does not reproduce FSFM's reported standalone number** (0.8651 vs 0.9717).
-4. **Checkpoints for armB, 1c and 1d were taken at best FF++ val AUROC**, not by the VALmix
-   macro-AUROC protocol used earlier. armB's candidates were within 0.0001, so it cannot move the
+4. **Checkpoints for B, C and D were taken at best FF++ val AUROC**, not by the VALmix
+   macro-AUROC protocol used earlier. B's candidates were within 0.0001, so it cannot move the
    headline, but it is a deviation.
 5. **P2a's third-view vacuity is inference**, not measurement.
 6. **The frozen-FS-VFM probe (Experiment 1 candidate (a)) was never run** — superseded by the
    fine-tuned checkpoint, and skipped deliberately.
-7. **No configuration has been frozen.** armB clears the bar; nothing is yet pinned as canonical.
+7. **No configuration has been frozen.** B clears the bar; nothing is yet pinned as canonical.
 
 ---
 
