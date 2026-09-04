@@ -14,9 +14,10 @@ set -uo pipefail
 EXT=/data/umar/Repos/DISCERN_Ext
 OUT=/data/umar/Repos/DFB_NeSyNS/logs/tbiom/stage23
 PY=/data/umar/miniconda3/envs/discern_ext/bin/python
+case "${1:-}" in run1*) PY=/data/umar/miniconda3/envs/discern_fsvfm/bin/python ;; esac
 export CUDA_VISIBLE_DEVICES=1
 
-arm=${1:?usage: stage23_export.sh <stage2|stage3> <select|test> [ckpt] [tag]}
+arm=${1:?usage: stage23_export.sh <stage2|stage3|stage5> <select|test> [ckpt] [tag]}
 phase=${2:?}
 ckpt=${3:-}
 # Optional output tag. Defaults to the arm, which is what the Stage-4 primary uses. A second
@@ -27,6 +28,9 @@ tag=${4:-$arm}
 case "$arm" in
   stage2) RUN=stage2_mrvae_projonly_seed42 ;;
   stage3) RUN=stage3_bvae_rate_seed42 ;;
+  stage5) RUN=stage5_three_branch_seed42 ;;
+  run1fusedonly) RUN=run1_fusedonly_seed42 ;;
+  run1auxedl)    RUN=run1_auxedl_seed42 ;;
   *) echo "unknown arm $arm"; exit 2 ;;
 esac
 
