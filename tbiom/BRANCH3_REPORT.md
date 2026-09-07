@@ -336,7 +336,7 @@ could be verified; the other six pilots' cells are unverified.
 | video-identity rule | `analysis/tbiom/video_id.py` (`--check`: 49 cases, 12 datasets) |
 | exports | `logs/tbiom/stage23/{run1fusedonly,run1auxedl,run1cft,run1dce}_*.csv`, `logs/tbiom/ftprobe/` |
 
-Environments: training and export for the FS-VFM arms run in **`discern_fsvfm`**, a clone of
+Environments: training and export for the FS-VFM arms run in **`discern_ext_timm`**, a clone of
 `discern_ext` plus `timm --no-deps`. **`discern_ext` is unmodified** — its peft 0.14.0 and
 diffusers 0.32.2 pins are load-bearing for every P0/P1 checkpoint. Both envs carry the same peft,
 so the LoRA maths is identical rather than merely similar.
