@@ -528,6 +528,17 @@ def fig_edl_vs_ce_bars(datasets, out: Path):
     plt.close(fig); print(f"  wrote {out}.png / .pdf")
 
 
+def _edl_vs_ce_dispatch(args):
+    tag = f"{args.level}_{args.ratio.replace(':', '-')}"
+    if args.per_dataset:
+        for ds in args.datasets:
+            fig_edl_vs_ce([ds], args.out / f"fig5_edl_vs_ce_{ds}_{tag}", cap=args.cap,
+                          level=args.level, edl_arm=args.edl_arm, ratio=args.ratio)
+    else:
+        fig_edl_vs_ce(args.datasets, args.out / f"fig5_edl_vs_ce_{tag}", cap=args.cap,
+                      level=args.level, edl_arm=args.edl_arm, ratio=args.ratio)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", type=Path, default=Path("tbiom/figures"))
@@ -538,6 +549,9 @@ def main() -> int:
     ap.add_argument("--level", default="video", choices=["video", "frame"])
     ap.add_argument("--edl-arm", default="C", help="C is the one-variable pairing with D")
     ap.add_argument("--cap", type=int, default=1200, help="max points plotted per panel")
+    ap.add_argument("--per-dataset", action="store_true",
+                    help="one file per dataset instead of one multi-row file. fig2 is always "
+                         "per-dataset; this splits fig1 and fig5 the same way.")
     ap.add_argument("--ratio", default="1:1",
                     help="real:fake sampling for the PLOT only -- '1:1', '1:3', '1:6', "
                          "or 'natural' for the true distribution. Never affects the AUROC.")
@@ -548,16 +562,22 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     if args.only_edl_vs_ce:
         print("fig5 — EDL vs CE, t-SNE")
-        fig_edl_vs_ce(args.datasets,
-                      args.out / f"fig5_edl_vs_ce_{args.level}_{args.ratio.replace(':','-')}",
-                      cap=args.cap, level=args.level, edl_arm=args.edl_arm, ratio=args.ratio)
+        _edl_vs_ce_dispatch(args)
         print("fig6 — EDL vs CE, per-branch bars")
         fig_edl_vs_ce_bars(args.datasets, args.out / "fig6_edl_vs_ce_bars")
         return 0
-    print("fig1 — whole vs parts, six OOD sets")
-    fig_whole_vs_parts(args.arm, args.datasets,
-                       args.out / f"fig1_whole_vs_parts_arm{args.arm}_{args.level}_{args.ratio.replace(':','-')}",
-                       cap=args.cap, level=args.level, ratio=args.ratio)
+    tag = f"{args.level}_{args.ratio.replace(':', '-')}"
+    if args.per_dataset:
+        print("fig1 — whole vs parts, one file per dataset")
+        for ds in args.datasets:
+            fig_whole_vs_parts(args.arm, [ds],
+                               args.out / f"fig1_whole_vs_parts_arm{args.arm}_{ds}_{tag}",
+                               cap=args.cap, level=args.level, ratio=args.ratio)
+    else:
+        print("fig1 — whole vs parts, all sets in one file")
+        fig_whole_vs_parts(args.arm, args.datasets,
+                           args.out / f"fig1_whole_vs_parts_arm{args.arm}_{tag}",
+                           cap=args.cap, level=args.level, ratio=args.ratio)
     print("fig2 — arm ablation, per dataset")
     for ds in args.datasets:
         fig_arm_ablation(ds, args.out / f"fig2_arm_ablation_{ds}_{args.ratio.replace(':','-')}",
@@ -568,9 +588,7 @@ def main() -> int:
     fig_view_ablation(args.arm, args.out / f"fig4_view_ablation_arm{args.arm}")
     if args.edl_vs_ce:
         print("fig5 — EDL vs CE, t-SNE")
-        fig_edl_vs_ce(args.datasets,
-                      args.out / f"fig5_edl_vs_ce_{args.level}_{args.ratio.replace(':','-')}",
-                      cap=args.cap, level=args.level, edl_arm=args.edl_arm, ratio=args.ratio)
+        _edl_vs_ce_dispatch(args)
         print("fig6 — EDL vs CE, per-branch bars")
         fig_edl_vs_ce_bars(args.datasets, args.out / "fig6_edl_vs_ce_bars")
     return 0
