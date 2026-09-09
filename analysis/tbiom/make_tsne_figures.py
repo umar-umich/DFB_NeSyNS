@@ -56,13 +56,13 @@ C_REAL, C_FAKE = "#2a78d6", "#eb6834"
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#dfe3e9"
 ARMS = {"A": "A · fused-only", "B": "B · per-branch EDL", "C": "C · FSFM Branch 3",
         "D": "D · simple CE", "E": "E · trained 2-view"}
-# Branch names as they should read in a paper: what each view MEASURES, not the module that
-# implements it. The mechanism is in the parenthetical so a reader can still map to the code.
+# Panel titles. Plain names only -- no mechanism, no attribution. Override per run with
+# --names "semantic=X,artifact=Y,fsvfm=Z,fused=W" rather than editing this.
 VIEW_NAME = {
-    "semantic": "Appearance\n(CLIP–LoRA)",
-    "artifact": "Off-manifold residual\n(β-VAE)",
-    "fsvfm":    "Bona-fide face prior\n(FS-VFM)",
-    "__all__":  "Fused opinion\n(ours)",
+    "semantic": "Appearance",
+    "artifact": "Off-manifold residual",
+    "fsvfm":    "Bona-fide face prior",
+    "__all__":  "Fused",
 }
 VIEWS = [(k, VIEW_NAME[k]) for k in ("semantic", "artifact", "fsvfm", "__all__")]
 
@@ -224,7 +224,7 @@ def panel(ax, E, y, title, auc, show_legend=False):
 
 
 def fig_whole_vs_parts(arm, datasets, out: Path, seed=0, cap=1200, level="video",
-                       ratio="1:1"):
+                       ratio="1:1", title=""):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     LOAD = load_videos if level == "video" else load_frames
@@ -257,7 +257,7 @@ def fig_whole_vs_parts(arm, datasets, out: Path, seed=0, cap=1200, level="video"
     plt.close(fig); print(f"  wrote {out}.png / .pdf")
 
 
-def fig_arm_ablation(ds, out: Path, seed=0, cap=1200, ratio="1:1", level="video"):
+def fig_arm_ablation(ds, out: Path, seed=0, cap=1200, ratio="1:1", level="video", title=""):
     """The joint representation per arm. Arm A is the control that should look wrong."""
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -275,9 +275,8 @@ def fig_arm_ablation(ds, out: Path, seed=0, cap=1200, ratio="1:1", level="video"
     h, l = axes[0][0].get_legend_handles_labels()
     fig.legend(h, l, loc="upper right", frameon=False, fontsize=10, ncol=2,
                bbox_to_anchor=(0.995, 0.995))
-    fig.suptitle(f"Fused three-view opinion across arms — {ds}\n"
-                 f"AUROC is the fused head's zero-shot cross-dataset video AUROC",
-                 fontsize=12.5, color=INK, y=1.0, x=0.008, ha="left")
+    if title:
+        fig.suptitle(title, fontsize=11.5, color=INK, y=1.0, x=0.008, ha="left")
     fig.tight_layout(rect=[0, 0, 1, 0.9])
     for ext in ("png", "pdf"):
         fig.savefig(f"{out}.{ext}", dpi=200, facecolor=SURFACE, bbox_inches="tight")
@@ -424,7 +423,7 @@ def fig_view_ablation(arm: str, out: Path):
 
 
 def fig_edl_vs_ce(datasets, out: Path, seed=0, cap=1200, level="video",
-                  edl_arm="C", ce_arm="D", ratio="1:1"):
+                  edl_arm="C", ce_arm="D", ratio="1:1", title=""):
     """EDL and CE side by side: all three branches AND the fused output, for both losses.
 
     Eight columns per dataset row -- appearance / off-manifold / prior / fused under EDL, then
@@ -465,19 +464,15 @@ def fig_edl_vs_ce(datasets, out: Path, seed=0, cap=1200, level="video",
         axes[i][0].set_ylabel(f"{ds}\n{len(got[edl_arm][1]):,} {unit}\n{cap_txt}",
                               fontsize=10.5, color=INK, labelpad=10)
     # block headers, so nobody has to count columns to know which half is which
-    for blk, (lab, x0) in enumerate((("EVIDENTIAL  (DS fusion)", 0.055),
-                                     ("CROSS-ENTROPY  (mean of logits)", 0.545))):
+    for blk, (lab, x0) in enumerate((("EDL", 0.055), ("CE", 0.545))):
         fig.text(x0, 0.995, lab, fontsize=12.5, color=INK, ha="left", va="bottom",
                  fontweight="bold")
     fig.text(0.5, 0.982, "│", fontsize=13, color=GRID, ha="center", va="bottom")
     h, l = axes[0][0].get_legend_handles_labels()
     fig.legend(h, l, loc="upper right", frameon=False, fontsize=10.5, ncol=2,
                bbox_to_anchor=(0.998, 1.0))
-    fig.suptitle(f"Identical branches, two objectives — {level} level · "
-                 f"arm {edl_arm} vs arm {ce_arm}\n"
-                 f"AUROC on each panel is the trained head's zero-shot VIDEO AUROC over the "
-                 f"full set; points are sampled at real:fake = {ratio}",
-                 fontsize=12.0, color=INK, y=1.035, x=0.006, ha="left")
+    if title:
+        fig.suptitle(title, fontsize=11.5, color=INK, y=1.02, x=0.006, ha="left")
     fig.tight_layout(rect=[0, 0, 1, 0.975])
     for ext in ("png", "pdf"):
         fig.savefig(f"{out}.{ext}", dpi=180, facecolor=SURFACE, bbox_inches="tight")
@@ -528,6 +523,66 @@ def fig_edl_vs_ce_bars(datasets, out: Path):
     plt.close(fig); print(f"  wrote {out}.png / .pdf")
 
 
+def fig_five_panel(datasets, out: Path, seed=0, cap=1500, level="video",
+                   edl_arm="C", ce_arm="D", ratio="1:3", title=""):
+    """Five panels: the three branches, then CE fusion, then EDL fusion.
+
+    WHICH BRANCHES ARE SHOWN, because the honest answer is not obvious. The three branch panels
+    come from the EDL arm -- they are the framework's own views. The CE fusion panel comes from
+    a DIFFERENT model (arm D), whose branches were trained under cross-entropy and are weaker
+    (0.798 against EDL's 0.842/0.851 averaged over the six sets). So the CE panel is not "the
+    same branches fused differently"; it is the whole CE model's output, which is the right
+    comparison for choosing an objective but must not be read as an operator swap on fixed
+    inputs. The subtitle says so.
+
+    Panel order puts the two fusions last and adjacent, so the comparison a reader is meant to
+    make is the one their eye makes.
+    """
+    import matplotlib; matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    LOAD = load_videos if level == "video" else load_frames
+    spec = [(edl_arm, "semantic"), (edl_arm, "artifact"), (edl_arm, "fsvfm"),
+            (ce_arm, "__all__"), (edl_arm, "__all__")]
+    titles = [VIEW_NAME["semantic"], VIEW_NAME["artifact"], VIEW_NAME["fsvfm"],
+              "CE fusion", "EDL fusion"]
+    rows = []
+    for ds in datasets:
+        got = {a: LOAD(a, ds) for a in {edl_arm, ce_arm}}
+        if all(got.values()):
+            rows.append((ds, got))
+    if not rows:
+        print("  no data"); return
+    fig, axes = plt.subplots(len(rows), 5, figsize=(18.0, 3.7 * len(rows)),
+                             facecolor=SURFACE, squeeze=False)
+    for i, (ds, got) in enumerate(rows):
+        sel_cache = {}
+        for j, (arm, key) in enumerate(spec):
+            fe, y = got[arm]
+            if arm not in sel_cache:
+                sel_cache[arm] = subsample(y, cap, seed, ratio)
+            sel, cap_txt = sel_cache[arm]
+            X = joint(fe) if key == "__all__" else zs(fe[key])
+            panel(axes[i][j], embed(X[sel], seed), y[sel], titles[j] if i == 0 else "",
+                  model_auc(arm, ds, key), show_legend=(i == 0 and j == 0))
+            if j == 4:      # ring the framework's own output so the eye lands there
+                for sp in axes[i][j].spines.values():
+                    sp.set_color("#4a3aa7"); sp.set_linewidth(2.0)
+        unit = "videos" if level == "video" else "frames"
+        axes[i][0].set_ylabel(f"{ds}\n{len(got[edl_arm][1]):,} {unit}\n{sel_cache[edl_arm][1]}",
+                              fontsize=10.5, color=INK, labelpad=10)
+    h, l = axes[0][0].get_legend_handles_labels()
+    # under the title block, not beside it -- the subtitle wraps to two lines and the legend
+    # was landing on top of its right end
+    fig.legend(h, l, loc="lower right", frameon=False, fontsize=10.5, ncol=2,
+               bbox_to_anchor=(0.997, 1.005))
+    if title:
+        fig.suptitle(title, fontsize=11.5, color=INK, y=1.02, x=0.006, ha="left")
+    fig.tight_layout(rect=[0, 0, 1, 0.955])
+    for ext in ("png", "pdf"):
+        fig.savefig(f"{out}.{ext}", dpi=190, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(fig); print(f"  wrote {out}.png / .pdf")
+
+
 def _edl_vs_ce_dispatch(args):
     tag = f"{args.level}_{args.ratio.replace(':', '-')}"
     if args.per_dataset:
@@ -549,6 +604,12 @@ def main() -> int:
     ap.add_argument("--level", default="video", choices=["video", "frame"])
     ap.add_argument("--edl-arm", default="C", help="C is the one-variable pairing with D")
     ap.add_argument("--cap", type=int, default=1200, help="max points plotted per panel")
+    ap.add_argument("--names", default=None,
+                    help="override panel titles, e.g. "
+                         "\"semantic=View A,artifact=View B,fsvfm=View C,fused=Ours\"")
+    ap.add_argument("--title", default="", help="figure title; empty means no title at all")
+    ap.add_argument("--five-panel", action="store_true",
+                    help="one figure of five panels: the three branches, CE fusion, EDL fusion")
     ap.add_argument("--per-dataset", action="store_true",
                     help="one file per dataset instead of one multi-row file. fig2 is always "
                          "per-dataset; this splits fig1 and fig5 the same way.")
@@ -560,6 +621,24 @@ def main() -> int:
     ap.add_argument("--only-edl-vs-ce", action="store_true")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
+    if args.names:
+        alias = {"fused": "__all__"}
+        for kv in args.names.split(","):
+            k, _, v = kv.partition("=")
+            k = k.strip(); VIEW_NAME[alias.get(k, k)] = v.strip()
+    tag5 = f"{args.level}_{args.ratio.replace(':', '-')}"
+    if args.five_panel:
+        print("fig7 — five-panel: three branches + CE fusion + EDL fusion")
+        if args.per_dataset:
+            for ds in args.datasets:
+                fig_five_panel([ds], args.out / f"fig7_five_panel_{ds}_{tag5}", cap=args.cap,
+                               level=args.level, edl_arm=args.edl_arm, ratio=args.ratio,
+                               title=args.title)
+        else:
+            fig_five_panel(args.datasets, args.out / f"fig7_five_panel_{tag5}", cap=args.cap,
+                           level=args.level, edl_arm=args.edl_arm, ratio=args.ratio,
+                           title=args.title)
+        return 0
     if args.only_edl_vs_ce:
         print("fig5 — EDL vs CE, t-SNE")
         _edl_vs_ce_dispatch(args)
