@@ -1,0 +1,8 @@
+configuration,group,mean_ood_auroc
+"FS-VFM branch alone",branch,0.853930
+"Semantic branch alone",branch,0.855236
+"Artifact branch alone",branch,0.856575
+"2-view baseline (P0-DS)",base,0.863310
+"3 views, simple CE fusion",base,0.863938
+"3 views, evidential (ours)",ours,0.878187
+"3 views, evidential + FSFM (ours)",ours,0.878331
