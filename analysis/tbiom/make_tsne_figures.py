@@ -56,8 +56,30 @@ C_REAL, C_FAKE = "#2a78d6", "#eb6834"
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#dfe3e9"
 ARMS = {"A": "A · fused-only", "B": "B · per-branch EDL", "C": "C · FSFM Branch 3",
         "D": "D · simple CE", "E": "E · trained 2-view"}
-VIEWS = [("semantic", "Semantic (CLIP)"), ("artifact", "Artifact (β-VAE)"),
-         ("fsvfm", "FS-VFM"), ("__all__", "All three (fused input)")]
+# Branch names as they should read in a paper: what each view MEASURES, not the module that
+# implements it. The mechanism is in the parenthetical so a reader can still map to the code.
+VIEW_NAME = {
+    "semantic": "Appearance\n(CLIP–LoRA)",
+    "artifact": "Off-manifold residual\n(β-VAE)",
+    "fsvfm":    "Bona-fide face prior\n(FS-VFM)",
+    "__all__":  "Fused opinion\n(ours)",
+}
+VIEWS = [(k, VIEW_NAME[k]) for k in ("semantic", "artifact", "fsvfm", "__all__")]
+
+
+def load_frames(arm: str, ds: str):
+    """npz -> raw FRAME features, no aggregation.
+
+    Frame level shows what the branch actually sees; video level shows what it is scored on.
+    Both are worth a panel and they can look different -- video averaging removes the
+    within-video spread that dominates a frame plot.
+    """
+    f = TSNE_DIR / f"f_{arm}_{ds}.npz"
+    if not f.is_file():
+        return None
+    d = np.load(f, allow_pickle=True)
+    return ({k: d[k] for k in ("semantic", "artifact", "fsvfm")},
+            np.asarray(d["label"]).astype(int))
 
 
 def load_videos(arm: str, ds: str):
@@ -79,6 +101,34 @@ def load_videos(arm: str, ds: str):
         out[k] = df.loc[order].to_numpy(np.float32)
     y = pd.Series(lab).groupby(vid.values).max().loc[order].to_numpy()
     return out, y
+
+
+def subsample(y, cap: int, seed=0, balanced=True):
+    """Index subsample, for PLOTTING ONLY.
+
+    BALANCED by default. Every evaluation set here is fake-heavy -- Celeb-DF-v3 runs 167,603
+    fake frames against 5,692 real -- so a proportional sample buries the real class under a
+    wall of orange and the panel shows imbalance rather than separability. Drawing equal
+    numbers of each class makes the geometry legible and the panels comparable across datasets
+    with very different ratios.
+
+    This changes only the PICTURE. Every AUROC printed on a panel is computed on the full,
+    unbalanced set, because that is the number a reader checks against the results table.
+    Balancing the metric as well would quietly inflate it on the fake-heavy sets.
+    """
+    y = np.asarray(y)
+    rng = np.random.default_rng(seed)
+    classes = np.unique(y)
+    idx_by_c = {c: np.flatnonzero(y == c) for c in classes}
+    if balanced:
+        per = min(min(len(v) for v in idx_by_c.values()), max(1, cap // len(classes)))
+        keep = [rng.choice(idx_by_c[c], size=per, replace=False) for c in classes]
+    else:
+        if len(y) <= cap:
+            return np.arange(len(y))
+        keep = [rng.choice(v, size=min(max(1, int(round(cap * len(v) / len(y)))), len(v)),
+                           replace=False) for v in idx_by_c.values()]
+    return np.sort(np.concatenate(keep))
 
 
 def zs(x):
@@ -142,28 +192,32 @@ def panel(ax, E, y, title, auc, show_legend=False):
             bbox=dict(boxstyle="round,pad=0.32", fc=SURFACE, ec=GRID, lw=0.7))
 
 
-def fig_whole_vs_parts(arm, datasets, out: Path, seed=0):
+def fig_whole_vs_parts(arm, datasets, out: Path, seed=0, cap=1200, level="video"):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    rows = [(ds, load_videos(arm, ds)) for ds in datasets]
+    LOAD = load_videos if level == "video" else load_frames
+    rows = [(ds, LOAD(arm, ds)) for ds in datasets]
     rows = [(ds, r) for ds, r in rows if r]
     if not rows:
         print("  no data"); return
-    fig, axes = plt.subplots(len(rows), 4, figsize=(15.2, 4.0 * len(rows)),
+    fig, axes = plt.subplots(len(rows), 4, figsize=(15.2, 3.6 * len(rows)),
                              facecolor=SURFACE, squeeze=False)
     for i, (ds, (fe, y)) in enumerate(rows):
+        sel = subsample(y, cap, seed)
         for j, (key, name) in enumerate(VIEWS):
             X = joint(fe) if key == "__all__" else zs(fe[key])
-            panel(axes[i][j], embed(X, seed), y,
+            panel(axes[i][j], embed(X[sel], seed), y[sel],
                   name if i == 0 else "", model_auc(arm, ds, key),
                   show_legend=(i == 0 and j == 0))
-        axes[i][0].set_ylabel(ds, fontsize=11.5, color=INK, labelpad=10)
+        unit = "videos" if level == "video" else "frames"
+        n = f"{ds}\n{len(y):,} {unit}\n({len(sel):,} plotted, balanced)"
+        axes[i][0].set_ylabel(n, fontsize=10.5, color=INK, labelpad=10)
     h, l = axes[0][0].get_legend_handles_labels()
     fig.legend(h, l, loc="upper right", frameon=False, fontsize=10, ncol=2,
                bbox_to_anchor=(0.995, 0.995))
-    fig.suptitle(f"Each view alone, then all three fused — arm {arm}\n"
-                 f"AUROC is the trained head's zero-shot cross-dataset video AUROC "
-                 f"(trained on FF++ c23 only)",
+    fig.suptitle(f"Each view alone, then all three fused — arm {arm} · {level} level\n"
+                 f"AUROC is the trained head's zero-shot cross-dataset VIDEO AUROC on the full "
+                 f"set (trained on FF++ c23 only); points are a class-balanced sample",
                  fontsize=12.5, color=INK, y=1.0, x=0.012, ha="left")
     fig.tight_layout(rect=[0, 0, 1, 0.955])
     for ext in ("png", "pdf"):
@@ -171,7 +225,7 @@ def fig_whole_vs_parts(arm, datasets, out: Path, seed=0):
     plt.close(fig); print(f"  wrote {out}.png / .pdf")
 
 
-def fig_arm_ablation(ds, out: Path, seed=0):
+def fig_arm_ablation(ds, out: Path, seed=0, cap=1200):
     """The joint representation per arm. Arm A is the control that should look wrong."""
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -183,7 +237,8 @@ def fig_arm_ablation(ds, out: Path, seed=0):
                              facecolor=SURFACE, squeeze=False)
     for j, (a, (fe, y)) in enumerate(got):
         X = joint(fe)
-        panel(axes[0][j], embed(X, seed), y, ARMS[a], model_auc(a, ds, "__all__"),
+        sel = subsample(y, cap, seed)
+        panel(axes[0][j], embed(X[sel], seed), y[sel], ARMS[a], model_auc(a, ds, "__all__"),
               show_legend=(j == 0))
     h, l = axes[0][0].get_legend_handles_labels()
     fig.legend(h, l, loc="upper right", frameon=False, fontsize=10, ncol=2,
@@ -220,7 +275,7 @@ def fig_configurations(out: Path):
     lo = [m - min(per[c]) for m, c in zip(means, order)]
     hi = [max(per[c]) - m for m, c in zip(means, order)]
 
-    fig, ax = plt.subplots(figsize=(8.6, 4.2), facecolor=SURFACE)
+    fig, ax = plt.subplots(figsize=(9.2, 3.9), facecolor=SURFACE)
     ax.set_facecolor(SURFACE)
     y = np.arange(len(order))
     ax.barh(y, [m - P0 for m in means], height=0.52, left=P0,
@@ -228,14 +283,18 @@ def fig_configurations(out: Path):
     ax.errorbar([m for m in means], y, xerr=[lo, hi], fmt="none",
                 ecolor=INK2, elinewidth=1.4, capsize=4)
     ax.axvline(P0, color=INK2, lw=1.4, ls="--")
-    ax.text(P0, len(order) - 0.35, f"  two-view baseline {P0:.4f}", fontsize=9.5,
-            color=INK2, va="center")
-    for i, (m, c) in enumerate(zip(means, order)):
-        ax.text(m + 0.0012, i, f"{m:.4f}  ({m-P0:+.4f})", va="center",
+    # above the bars, not below: the axis is inverted, so len(order)-0.35 landed on the
+    # x-tick labels and the caption sat on top of them
+    ax.text(P0, -0.72, f" two-view baseline {P0:.4f}", fontsize=9.5, color=INK2,
+            va="center", ha="left")
+    # to the right of the error bar's upper cap, not the mean -- at the mean the text runs
+    # straight through the cap, which is what the first render did
+    for i, (m, c, h) in enumerate(zip(means, order, hi)):
+        ax.text(m + h + 0.0014, i, f"{m:.4f}   {m-P0:+.4f}", va="center",
                 fontsize=9.5, color=INK)
-    ax.set_yticks(y); ax.set_yticklabels([c.replace("arm ", "arm ") for c in order], fontsize=10.5)
+    ax.set_yticks(y); ax.set_yticklabels(order, fontsize=10.5)
     ax.invert_yaxis()
-    ax.set_xlim(P0 - 0.004, max(means) + 0.010)
+    ax.set_xlim(P0 - 0.0035, max(m + h for m, h in zip(means, hi)) + 0.0075)
     ax.set_xlabel("mean video AUROC over six OOD datasets  (error bar = seed range, 3 seeds)",
                   fontsize=10, color=INK2)
     for sp in ("top", "right", "left"):
@@ -332,22 +391,150 @@ def fig_view_ablation(arm: str, out: Path):
     plt.close(fig); print(f"  wrote {out}.png / .pdf")
 
 
+def fig_edl_vs_ce(datasets, out: Path, seed=0, cap=1200, level="video",
+                  edl_arm="C", ce_arm="D"):
+    """EDL and CE side by side: all three branches AND the fused output, for both losses.
+
+    Eight columns per dataset row -- appearance / off-manifold / prior / fused under EDL, then
+    the same four under CE. The point is visible without reading a number: CE's two CLIP
+    branches are the ones that decay (0.798 against EDL's 0.842 and 0.851 averaged over the six
+    sets), while the frozen prior is unaffected because nothing about it is trained.
+
+    ARMS. `edl_arm="C"` against `ce_arm="D"` is the ONE-VARIABLE pairing -- identical branches,
+    identical FSFM Branch 3, identical schedule and seed, differing only in heads + fusion +
+    loss. Passing `edl_arm="B"` gives the SELECTED configuration instead, which scores higher
+    (0.8729 against C's 0.8620) but also swaps Branch 3, so any difference then mixes the loss
+    with the branch and it is no longer an ablation. The default is the clean one.
+    """
+    import matplotlib; matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    LOAD = load_videos if level == "video" else load_frames
+    keys = ["semantic", "artifact", "fsvfm", "__all__"]
+    rows = []
+    for ds in datasets:
+        got = {a: LOAD(a, ds) for a in (edl_arm, ce_arm)}
+        if all(got.values()):
+            rows.append((ds, got))
+    if not rows:
+        print("  no data"); return
+    fig, axes = plt.subplots(len(rows), 8, figsize=(26.0, 3.5 * len(rows)),
+                             facecolor=SURFACE, squeeze=False)
+    for i, (ds, got) in enumerate(rows):
+        for blk, arm in enumerate((edl_arm, ce_arm)):
+            fe, y = got[arm]
+            sel = subsample(y, cap, seed, balanced=True)
+            for j, k in enumerate(keys):
+                X = joint(fe) if k == "__all__" else zs(fe[k])
+                col = blk * 4 + j
+                title = ("" if i else f"{VIEW_NAME[k]}")
+                panel(axes[i][col], embed(X[sel], seed), y[sel], title,
+                      model_auc(arm, ds, k), show_legend=(i == 0 and col == 0))
+        unit = "videos" if level == "video" else "frames"
+        axes[i][0].set_ylabel(f"{ds}\n{len(got[edl_arm][1]):,} {unit}",
+                              fontsize=10.5, color=INK, labelpad=10)
+    # block headers, so nobody has to count columns to know which half is which
+    for blk, (lab, x0) in enumerate((("EVIDENTIAL  (DS fusion)", 0.055),
+                                     ("CROSS-ENTROPY  (mean of logits)", 0.545))):
+        fig.text(x0, 0.995, lab, fontsize=12.5, color=INK, ha="left", va="bottom",
+                 fontweight="bold")
+    fig.text(0.5, 0.982, "│", fontsize=13, color=GRID, ha="center", va="bottom")
+    h, l = axes[0][0].get_legend_handles_labels()
+    fig.legend(h, l, loc="upper right", frameon=False, fontsize=10.5, ncol=2,
+               bbox_to_anchor=(0.998, 1.0))
+    fig.suptitle(f"Identical branches, two objectives — {level} level · "
+                 f"arm {edl_arm} vs arm {ce_arm}\n"
+                 f"AUROC on each panel is the trained head's zero-shot VIDEO AUROC over the "
+                 f"full set; points are a class-balanced sample",
+                 fontsize=12.0, color=INK, y=1.035, x=0.006, ha="left")
+    fig.tight_layout(rect=[0, 0, 1, 0.975])
+    for ext in ("png", "pdf"):
+        fig.savefig(f"{out}.{ext}", dpi=180, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(fig); print(f"  wrote {out}.png / .pdf")
+
+
+def fig_edl_vs_ce_bars(datasets, out: Path):
+    """Per-branch and fused AUROC, EDL against CE, every dataset. The quantitative companion."""
+    import matplotlib; matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    NICE = {"CDFv2": "Celeb-DF-v2", "CDFv3": "Celeb-DF-v3", "DFD": "DFD", "DFDC": "DFDC",
+            "DFDCP": "DFDCP", "DFEval24": "Deepfake-Eval-2024"}
+    keys = [("semantic", "Semantic"), ("artifact", "Artifact"), ("fsvfm", "FS-VFM"),
+            ("__all__", "Fused")]
+    fig, axes = plt.subplots(1, 4, figsize=(15.0, 3.9), facecolor=SURFACE, sharey=True)
+    x = np.arange(len(datasets)); w = 0.36
+    for ax, (k, name) in zip(axes, keys):
+        e = [model_auc("C", d, k) for d in datasets]
+        c = [model_auc("D", d, k) for d in datasets]
+        ax.bar(x - w / 2, e, w * 0.92, label="EDL", color="#4a3aa7",
+               edgecolor=SURFACE, linewidth=2, zorder=3)
+        ax.bar(x + w / 2, c, w * 0.92, label="CE", color="#eb6834",
+               edgecolor=SURFACE, linewidth=2, zorder=3)
+        ax.set_facecolor(SURFACE)
+        d = np.nanmean(e) - np.nanmean(c)
+        ax.set_title(f"{name}\nEDL {np.nanmean(e):.4f}  ·  CE {np.nanmean(c):.4f}"
+                     f"   ({d:+.4f})", fontsize=10.5, color=INK, pad=8)
+        ax.set_xticks(x)
+        ax.set_xticklabels([NICE.get(d, d) for d in datasets], fontsize=8.5, rotation=30,
+                           ha="right")
+        ax.grid(axis="y", color=GRID, lw=0.7, alpha=0.8); ax.set_axisbelow(True)
+        for sp in ("top", "right"): ax.spines[sp].set_visible(False)
+        for sp in ("left", "bottom"): ax.spines[sp].set_color(GRID)
+        ax.tick_params(colors=INK2, length=0)
+    axes[0].set_ylim(0.60, 1.0)
+    axes[0].set_ylabel("video AUROC (zero-shot)", fontsize=10, color=INK2)
+    # outside the axes: inside, it landed on the Celeb-DF-v2 bars
+    axes[0].legend(frameon=False, fontsize=9.5, loc="upper left",
+                   bbox_to_anchor=(0.0, -0.30), ncol=2)
+    fig.suptitle("Evidential supervision keeps the branches healthy; its FUSION does not convert "
+                 "the advantage\n"
+                 "EDL holds the two CLIP branches ~0.05 above CE, yet CE's fused output is "
+                 "marginally ahead in this pairing (arm C vs arm D, same Branch 3)",
+                 fontsize=12.0, color=INK, y=1.09, x=0.006, ha="left")
+    fig.tight_layout()
+    for ext in ("png", "pdf"):
+        fig.savefig(f"{out}.{ext}", dpi=200, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(fig); print(f"  wrote {out}.png / .pdf")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", type=Path, default=Path("tbiom/figures"))
     ap.add_argument("--arm", default="C")
-    ap.add_argument("--datasets", nargs="+", default=["CDFv2", "DFDCP"])
+    ap.add_argument("--datasets", nargs="+",
+                    default=["CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "DFEval24"],
+                    help="the six OOD evaluation sets by default")
+    ap.add_argument("--level", default="video", choices=["video", "frame"])
+    ap.add_argument("--edl-arm", default="C", help="C is the one-variable pairing with D")
+    ap.add_argument("--cap", type=int, default=1200, help="max videos plotted per panel")
+    ap.add_argument("--edl-vs-ce", action="store_true",
+                    help="also build the evidential-versus-cross-entropy comparison")
+    ap.add_argument("--only-edl-vs-ce", action="store_true")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    print("fig1 — whole vs parts")
-    fig_whole_vs_parts(args.arm, args.datasets, args.out / f"fig1_whole_vs_parts_arm{args.arm}")
-    print("fig2 — arm ablation")
+    if args.only_edl_vs_ce:
+        print("fig5 — EDL vs CE, t-SNE")
+        fig_edl_vs_ce(args.datasets, args.out / f"fig5_edl_vs_ce_{args.level}",
+                      cap=args.cap, level=args.level, edl_arm=args.edl_arm)
+        print("fig6 — EDL vs CE, per-branch bars")
+        fig_edl_vs_ce_bars(args.datasets, args.out / "fig6_edl_vs_ce_bars")
+        return 0
+    print("fig1 — whole vs parts, six OOD sets")
+    fig_whole_vs_parts(args.arm, args.datasets,
+                       args.out / f"fig1_whole_vs_parts_arm{args.arm}_{args.level}",
+                       cap=args.cap, level=args.level)
+    print("fig2 — arm ablation, per dataset")
     for ds in args.datasets:
-        fig_arm_ablation(ds, args.out / f"fig2_arm_ablation_{ds}")
+        fig_arm_ablation(ds, args.out / f"fig2_arm_ablation_{ds}", cap=args.cap)
     print("fig3 — configurations")
     fig_configurations(args.out / "fig3_configurations")
     print("fig4 — view ablation")
     fig_view_ablation(args.arm, args.out / f"fig4_view_ablation_arm{args.arm}")
+    if args.edl_vs_ce:
+        print("fig5 — EDL vs CE, t-SNE")
+        fig_edl_vs_ce(args.datasets, args.out / f"fig5_edl_vs_ce_{args.level}",
+                      cap=args.cap, level=args.level, edl_arm=args.edl_arm)
+        print("fig6 — EDL vs CE, per-branch bars")
+        fig_edl_vs_ce_bars(args.datasets, args.out / "fig6_edl_vs_ce_bars")
     return 0
 
 
