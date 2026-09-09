@@ -103,32 +103,63 @@ def load_videos(arm: str, ds: str):
     return out, y
 
 
-def subsample(y, cap: int, seed=0, balanced=True):
-    """Index subsample, for PLOTTING ONLY.
+def parse_ratio(spec: str):
+    """'1:1' | '1:3' | '1:6' | 'natural' -> (real, fake) target proportions, or None."""
+    if spec is None or str(spec).lower() in ("natural", "none", "true", ""):
+        return None
+    parts = str(spec).split(":")
+    if len(parts) != 2:
+        raise ValueError(f"ratio must look like '1:3' or be 'natural', got {spec!r}")
+    r, f = (float(x) for x in parts)
+    if r <= 0 or f <= 0:
+        raise ValueError(f"ratio parts must be positive, got {spec!r}")
+    return r, f
 
-    BALANCED by default. Every evaluation set here is fake-heavy -- Celeb-DF-v3 runs 167,603
-    fake frames against 5,692 real -- so a proportional sample buries the real class under a
-    wall of orange and the panel shows imbalance rather than separability. Drawing equal
-    numbers of each class makes the geometry legible and the panels comparable across datasets
-    with very different ratios.
 
-    This changes only the PICTURE. Every AUROC printed on a panel is computed on the full,
-    unbalanced set, because that is the number a reader checks against the results table.
-    Balancing the metric as well would quietly inflate it on the fake-heavy sets.
+def subsample(y, cap: int, seed=0, ratio="1:1"):
+    """Index subsample, for PLOTTING ONLY. Returns indices and a caption describing what was done.
+
+    WHY THIS IS A KNOB AND NOT A CONSTANT. The evaluation sets are wildly fake-heavy --
+    Celeb-DF-v3 runs 167,603 fake frames against 5,692 real, roughly 1:29 -- and the two honest
+    choices pull in opposite directions:
+
+        natural   shows the distribution a deployed detector actually meets, but the minority
+                  class disappears under the majority and the panel reads as imbalance rather
+                  than separability
+        1:1       shows the geometry clearly and makes panels comparable across datasets with
+                  very different ratios, but no evaluation set looks like that
+
+    1:3 or 1:6 sit between: the imbalance is visible, the real class is still readable. Pick per
+    figure and state it -- the caption this returns does that automatically, so a reader is
+    never guessing which one they are looking at.
+
+    THE METRIC IS NEVER RESAMPLED. Every AUROC annotation is computed on the full, unmodified
+    set. Resampling the metric would change the number a reader checks against the results
+    table, and on a 1:29 set it would change it a lot.
     """
     y = np.asarray(y)
     rng = np.random.default_rng(seed)
     classes = np.unique(y)
-    idx_by_c = {c: np.flatnonzero(y == c) for c in classes}
-    if balanced:
-        per = min(min(len(v) for v in idx_by_c.values()), max(1, cap // len(classes)))
-        keep = [rng.choice(idx_by_c[c], size=per, replace=False) for c in classes]
-    else:
+    idx = {c: np.flatnonzero(y == c) for c in classes}
+    have = {c: len(v) for c, v in idx.items()}
+    want = parse_ratio(ratio)
+
+    if want is None or len(classes) != 2:
         if len(y) <= cap:
-            return np.arange(len(y))
-        keep = [rng.choice(v, size=min(max(1, int(round(cap * len(v) / len(y)))), len(v)),
-                           replace=False) for v in idx_by_c.values()]
-    return np.sort(np.concatenate(keep))
+            return np.arange(len(y)), f"all {len(y):,}, natural {have.get(0,0)}:{have.get(1,0)}"
+        take = {c: max(1, int(round(cap * n / len(y)))) for c, n in have.items()}
+    else:
+        r, f = want
+        # largest k with k*r <= n_real, k*f <= n_fake, and k*(r+f) <= cap
+        k = min(have.get(0, 0) / r, have.get(1, 0) / f, cap / (r + f))
+        take = {0: max(1, int(k * r)), 1: max(1, int(k * f))}
+    take = {c: min(take[c], have[c]) for c in classes}
+    sel = np.sort(np.concatenate([rng.choice(idx[c], size=take[c], replace=False)
+                                  for c in classes]))
+    nr, nf = take.get(0, 0), take.get(1, 0)
+    # the achieved ratio as 1:x -- reducing by gcd gave unreadable labels like "171:1028"
+    shown = f"1:{nf / nr:.3g}" if nr else "0:1"
+    return sel, f"{nr:,}R / {nf:,}F  ({shown})"
 
 
 def zs(x):
@@ -192,7 +223,8 @@ def panel(ax, E, y, title, auc, show_legend=False):
             bbox=dict(boxstyle="round,pad=0.32", fc=SURFACE, ec=GRID, lw=0.7))
 
 
-def fig_whole_vs_parts(arm, datasets, out: Path, seed=0, cap=1200, level="video"):
+def fig_whole_vs_parts(arm, datasets, out: Path, seed=0, cap=1200, level="video",
+                       ratio="1:1"):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     LOAD = load_videos if level == "video" else load_frames
@@ -203,21 +235,21 @@ def fig_whole_vs_parts(arm, datasets, out: Path, seed=0, cap=1200, level="video"
     fig, axes = plt.subplots(len(rows), 4, figsize=(15.2, 3.6 * len(rows)),
                              facecolor=SURFACE, squeeze=False)
     for i, (ds, (fe, y)) in enumerate(rows):
-        sel = subsample(y, cap, seed)
+        sel, cap_txt = subsample(y, cap, seed, ratio)
         for j, (key, name) in enumerate(VIEWS):
             X = joint(fe) if key == "__all__" else zs(fe[key])
             panel(axes[i][j], embed(X[sel], seed), y[sel],
                   name if i == 0 else "", model_auc(arm, ds, key),
                   show_legend=(i == 0 and j == 0))
         unit = "videos" if level == "video" else "frames"
-        n = f"{ds}\n{len(y):,} {unit}\n({len(sel):,} plotted, balanced)"
+        n = f"{ds}\n{len(y):,} {unit}\n{cap_txt}"
         axes[i][0].set_ylabel(n, fontsize=10.5, color=INK, labelpad=10)
     h, l = axes[0][0].get_legend_handles_labels()
     fig.legend(h, l, loc="upper right", frameon=False, fontsize=10, ncol=2,
                bbox_to_anchor=(0.995, 0.995))
     fig.suptitle(f"Each view alone, then all three fused — arm {arm} · {level} level\n"
                  f"AUROC is the trained head's zero-shot cross-dataset VIDEO AUROC on the full "
-                 f"set (trained on FF++ c23 only); points are a class-balanced sample",
+                 f"set (trained on FF++ c23 only); points sampled at real:fake = {ratio}",
                  fontsize=12.5, color=INK, y=1.0, x=0.012, ha="left")
     fig.tight_layout(rect=[0, 0, 1, 0.955])
     for ext in ("png", "pdf"):
@@ -225,7 +257,7 @@ def fig_whole_vs_parts(arm, datasets, out: Path, seed=0, cap=1200, level="video"
     plt.close(fig); print(f"  wrote {out}.png / .pdf")
 
 
-def fig_arm_ablation(ds, out: Path, seed=0, cap=1200):
+def fig_arm_ablation(ds, out: Path, seed=0, cap=1200, ratio="1:1", level="video"):
     """The joint representation per arm. Arm A is the control that should look wrong."""
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -237,7 +269,7 @@ def fig_arm_ablation(ds, out: Path, seed=0, cap=1200):
                              facecolor=SURFACE, squeeze=False)
     for j, (a, (fe, y)) in enumerate(got):
         X = joint(fe)
-        sel = subsample(y, cap, seed)
+        sel, _ = subsample(y, cap, seed, ratio)
         panel(axes[0][j], embed(X[sel], seed), y[sel], ARMS[a], model_auc(a, ds, "__all__"),
               show_legend=(j == 0))
     h, l = axes[0][0].get_legend_handles_labels()
@@ -392,7 +424,7 @@ def fig_view_ablation(arm: str, out: Path):
 
 
 def fig_edl_vs_ce(datasets, out: Path, seed=0, cap=1200, level="video",
-                  edl_arm="C", ce_arm="D"):
+                  edl_arm="C", ce_arm="D", ratio="1:1"):
     """EDL and CE side by side: all three branches AND the fused output, for both losses.
 
     Eight columns per dataset row -- appearance / off-manifold / prior / fused under EDL, then
@@ -422,7 +454,7 @@ def fig_edl_vs_ce(datasets, out: Path, seed=0, cap=1200, level="video",
     for i, (ds, got) in enumerate(rows):
         for blk, arm in enumerate((edl_arm, ce_arm)):
             fe, y = got[arm]
-            sel = subsample(y, cap, seed, balanced=True)
+            sel, cap_txt = subsample(y, cap, seed, ratio)
             for j, k in enumerate(keys):
                 X = joint(fe) if k == "__all__" else zs(fe[k])
                 col = blk * 4 + j
@@ -430,7 +462,7 @@ def fig_edl_vs_ce(datasets, out: Path, seed=0, cap=1200, level="video",
                 panel(axes[i][col], embed(X[sel], seed), y[sel], title,
                       model_auc(arm, ds, k), show_legend=(i == 0 and col == 0))
         unit = "videos" if level == "video" else "frames"
-        axes[i][0].set_ylabel(f"{ds}\n{len(got[edl_arm][1]):,} {unit}",
+        axes[i][0].set_ylabel(f"{ds}\n{len(got[edl_arm][1]):,} {unit}\n{cap_txt}",
                               fontsize=10.5, color=INK, labelpad=10)
     # block headers, so nobody has to count columns to know which half is which
     for blk, (lab, x0) in enumerate((("EVIDENTIAL  (DS fusion)", 0.055),
@@ -444,7 +476,7 @@ def fig_edl_vs_ce(datasets, out: Path, seed=0, cap=1200, level="video",
     fig.suptitle(f"Identical branches, two objectives — {level} level · "
                  f"arm {edl_arm} vs arm {ce_arm}\n"
                  f"AUROC on each panel is the trained head's zero-shot VIDEO AUROC over the "
-                 f"full set; points are a class-balanced sample",
+                 f"full set; points are sampled at real:fake = {ratio}",
                  fontsize=12.0, color=INK, y=1.035, x=0.006, ha="left")
     fig.tight_layout(rect=[0, 0, 1, 0.975])
     for ext in ("png", "pdf"):
@@ -505,7 +537,10 @@ def main() -> int:
                     help="the six OOD evaluation sets by default")
     ap.add_argument("--level", default="video", choices=["video", "frame"])
     ap.add_argument("--edl-arm", default="C", help="C is the one-variable pairing with D")
-    ap.add_argument("--cap", type=int, default=1200, help="max videos plotted per panel")
+    ap.add_argument("--cap", type=int, default=1200, help="max points plotted per panel")
+    ap.add_argument("--ratio", default="1:1",
+                    help="real:fake sampling for the PLOT only -- '1:1', '1:3', '1:6', "
+                         "or 'natural' for the true distribution. Never affects the AUROC.")
     ap.add_argument("--edl-vs-ce", action="store_true",
                     help="also build the evidential-versus-cross-entropy comparison")
     ap.add_argument("--only-edl-vs-ce", action="store_true")
@@ -513,26 +548,29 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     if args.only_edl_vs_ce:
         print("fig5 — EDL vs CE, t-SNE")
-        fig_edl_vs_ce(args.datasets, args.out / f"fig5_edl_vs_ce_{args.level}",
-                      cap=args.cap, level=args.level, edl_arm=args.edl_arm)
+        fig_edl_vs_ce(args.datasets,
+                      args.out / f"fig5_edl_vs_ce_{args.level}_{args.ratio.replace(':','-')}",
+                      cap=args.cap, level=args.level, edl_arm=args.edl_arm, ratio=args.ratio)
         print("fig6 — EDL vs CE, per-branch bars")
         fig_edl_vs_ce_bars(args.datasets, args.out / "fig6_edl_vs_ce_bars")
         return 0
     print("fig1 — whole vs parts, six OOD sets")
     fig_whole_vs_parts(args.arm, args.datasets,
-                       args.out / f"fig1_whole_vs_parts_arm{args.arm}_{args.level}",
-                       cap=args.cap, level=args.level)
+                       args.out / f"fig1_whole_vs_parts_arm{args.arm}_{args.level}_{args.ratio.replace(':','-')}",
+                       cap=args.cap, level=args.level, ratio=args.ratio)
     print("fig2 — arm ablation, per dataset")
     for ds in args.datasets:
-        fig_arm_ablation(ds, args.out / f"fig2_arm_ablation_{ds}", cap=args.cap)
+        fig_arm_ablation(ds, args.out / f"fig2_arm_ablation_{ds}_{args.ratio.replace(':','-')}",
+                         cap=args.cap, ratio=args.ratio, level=args.level)
     print("fig3 — configurations")
     fig_configurations(args.out / "fig3_configurations")
     print("fig4 — view ablation")
     fig_view_ablation(args.arm, args.out / f"fig4_view_ablation_arm{args.arm}")
     if args.edl_vs_ce:
         print("fig5 — EDL vs CE, t-SNE")
-        fig_edl_vs_ce(args.datasets, args.out / f"fig5_edl_vs_ce_{args.level}",
-                      cap=args.cap, level=args.level, edl_arm=args.edl_arm)
+        fig_edl_vs_ce(args.datasets,
+                      args.out / f"fig5_edl_vs_ce_{args.level}_{args.ratio.replace(':','-')}",
+                      cap=args.cap, level=args.level, edl_arm=args.edl_arm, ratio=args.ratio)
         print("fig6 — EDL vs CE, per-branch bars")
         fig_edl_vs_ce_bars(args.datasets, args.out / "fig6_edl_vs_ce_bars")
     return 0
