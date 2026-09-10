@@ -75,6 +75,15 @@ def main() -> int:
             L.append(f"| {ds} | {aur[ds]:.4f} | — | — | — |"); continue
         surv = (r["flip"] + r["weak"]) / r["driver"] if r["driver"] else float("nan")
         L.append(f"| {ds} | {aur[ds]:.4f} | {r['cov']:.3f} | {r['driver']} | {surv:.3f} |")
+    cov_hi = max(ov, key=lambda d: ov[d]["cov"])
+    auc_hi = max(aur, key=lambda d: aur[d])
+    _o = np.array([ov[d]["cov"] for d in OOD if d in ov])
+    _a = np.array([aur[d] for d in OOD if d in ov])
+    # Spearman without scipy: Pearson on the ranks
+    def _rank(x):
+        o = np.argsort(np.argsort(x))
+        return o.astype(float)
+    rho = float(np.corrcoef(_rank(_o), _rank(_a))[0, 1]) if len(_o) > 2 else float("nan")
     tot_d = sum(r["driver"] for r in ov.values())
     tot_s = sum(r["flip"] + r["weak"] for r in ov.values())
     L.append(f"| **all** | **{ma:.4f}** | {np.mean([r['cov'] for r in ov.values()]):.3f} | "
@@ -96,15 +105,21 @@ def main() -> int:
           "both draw their real videos from the identical Celeb-real pool (5,692 frames, "
           "byte-identical keys apart from the dataset prefix), so any threshold scores them "
           "identically on the real side. Only their fake pools differ.",
-          "- **Deepfake-Eval-2024 remains the stated limitation.** At 0.6875 it is 0.19 below "
-          "the next-worst set, and its shortfall against P0-DS (−0.0047) is inside the seed "
-          "band, so the honest statement is that the frozen model does not improve on "
-          "in-the-wild 2024 content rather than that it loses there. The overlay agrees: 3 "
-          "driver claims on 814 videos, because the branches almost never hold decisive "
-          "evidence on this set.",
-          "- **Overlay coverage does not track detector accuracy.** DFDC has the highest "
-          "coverage (0.672) at a mid-pack AUROC, CDFv2 the highest AUROC at 0.598 coverage. The "
-          "overlay is not simply narrating the samples the detector finds easy.",
+          f"- **Deepfake-Eval-2024 remains the stated limitation.** At {aur['DFEval24']:.4f} "
+          f"it is {sorted(aur.values())[1] - aur['DFEval24']:.2f} below the next-worst set, and "
+          f"its shortfall against P0-DS ({aur['DFEval24']-P0['DFEval24']:+.4f}) is inside the "
+          f"seed band — so the honest statement is that the frozen model does not improve on "
+          f"in-the-wild 2024 content, not that it loses there. It is also the set the overlay "
+          f"covers least ({ov['DFEval24']['cov']:.3f} against a {np.mean([r['cov'] for r in ov.values()]):.3f} "
+          f"mean), which is consistent: fewer samples here reach a decisive branch vote.",
+          f"- **Coverage and detector accuracy are loosely related at most.** Rank correlation "
+          f"between the two columns is {rho:+.2f} — positive, but with six datasets the "
+          f"critical value for significance is about 0.89, so this is not a detectable "
+          f"association either way. The extremes do not line up: {cov_hi} has the highest "
+          f"coverage ({ov[cov_hi]['cov']:.3f}) at a mid-pack AUROC, while {auc_hi} has the "
+          f"highest AUROC ({aur[auc_hi]:.4f}) at {ov[auc_hi]['cov']:.3f}. What can be said is "
+          f"that the overlay is not merely narrating the samples the detector finds easy; what "
+          f"cannot be said, on n=6, is that the two are independent.",
           "", "Traces: `tbiom/SYMBOLIC_TRACES.md`. Overlay construction and validation: "
           "`tbiom/SYMBOLIC_OVERLAY.md`. Freeze: `tbiom/BRANCH3_REPORT.md` Phase F."]
 

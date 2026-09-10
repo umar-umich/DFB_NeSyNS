@@ -50,6 +50,17 @@ BRANCHES = ["semantic", "artifact", "fsvfm"]
 LABEL = {"semantic": "Appearance", "artifact": "Off-manifold residual",
          "fsvfm": "Bona-fide face prior"}
 DEV = ["FFpp_val", "VALmix"]       # threshold basis; never an OOD set
+
+# The rule set, SELECTED BY SEARCH ON DEV, not written by hand. See tbiom/RULE_SEARCH.md:
+# 100 candidates over these two quantiles crossed with the two real-side rules the first
+# hand-written version was missing, scored on FF++ val + VALmix under hard constraints
+# agreement >= 0.99 and intervention >= 0.90, maximising coverage. This configuration won and
+# then transferred: OOD coverage 0.586 -> 0.841 with agreement 0.991 and intervention 0.928.
+#
+# `single_real` stays OFF deliberately. Adding it reached 0.876 coverage but dropped agreement
+# to 0.984 -- it bought the last points by letting the overlay contradict the decision it is
+# explaining, which is not a worse explanation but a wrong one.
+SELECTED = {"q_margin": 0.25, "q_vacuity": 0.90, "majority_real": True, "single_real": False}
 OOD = ["CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "DFEval24"]
 
 
@@ -108,8 +119,17 @@ def fuse(g: pd.DataFrame, suppress: str | None = None) -> np.ndarray:
 
 
 # ----------------------------------------------------------------------------- S1 predicates
-def fit_thresholds(dev: pd.DataFrame) -> dict:
-    """Every threshold from development data, each with its basis recorded."""
+def fit_thresholds(dev: pd.DataFrame, q_margin: float | None = None,
+                   q_vacuity: float | None = None) -> dict:
+    """Every threshold from development data, each with its basis recorded.
+
+    The two quantiles are the only free parameters and they were chosen by the dev search in
+    rule_search.py, never by looking at an OOD number. The EER points are NOT free: they are
+    the model's own operating points, and moving one would make `fake_<branch>` mean something
+    other than "this branch votes fake".
+    """
+    q_margin = SELECTED["q_margin"] if q_margin is None else q_margin
+    q_vacuity = SELECTED["q_vacuity"] if q_vacuity is None else q_vacuity
     th = {}
     for b in BRANCHES:
         _, t = eer(dev["y"].to_numpy(), dev[f"p_{b}"].to_numpy())
@@ -119,14 +139,16 @@ def fit_thresholds(dev: pd.DataFrame) -> dict:
     _, tf = eer(dev["y"].to_numpy(), dev["p_fused"].to_numpy())
     th["tau_fused"] = {"value": float(tf), "basis": "EER of p_fused on dev"}
     mv = dev[[f"u_{b}" for b in BRANCHES]].to_numpy().mean(1)
-    th["u_high"] = {"value": float(np.quantile(mv, 0.75)),
-                    "basis": "75th percentile of mean branch vacuity on dev — the quarter of "
-                             "dev samples the model is least certain about"}
+    th["u_high"] = {"value": float(np.quantile(mv, q_vacuity)),
+                    "basis": f"{q_vacuity:.0%} quantile of mean branch vacuity on dev — the "
+                             f"least certain {1 - q_vacuity:.0%} of dev samples (quantile "
+                             f"chosen by the dev rule search)"}
     for b in BRANCHES:
         d = np.abs(dev[f"p_{b}"].to_numpy() - th[f"tau_{b}"]["value"])
-        th[f"margin_{b}"] = {"value": float(np.quantile(d, 0.50)),
-                             "basis": f"median |p_{b} - tau_{b}| on dev — separates a decisive "
-                                      f"branch vote from a marginal one"}
+        th[f"margin_{b}"] = {"value": float(np.quantile(d, q_margin)),
+                             "basis": f"{q_margin:.0%} quantile of |p_{b} - tau_{b}| on dev — "
+                                      f"separates a decisive branch vote from a marginal one "
+                                      f"(quantile chosen by the dev rule search)"}
     return th
 
 
@@ -146,54 +168,71 @@ def predicates(g: pd.DataFrame, th: dict) -> pd.DataFrame:
 
 
 # ----------------------------------------------------------------------------- S2 rules
-def apply_rules(g: pd.DataFrame, P: pd.DataFrame):
-    """Small ordered rule set. Returns assessment, the rule that fired, and the named driver.
+def apply_rules(g: pd.DataFrame, P: pd.DataFrame, cfg: dict | None = None):
+    """Ordered rule set. Returns assessment, the rule that fired, and the named driver.
 
     The driver is the branch the explanation blames, and it is what the intervention test
     suppresses. A rule that names no single branch yields driver None and is excluded from the
     intervention denominator -- it made no falsifiable claim about which view mattered.
+
+    RULE ORDER IS PART OF THE RESULT. The real-side rules fire BEFORE R4, so a sample with two
+    decisive real votes is called Real rather than swallowed by the conflict fallback. Moving
+    R4 ahead of them would reproduce the old coverage. This ordering is the one measured in
+    tbiom/RULE_SEARCH.md and it must not be shuffled for tidiness.
     """
+    cfg = SELECTED if cfg is None else cfg
     n = len(g)
     assess = np.array(["Inconclusive"] * n, dtype=object)
     rule = np.array(["R0_fallback"] * n, dtype=object)
     driver = np.array([None] * n, dtype=object)
+    nf = P["n_fake_votes"].to_numpy()
 
     strong_fake = np.zeros(n, bool)
+    strong_real = np.zeros(n, bool)
     for b in BRANCHES:
         strong_fake |= (P[f"fake_{b}"] & P[f"strong_{b}"]).to_numpy()
+        strong_real |= (~P[f"fake_{b}"] & P[f"strong_{b}"]).to_numpy()
 
-    # R1 — every branch agrees on fake, and at least one is decisive
-    m = (P["n_fake_votes"] == 3).to_numpy() & strong_fake
-    assess[m], rule[m] = "Fake", "R1_consensus_fake"
-    # R2 — every branch agrees on real
-    m2 = (P["n_fake_votes"] == 0).to_numpy() & ~m
-    assess[m2], rule[m2] = "Real", "R2_all_agree_real"
-    # R3 — majority fake with a decisive branch; that branch is the named driver
-    m3 = (P["n_fake_votes"] == 2).to_numpy() & strong_fake & ~m & ~m2
-    assess[m3], rule[m3] = "Fake", "R3_majority_fake"
-    # R4 — conflict the model is also unsure about
-    m4 = P["conflict"].to_numpy() & P["insufficient"].to_numpy() & ~m & ~m2 & ~m3
-    assess[m4], rule[m4] = "Inconclusive", "R4_conflict_insufficient"
-    # R5 — a lone decisive branch against two abstaining ones
-    m5 = (P["n_fake_votes"] == 1).to_numpy() & strong_fake & ~(m | m2 | m3 | m4)
-    assess[m5], rule[m5] = "Fake", "R5_single_branch_drives"
+    done = np.zeros(n, bool)
+
+    def fire(mask, name, label):
+        nonlocal done
+        m = mask & ~done
+        assess[m], rule[m] = label, name
+        done |= m
+        return m
+
+    fire((nf == 3) & strong_fake, "R1_consensus_fake", "Fake")
+    fire(nf == 0, "R2_all_agree_real", "Real")
+    m3 = fire((nf == 2) & strong_fake, "R3_majority_fake", "Fake")
+    # R6 mirrors R3 on the real side. Its absence was the single biggest gap in the
+    # hand-written set: the overlay could say "all three call this real" but had no way to say
+    # "two call it real and one of them decisively", though the fake side had exactly that rule.
+    m6 = fire((nf == 1) & strong_real, "R6_majority_real", "Real") if cfg["majority_real"] \
+        else np.zeros(n, bool)
+    m7 = fire((nf == 2) & strong_real & ~strong_fake, "R7_single_real_drives", "Real") \
+        if cfg["single_real"] else np.zeros(n, bool)
+    fire(P["conflict"].to_numpy() & P["insufficient"].to_numpy(), "R4_conflict_insufficient",
+         "Inconclusive")
+    m5 = fire((nf == 1) & strong_fake, "R5_single_branch_drives", "Fake")
 
     # Name a driver ONLY where the decision can depend on one branch.
     #
-    # R1 is deliberately excluded. When all three views agree, the decision is OVERDETERMINED:
-    # suppressing any one leaves two agreeing and nothing moves. Measured on the first version
-    # of this overlay, which did blame a branch under R1 -- 4,059 such explanations, 4.7%
-    # surviving intervention, against 92.1% for R3 and 100% for R5. Blaming a branch under
-    # consensus is not a faithful explanation, it is decoration, and the fix is to stop making
-    # the claim rather than to move a threshold until it looks better.
+    # R1 and R2 are deliberately excluded. When all three views agree the decision is
+    # OVERDETERMINED: suppressing any one leaves two agreeing and nothing moves. Measured on
+    # the first version of this overlay, which did blame a branch under R1 -- 4,059 such
+    # explanations, 4.7% surviving intervention, against 92.1% for R3 and 100% for R5. Blaming
+    # a branch under consensus is not a faithful explanation, it is decoration, and the fix is
+    # to stop making the claim rather than to move a threshold until it looks better.
     #
     # R1 still explains the sample; its claim is "all views concur", which carries its own
     # falsifiable prediction -- removing any single view should NOT flip the decision -- and
     # that prediction is checked separately below.
-    for i in np.flatnonzero(m3 | m5):
+    for i in np.flatnonzero(m3 | m5 | m6 | m7):
+        want_fake = rule[i] in ("R3_majority_fake", "R5_single_branch_drives")
         best, bestd = None, -1.0
         for b in BRANCHES:
-            if P[f"fake_{b}"].iat[i] and P[f"strong_{b}"].iat[i]:
+            if bool(P[f"fake_{b}"].iat[i]) == want_fake and P[f"strong_{b}"].iat[i]:
                 d = abs(g[f"p_{b}"].iat[i] - TH[f"tau_{b}"]["value"])
                 if d > bestd:
                     best, bestd = b, d
@@ -257,7 +296,8 @@ def emit_traces(ds: str, g, P, assess, rule, driver, th, n=4, seed=0):
     base = fuse(g)
     out = []
     for r in ["R1_consensus_fake", "R2_all_agree_real", "R3_majority_fake",
-              "R5_single_branch_drives", "R4_conflict_insufficient", "R0_fallback"]:
+              "R6_majority_real", "R7_single_real_drives", "R5_single_branch_drives",
+              "R4_conflict_insufficient", "R0_fallback"]:
         idx = np.flatnonzero(np.array([x == r for x in rule]))
         if not len(idx):
             continue
@@ -339,6 +379,8 @@ def main() -> int:
     survive = (tot["flipped"] + tot["weakened"]) / max(1, tot["n_named"])
     mean_agree = float(np.nanmean([agg[d]["agreement"] for d in rows]))
     mean_cov = float(np.nanmean([agg[d]["specific"] for d in rows]))
+    _n = np.array([agg[d]["n"] for d in rows], float)
+    pooled_cov = float((np.array([agg[d]["specific"] for d in rows]) * _n).sum() / _n.sum())
 
     L = ["# Symbolic explanation overlay — Phase S", "",
          f"Built on the frozen configuration (arm B three-view, seed 42). Reads the exported "
@@ -354,19 +396,33 @@ def main() -> int:
     L += ["", "Predicates: `fake_<branch>` (branch votes fake at its own EER point), "
               "`strong_<branch>` (vote is past the dev median margin, i.e. decisive rather than "
               "marginal), `agree` / `conflict` (all branches on the same side or not), "
-              "`insufficient` (mean branch vacuity in the top dev quartile).", "",
+              "`insufficient` (mean branch vacuity in the top dev decile).", "",
           "## S2 — Rules", "",
-          "| rule | condition | assessment |", "|---|---|---|",
-          "| R1 | all three vote fake, at least one decisively | Fake |",
-          "| R2 | all three vote real | Real |",
-          "| R3 | two vote fake, at least one decisively | Fake |",
-          "| R4 | branches conflict **and** evidence is insufficient | Inconclusive |",
-          "| R5 | a single decisive branch against two abstaining | Fake |",
-          "| R0 | none of the above | Inconclusive (fallback) |", "",
-          "R1, R3 and R5 name a **driver**: the decisive fake-voting branch furthest past its "
-          "threshold. That named branch is what the intervention test suppresses. R2/R4/R0 name "
-          "no single branch, make no falsifiable claim about which view mattered, and are "
-          "excluded from the intervention denominator.", "",
+          "Listed in **firing order**, which is part of the result: the real-side rule fires "
+          "before the conflict fallback, so two decisive real votes are called Real rather "
+          "than swallowed as Inconclusive. Reordering these reproduces the old coverage.", "",
+          "| # | rule | condition | assessment | names a driver |",
+          "|---:|---|---|---|---|",
+          "| 1 | R1 | all three vote fake, at least one decisively | Fake | no — overdetermined |",
+          "| 2 | R2 | all three vote real | Real | no — overdetermined |",
+          "| 3 | R3 | two vote fake, at least one decisively | Fake | yes |",
+          "| 4 | R6 | two vote real, at least one decisively | Real | yes |",
+          "| 5 | R4 | branches conflict **and** evidence is insufficient | Inconclusive | no |",
+          "| 6 | R5 | a single decisive branch against two abstaining | Fake | yes |",
+          "| — | R0 | none of the above | Inconclusive (fallback) | no |", "",
+          "**R6 is the rule the hand-written set was missing**, and it accounts for nearly all "
+          "of the coverage gain. The overlay could say \"all three views call this real\" but "
+          "had no way to say \"two call it real and one of them decisively\" — even though the "
+          "fake side had exactly that rule (R3) from the start. Asymmetry in a hand-written "
+          "rule set is easy to miss; the dev search in `tbiom/RULE_SEARCH.md` found it "
+          "immediately.", "",
+          "A seventh candidate rule, a single decisive real vote driving the decision, was "
+          "**rejected**: it lifted coverage further but dropped agreement to 0.984, buying the "
+          "last points by letting the overlay contradict the decision it explains.", "",
+          "R3, R6 and R5 name a **driver**: the decisive branch, on the side the rule assessed, "
+          "furthest past its threshold. That named branch is what the intervention test "
+          "suppresses. R1/R2/R4/R0 name no single branch, make no falsifiable claim about which "
+          "view mattered, and are excluded from the intervention denominator.", "",
           "## S3 — Validation", "",
           "| dataset | n | agreement | coverage | driver claims | flipped | weakened | unchanged |",
           "|---|---:|---:|---:|---:|---:|---:|---:|"]
@@ -376,7 +432,14 @@ def main() -> int:
                  f"{a['n_named']} | {a['flipped']} | {a['weakened']} | {a['unchanged']} |")
     L += ["", f"**Agreement (necessary, not sufficient): {mean_agree:.3f}** mean over the six "
               f"sets, on samples where a rule fired.",
-          f"**Specific-rule coverage: {mean_cov:.3f}** — the rest fall through to Inconclusive.",
+          # Two aggregations, both printed, because they differ and a reader comparing this
+          # document to RULE_SEARCH.md will otherwise think one of them is wrong. The datasets
+          # are very unequal (CDFv3 5,418 videos against DFDCP's 654), so the unweighted mean
+          # over sets and the pooled rate over videos are genuinely different numbers.
+          f"**Specific-rule coverage: {mean_cov:.3f}** as an unweighted mean over the six sets, "
+          f"**{pooled_cov:.3f}** pooled over all {int(sum(v['n'] for v in agg.values())):,} "
+          f"videos. RULE_SEARCH.md quotes the pooled figure. The rest fall through to "
+          f"Inconclusive.",
           f"**Consensus check:** {tot['consensus_held']:,} of {tot['consensus_n']:,} "
           f"consensus explanations hold — no single suppression flips them, which is exactly "
           f"what \"all views concur\" predicts.", "",

@@ -20,20 +20,20 @@ Bold ΔAUROC marks |Δ| ≥ 0.01, the band a single seed can produce. Smaller di
 
 | test set | detector AUROC | rule coverage | driver claims | intervention survival |
 |---|---:|---:|---:|---:|
-| CDFv2 | 0.9505 | 0.598 | 40 | 0.950 |
-| CDFv3 | 0.9008 | 0.518 | 263 | 0.920 |
-| DFD | 0.9486 | 0.599 | 144 | 0.917 |
-| DFDC | 0.8816 | 0.672 | 61 | 0.934 |
-| DFDCP | 0.9002 | 0.557 | 20 | 0.950 |
-| DFEval24 | 0.6875 | 0.506 | 3 | 1.000 |
-| **all** | **0.8782** | 0.575 | 531 | **0.925** |
+| CDFv2 | 0.9505 | 0.842 | 112 | 0.946 |
+| CDFv3 | 0.9008 | 0.812 | 899 | 0.932 |
+| DFD | 0.9486 | 0.876 | 589 | 0.949 |
+| DFDC | 0.8816 | 0.875 | 479 | 0.898 |
+| DFDCP | 0.9002 | 0.806 | 79 | 0.886 |
+| DFEval24 | 0.6875 | 0.713 | 93 | 0.935 |
+| **all** | **0.8782** | 0.821 | 2251 | **0.928** |
 
 ## What the two tables say together
 
 - **Where the gain comes from.** The +0.0149 mean is not spread evenly. It is carried by CDFv3 and DFDCP (+0.0599 and +0.0429), paid for partly on CDFv2 (-0.0141), and flat within the seed band on DFD, DFDC, DFEval24. Two clear wins, one clear loss, three ties.
 - **The real-side improvement is the uniform one.** FPR_real drops on all six sets, mean 0.247 → 0.135, with no set worse. That is the more robust claim than the AUROC mean.
 - **CDFv2 and CDFv3 report the same FPR_real by construction**, not by coincidence: both draw their real videos from the identical Celeb-real pool (5,692 frames, byte-identical keys apart from the dataset prefix), so any threshold scores them identically on the real side. Only their fake pools differ.
-- **Deepfake-Eval-2024 remains the stated limitation.** At 0.6875 it is 0.19 below the next-worst set, and its shortfall against P0-DS (−0.0047) is inside the seed band, so the honest statement is that the frozen model does not improve on in-the-wild 2024 content rather than that it loses there. The overlay agrees: 3 driver claims on 814 videos, because the branches almost never hold decisive evidence on this set.
-- **Overlay coverage does not track detector accuracy.** DFDC has the highest coverage (0.672) at a mid-pack AUROC, CDFv2 the highest AUROC at 0.598 coverage. The overlay is not simply narrating the samples the detector finds easy.
+- **Deepfake-Eval-2024 remains the stated limitation.** At 0.6875 it is 0.19 below the next-worst set, and its shortfall against P0-DS (-0.0047) is inside the seed band — so the honest statement is that the frozen model does not improve on in-the-wild 2024 content, not that it loses there. It is also the set the overlay covers least (0.713 against a 0.821 mean), which is consistent: fewer samples here reach a decisive branch vote.
+- **Coverage and detector accuracy are loosely related at most.** Rank correlation between the two columns is +0.54 — positive, but with six datasets the critical value for significance is about 0.89, so this is not a detectable association either way. The extremes do not line up: DFD has the highest coverage (0.876) at a mid-pack AUROC, while CDFv2 has the highest AUROC (0.9505) at 0.842. What can be said is that the overlay is not merely narrating the samples the detector finds easy; what cannot be said, on n=6, is that the two are independent.
 
 Traces: `tbiom/SYMBOLIC_TRACES.md`. Overlay construction and validation: `tbiom/SYMBOLIC_OVERLAY.md`. Freeze: `tbiom/BRANCH3_REPORT.md` Phase F.

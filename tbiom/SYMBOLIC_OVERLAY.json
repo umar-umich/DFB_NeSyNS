@@ -17,158 +17,165 @@
       "basis": "EER of p_fused on dev"
     },
     "u_high": {
-      "value": 0.2320626726986111,
-      "basis": "75th percentile of mean branch vacuity on dev \u2014 the quarter of dev samples the model is least certain about"
+      "value": 0.3123619428266666,
+      "basis": "90% quantile of mean branch vacuity on dev \u2014 the least certain 10% of dev samples (quantile chosen by the dev rule search)"
     },
     "margin_semantic": {
-      "value": 0.35676641053125,
-      "basis": "median |p_semantic - tau_semantic| on dev \u2014 separates a decisive branch vote from a marginal one"
+      "value": 0.2525908093458334,
+      "basis": "25% quantile of |p_semantic - tau_semantic| on dev \u2014 separates a decisive branch vote from a marginal one (quantile chosen by the dev rule search)"
     },
     "margin_artifact": {
-      "value": 0.4138619946875,
-      "basis": "median |p_artifact - tau_artifact| on dev \u2014 separates a decisive branch vote from a marginal one"
+      "value": 0.26157561275,
+      "basis": "25% quantile of |p_artifact - tau_artifact| on dev \u2014 separates a decisive branch vote from a marginal one (quantile chosen by the dev rule search)"
     },
     "margin_fsvfm": {
-      "value": 0.449741906625,
-      "basis": "median |p_fsvfm - tau_fsvfm| on dev \u2014 separates a decisive branch vote from a marginal one"
+      "value": 0.28117816809273094,
+      "basis": "25% quantile of |p_fsvfm - tau_fsvfm| on dev \u2014 separates a decisive branch vote from a marginal one (quantile chosen by the dev rule search)"
     }
   },
   "per_dataset": {
     "CDFv2": {
       "n": 518,
-      "agreement": 1.0,
-      "coverage": 0.7277992277992278,
-      "specific": 0.5984555984555985,
-      "consensus_n": 88,
-      "consensus_held": 88,
+      "agreement": 0.9908256880733946,
+      "coverage": 0.8667953667953668,
+      "specific": 0.8416988416988417,
+      "consensus_n": 142,
+      "consensus_held": 142,
       "rules": {
         "R2_all_agree_real": 0.35135135135135137,
-        "R0_fallback": 0.2722007722007722,
-        "R1_consensus_fake": 0.16988416988416988,
-        "R4_conflict_insufficient": 0.12934362934362933,
-        "R3_majority_fake": 0.07722007722007722
+        "R1_consensus_fake": 0.27413127413127414,
+        "R3_majority_fake": 0.1891891891891892,
+        "R0_fallback": 0.13320463320463322,
+        "R4_conflict_insufficient": 0.025096525096525095,
+        "R6_majority_real": 0.023166023166023165,
+        "R5_single_branch_drives": 0.003861003861003861
       },
-      "n_named": 40,
-      "flipped": 3,
-      "weakened": 35,
-      "unchanged": 2,
-      "mean_abs_shift": 0.15004435163061544
+      "n_named": 112,
+      "flipped": 29,
+      "weakened": 77,
+      "unchanged": 6,
+      "mean_abs_shift": 0.21295944594671967
     },
     "CDFv3": {
       "n": 5418,
-      "agreement": 1.0,
-      "coverage": 0.6963824289405685,
-      "specific": 0.5180878552971576,
-      "consensus_n": 1260,
-      "consensus_held": 1260,
+      "agreement": 0.9909049567985448,
+      "coverage": 0.8839055001845699,
+      "specific": 0.8117386489479512,
+      "consensus_n": 2215,
+      "consensus_held": 2215,
       "rules": {
-        "R0_fallback": 0.30361757105943155,
+        "R1_consensus_fake": 0.40882244370616466,
         "R2_all_agree_real": 0.2369878183831672,
-        "R1_consensus_fake": 0.23255813953488372,
-        "R4_conflict_insufficient": 0.17829457364341086,
-        "R3_majority_fake": 0.04798818752307124,
-        "R5_single_branch_drives": 0.0005537098560354374
+        "R3_majority_fake": 0.12476928755998523,
+        "R0_fallback": 0.11609449981543005,
+        "R4_conflict_insufficient": 0.07216685123661867,
+        "R6_majority_real": 0.036544850498338874,
+        "R5_single_branch_drives": 0.004614248800295312
       },
-      "n_named": 263,
-      "flipped": 26,
-      "weakened": 216,
-      "unchanged": 21,
-      "mean_abs_shift": 0.16602361450073588
+      "n_named": 899,
+      "flipped": 218,
+      "weakened": 620,
+      "unchanged": 61,
+      "mean_abs_shift": 0.21752308117713823
     },
     "DFD": {
       "n": 3431,
-      "agreement": 1.0,
-      "coverage": 0.6945496939667736,
-      "specific": 0.59895074322355,
-      "consensus_n": 1206,
-      "consensus_held": 1206,
+      "agreement": 0.9940079893475366,
+      "coverage": 0.8869134363159429,
+      "specific": 0.875546487904401,
+      "consensus_n": 1710,
+      "consensus_held": 1710,
       "rules": {
-        "R1_consensus_fake": 0.3515010201107549,
-        "R0_fallback": 0.3054503060332265,
+        "R1_consensus_fake": 0.49839696881375695,
         "R2_all_agree_real": 0.2054794520547945,
-        "R4_conflict_insufficient": 0.09559895074322355,
-        "R3_majority_fake": 0.040804430195278345,
-        "R5_single_branch_drives": 0.0011658408627222385
+        "R0_fallback": 0.11308656368405713,
+        "R3_majority_fake": 0.10084523462547362,
+        "R6_majority_real": 0.06004080443019528,
+        "R4_conflict_insufficient": 0.011366948411541825,
+        "R5_single_branch_drives": 0.010784027980180706
       },
-      "n_named": 144,
-      "flipped": 18,
-      "weakened": 114,
-      "unchanged": 12,
-      "mean_abs_shift": 0.16484471916677704
+      "n_named": 589,
+      "flipped": 181,
+      "weakened": 378,
+      "unchanged": 30,
+      "mean_abs_shift": 0.23777308303383252
     },
     "DFDC": {
       "n": 4704,
-      "agreement": 1.0,
-      "coverage": 0.7946428571428571,
-      "specific": 0.6715561224489796,
-      "consensus_n": 1258,
-      "consensus_held": 1258,
+      "agreement": 0.989067055393586,
+      "coverage": 0.9109268707482994,
+      "specific": 0.875,
+      "consensus_n": 1797,
+      "consensus_held": 1797,
       "rules": {
         "R2_all_agree_real": 0.391156462585034,
-        "R1_consensus_fake": 0.2674319727891156,
-        "R0_fallback": 0.20535714285714285,
-        "R4_conflict_insufficient": 0.12308673469387756,
-        "R3_majority_fake": 0.011479591836734694,
-        "R5_single_branch_drives": 0.001488095238095238
+        "R1_consensus_fake": 0.382015306122449,
+        "R0_fallback": 0.08907312925170068,
+        "R6_majority_real": 0.04783163265306122,
+        "R3_majority_fake": 0.04485544217687075,
+        "R4_conflict_insufficient": 0.03592687074829932,
+        "R5_single_branch_drives": 0.009141156462585034
       },
-      "n_named": 61,
-      "flipped": 13,
-      "weakened": 44,
-      "unchanged": 4,
-      "mean_abs_shift": 0.23409592491541548
+      "n_named": 479,
+      "flipped": 163,
+      "weakened": 267,
+      "unchanged": 49,
+      "mean_abs_shift": 0.2536882224459746
     },
     "DFDCP": {
       "n": 654,
-      "agreement": 1.0,
-      "coverage": 0.7477064220183486,
-      "specific": 0.5565749235474006,
-      "consensus_n": 215,
-      "consensus_held": 215,
+      "agreement": 0.9848197343453511,
+      "coverage": 0.8883792048929664,
+      "specific": 0.8058103975535168,
+      "consensus_n": 319,
+      "consensus_held": 319,
       "rules": {
-        "R1_consensus_fake": 0.3287461773700306,
-        "R0_fallback": 0.25229357798165136,
+        "R1_consensus_fake": 0.4877675840978593,
         "R2_all_agree_real": 0.19724770642201836,
-        "R4_conflict_insufficient": 0.191131498470948,
-        "R5_single_branch_drives": 0.016819571865443424,
-        "R3_majority_fake": 0.013761467889908258
+        "R0_fallback": 0.11162079510703364,
+        "R4_conflict_insufficient": 0.08256880733944955,
+        "R3_majority_fake": 0.047400611620795105,
+        "R6_majority_real": 0.04434250764525994,
+        "R5_single_branch_drives": 0.0290519877675841
       },
-      "n_named": 20,
-      "flipped": 11,
-      "weakened": 8,
-      "unchanged": 1,
-      "mean_abs_shift": 0.4824047830557194
+      "n_named": 79,
+      "flipped": 31,
+      "weakened": 39,
+      "unchanged": 9,
+      "mean_abs_shift": 0.26508878176398365
     },
     "DFEval24": {
       "n": 814,
-      "agreement": 1.0,
-      "coverage": 0.7432432432432432,
-      "specific": 0.5061425061425061,
-      "consensus_n": 32,
-      "consensus_held": 32,
+      "agreement": 0.9896551724137931,
+      "coverage": 0.8206388206388207,
+      "specific": 0.7125307125307125,
+      "consensus_n": 110,
+      "consensus_held": 110,
       "rules": {
         "R2_all_agree_real": 0.4631449631449631,
-        "R0_fallback": 0.25675675675675674,
-        "R4_conflict_insufficient": 0.2371007371007371,
-        "R1_consensus_fake": 0.03931203931203931,
-        "R3_majority_fake": 0.002457002457002457,
-        "R5_single_branch_drives": 0.0012285012285012285
+        "R0_fallback": 0.17936117936117937,
+        "R1_consensus_fake": 0.13513513513513514,
+        "R4_conflict_insufficient": 0.10810810810810811,
+        "R6_majority_real": 0.0773955773955774,
+        "R3_majority_fake": 0.020884520884520884,
+        "R5_single_branch_drives": 0.01597051597051597
       },
-      "n_named": 3,
-      "flipped": 1,
-      "weakened": 2,
-      "unchanged": 0,
-      "mean_abs_shift": 0.35394468632724047
+      "n_named": 93,
+      "flipped": 32,
+      "weakened": 55,
+      "unchanged": 6,
+      "mean_abs_shift": 0.26355506020100156
     }
   },
   "summary": {
-    "agreement": 1.0,
-    "coverage": 0.5749612915191987,
-    "survive": 0.9246704331450094,
-    "n_named": 531,
-    "flipped": 72,
-    "weakened": 419,
-    "unchanged": 40,
-    "consensus_n": 4059,
-    "consensus_held": 4059
+    "agreement": 0.9898800993953677,
+    "coverage": 0.8203875147725705,
+    "survive": 0.9284762327854287,
+    "n_named": 2251,
+    "flipped": 654,
+    "weakened": 1436,
+    "unchanged": 161,
+    "consensus_n": 6293,
+    "consensus_held": 6293
   }
 }

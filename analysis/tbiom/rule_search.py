@@ -56,77 +56,17 @@ AGREE_FLOOR = 0.99   # an explanation that contradicts the decision is wrong, no
 IV_FLOOR = 0.90      # Phase S measured 0.925; the search may not fall below a rounded-down floor
 
 
-# ------------------------------------------------------------------ parameterised rule engine
-def thresholds(dev: pd.DataFrame, q_margin: float, q_vac: float) -> dict:
-    """Phase S's thresholds with the two quantiles exposed as search parameters.
-
-    The EER points are NOT searchable -- they are the model's own operating points, not free
-    parameters, and moving them would make the predicates mean something other than "this
-    branch votes fake".
-    """
-    th = SO.fit_thresholds(dev)
-    mv = dev[[f"u_{b}" for b in BR]].to_numpy().mean(1)
-    th["u_high"]["value"] = float(np.quantile(mv, q_vac))
-    for b in BR:
-        d = np.abs(dev[f"p_{b}"].to_numpy() - th[f"tau_{b}"]["value"])
-        th[f"margin_{b}"]["value"] = float(np.quantile(d, q_margin))
-    return th
-
-
-def apply(g, P, th, cfg):
-    """Ordered rule set. `cfg` switches the real-side rules the hand-written set never had."""
-    n = len(g)
-    assess = np.array(["Inconclusive"] * n, dtype=object)
-    rule = np.array(["R0_fallback"] * n, dtype=object)
-    driver = np.array([None] * n, dtype=object)
-    nf = P["n_fake_votes"].to_numpy()
-
-    strong_fake = np.zeros(n, bool)
-    strong_real = np.zeros(n, bool)
-    for b in BR:
-        strong_fake |= (P[f"fake_{b}"] & P[f"strong_{b}"]).to_numpy()
-        strong_real |= (~P[f"fake_{b}"] & P[f"strong_{b}"]).to_numpy()
-
-    done = np.zeros(n, bool)
-
-    def fire(mask, name, label):
-        nonlocal done
-        m = mask & ~done
-        assess[m], rule[m] = label, name
-        done |= m
-        return m
-
-    fire((nf == 3) & strong_fake, "R1_consensus_fake", "Fake")
-    fire(nf == 0, "R2_all_agree_real", "Real")
-    m3 = fire((nf == 2) & strong_fake, "R3_majority_fake", "Fake")
-    # the two rules the hand-written set is missing, both mirrors of ones it has
-    m6 = fire((nf == 1) & strong_real, "R6_majority_real", "Real") if cfg["majority_real"] \
-        else np.zeros(n, bool)
-    m7 = fire((nf == 2) & strong_real & ~strong_fake, "R7_single_real_drives", "Real") \
-        if cfg["single_real"] else np.zeros(n, bool)
-    fire(P["conflict"].to_numpy() & P["insufficient"].to_numpy(), "R4_conflict_insufficient",
-         "Inconclusive")
-    m5 = fire((nf == 1) & strong_fake, "R5_single_branch_drives", "Fake")
-
-    # A driver is named only where the decision CAN turn on one branch -- never under a
-    # consensus, where suppressing any single view leaves the rest agreeing. Phase S measured
-    # what happens otherwise: 4,059 consensus claims at 4.7% intervention survival.
-    for i in np.flatnonzero(m3 | m5 | m6 | m7):
-        want_fake = rule[i] in ("R3_majority_fake", "R5_single_branch_drives")
-        best, bestd = None, -1.0
-        for b in BR:
-            votes_fake = bool(P[f"fake_{b}"].iat[i])
-            if votes_fake == want_fake and P[f"strong_{b}"].iat[i]:
-                d = abs(g[f"p_{b}"].iat[i] - th[f"tau_{b}"]["value"])
-                if d > bestd:
-                    best, bestd = b, d
-        driver[i] = best
-    return assess, rule, driver
+# The rule engine and thresholds live in symbolic_overlay.py -- ONE implementation, imported
+# here rather than copied. An earlier draft of this file carried its own copy; two copies of a
+# rule set that must agree exactly is a drift bug waiting to happen, and the numbers in
+# RULE_SEARCH.md and SYMBOLIC_OVERLAY.md have to be produced by the same code to mean anything.
+thresholds = SO.fit_thresholds
+apply = SO.apply_rules
 
 
 def score_split(g, th, cfg) -> dict:
     P = SO.predicates(g, th)
-    assess, rule, driver = apply(g, P, th, cfg)
+    assess, rule, driver = apply(g, P, cfg)
     tau = th["tau_fused"]["value"]
     p = SO.fuse(g)
     dec = np.where(p >= tau, "Fake", "Real")

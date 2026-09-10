@@ -12,46 +12,53 @@ Every threshold comes from **development data only** (FF++ val + VALmix, 2,050 v
 | `tau_artifact` | 0.5127 | EER of p_artifact on FF++ val + VALmix (the model's own operating point for this branch) |
 | `tau_fsvfm` | 0.5391 | EER of p_fsvfm on FF++ val + VALmix (the model's own operating point for this branch) |
 | `tau_fused` | 0.5958 | EER of p_fused on dev |
-| `u_high` | 0.2321 | 75th percentile of mean branch vacuity on dev — the quarter of dev samples the model is least certain about |
-| `margin_semantic` | 0.3568 | median |p_semantic - tau_semantic| on dev — separates a decisive branch vote from a marginal one |
-| `margin_artifact` | 0.4139 | median |p_artifact - tau_artifact| on dev — separates a decisive branch vote from a marginal one |
-| `margin_fsvfm` | 0.4497 | median |p_fsvfm - tau_fsvfm| on dev — separates a decisive branch vote from a marginal one |
+| `u_high` | 0.3124 | 90% quantile of mean branch vacuity on dev — the least certain 10% of dev samples (quantile chosen by the dev rule search) |
+| `margin_semantic` | 0.2526 | 25% quantile of |p_semantic - tau_semantic| on dev — separates a decisive branch vote from a marginal one (quantile chosen by the dev rule search) |
+| `margin_artifact` | 0.2616 | 25% quantile of |p_artifact - tau_artifact| on dev — separates a decisive branch vote from a marginal one (quantile chosen by the dev rule search) |
+| `margin_fsvfm` | 0.2812 | 25% quantile of |p_fsvfm - tau_fsvfm| on dev — separates a decisive branch vote from a marginal one (quantile chosen by the dev rule search) |
 
-Predicates: `fake_<branch>` (branch votes fake at its own EER point), `strong_<branch>` (vote is past the dev median margin, i.e. decisive rather than marginal), `agree` / `conflict` (all branches on the same side or not), `insufficient` (mean branch vacuity in the top dev quartile).
+Predicates: `fake_<branch>` (branch votes fake at its own EER point), `strong_<branch>` (vote is past the dev median margin, i.e. decisive rather than marginal), `agree` / `conflict` (all branches on the same side or not), `insufficient` (mean branch vacuity in the top dev decile).
 
 ## S2 — Rules
 
-| rule | condition | assessment |
-|---|---|---|
-| R1 | all three vote fake, at least one decisively | Fake |
-| R2 | all three vote real | Real |
-| R3 | two vote fake, at least one decisively | Fake |
-| R4 | branches conflict **and** evidence is insufficient | Inconclusive |
-| R5 | a single decisive branch against two abstaining | Fake |
-| R0 | none of the above | Inconclusive (fallback) |
+Listed in **firing order**, which is part of the result: the real-side rule fires before the conflict fallback, so two decisive real votes are called Real rather than swallowed as Inconclusive. Reordering these reproduces the old coverage.
 
-R1, R3 and R5 name a **driver**: the decisive fake-voting branch furthest past its threshold. That named branch is what the intervention test suppresses. R2/R4/R0 name no single branch, make no falsifiable claim about which view mattered, and are excluded from the intervention denominator.
+| # | rule | condition | assessment | names a driver |
+|---:|---|---|---|---|
+| 1 | R1 | all three vote fake, at least one decisively | Fake | no — overdetermined |
+| 2 | R2 | all three vote real | Real | no — overdetermined |
+| 3 | R3 | two vote fake, at least one decisively | Fake | yes |
+| 4 | R6 | two vote real, at least one decisively | Real | yes |
+| 5 | R4 | branches conflict **and** evidence is insufficient | Inconclusive | no |
+| 6 | R5 | a single decisive branch against two abstaining | Fake | yes |
+| — | R0 | none of the above | Inconclusive (fallback) | no |
+
+**R6 is the rule the hand-written set was missing**, and it accounts for nearly all of the coverage gain. The overlay could say "all three views call this real" but had no way to say "two call it real and one of them decisively" — even though the fake side had exactly that rule (R3) from the start. Asymmetry in a hand-written rule set is easy to miss; the dev search in `tbiom/RULE_SEARCH.md` found it immediately.
+
+A seventh candidate rule, a single decisive real vote driving the decision, was **rejected**: it lifted coverage further but dropped agreement to 0.984, buying the last points by letting the overlay contradict the decision it explains.
+
+R3, R6 and R5 name a **driver**: the decisive branch, on the side the rule assessed, furthest past its threshold. That named branch is what the intervention test suppresses. R1/R2/R4/R0 name no single branch, make no falsifiable claim about which view mattered, and are excluded from the intervention denominator.
 
 ## S3 — Validation
 
 | dataset | n | agreement | coverage | driver claims | flipped | weakened | unchanged |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| CDFv2 | 518 | 1.000 | 0.598 | 40 | 3 | 35 | 2 |
-| CDFv3 | 5418 | 1.000 | 0.518 | 263 | 26 | 216 | 21 |
-| DFD | 3431 | 1.000 | 0.599 | 144 | 18 | 114 | 12 |
-| DFDC | 4704 | 1.000 | 0.672 | 61 | 13 | 44 | 4 |
-| DFDCP | 654 | 1.000 | 0.557 | 20 | 11 | 8 | 1 |
-| DFEval24 | 814 | 1.000 | 0.506 | 3 | 1 | 2 | 0 |
+| CDFv2 | 518 | 0.991 | 0.842 | 112 | 29 | 77 | 6 |
+| CDFv3 | 5418 | 0.991 | 0.812 | 899 | 218 | 620 | 61 |
+| DFD | 3431 | 0.994 | 0.876 | 589 | 181 | 378 | 30 |
+| DFDC | 4704 | 0.989 | 0.875 | 479 | 163 | 267 | 49 |
+| DFDCP | 654 | 0.985 | 0.806 | 79 | 31 | 39 | 9 |
+| DFEval24 | 814 | 0.990 | 0.713 | 93 | 32 | 55 | 6 |
 
-**Agreement (necessary, not sufficient): 1.000** mean over the six sets, on samples where a rule fired.
-**Specific-rule coverage: 0.575** — the rest fall through to Inconclusive.
-**Consensus check:** 4,059 of 4,059 consensus explanations hold — no single suppression flips them, which is exactly what "all views concur" predicts.
+**Agreement (necessary, not sufficient): 0.990** mean over the six sets, on samples where a rule fired.
+**Specific-rule coverage: 0.820** as an unweighted mean over the six sets, **0.841** pooled over all 15,539 videos. RULE_SEARCH.md quotes the pooled figure. The rest fall through to Inconclusive.
+**Consensus check:** 6,293 of 6,293 consensus explanations hold — no single suppression flips them, which is exactly what "all views concur" predicts.
 
-**Intervention on driver claims (decisive): 0.925** survive — 72 flipped the decision and 419 weakened it toward the threshold by >0.05, against 40 unchanged, out of 531 explanations that named a driver.
+**Intervention on driver claims (decisive): 0.928** survive — 654 flipped the decision and 1,436 weakened it toward the threshold by >0.05, against 161 unchanged, out of 2,251 explanations that named a driver.
 
 ## S4 — Verdict
 
-**Faithful.** Agreement 1.000 with 0.925 of explanations surviving intervention: suppressing the branch the overlay blamed does change or weaken the decision. It is a legitimate secondary contribution — a symbolic evidence overlay translating heterogeneous branch evidence into readable forensic traces. It remains an explanation overlay; the detector is not neuro-symbolic.
+**Faithful.** Agreement 0.990 with 0.928 of explanations surviving intervention: suppressing the branch the overlay blamed does change or weaken the decision. It is a legitimate secondary contribution — a symbolic evidence overlay translating heterogeneous branch evidence into readable forensic traces. It remains an explanation overlay; the detector is not neuro-symbolic.
 
 ## Naming
 
