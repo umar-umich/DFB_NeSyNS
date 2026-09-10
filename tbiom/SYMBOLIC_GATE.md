@@ -8,44 +8,44 @@ Controls abstain at the **same coverage, matched per dataset**, using the model'
 
 | dataset | coverage | no gate | **symbolic** | vacuity | margin | random |
 |---|---:|---:|---:|---:|---:|---:|
-| CDFv2 | 0.598 | 0.1428 | **0.1154** | 0.0438 | 0.1142 | 0.1289 |
-| CDFv3 | 0.518 | 0.1895 | **0.2206** | 0.0990 | 0.2102 | 0.1911 |
-| DFD | 0.599 | 0.1293 | **0.1105** | 0.0252 | 0.1153 | 0.1359 |
-| DFDC | 0.672 | 0.1866 | **0.1107** | 0.1232 | 0.1123 | 0.1893 |
-| DFDCP | 0.557 | 0.2006 | **0.0613** | 0.1507 | 0.0664 | 0.2224 |
-| DFEval24 | 0.506 | 0.3650 | **0.4148** | 0.2962 | 0.3428 | 0.3691 |
+| CDFv2 | 0.842 | 0.1428 | **0.0951** | 0.1167 | 0.1008 | 0.1308 |
+| CDFv3 | 0.812 | 0.1895 | **0.1733** | 0.1641 | 0.1613 | 0.1862 |
+| DFD | 0.876 | 0.1293 | **0.1136** | 0.0914 | 0.1098 | 0.1311 |
+| DFDC | 0.875 | 0.1866 | **0.1486** | 0.1579 | 0.1496 | 0.1869 |
+| DFDCP | 0.806 | 0.2006 | **0.1362** | 0.1709 | 0.1464 | 0.2075 |
+| DFEval24 | 0.713 | 0.3650 | **0.3475** | 0.3226 | 0.3447 | 0.3714 |
 
 ## Per dataset — selective AUROC (higher is better)
 
 | dataset | coverage | no gate | **symbolic** | vacuity | margin | random |
 |---|---:|---:|---:|---:|---:|---:|
-| CDFv2 | 0.598 | 0.9474 | **0.9624** | 0.9902 | 0.9605 | 0.9506 |
-| CDFv3 | 0.518 | 0.8871 | **0.8606** | 0.9304 | 0.8571 | 0.8796 |
-| DFD | 0.599 | 0.9454 | **0.9411** | 0.9938 | 0.9424 | 0.9428 |
-| DFDC | 0.672 | 0.8906 | **0.9287** | 0.9301 | 0.9282 | 0.8871 |
-| DFDCP | 0.557 | 0.9038 | **0.9647** | 0.9248 | 0.9639 | 0.8865 |
-| DFEval24 | 0.506 | 0.6866 | **0.6345** | 0.7602 | 0.6885 | 0.6830 |
+| CDFv2 | 0.842 | 0.9474 | **0.9672** | 0.9669 | 0.9661 | 0.9565 |
+| CDFv3 | 0.812 | 0.8871 | **0.8961** | 0.8953 | 0.8988 | 0.8889 |
+| DFD | 0.876 | 0.9454 | **0.9501** | 0.9643 | 0.9518 | 0.9435 |
+| DFDC | 0.875 | 0.8906 | **0.9088** | 0.9095 | 0.9083 | 0.8893 |
+| DFDCP | 0.806 | 0.9038 | **0.9379** | 0.9224 | 0.9276 | 0.8970 |
+| DFEval24 | 0.713 | 0.6866 | **0.6999** | 0.7224 | 0.7006 | 0.6852 |
 
 ## Pooled over the six OOD sets
 
 | gate | coverage | balanced error | AUROC |
 |---|---:|---:|---:|
 | none | 1.000 | 0.2233 | 0.8507 |
-| **symbolic** | 0.586 | 0.1698 | 0.8774 |
-| vacuity | 0.586 | 0.1248 | 0.9107 |
-| margin | 0.586 | 0.1686 | 0.8786 |
-| random | 0.584 | 0.2218 | 0.8516 |
+| **symbolic** | 0.841 | 0.1835 | 0.8717 |
+| vacuity | 0.841 | 0.1836 | 0.8767 |
+| margin | 0.841 | 0.1835 | 0.8720 |
+| random | 0.840 | 0.2214 | 0.8516 |
 
 ## Why
 
 | dataset | J(symbolic, vacuity) | J(symbolic, margin) | vacuity ranks errors | symbolic flag ranks errors |
 |---|---:|---:|---:|---:|
-| CDFv2 | 0.535 | 0.777 | 0.778 | 0.607 |
-| CDFv3 | 0.533 | 0.735 | 0.736 | 0.390 |
-| DFD | 0.615 | 0.775 | 0.863 | 0.549 |
-| DFDC | 0.629 | 0.860 | 0.740 | 0.674 |
-| DFDCP | 0.618 | 0.806 | 0.756 | 0.720 |
-| DFEval24 | 0.549 | 0.735 | 0.626 | 0.557 |
+| CDFv2 | 0.813 | 0.892 | 0.778 | 0.672 |
+| CDFv3 | 0.796 | 0.873 | 0.736 | 0.517 |
+| DFD | 0.829 | 0.919 | 0.863 | 0.551 |
+| DFDC | 0.842 | 0.922 | 0.740 | 0.609 |
+| DFDCP | 0.833 | 0.886 | 0.756 | 0.671 |
+| DFEval24 | 0.721 | 0.807 | 0.626 | 0.563 |
 
 ## Incremental value over the model's own uncertainty
 
@@ -53,20 +53,24 @@ A wrong/right predictor fitted on **dev only**, then read on OOD. If the symboli
 
 | dataset | vacuity alone | vacuity + symbolic predicates | Δ |
 |---|---:|---:|---:|
-| CDFv2 | 0.778 | 0.763 | -0.015 |
-| CDFv3 | 0.736 | 0.639 | -0.097 |
-| DFD | 0.863 | 0.784 | -0.080 |
-| DFDC | 0.740 | 0.761 | +0.021 |
-| DFDCP | 0.756 | 0.787 | +0.031 |
-| DFEval24 | 0.626 | 0.612 | -0.013 |
-| **mean** | **0.750** | **0.724** | **-0.026** |
+| CDFv2 | 0.778 | 0.837 | +0.059 |
+| CDFv3 | 0.736 | 0.799 | +0.063 |
+| DFD | 0.863 | 0.874 | +0.010 |
+| DFDC | 0.740 | 0.726 | -0.014 |
+| DFDCP | 0.756 | 0.755 | -0.001 |
+| DFEval24 | 0.626 | 0.626 | +0.001 |
+| **mean** | **0.750** | **0.769** | **+0.020** |
 
 ## Verdict
 
-**The gate does not earn the neuro-symbolic label.** At 0.586 coverage the symbolic gate cuts pooled balanced error from 0.2233 to 0.1698 — real, but it **ties the trivial margin gate** (0.1686) and **loses clearly to the model's own vacuity** (0.1248). It does clear the random floor (0.2218), so the rules are not noise; they are simply not adding decision value.
+**At its own operating point the symbolic gate is indistinguishable from a trivial one.** It abstains at a fixed 0.841 coverage, cutting pooled balanced error 0.2233 → 0.1835. At that same coverage the model's own vacuity gives 0.1836 and the fused margin 0.1835 — a total spread of 0.0001 across all three, which is nothing. All three clear the random floor (0.2214), so the rules are not noise; they are simply not distinguishable from free alternatives here.
 
-The two diagnostics say the same thing from different directions. The symbolic gate retains largely the same samples as the margin gate (Jaccard 0.74–0.86), which is why their errors match. And as an error detector the binary rule flag is far weaker than graded vacuity — on CDFv3 it scores 0.39, *below chance*, meaning the rules there abstain on samples the model was more likely to get right.
+**The comparison is coverage-bound, and that matters for how it is written up.** The rule set yields ONE operating point; vacuity and margin are dials. At 0.841 coverage only 16% of samples are withheld, so every gate is close to the no-gate error and they converge by construction. Turned down to ~0.60 coverage the graded signals separate clearly (see the risk-coverage rows above) — but the symbolic rules cannot be turned down, and a fixed abstention rate is a real limitation of a rule-based gate rather than an artifact of this measurement.
 
-The mechanism is coarsening. R4's `insufficient` predicate is itself built from mean branch vacuity, thresholded at the dev top quartile. The rule set therefore consumes the very signal that beats it, and throws away its gradation to produce a Boolean. The incremental test closes the argument: adding the symbolic predicates to vacuity makes OOD error prediction **worse** (-0.026), despite the predicates carrying non-zero weight on dev. They fit dev and do not transfer.
+**As a standalone signal the Boolean flag remains weaker than graded vacuity**, and that has not changed: it ranks errors at 0.517–0.672 across the six sets against vacuity's 0.626–0.863. Collapsing a graded quantity into a rule firing throws information away, which is the mechanism.
 
-**This is a result worth reporting, not a failed experiment.** It is the ablation a reviewer would ask for, and it answers cleanly: the symbolic layer is a faithful *explanation* of the fused decision and not an independent source of evidence about it. That is consistent with Phase S — faithfulness means the overlay tracks the model's reasoning, and something that tracks the model closely cannot also correct it. Keeping the overlay post-hoc is the position the measurements support.
+**But as an ADDITION to vacuity the predicates now carry something.** A wrong/right predictor fitted on dev and read on OOD improves by **+0.020** when the symbolic predicates are supplied alongside vacuity, positive on 4 of 6 sets. **This reverses the earlier finding.** Under the hand-written rule set the same test came out at −0.026 — the predicates fit dev and did not transfer. Under the dev-searched rule set they do transfer. The change is not the search being cleverer; it is that the relaxed decisiveness threshold makes `strong_<branch>` fire on far more samples, so the predicates carry graded information instead of marking a rare extreme.
+
+**How much to claim from that: not much yet.** +0.020 mean with 2 of 6 sets negative, on n=6, is not a result — it is a reason to test the idea properly rather than a finding. What it does do is retire the clean negative that was previously reported here.
+
+**What survives regardless.** The symbolic layer remains a faithful *explanation* of the fused decision — that is Phase S, measured by intervention — and nothing here shows it is an independent source of evidence strong enough to replace the model's own uncertainty. Keeping the overlay post-hoc is still the position the measurements support. The honest summary changed from "the rules add no decision value" to "the rules add no decision value at their own operating point, and may add a little when combined with vacuity, on evidence too thin to bank".

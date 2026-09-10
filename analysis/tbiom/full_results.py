@@ -32,6 +32,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from health import dashboard, eer  # noqa: E402
+from view_names import VIEW_NAME  # noqa: E402
 from video_id import video_id  # noqa: E402
 
 S23 = Path("logs/tbiom/stage23")
@@ -55,9 +56,12 @@ CONFIGS = [
     ("C  FSFM Br3, 2 views",                  ["run1cft", "armCs1337", "armCs7"],   V2),
     ("D  simple CE, 3 views",                 ["run1dce"],                      V3),
     ("E  trained 2-view",                     ["run1e"],                        V2),
-    ("  branch: semantic (CLIP)",             ["run1cft", "armCs1337", "armCs7"],   "semantic"),
-    ("  branch: artifact (β-VAE)",            ["run1cft", "armCs1337", "armCs7"],   "artifact"),
-    ("  branch: FS-VFM",                      ["run1cft", "armCs1337", "armCs7"],   "fsvfm"),
+    # Branch rows use the canonical display names from view_names.py so the tables and the
+    # figures agree. NOTE these rows are read from arm C's exports, not the frozen arm B's, so
+    # they do not decompose the arm B row above them -- stated in the report body too.
+    (f"  branch: {VIEW_NAME['semantic']}",   ["run1cft", "armCs1337", "armCs7"],   "semantic"),
+    (f"  branch: {VIEW_NAME['artifact']}",   ["run1cft", "armCs1337", "armCs7"],   "artifact"),
+    (f"  branch: {VIEW_NAME['fsvfm']}",      ["run1cft", "armCs1337", "armCs7"],   "fsvfm"),
 ]
 
 # P0-DS has its own export layout

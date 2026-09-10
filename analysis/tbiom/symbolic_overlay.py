@@ -47,8 +47,7 @@ S23 = Path("logs/tbiom/stage23")
 ARM = "run1auxedl"                 # the frozen configuration, per Phase F
 K = 2
 BRANCHES = ["semantic", "artifact", "fsvfm"]
-LABEL = {"semantic": "Appearance", "artifact": "Off-manifold residual",
-         "fsvfm": "Bona-fide face prior"}
+from view_names import VIEW_NAME as LABEL  # one definition, shared with the figures
 DEV = ["FFpp_val", "VALmix"]       # threshold basis; never an OOD set
 
 # The rule set, SELECTED BY SEARCH ON DEV, not written by hand. See tbiom/RULE_SEARCH.md:

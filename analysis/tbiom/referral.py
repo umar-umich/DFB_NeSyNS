@@ -57,6 +57,7 @@ import symbolic_overlay as SO  # noqa: E402
 from health import eer  # noqa: E402
 from sklearn.metrics import roc_auc_score  # noqa: E402
 from video_id import video_id  # noqa: E402
+from view_names import VIEW_NAME  # noqa: E402
 
 S23 = Path("logs/tbiom/stage23")
 BR = SO.BRANCHES

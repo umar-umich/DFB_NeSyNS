@@ -6,10 +6,10 @@ Mean over the six OOD sets. P0-DS reference **0.8633** (mean real-side FPR 0.247
 
 | configuration | views fused | seeds | mean AUROC | spread | vs P0-DS | mean FPR_real |
 |---|---|---|---:|---:|---:|---:|
-| arm B, 3-view | semantic + artifact + fsvfm | 3 | **0.8782** | ±0.0012 | +0.0149 | 0.135 |
-| arm C, 2-view | artifact + fsvfm | 3 | **0.8837** | ±0.0056 | +0.0204 | 0.168 |
-| arm C, 3-view | semantic + artifact + fsvfm | 3 | **0.8783** | ±0.0083 | +0.0150 | 0.175 |
-| arm B, 2-view | artifact + fsvfm | 3 | **0.8723** | ±0.0003 | +0.0089 | 0.132 |
+| arm B, 3-view | Appearance + Off-manifold residual + Bona-fide face prior | 3 | **0.8782** | ±0.0012 | +0.0149 | 0.135 |
+| arm C, 2-view | Off-manifold residual + Bona-fide face prior | 3 | **0.8837** | ±0.0056 | +0.0204 | 0.168 |
+| arm C, 3-view | Appearance + Off-manifold residual + Bona-fide face prior | 3 | **0.8783** | ±0.0083 | +0.0150 | 0.175 |
+| arm B, 2-view | Off-manifold residual + Bona-fide face prior | 3 | **0.8723** | ±0.0003 | +0.0089 | 0.132 |
 
 ## Per seed
 

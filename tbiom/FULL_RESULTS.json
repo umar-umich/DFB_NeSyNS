@@ -383,145 +383,145 @@
     1,
     0.0
   ],
-  "  branch: semantic (CLIP)|CDFv2": [
+  "  branch: Appearance|CDFv2": [
     0.9436935448336637,
     0.16666666666666666,
     3,
     0.022571050892266964
   ],
-  "  branch: semantic (CLIP)|CDFv3": [
+  "  branch: Appearance|CDFv3": [
     0.8692487205878149,
     0.16666666666666666,
     3,
     0.045640706750150084
   ],
-  "  branch: semantic (CLIP)|DFD": [
+  "  branch: Appearance|DFD": [
     0.9267117063727234,
     0.11845730027548211,
     3,
     0.009151608535275635
   ],
-  "  branch: semantic (CLIP)|DFDC": [
+  "  branch: Appearance|DFDC": [
     0.858810404418379,
     0.2888408927285817,
     3,
     0.0032467021725747225
   ],
-  "  branch: semantic (CLIP)|DFDCP": [
+  "  branch: Appearance|DFDCP": [
     0.8715306261963359,
     0.35942028985507246,
     3,
     0.04597005742411808
   ],
-  "  branch: semantic (CLIP)|DFEval24": [
+  "  branch: Appearance|DFEval24": [
     0.6614187367843366,
     0.3107476635514019,
     3,
     0.023788194276306296
   ],
-  "  branch: semantic (CLIP)|VALmix": [
+  "  branch: Appearance|VALmix": [
     0.8737938728852309,
     0.21382716049382713,
     3,
     0.029965432098765232
   ],
-  "  branch: semantic (CLIP)|FFpp_val": [
+  "  branch: Appearance|FFpp_val": [
     0.995858843537415,
     0.02857142857142857,
     3,
     0.0009438775510203223
   ],
-  "  branch: artifact (\u03b2-VAE)|CDFv2": [
+  "  branch: Off-manifold residual|CDFv2": [
     0.9488488653888522,
     0.1348314606741573,
     3,
     0.010261070720423038
   ],
-  "  branch: artifact (\u03b2-VAE)|CDFv3": [
+  "  branch: Off-manifold residual|CDFv3": [
     0.8765485175972781,
     0.1348314606741573,
     3,
     0.026315507333390498
   ],
-  "  branch: artifact (\u03b2-VAE)|DFD": [
+  "  branch: Off-manifold residual|DFD": [
     0.9255602726326918,
     0.09274563820018367,
     3,
     0.012789085593400085
   ],
-  "  branch: artifact (\u03b2-VAE)|DFDC": [
+  "  branch: Off-manifold residual|DFDC": [
     0.8582529538281558,
     0.2882649388048956,
     3,
     0.00807010533338992
   ],
-  "  branch: artifact (\u03b2-VAE)|DFDCP": [
+  "  branch: Off-manifold residual|DFDCP": [
     0.8732020782061799,
     0.3420289855072464,
     3,
     0.027635356849876835
   ],
-  "  branch: artifact (\u03b2-VAE)|DFEval24": [
+  "  branch: Off-manifold residual|DFEval24": [
     0.657038400077478,
     0.2453271028037383,
     3,
     0.008032298678030236
   ],
-  "  branch: artifact (\u03b2-VAE)|VALmix": [
+  "  branch: Off-manifold residual|VALmix": [
     0.8741406492912667,
     0.18074074074074073,
     3,
     0.012626611796982212
   ],
-  "  branch: artifact (\u03b2-VAE)|FFpp_val": [
+  "  branch: Off-manifold residual|FFpp_val": [
     0.995952380952381,
     0.02619047619047619,
     3,
     0.0008673469387755484
   ],
-  "  branch: FS-VFM|CDFv2": [
+  "  branch: Bona-fide face prior|CDFv2": [
     0.9351729455827275,
     0.10299625468164793,
     3,
     0.0005122273628553886
   ],
-  "  branch: FS-VFM|CDFv3": [
+  "  branch: Bona-fide face prior|CDFv3": [
     0.8925633273293879,
     0.10299625468164793,
     3,
     0.0032539240072047004
   ],
-  "  branch: FS-VFM|DFD": [
+  "  branch: Bona-fide face prior|DFD": [
     0.8775487481188561,
     0.18457300275482091,
     3,
     0.008453026172594802
   ],
-  "  branch: FS-VFM|DFDC": [
+  "  branch: Bona-fide face prior|DFDC": [
     0.8546303989276506,
     0.21180705543556513,
     3,
     0.004474973940134408
   ],
-  "  branch: FS-VFM|DFDCP": [
+  "  branch: Bona-fide face prior|DFDCP": [
     0.8780626196335795,
     0.2956521739130435,
     3,
     0.00994667760459389
   ],
-  "  branch: FS-VFM|DFEval24": [
+  "  branch: Bona-fide face prior|DFEval24": [
     0.6856023921359741,
     0.5436137071651089,
     3,
     0.007088034477749194
   ],
-  "  branch: FS-VFM|VALmix": [
+  "  branch: Bona-fide face prior|VALmix": [
     0.8668510288065844,
     0.28444444444444444,
     3,
     0.009518792866940906
   ],
-  "  branch: FS-VFM|FFpp_val": [
+  "  branch: Bona-fide face prior|FFpp_val": [
     0.9778316326530613,
     0.06666666666666667,
     3,

@@ -58,12 +58,7 @@ ARMS = {"A": "A · fused-only", "B": "B · per-branch EDL", "C": "C · FSFM Bran
         "D": "D · simple CE", "E": "E · trained 2-view"}
 # Panel titles. Plain names only -- no mechanism, no attribution. Override per run with
 # --names "semantic=X,artifact=Y,fsvfm=Z,fused=W" rather than editing this.
-VIEW_NAME = {
-    "semantic": "Appearance",
-    "artifact": "Off-manifold residual",
-    "fsvfm":    "Bona-fide face prior",
-    "__all__":  "Fused",
-}
+from view_names import VIEW_NAME  # one definition, shared with the report tables
 VIEWS = [(k, VIEW_NAME[k]) for k in ("semantic", "artifact", "fsvfm", "__all__")]
 
 

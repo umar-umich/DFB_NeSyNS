@@ -10,10 +10,10 @@ configuration is better than another rather than that it won once.
 
 CONFIGURATIONS. Two leaders, tied at 0.8784 on their first seeds:
 
-    arm B, 3-view      semantic + artifact + FS-VFM fused. All three views collaborate, and on
+    arm B, 3-view      Appearance + Off-manifold residual + Bona-fide face prior fused. All three views collaborate, and on
                        both of its seeds arm B is BETTER as 3-view than 2-view.
     arm C, 2-view      trained on three views, semantic dropped from the fusion at inference.
-                       Better as 2-view on its seed, because its FS-VFM branch is stronger
+                       Better as 2-view on its seed, because its Bona-fide-face-prior branch is stronger
                        (0.8539 against arm B's 0.8314) and semantic becomes surplus.
 
 Both are read here on ONE convention: the evidential expectation alpha/S, the same probability
@@ -36,6 +36,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from health import dashboard, eer  # noqa: E402
 from video_id import video_id  # noqa: E402
+from view_names import VIEW_NAME  # noqa: E402
 
 S23 = Path("logs/tbiom/stage23")
 K = 2
@@ -134,13 +135,13 @@ def main() -> int:
     for cfg in CONFIGS:
         got = [(sd, per[(cfg, sd)]) for sd, _ in CONFIGS[cfg] if (cfg, sd) in per]
         if not got:
-            L.append(f"| {cfg} | {'+'.join(VIEWS_FOR[cfg])} | TODO(run) | | | | |")
+            L.append(f"| {cfg} | {'+'.join(VIEW_NAME[v] for v in VIEWS_FOR[cfg])} | TODO(run) | | | | |")
             continue
         ms = [g["mean"] for _, g in got]
         fs = [g["mean_fpr"] for _, g in got]
         summary[cfg] = (float(np.mean(ms)), float(np.max(ms) - np.min(ms)), float(np.mean(fs)),
                         len(got))
-        L.append(f"| {cfg} | {' + '.join(VIEWS_FOR[cfg])} | {len(got)} | "
+        L.append(f"| {cfg} | {' + '.join(VIEW_NAME[v] for v in VIEWS_FOR[cfg])} | {len(got)} | "
                  f"**{np.mean(ms):.4f}** | ±{(np.max(ms)-np.min(ms))/2:.4f} | "
                  f"{np.mean(ms)-mp0:+.4f} | {np.mean(fs):.3f} |")
 

@@ -163,6 +163,7 @@ def main() -> int:
     #   error ranking  AUROC of each signal against "this prediction is wrong". A gate can only
     #                  help to the extent it ranks errors, and this measures that directly,
     #                  independent of the coverage point chosen.
+    jac_vac, jac_mar, vac_auc, flag_auc = [], [], [], []
     L += ["", "## Why", "",
           "| dataset | J(symbolic, vacuity) | J(symbolic, margin) | vacuity ranks errors | "
           "symbolic flag ranks errors |", "|---|---:|---:|---:|---:|"]
@@ -178,8 +179,11 @@ def main() -> int:
         kv = vac <= np.quantile(vac, c); km = mar >= np.quantile(mar, 1 - c)
         J = lambda a, b: float((a & b).sum() / (a | b).sum())
         err = ((p >= tau).astype(int) != y).astype(int)
-        L.append(f"| {ds} | {J(ks,kv):.3f} | {J(ks,km):.3f} | "
-                 f"{roc_auc_score(err,vac):.3f} | {roc_auc_score(err,(~ks).astype(float)):.3f} |")
+        jac_vac.append(J(ks, kv)); jac_mar.append(J(ks, km))
+        vac_auc.append(roc_auc_score(err, vac))
+        flag_auc.append(roc_auc_score(err, (~ks).astype(float)))
+        L.append(f"| {ds} | {jac_vac[-1]:.3f} | {jac_mar[-1]:.3f} | "
+                 f"{vac_auc[-1]:.3f} | {flag_auc[-1]:.3f} |")
 
     # ---------------------------------------------------------------- incremental value
     #
@@ -219,31 +223,68 @@ def main() -> int:
              f"**{np.mean(d2)-np.mean(d1):+.3f}** |")
 
     # ---------------------------------------------------------------- verdict
+    #
+    # EVERY NUMBER BELOW IS DERIVED. An earlier version of this section hardcoded its figures
+    # and, when the rule set was replaced by the dev-searched one, the prose kept asserting the
+    # old result while the tables above it showed the new one -- it claimed the gate "loses
+    # clearly to vacuity (0.1836)" directly beneath a table showing symbolic at 0.1835. A
+    # verdict that does not recompute is a verdict that will eventually lie.
     sy, va, ma, rd = agg["symbolic"], agg["vacuity"], agg["margin"], agg["random"]
+    jv = [J for J in jac_vac]; jm = [J for J in jac_mar]
+    flag_lo, flag_hi = min(flag_auc), max(flag_auc)
+    vac_lo, vac_hi = min(vac_auc), max(vac_auc)
+    inc = np.mean(d2) - np.mean(d1)
+    inc_pos = sum(1 for x, y in zip(d1, d2) if y > x)
+    spread = max(sy["err"], va["err"], ma["err"]) - min(sy["err"], va["err"], ma["err"])
+
     L += ["", "## Verdict", "",
-          f"**The gate does not earn the neuro-symbolic label.** At {sy['cov']:.3f} coverage the "
-          f"symbolic gate cuts pooled balanced error from {agg['none']['err']:.4f} to "
-          f"{sy['err']:.4f} — real, but it **ties the trivial margin gate** "
-          f"({ma['err']:.4f}) and **loses clearly to the model's own vacuity** "
-          f"({va['err']:.4f}). It does clear the random floor ({rd['err']:.4f}), so the rules "
-          "are not noise; they are simply not adding decision value.", "",
-          "The two diagnostics say the same thing from different directions. The symbolic gate "
-          "retains largely the same samples as the margin gate (Jaccard 0.74–0.86), which is "
-          "why their errors match. And as an error detector the binary rule flag is far weaker "
-          "than graded vacuity — on CDFv3 it scores 0.39, *below chance*, meaning the rules "
-          "there abstain on samples the model was more likely to get right.", "",
-          "The mechanism is coarsening. R4's `insufficient` predicate is itself built from mean "
-          "branch vacuity, thresholded at the dev top quartile. The rule set therefore consumes "
-          "the very signal that beats it, and throws away its gradation to produce a Boolean. "
-          "The incremental test closes the argument: adding the symbolic predicates to vacuity "
-          f"makes OOD error prediction **worse** ({np.mean(d2)-np.mean(d1):+.3f}), despite the "
-          "predicates carrying non-zero weight on dev. They fit dev and do not transfer.", "",
-          "**This is a result worth reporting, not a failed experiment.** It is the ablation a "
-          "reviewer would ask for, and it answers cleanly: the symbolic layer is a faithful "
-          "*explanation* of the fused decision and not an independent source of evidence about "
-          "it. That is consistent with Phase S — faithfulness means the overlay tracks the "
-          "model's reasoning, and something that tracks the model closely cannot also correct "
-          "it. Keeping the overlay post-hoc is the position the measurements support."]
+          f"**At its own operating point the symbolic gate is indistinguishable from a trivial "
+          f"one.** It abstains at a fixed {sy['cov']:.3f} coverage, cutting pooled balanced "
+          f"error {agg['none']['err']:.4f} → {sy['err']:.4f}. At that same coverage the "
+          f"model's own vacuity gives {va['err']:.4f} and the fused margin {ma['err']:.4f} — a "
+          f"total spread of {spread:.4f} across all three, which is nothing. All three clear "
+          f"the random floor ({rd['err']:.4f}), so the rules are not noise; they are simply "
+          f"not distinguishable from free alternatives here.", "",
+          f"**The comparison is coverage-bound, and that matters for how it is written up.** "
+          f"The rule set yields ONE operating point; vacuity and margin are dials. At "
+          f"{sy['cov']:.3f} coverage only {(1-sy['cov'])*100:.0f}% of samples are withheld, so "
+          f"every gate is close to the no-gate error and they converge by construction. Turned "
+          f"down to ~0.60 coverage the graded signals separate clearly (see the risk-coverage "
+          f"rows above) — but the symbolic rules cannot be turned down, and a fixed abstention "
+          f"rate is a real limitation of a rule-based gate rather than an artifact of this "
+          f"measurement.", "",
+          f"**As a standalone signal the Boolean flag remains weaker than graded vacuity**, and "
+          f"that has not changed: it ranks errors at {flag_lo:.3f}–{flag_hi:.3f} across the six "
+          f"sets against vacuity's {vac_lo:.3f}–{vac_hi:.3f}. Collapsing a graded quantity into "
+          f"a rule firing throws information away, which is the mechanism.", ""]
+
+    if inc > 0:
+        L += [f"**But as an ADDITION to vacuity the predicates now carry something.** A "
+              f"wrong/right predictor fitted on dev and read on OOD improves by "
+              f"**{inc:+.3f}** when the symbolic predicates are supplied alongside vacuity, "
+              f"positive on {inc_pos} of 6 sets. **This reverses the earlier finding.** Under "
+              f"the hand-written rule set the same test came out at −0.026 — the predicates fit "
+              f"dev and did not transfer. Under the dev-searched rule set they do transfer. "
+              f"The change is not the search being cleverer; it is that the relaxed "
+              f"decisiveness threshold makes `strong_<branch>` fire on far more samples, so the "
+              f"predicates carry graded information instead of marking a rare extreme.", "",
+              f"**How much to claim from that: not much yet.** {inc:+.3f} mean with "
+              f"{6-inc_pos} of 6 sets negative, on n=6, is not a result — it is a reason to "
+              f"test the idea properly rather than a finding. What it does do is retire the "
+              f"clean negative that was previously reported here."]
+    else:
+        L += [f"**And they add nothing on top of it either.** Supplying the symbolic predicates "
+              f"alongside vacuity moves dev-fitted OOD error prediction by {inc:+.3f}, "
+              f"positive on only {inc_pos} of 6 sets."]
+
+    L += ["",
+          "**What survives regardless.** The symbolic layer remains a faithful *explanation* of "
+          "the fused decision — that is Phase S, measured by intervention — and nothing here "
+          "shows it is an independent source of evidence strong enough to replace the model's "
+          "own uncertainty. Keeping the overlay post-hoc is still the position the measurements "
+          "support. The honest summary changed from \"the rules add no decision value\" to "
+          "\"the rules add no decision value at their own operating point, and may add a little "
+          "when combined with vacuity, on evidence too thin to bank\"."]
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text("\n".join(L) + "\n")
