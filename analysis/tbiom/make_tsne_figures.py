@@ -213,9 +213,12 @@ def panel(ax, E, y, title, auc, show_legend=False):
                    edgecolors=SURFACE, label=name if show_legend else None)
     ax.set_xticks([]); ax.set_yticks([])
     ax.set_title(title, fontsize=10.5, color=INK, pad=7)
-    ax.text(0.03, 0.03, f"AUROC {auc:.3f}", transform=ax.transAxes,
-            fontsize=9, color=INK2, va="bottom",
-            bbox=dict(boxstyle="round,pad=0.32", fc=SURFACE, ec=GRID, lw=0.7))
+    # AUROC goes BELOW the axes, not inside it, so the whole row of values sits in one
+    # horizontal band that can be cropped off in a single cut. Drawn as an xlabel rather than a
+    # free-floating text: an xlabel is part of the axes' layout, so every panel in a row lands
+    # at the same height and the band stays straight. No box -- a box would survive a crop that
+    # clipped the text and look like a mistake.
+    ax.set_xlabel(f"AUROC {auc:.3f}", fontsize=9, color=INK2, labelpad=5)
 
 
 def fig_whole_vs_parts(arm, datasets, out: Path, seed=0, cap=1200, level="video",
