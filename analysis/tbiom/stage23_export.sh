@@ -14,7 +14,7 @@ set -uo pipefail
 EXT=/data/umar/Repos/DISCERN_Ext
 OUT=/data/umar/Repos/DFB_NeSyNS/logs/tbiom/stage23
 PY=/data/umar/miniconda3/envs/discern_ext/bin/python
-case "${1:-}" in run1*|seed1337|armB*|armC*) PY=/data/umar/miniconda3/envs/discern_ext_timm/bin/python ;; esac
+case "${1:-}" in run1*|seed1337|armB*|armC*|phaseT*) PY=/data/umar/miniconda3/envs/discern_ext_timm/bin/python ;; esac
 export CUDA_VISIBLE_DEVICES=1
 
 arm=${1:?usage: stage23_export.sh <stage2|stage3|stage5> <select|test> [ckpt] [tag]}
@@ -38,6 +38,8 @@ case "$arm" in
   armBs7)        RUN=armB_seed7 ;;
   armCs1337)     RUN=armC_seed1337 ;;
   armCs7)        RUN=armC_seed7 ;;
+  phaseTc01)     RUN=phaseT_cons01_seed42 ;;
+  phaseTc05)     RUN=phaseT_cons05_seed42 ;;
   *) echo "unknown arm $arm"; exit 2 ;;
 esac
 
