@@ -19,7 +19,7 @@ Three evidence branches over one image, fused by a subjective-logic operator:
 |---|---|---:|
 | **semantic** | CLIP ViT-L/14 + LoRA | 64 |
 | **artifact** | β-VAE manifold projector; orthogonal residual of `f_s − f_c` | 64 |
-| **FS-VFM** | frozen face prior (VGGFace2 masked autoencoding) | 1024 |
+| **Bona-fide face prior** | frozen real-face prior | 1024 |
 
 Each emits Dirichlet evidence through an `EvidentialHead`; the three opinions are combined and
 projected to `p(fake)`. Trained on FF++ c23 only, 20 epochs, batch 128, seed 42/1337/7.
@@ -29,7 +29,7 @@ Two Branch-3 variants are reported throughout because they behave differently:
 | arm | Branch 3 | standalone AUROC |
 |---|---|---:|
 | **B** | our LoRA preservation student | 0.8314 |
-| **C** | FSFM's released fine-tuned ViT-L | 0.8539 |
+| **C** | discriminative Br3 (externally fine-tuned ViT-L) | 0.8539 |
 
 ---
 

@@ -32,7 +32,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from health import dashboard, eer  # noqa: E402
-from view_names import VIEW_NAME  # noqa: E402
+from view_names import BRANCH3, VIEW_NAME  # noqa: E402
 from video_id import video_id  # noqa: E402
 
 S23 = Path("logs/tbiom/stage23")
@@ -50,10 +50,10 @@ V2 = ("artifact", "fsvfm")
 CONFIGS = [
     ("P0-DS  (2 views, baseline)",            ["p0ds"],                         "P0DS"),
     ("A  fused-only, 3 views",                ["run1fusedonly"],                V3),
-    ("B  student Br3, 3 views",               ["run1auxedl", "seed1337", "armBs7"], V3),
-    ("B  student Br3, 2 views",               ["run1auxedl", "seed1337", "armBs7"], V2),
-    ("C  FSFM Br3, 3 views",                  ["run1cft", "armCs1337", "armCs7"],   V3),
-    ("C  FSFM Br3, 2 views",                  ["run1cft", "armCs1337", "armCs7"],   V2),
+    (f"B  {BRANCH3['student']}, 3 views",      ["run1auxedl", "seed1337", "armBs7"], V3),
+    (f"B  {BRANCH3['student']}, 2 views",      ["run1auxedl", "seed1337", "armBs7"], V2),
+    (f"C  {BRANCH3['ft']}, 3 views",           ["run1cft", "armCs1337", "armCs7"],   V3),
+    (f"C  {BRANCH3['ft']}, 2 views",           ["run1cft", "armCs1337", "armCs7"],   V2),
     ("D  simple CE, 3 views",                 ["run1dce"],                      V3),
     ("E  trained 2-view",                     ["run1e"],                        V2),
     # Branch rows use the canonical display names from view_names.py so the tables and the

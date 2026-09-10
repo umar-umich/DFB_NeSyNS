@@ -32,6 +32,21 @@ LEGACY = {
 }
 
 
+# The two Branch-3 experts, named by WHAT THEY WERE TRAINED TO DO rather than by their source.
+# Arm B's expert is trained to preserve a real-face representation; arm C's is a checkpoint
+# fine-tuned discriminatively for detection. Both descriptions are accurate and neither is a
+# pointer to a particular publication, which keeps table labels functional.
+#
+# This is a LABELLING choice, not an attribution one. Branch 3 is built on a third-party
+# pretrained encoder and arm C uses a third-party released fine-tuned checkpoint; the method
+# section and the references still have to say so. Shorthand in a results table is fine;
+# leaving the provenance out of the paper entirely would not be.
+BRANCH3 = {
+    "student": "preservation Br3",       # ours: LoRA student trained for representation preservation
+    "ft":      "discriminative Br3",     # external: checkpoint fine-tuned for detection
+}
+
+
 def name(key: str) -> str:
     """Display name for a view key; unknown keys pass through unchanged."""
     return VIEW_NAME.get(key, key)
