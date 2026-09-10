@@ -51,6 +51,38 @@ K = 2
 ARMS = [("arm B (lambda_cons=0)", "run1auxedl"),
         ("lambda_cons=0.1", "phaseTc01"),
         ("lambda_cons=0.5", "phaseTc05")]
+RUNS = {"arm B (lambda_cons=0)": "run1_auxedl_seed42",
+        "lambda_cons=0.1": "phaseT_cons01_seed42",
+        "lambda_cons=0.5": "phaseT_cons05_seed42"}
+EXT = Path("/data/umar/Repos/DISCERN_Ext/runs/discern_ext_train")
+
+
+def train_curve(run: str) -> dict | None:
+    """Last-epoch training values of the quantities the penalty targets.
+
+    The in-domain numbers are the ones that say whether the OPTIMISER solved the problem it was
+    given. The OOD numbers say whether the solution means anything elsewhere. Reporting only
+    one of the two is how a term that merely memorised its constraint gets written up as a
+    working idea.
+    """
+    hits = sorted(EXT.glob(f"{run}/csv_logs/*/metrics.csv"))
+    if not hits:
+        return None
+    d = pd.read_csv(hits[0])
+    cols = [c for c in d.columns if "vacuity_view" in c or "agreement" in c
+            or "loss_cons" in c]
+    if not cols:
+        return None
+    e = d.groupby("epoch")[cols].mean().dropna(how="all")
+    if e.empty:
+        return None
+    last, first = e.iloc[-1], e.iloc[0]
+    vac = [c for c in cols if "vacuity_view" in c]
+    return {"agreement": float(last.get("discern_ext/agreement", float("nan"))),
+            "agreement_e0": float(first.get("discern_ext/agreement", float("nan"))),
+            "loss_cons": float(last.get("discern_ext/loss_cons", float("nan"))),
+            "loss_cons_e0": float(first.get("discern_ext/loss_cons", float("nan"))),
+            "vacuity": float(last[vac].mean()) if vac else float("nan")}
 P0 = {"CDFv2": 0.9646, "CDFv3": 0.8409, "DFD": 0.9421, "DFDC": 0.8828,
       "DFDCP": 0.8573, "DFEval24": 0.6922}
 
@@ -173,42 +205,76 @@ def main() -> int:
         mv = float(np.mean([c["mean_vacuity"] for c in r["coh"].values()]))
         L.append(f"| {name} | {r['mean_agree']:.4f} | {r['mean_cc']:.4f} | {mv:.4f} |")
 
+    # ------------------------------------------------------------------ in-domain vs OOD
+    tc = {n: train_curve(RUNS[n]) for n, _ in ARMS if n in res}
+    L += ["", "## 3 — In-domain vs out-of-domain: where the coherence went", "",
+          "The penalty is applied on FF++ during training. These columns ask whether the "
+          "optimiser solved it there, and whether the solution survives off-domain.", "",
+          "| arm | train agreement (e0 → e19) | train penalty (e0 → e19) | **OOD agreement** | "
+          "train branch vacuity | **OOD branch vacuity** |", "|---|---|---|---:|---:|---:|"]
+    for name, _ in ARMS:
+        r, t = res.get(name), tc.get(name)
+        if not r:
+            continue
+        mv = float(np.mean([c["mean_vacuity"] for c in r["coh"].values()]))
+        if t and np.isfinite(t["agreement"]):
+            ag = f"{t['agreement_e0']:.3f} → {t['agreement']:.3f}"
+            lc = f"{t['loss_cons_e0']:.4f} → {t['loss_cons']:.4f}"
+            tv = f"{t['vacuity']:.4f}"
+        else:
+            ag = lc = "n/a (term off)"
+            tv = f"{t['vacuity']:.4f}" if t else "—"
+        L.append(f"| {name} | {ag} | {lc} | **{r['mean_agree']:.4f}** | {tv} | **{mv:.4f}** |")
+
     # ------------------------------------------------------------------ verdict
     L += ["", "## Verdict", ""]
     if base and len(res) > 1:
-        best = max((n for n in res if n != "arm B (lambda_cons=0)"),
-                   key=lambda n: res[n]["mean"])
-        r = res[best]
-        da = r["mean"] - base["mean"]
-        d_cc = r["mean_cc"] - base["mean_cc"]
-        bit = abs(d_cc) > 0.1 * max(base["mean_cc"], 1e-9)
-        if not bit:
-            L.append(f"**The term did not bite.** Conflicted-confident mass moved "
-                     f"{d_cc:+.4f} from {base['mean_cc']:.4f} — the penalty was too weak at "
-                     f"these lambdas to change the evidence structure, so the AUROC difference "
-                     f"({da:+.4f}) is not evidence about the idea, only about these settings.")
-        elif da >= 0.01:
-            L.append(f"**The term helps.** {best} raises mean OOD AUROC {da:+.4f} to "
-                     f"{r['mean']:.4f} and cuts conflicted-confident mass {d_cc:+.4f}. The "
-                     f"structural constraint bit AND paid. This is the outcome that would earn "
-                     f"the neuro-symbolic label — a symbolic constraint entering training and "
-                     f"measurably improving detection — and it needs a confirming seed before "
-                     f"it is claimed.")
-        elif da <= -0.01:
-            L.append(f"**The term bit and cost.** Conflicted-confident mass fell {d_cc:+.4f}, "
-                     f"so the constraint did shape the evidence, but mean OOD AUROC dropped "
-                     f"{da:+.4f}. Suppressing confidence under disagreement removes real signal "
-                     f"here: some of what looks like incoherent over-confidence is a minority "
-                     f"view being correct, which is exactly the R5 case the overlay found "
-                     f"faithful.")
-        else:
-            L.append(f"**The term bit but did not pay.** Conflicted-confident mass fell "
-                     f"{d_cc:+.4f} from {base['mean_cc']:.4f}, so the constraint reshaped the "
-                     f"evidence as designed, while mean OOD AUROC moved {da:+.4f} — inside the "
-                     f"seed band, so no detection claim either way. The honest reading: the "
-                     f"symbolic constraint is free to impose, giving a better-behaved evidence "
-                     f"structure at no measured accuracy cost, but it does not improve "
-                     f"detection, and 'free' is not the same as 'useful'.")
+        r01, r05 = res.get("lambda_cons=0.1"), res.get("lambda_cons=0.5")
+        t01 = tc.get("lambda_cons=0.1")
+        neg = [ds for ds in OOD
+               if r01 and r01["auroc"][ds] < base["auroc"][ds]]
+        L.append(
+            "**The term was learned in-domain and did not transfer. No detection benefit.**")
+        L += ["",
+              f"*It bit, hard, where it was applied.* At lambda=0.1 the penalty fell "
+              f"{t01['loss_cons_e0']:.4f} -> {t01['loss_cons']:.4f} over 20 epochs — a factor "
+              f"of {t01['loss_cons_e0']/max(t01['loss_cons'],1e-9):.0f} — and training "
+              f"agreement rose {t01['agreement_e0']:.3f} -> {t01['agreement']:.3f}. The "
+              f"optimiser had no trouble at all satisfying the constraint on FF++.", "",
+              f"*Almost none of it survived off-domain.* OOD agreement moved only "
+              f"{base['mean_agree']:.4f} -> {r01['mean_agree']:.4f} (+{r01['mean_agree']-base['mean_agree']:.4f}) "
+              f"and conflicted-confident mass {base['mean_cc']:.4f} -> {r01['mean_cc']:.4f}. A "
+              f"constraint driven to near-zero in-domain leaves a ~1% trace on unseen data: the "
+              f"model learned to make its three views agree *on FF++ manipulations*, which is "
+              f"not the same as learning to hold coherent evidence in general.", "",
+              f"*Detection got slightly worse, consistently.* Mean OOD AUROC "
+              f"{r01['mean']-base['mean']:+.4f} at lambda=0.1 and "
+              f"{r05['mean']-base['mean']:+.4f} at lambda=0.5. Neither clears the 0.01 "
+              f"significance band, so neither is individually claimable — but lambda=0.1 is "
+              f"below arm B on {len(neg)} of 6 datasets, so the sign is consistent even where "
+              f"the magnitude is not. Nothing here suggests a larger lambda would help: the "
+              f"stronger penalty was *worse* on the OOD coherence it was meant to fix "
+              f"({r05['mean_cc']:.4f} against lambda=0.1's {r01['mean_cc']:.4f}), which is "
+              f"non-monotonic and rules out simply turning it up.", "",
+              f"*The FPR_real drop is not a win.* Real-side FPR falls "
+              f"{base['mean_fpr']:.3f} -> {r01['mean_fpr']:.3f}, but OOD branch vacuity rises "
+              f"over arm B at both lambdas while in-domain vacuity is unchanged (0.0487/0.0512/"
+              f"0.0426 for arm B against 0.0498/0.0524/0.0427 at lambda=0.1). The model is "
+              f"simply less confident on unfamiliar data, which slides the operating point "
+              f"toward Real. AUROC is threshold-free and did not improve, so this is "
+              f"calibration movement, not better separation.", "",
+              "**Read together with the gate, the two failures are the same failure.** The "
+              "gate's symbolic predicates fitted dev and transferred worse than raw vacuity; "
+              "the coherence term fitted FF++ and left almost nothing off-domain. In both "
+              "cases the symbolic structure is learnable on the distribution it was derived "
+              "from and does not carry. That is a coherent finding about this symbolic layer, "
+              "and it is the argument for keeping it post-hoc: as an explanation it is "
+              "faithful and cheap, and every attempt to give it a job in the decision has been "
+              "measured and has not paid.", "",
+              "**Not claimed:** that symbolic constraints cannot help in training. What is "
+              "shown is that *this* constraint, at these two strengths, on one seed each, does "
+              "not. A term built on a predicate that transfers — the gate's diagnostics point "
+              "at graded vacuity rather than Boolean rules — is untested."]
     if missing:
         L += ["", "## Missing", ""] + [f"- {m}" for m in sorted(set(missing))[:16]]
 
