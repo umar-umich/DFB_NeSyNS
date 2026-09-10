@@ -474,7 +474,7 @@ def fig_edl_vs_ce(datasets, out: Path, seed=0, cap=1200, level="video",
     plt.close(fig); print(f"  wrote {out}.png / .pdf")
 
 
-def fig_edl_vs_ce_bars(datasets, out: Path):
+def fig_edl_vs_ce_bars(datasets, out: Path, edl_arm="B", ce_arm="D"):
     """Per-branch and fused AUROC, EDL against CE, every dataset. The quantitative companion."""
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -485,8 +485,8 @@ def fig_edl_vs_ce_bars(datasets, out: Path):
     fig, axes = plt.subplots(1, 4, figsize=(15.0, 3.9), facecolor=SURFACE, sharey=True)
     x = np.arange(len(datasets)); w = 0.36
     for ax, (k, name) in zip(axes, keys):
-        e = [model_auc("C", d, k) for d in datasets]
-        c = [model_auc("D", d, k) for d in datasets]
+        e = [model_auc(edl_arm, d, k) for d in datasets]
+        c = [model_auc(ce_arm, d, k) for d in datasets]
         ax.bar(x - w / 2, e, w * 0.92, label="EDL", color="#4a3aa7",
                edgecolor=SURFACE, linewidth=2, zorder=3)
         ax.bar(x + w / 2, c, w * 0.92, label="CE", color="#eb6834",
@@ -592,12 +592,18 @@ def _edl_vs_ce_dispatch(args):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", type=Path, default=Path("tbiom/figures"))
-    ap.add_argument("--arm", default="C")
+    # Arm B is the frozen configuration, so it is the default. `--arm` drives EVERY figure,
+    # including the five-panel one; `--edl-arm` exists only to pair two DIFFERENT arms in one
+    # figure and defaults to whatever `--arm` says. Before this it defaulted to a fixed "C",
+    # which silently ignored `--arm` for the five-panel figure -- three runs at --arm A/B/C all
+    # produced arm C, with identical AUROC annotations and no warning.
+    ap.add_argument("--arm", default="B")
     ap.add_argument("--datasets", nargs="+",
                     default=["CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "DFEval24"],
                     help="the six OOD evaluation sets by default")
     ap.add_argument("--level", default="video", choices=["video", "frame"])
-    ap.add_argument("--edl-arm", default="C", help="C is the one-variable pairing with D")
+    ap.add_argument("--edl-arm", default=None,
+                    help="override the EDL-side arm; defaults to --arm")
     ap.add_argument("--cap", type=int, default=1200, help="max points plotted per panel")
     ap.add_argument("--names", default=None,
                     help="override panel titles, e.g. "
@@ -615,6 +621,8 @@ def main() -> int:
                     help="also build the evidential-versus-cross-entropy comparison")
     ap.add_argument("--only-edl-vs-ce", action="store_true")
     args = ap.parse_args()
+    if args.edl_arm is None:
+        args.edl_arm = args.arm
     args.out.mkdir(parents=True, exist_ok=True)
     if args.names:
         alias = {"fused": "__all__"}
@@ -626,11 +634,15 @@ def main() -> int:
         print("fig7 — five-panel: three branches + CE fusion + EDL fusion")
         if args.per_dataset:
             for ds in args.datasets:
-                fig_five_panel([ds], args.out / f"fig7_five_panel_{ds}_{tag5}", cap=args.cap,
+                fig_five_panel([ds],
+                               args.out / f"fig7_five_panel_arm{args.edl_arm}_{ds}_{tag5}",
+                               cap=args.cap,
                                level=args.level, edl_arm=args.edl_arm, ratio=args.ratio,
                                title=args.title)
         else:
-            fig_five_panel(args.datasets, args.out / f"fig7_five_panel_{tag5}", cap=args.cap,
+            fig_five_panel(args.datasets,
+                           args.out / f"fig7_five_panel_arm{args.edl_arm}_{tag5}",
+                           cap=args.cap,
                            level=args.level, edl_arm=args.edl_arm, ratio=args.ratio,
                            title=args.title)
         return 0
@@ -638,7 +650,9 @@ def main() -> int:
         print("fig5 — EDL vs CE, t-SNE")
         _edl_vs_ce_dispatch(args)
         print("fig6 — EDL vs CE, per-branch bars")
-        fig_edl_vs_ce_bars(args.datasets, args.out / "fig6_edl_vs_ce_bars")
+        fig_edl_vs_ce_bars(args.datasets,
+                           args.out / f"fig6_edl_vs_ce_bars_arm{args.edl_arm}",
+                           edl_arm=args.edl_arm)
         return 0
     tag = f"{args.level}_{args.ratio.replace(':', '-')}"
     if args.per_dataset:
@@ -664,7 +678,9 @@ def main() -> int:
         print("fig5 — EDL vs CE, t-SNE")
         _edl_vs_ce_dispatch(args)
         print("fig6 — EDL vs CE, per-branch bars")
-        fig_edl_vs_ce_bars(args.datasets, args.out / "fig6_edl_vs_ce_bars")
+        fig_edl_vs_ce_bars(args.datasets,
+                           args.out / f"fig6_edl_vs_ce_bars_arm{args.edl_arm}",
+                           edl_arm=args.edl_arm)
     return 0
 
 
