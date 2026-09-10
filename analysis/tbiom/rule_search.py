@@ -142,9 +142,10 @@ def main() -> int:
           "", f"{int(D.feasible.sum())} of 100 candidates satisfy both constraints on dev. The "
           f"hand-written set is feasible but low-coverage: **{base.coverage:.3f}** against the "
           f"feasible winner's **{best.coverage:.3f}**. The single change that buys almost all "
-          f"of it is `majority-real` — a rule saying two views calling Real, one of them "
-          f"decisively, means Real. Its absence was an oversight, not a design choice; the "
-          f"fake side had the mirror rule (R3) all along."]
+          f"of it is the RELAXED DECISIVENESS QUANTILE, not the new rule — the decomposition "
+          f"at the end of this report separates the two. `majority-real` is kept because it "
+          f"fills a real asymmetry (the fake side had the mirror rule R3 all along), but on "
+          f"its own it is worth only a fraction of the gain."]
 
     # ------------------------------------------------------------------ one read on OOD
     L += ["", "## The one OOD read", "",
@@ -185,10 +186,12 @@ def main() -> int:
            f"**agreement falls below the {AGREE_FLOOR} floor on OOD, so the constraint held on "
            f"dev and did not transfer.**"))
     L += ["",
-          f"Nearly all of the gain is one missing rule. The overlay could say \"all three views "
-          f"call this real\" but had no way to say \"two views call it real and one of them "
-          f"decisively\", even though the fake side had exactly that rule. Asymmetry in a "
-          f"hand-written rule set is easy to miss and a sweep finds it immediately.", "",
+          f"**The gain is mostly a looser threshold, not the new rule** — see the "
+          f"decomposition below: relaxing the decisiveness quantile is worth ~8x what adding "
+          f"the real-side rule is worth. R6 does fill a genuine asymmetry (the overlay could "
+          f"say \"all three views call this real\" but not \"two call it real, one "
+          f"decisively\", though the fake side had that rule all along), and it is worth "
+          f"keeping, but it is not where the coverage came from.", "",
           f"The soft-objective candidate, which also added a single-decisive-real rule, reached "
           f"{c['coverage']:.3f} coverage but only {c['agreement']:.3f} agreement — it bought "
           f"the last few points by letting the overlay contradict the model. That is the trade "
@@ -199,6 +202,99 @@ def main() -> int:
           "over the SAME predicates has little left to find. The case for GEPA is a different "
           "one: proposing predicates this grid does not contain. That is a real possibility and "
           "an untested one."]
+
+    # ------------------------------------------------------------------ which change did the work
+    #
+    # WHY THIS SECTION EXISTS. The first version of this report claimed the coverage gain came
+    # from the missing real-side rule. That was wrong, and wrong in an avoidable way: every
+    # top-ranked dev candidate had `majority-real = yes`, but every one also had q_margin=0.25,
+    # and a column that is constant among the winners says nothing about which change caused
+    # the win. The only way to attribute a gain across two simultaneous changes is to vary them
+    # one at a time, which is what this does.
+    def one(qm, qv, mr):
+        th = thresholds(dev, qm, qv)
+        SO.TH = th
+        return score_split(ood, th, {"majority_real": mr, "single_real": False})
+
+    A = one(0.50, 0.75, False)
+    Br = one(0.50, 0.75, True)
+    C = one(0.25, 0.90, False)
+    Dd = one(0.25, 0.90, True)
+    L += ["", "## Which of the two changes did the work", "",
+          "| configuration | coverage | agreement | intervention |", "|---|---:|---:|---:|"]
+    for nm, r in (("A. hand-written (q_margin .50, q_vac .75, no R6)", A),
+                  ("B. A + R6 only", Br),
+                  ("C. A + relaxed quantiles only", C),
+                  ("D. selected (both)", Dd)):
+        L.append(f"| {nm} | {r['coverage']:.3f} | {r['agreement']:.3f} | "
+                 f"{r['intervention']:.3f} |")
+    L += ["",
+          f"**The quantile relaxation does {(C['coverage']-A['coverage'])/(Br['coverage']-A['coverage']):.0f}× "
+          f"as much work as the new rule**: {C['coverage']-A['coverage']:+.3f} against "
+          f"{Br['coverage']-A['coverage']:+.3f}, out of {Dd['coverage']-A['coverage']:+.3f} "
+          "total. R6 is a real but minor addition.", "",
+          "So the honest description of what changed is not \"we found a missing rule\". It is "
+          "**\"we lowered the bar for calling a branch vote decisive, from the dev median "
+          "margin to the dev 25th percentile, and the faithfulness tests still passed\"**. "
+          "Twice as many votes now count as decisive, so R1/R3/R5 fire far more often. That is "
+          "a looser definition of an existing predicate, not a new capability — a much less "
+          "interesting finding, and the one the data supports."]
+
+    # ------------------------------------------------------------------ is the new coverage useful
+    #
+    # Coverage going up is only an improvement if the newly explained samples are ones a reader
+    # would want explained. The failure mode to rule out is a rule set that buys coverage on
+    # samples that were never in doubt, leaving the hard cases exactly as unexplained as before.
+    # Two probes: how far the newly covered samples sit from the decision threshold, and how
+    # often the detector is actually right on them.
+    thA = thresholds(dev, 0.50, 0.75); SO.TH = thA
+    PA = SO.predicates(ood, thA)
+    aA, rA, _ = SO.apply_rules(ood, PA, {"majority_real": False, "single_real": False})
+    f_old = np.array([r != "R0_fallback" and a != "Inconclusive" for r, a in zip(rA, aA)])
+    thD = thresholds(dev, 0.25, 0.90); SO.TH = thD
+    PD = SO.predicates(ood, thD)
+    aD, rD, _ = SO.apply_rules(ood, PD, {"majority_real": True, "single_real": False})
+    f_new = np.array([r != "R0_fallback" and a != "Inconclusive" for r, a in zip(rD, aD)])
+    tau = thD["tau_fused"]["value"]
+    pf = SO.fuse(ood)
+    correct = ((pf >= tau).astype(int) == ood["y"].to_numpy())
+    margin = np.abs(pf - tau)
+    newly = f_new & ~f_old
+    nerr = (~correct).sum()
+
+    L += ["", "## Is the extra coverage the coverage we wanted?", "",
+          "| group | n | median \\|p−τ\\| | detector accuracy | share of all detector errors |",
+          "|---|---:|---:|---:|---:|"]
+    for nm, m in (("covered before", f_old), ("**newly covered**", newly),
+                  ("still uncovered", ~f_new)):
+        L.append(f"| {nm} | {int(m.sum()):,} | {np.median(margin[m]):.3f} | "
+                 f"{correct[m].mean():.3f} | {(m & ~correct).sum()/nerr:.3f} |")
+    L += ["", "By rule, among the newly covered:", "",
+          "| rule | n | median \\|p−τ\\| | detector accuracy |", "|---|---:|---:|---:|"]
+    for rr, c in pd.Series(rD[newly]).value_counts().items():
+        mm = newly & (rD == rr)
+        L.append(f"| {rr} | {int(c):,} | {np.median(margin[mm]):.3f} | {correct[mm].mean():.3f} |")
+
+    L += ["",
+          f"**The extra coverage is on comparably easy samples, not the hard ones.** Newly "
+          f"covered videos sit a median {np.median(margin[newly]):.3f} from the threshold "
+          f"against {np.median(margin[f_old]):.3f} for those already covered, and the detector "
+          f"is *more* often right on them ({correct[newly].mean():.3f} against "
+          f"{correct[f_old].mean():.3f}). The samples that remain unexplained are the genuinely "
+          f"difficult ones: median margin {np.median(margin[~f_new]):.3f}, detector accuracy "
+          f"{correct[~f_new].mean():.3f}, and they still hold "
+          f"{(~f_new & ~correct).sum()/nerr:.0%} of every error the detector makes.", "",
+          f"So the overlay explains more of the data at the same faithfulness, but it still "
+          f"declines precisely where the detector is least reliable. Coverage is not a proxy "
+          f"for usefulness to someone auditing failures.", "",
+          f"**R6 is the sharpest case of this.** On the {int((newly & (rD == 'R6_majority_real')).sum()):,} "
+          f"videos it newly claims, the detector is right only "
+          f"{correct[newly & (rD == 'R6_majority_real')].mean():.3f} of the time — it is "
+          f"largely narrating missed fakes, agreeing with a wrong Real call and explaining why "
+          f"the model made it. For a *faithful* overlay that is correct behaviour: the job is "
+          f"to say why the model decided, not whether the model was right. It is worth stating "
+          f"plainly because the two are easy to conflate, and a reader who assumes an "
+          f"explanation implies a correct decision would be misled."]
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text("\n".join(L) + "\n")

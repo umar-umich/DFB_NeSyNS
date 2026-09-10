@@ -33,7 +33,7 @@ Listed in **firing order**, which is part of the result: the real-side rule fire
 | 6 | R5 | a single decisive branch against two abstaining | Fake | yes |
 | — | R0 | none of the above | Inconclusive (fallback) | no |
 
-**R6 is the rule the hand-written set was missing**, and it accounts for nearly all of the coverage gain. The overlay could say "all three views call this real" but had no way to say "two call it real and one of them decisively" — even though the fake side had exactly that rule (R3) from the start. Asymmetry in a hand-written rule set is easy to miss; the dev search in `tbiom/RULE_SEARCH.md` found it immediately.
+**R6 is the rule the hand-written set was missing.** It is worth only about a ninth of the coverage gain, though — most of that came from relaxing the decisiveness quantile, and `tbiom/RULE_SEARCH.md` decomposes the two. The overlay could say "all three views call this real" but had no way to say "two call it real and one of them decisively" — even though the fake side had exactly that rule (R3) from the start. Asymmetry in a hand-written rule set is easy to miss; the dev search in `tbiom/RULE_SEARCH.md` found it immediately.
 
 A seventh candidate rule, a single decisive real vote driving the decision, was **rejected**: it lifted coverage further but dropped agreement to 0.984, buying the last points by letting the overlay contradict the decision it explains.
 
