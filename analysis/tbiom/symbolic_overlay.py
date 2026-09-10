@@ -245,11 +245,62 @@ def intervene(g: pd.DataFrame, driver, assess, th) -> dict:
     return out
 
 
+def emit_traces(ds: str, g, P, assess, rule, driver, th, n=4, seed=0):
+    """Human-readable decision traces, sampled across outcomes rather than cherry-picked.
+
+    One example per rule that fired, chosen at random within the rule so the trace set is not
+    quietly selected for the ones that read best. Each trace states, per branch, the direction
+    of its vote, how far past its own threshold it sits, and its vacuity -- then the
+    cross-branch relation, the rule, and the intervention result where a driver was named.
+    """
+    rng = np.random.default_rng(seed)
+    base = fuse(g)
+    out = []
+    for r in ["R1_consensus_fake", "R2_all_agree_real", "R3_majority_fake",
+              "R5_single_branch_drives", "R4_conflict_insufficient", "R0_fallback"]:
+        idx = np.flatnonzero(np.array([x == r for x in rule]))
+        if not len(idx):
+            continue
+        for i in rng.choice(idx, size=min(n, len(idx)), replace=False):
+            lines = [f"### {ds} · video `{g['v'].iat[i]}`",
+                     f"*ground truth* **{'FAKE' if g['y'].iat[i] else 'REAL'}** · "
+                     f"*model* **{'FAKE' if base[i] >= th['tau_fused']['value'] else 'REAL'}** "
+                     f"(p_fused {base[i]:.3f}, τ {th['tau_fused']['value']:.3f})", "",
+                     "| view | vote | margin past τ | vacuity |", "|---|---|---:|---:|"]
+            for b in BRANCHES:
+                t = th[f"tau_{b}"]["value"]
+                pv = g[f"p_{b}"].iat[i]
+                vote = "fake" if pv >= t else "real"
+                dec = "decisive" if P[f"strong_{b}"].iat[i] else "marginal"
+                lines.append(f"| {LABEL[b]} | {vote} ({dec}) | {pv - t:+.3f} | "
+                             f"{g[f'u_{b}'].iat[i]:.3f} |")
+            rel = "all three concur" if P["agree"].iat[i] else "views conflict"
+            ins = " · evidence insufficient" if P["insufficient"].iat[i] else ""
+            lines += ["", f"**Relation:** {rel}{ins}",
+                      f"**Rule:** `{r}` → **{assess[i]}**"]
+            if driver[i]:
+                newp = fuse(g, suppress=driver[i])[i]
+                moved = abs(base[i] - th["tau_fused"]["value"]) - abs(newp - th["tau_fused"]["value"])
+                flip = (newp >= th["tau_fused"]["value"]) != (base[i] >= th["tau_fused"]["value"])
+                verdict = "decision FLIPS" if flip else (
+                    f"decision weakens by {moved:.3f}" if moved > 0.05 else "decision UNCHANGED")
+                lines.append(f"**Driver:** {LABEL[driver[i]]} — suppressing it gives "
+                             f"p_fused {newp:.3f}, {verdict}")
+            else:
+                lines.append("**Driver:** none named — the claim is agreement, not a single view")
+            out.append("\n".join(lines))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", type=Path, default=Path("tbiom/SYMBOLIC_OVERLAY.md"))
+    ap.add_argument("--traces", type=int, default=0,
+                    help="emit N example decision traces per rule per dataset")
     args = ap.parse_args()
 
+    global TRACES
+    TRACES = []
     dev = pd.concat([x for x in (load(d) for d in DEV) if x is not None], ignore_index=True)
     global TH
     TH = fit_thresholds(dev)
@@ -272,6 +323,8 @@ def main() -> int:
         specific = float(decided.mean())
         iv = intervene(g, driver, assess, TH)
         cons = check_consensus(g, rule, TH)
+        if args.traces:
+            TRACES.extend(emit_traces(ds, g, P, assess, rule, driver, TH, n=args.traces))
         agg[ds] = {"n": len(g), "agreement": agreement, "coverage": coverage,
                    "specific": specific, "consensus_n": cons["n"], "consensus_held": cons["held"],
                    "rules": pd.Series(rule).value_counts(normalize=True).to_dict(), **iv}
@@ -355,6 +408,14 @@ def main() -> int:
           "layer to participate in the Real/Fake decision and to be shown to hold or improve "
           "performance — a separate, later, measured claim."]
 
+    if TRACES:
+        tp = args.out.parent / "SYMBOLIC_TRACES.md"
+        tp.write_text("# Decision traces — frozen detector, symbolic overlay\n\n"
+                      "Sampled at random within each rule, across all six OOD test sets, so the "
+                      "set is not selected for the traces that read best. Thresholds are the "
+                      "dev-fitted ones in SYMBOLIC_OVERLAY.md.\n\n" +
+                      "\n\n---\n\n".join(TRACES) + "\n")
+        print(f"wrote {tp} ({len(TRACES)} traces)")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text("\n".join(L) + "\n")
     args.out.with_suffix(".json").write_text(json.dumps(
