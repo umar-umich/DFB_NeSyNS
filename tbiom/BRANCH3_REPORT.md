@@ -343,3 +343,71 @@ so the LoRA maths is identical rather than merely similar.
 
 The 3.4 GB FSFM checkpoint (`weights/FS-VFM-FT/`) is gitignored — fetched from
 `Wolowolo/fsfm-3c`, not source.
+
+---
+
+# Phase F — Freeze
+
+## F1 — the two runs that finished but were never consolidated
+
+Mean over the six OOD sets, `tau` frozen per run on its own FF++ val, evidential expectation
+throughout. P0-DS reference **0.8633** AUROC / **0.247** real-side FPR.
+
+| configuration | mean AUROC | vs P0-DS | mean FPR_real | vs P0-DS |
+|---|---:|---:|---:|---:|
+| arm B 3-view, seed 7 | **0.8793** | +0.0160 | **0.095** | −0.152 |
+| arm C 2-view (post-hoc replay) | 0.8784 | +0.0151 | 0.213 | −0.034 |
+| arm B 3-view, seed 1337 | 0.8784 | +0.0151 | 0.098 | −0.149 |
+| **arm E, trained 2-view** | **0.8772** | +0.0139 | 0.179 | −0.068 |
+| arm B 3-view, seed 42 | 0.8768 | +0.0135 | 0.212 | −0.035 |
+| arm C 3-view | 0.8701 | +0.0068 | 0.225 | −0.022 |
+| arm E read out as 3-view | 0.8685 | +0.0052 | 0.262 | +0.015 |
+
+**Arm E matched the replay, it did not beat it** — 0.8772 against 0.8784, a gap of 0.0012 that
+is far inside the seed spread. Training a model *aware* that the semantic view is excluded buys
+nothing over training it normally and dropping that view at inference.
+
+**Arm B's headline holds under re-seeding**, and improves: 0.8768 / 0.8784 / 0.8793 across seeds
+42 / 1337 / 7, mean **0.8782**, range **0.0025**. All three branches stay alive on every seed
+(vacuity ≈ 0.05 each); none collapses the way the fused-only control did.
+
+## F2 — Freeze decision
+
+**Frozen: arm B, three-view, DS fusion, per-branch EDL supervision.**
+
+| | |
+|---|---|
+| mean OOD AUROC | **0.8782** ± 0.0012 over 3 seeds (**+0.0149** vs P0-DS) |
+| mean real-side FPR | **0.135** against P0-DS's 0.247 |
+| checkpoint | `DISCERN_Ext/runs/discern_ext_train/run1_auxedl_seed42/checkpoints/discern_ext-best-epoch=05-val_auroc_video=0.9955.ckpt` |
+| exported opinions | `logs/tbiom/stage23/run1auxedl_{CDFv2,CDFv3,DFD,DFDC,DFDCP,DFEval24,VALmix,FFpp_val}.csv` |
+| config | `DISCERN_Ext/eval_adaptation/configs/run1_auxedl.yaml` |
+
+Why this one rather than arm C 2-view, whose 3-seed mean is higher at 0.8837:
+
+- **The two are not separable.** Gap 0.0055 against arm C's half-range of ±0.0056. Arm C also
+  varies **4.5× more** across seeds (range 0.0111 vs 0.0025), so its higher mean rests partly on
+  one lucky seed.
+- **Arm B has materially better real-side behaviour**, 0.135 against 0.168.
+- **Arm B keeps all three branches**, which the explanation overlay needs — a two-view model has
+  one fewer thing to reason about.
+- Per the brief's own rule, arm E only matching the replay means the trained-two-view route is
+  not preferred.
+
+Seed 42 is the canonical run. Seeds 7 and 1337 score slightly higher; picking the best seed for
+the headline would be selecting on the outcome, so the primary run stays primary and the spread
+is reported beside it.
+
+### What the seed evidence does and does not support
+
+Supported: **arm B is +0.0149 over P0-DS, consistent across three seeds, range 0.0025.**
+
+Not supported: any full arm ordering. Arms D and E have one seed each, and a comparison that
+averages one arm over three seeds and another over one tilts toward whichever was averaged.
+B > D > C is an observation, not a result.
+
+### Stated limitation — Deepfake-Eval-2024
+
+**No configuration beats P0-DS on Deepfake-Eval-2024.** Best across every arm is 0.6875 against
+P0-DS's 0.6922. On the modern in-the-wild set, nothing in this work helps. That is reported as a
+limitation, not averaged away — and it is the dataset a reviewer is most likely to ask about.
