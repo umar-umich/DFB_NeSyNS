@@ -207,10 +207,27 @@ def panel(ax, E, y, title, auc, show_legend=False):
     ax.set_facecolor(SURFACE)
     for spine in ax.spines.values():
         spine.set_color(GRID); spine.set_linewidth(0.8)
-    for lab, col, name in ((0, C_REAL, "Real"), (1, C_FAKE, "Manipulated")):
-        m = y == lab
-        ax.scatter(E[m, 0], E[m, 1], s=13, c=col, alpha=0.75, linewidths=0.5,
-                   edgecolors=SURFACE, label=name if show_legend else None)
+    # DRAW ORDER IS INTERLEAVED, not class-by-class.
+    #
+    # Drawing all Real then all Manipulated paints the second class entirely over the first. At
+    # a 1:5 ratio that buries the 333 real points under 1,666 fake ones, and the panel looks
+    # like one undifferentiated cloud even when the 2-D coordinates separate the classes at
+    # AUROC 0.95 (measured: a logistic probe on these exact coordinates scores 0.949-0.956 on
+    # CDFv2). The overlap was a rendering artifact, not a property of the representation.
+    #
+    # A single shuffled scatter puts both classes in one z-order, so density reads honestly.
+    # Point size and alpha also scale down as the panel fills, because 2,000 points at s=13
+    # overplot regardless of order.
+    order = np.random.default_rng(0).permutation(len(y))
+    n = len(y)
+    size = 13 if n <= 700 else (9 if n <= 1500 else 6)
+    alpha = 0.75 if n <= 700 else (0.62 if n <= 1500 else 0.5)
+    ax.scatter(E[order, 0], E[order, 1], s=size,
+               c=[C_REAL if v == 0 else C_FAKE for v in y[order]],
+               alpha=alpha, linewidths=0.0)
+    if show_legend:      # proxy handles, since the real scatter is a single mixed call
+        for lab, col, name in ((0, C_REAL, "Real"), (1, C_FAKE, "Manipulated")):
+            ax.scatter([], [], s=26, c=col, label=name, linewidths=0.0)
     ax.set_xticks([]); ax.set_yticks([])
     ax.set_title(title, fontsize=10.5, color=INK, pad=7)
     # AUROC goes BELOW the axes, not inside it, so the whole row of values sits in one
