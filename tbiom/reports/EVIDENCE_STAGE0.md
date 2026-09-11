@@ -85,3 +85,53 @@ evidence before export. Stage 1 needs a re-export that writes, per frame:
 That is a exporter change plus one GPU pass over the eight datasets — no retraining, and the
 frozen weights are untouched. Reliability remains Stage 2's job and cannot come from a
 re-export.
+
+---
+
+## Stage 0 addendum — two findings from the re-export smoke tests
+
+Measured on 2,944 samples across DFDCP and Deepfake-Eval-2024 before committing to a full pass.
+
+### 1. The availability axis is degenerate in this data
+
+`avail_semantic`, `avail_artifact` and `avail_fsvfm` are **1 for every sample**. Zero
+occurrences of natural unavailability. The validity flag is real code that fires on
+`torch.isfinite`, and the features are always finite, so nothing is ever unmeasurable.
+
+This does not make the availability field pointless — it makes it *honest*, and it has a
+consequence for Stage 4. The missing-measurement test cannot use naturally occurring
+missingness, because there is none. It must use **deliberate controlled masking**, which the
+brief already anticipates: *"keep this deliberate controlled masking separate from naturally
+occurring missingness."* The separation is easy here, because the natural side is empty.
+
+It is also worth stating plainly in any writeup: on these datasets the system never actually
+faces an unavailable cue, so any claim about graceful handling of missing measurements is a
+claim about constructed conditions, not observed ones.
+
+### 2. `norm_fsvfm` was a fake measurement and has been dropped
+
+The FS-VFM feature is LayerNorm'd, so its L2 norm is structurally `sqrt(1024) = 32` for every
+sample — measured coefficient of variation **6.6e-08**, seven distinct values at float
+precision. Exporting it would have produced a column of 32s that reads like a measurement.
+
+It is not replaced by a substitute scalar. The FS-VFM branch's measurement *is* the 1024-d
+feature; `--features` writes it. Inventing a scalar the branch does not compute would be
+fabricating the Stage 1 value field for that cue.
+
+### What the re-export does write
+
+| column | what it is |
+|---|---|
+| `avail_semantic`, `avail_artifact`, `avail_fsvfm` | validity, read **before** it is multiplied into the evidence |
+| `recon_err` | β-VAE reconstruction residual, mean over dims of `(f_s − f_c)²` |
+| `resid_norm` | norm of the orthogonal residual `f_r`, the artifact head's actual input |
+| `kl_manifold` | per-sample KL of the manifold posterior against the prior |
+| `norm_semantic` | norm of the CLIP feature |
+
+Existing `p_*` / `u_*` columns are untouched, so every current report keeps working.
+
+One caution on `kl_manifold`: it is heavily concentrated (514 distinct values over 2,560
+samples, median and minimum agreeing to four significant figures) with a thin tail. That is
+consistent with partial posterior collapse under `beta_kld = 2.0`, and it means the column
+should be treated as a near-binary outlier flag rather than a graded manifold distance until
+Stage 2 shows otherwise.
