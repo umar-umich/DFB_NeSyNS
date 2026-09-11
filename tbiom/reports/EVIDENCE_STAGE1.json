@@ -1,0 +1,86 @@
+[
+  {
+    "dataset": "FFpp_val",
+    "cue": "semantic",
+    "n": 22396,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "FFpp_val",
+    "cue": "artifact",
+    "n": 22396,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "FFpp_val",
+    "cue": "fsvfm",
+    "n": 22396,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "VALmix",
+    "cue": "semantic",
+    "n": 40142,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "VALmix",
+    "cue": "artifact",
+    "n": 40142,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "VALmix",
+    "cue": "fsvfm",
+    "n": 40142,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "CDFv2",
+    "cue": "semantic",
+    "n": 16572,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "CDFv2",
+    "cue": "artifact",
+    "n": 16572,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "CDFv2",
+    "cue": "fsvfm",
+    "n": 16572,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "CDFv3",
+    "cue": "semantic",
+    "n": 173295,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "CDFv3",
+    "cue": "artifact",
+    "n": 173295,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "CDFv3",
+    "cue": "fsvfm",
+    "n": 173295,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  }
+]
