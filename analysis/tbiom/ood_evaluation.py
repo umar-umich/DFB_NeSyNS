@@ -24,7 +24,7 @@ SEEDS = [42, 1337, 7]
 
 def overlay_rows():
     """Pull the S3 per-dataset table rather than recomputing it, so the two reports cannot drift."""
-    txt = Path("tbiom/SYMBOLIC_OVERLAY.md").read_text()
+    txt = Path("tbiom/reports/SYMBOLIC_OVERLAY.md").read_text()
     rows = {}
     for m in re.finditer(r"^\| (\w+) \| (\d+) \| ([\d.]+) \| ([\d.]+) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \|$",
                          txt, re.M):
@@ -120,10 +120,10 @@ def main() -> int:
           f"highest AUROC ({aur[auc_hi]:.4f}) at {ov[auc_hi]['cov']:.3f}. What can be said is "
           f"that the overlay is not merely narrating the samples the detector finds easy; what "
           f"cannot be said, on n=6, is that the two are independent.",
-          "", "Traces: `tbiom/SYMBOLIC_TRACES.md`. Overlay construction and validation: "
-          "`tbiom/SYMBOLIC_OVERLAY.md`. Freeze: `tbiom/BRANCH3_REPORT.md` Phase F."]
+          "", "Traces: `tbiom/reports/SYMBOLIC_TRACES.md`. Overlay construction and validation: "
+          "`tbiom/reports/SYMBOLIC_OVERLAY.md`. Freeze: `tbiom/reports/BRANCH3_REPORT.md` Phase F."]
 
-    out = Path("tbiom/OOD_EVALUATION.md")
+    out = Path("tbiom/reports/OOD_EVALUATION.md")
     out.write_text("\n".join(L) + "\n")
     print("\n".join(L))
     return 0

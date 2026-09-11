@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Every fusion operator, every dataset, one convention — the explorable comparison.
 
-    python analysis/tbiom/fusion_operators.py --out tbiom/FUSION_OPERATORS.md
+    python analysis/tbiom/fusion_operators.py --out tbiom/reports/FUSION_OPERATORS.md
 
 WHY THIS EXISTS. Nine operators were tested across Stage 7, Stage 7b and the fusion replay, but
 the results lived in three files written at different times, two of which used DIFFERENT
@@ -191,7 +191,7 @@ def score_all(pref, views):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/FUSION_OPERATORS.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/FUSION_OPERATORS.md"))
     args = ap.parse_args()
 
     L = ["# Fusion operators — every operator, every dataset", "",

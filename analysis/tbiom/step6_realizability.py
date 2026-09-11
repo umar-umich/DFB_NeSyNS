@@ -2,7 +2,7 @@
 """Step 6 — at what level of test-time-observable information does complementarity become
 realizable under shift?
 
-    python analysis/tbiom/step6_realizability.py --out tbiom/STEP6_REALIZABILITY.md
+    python analysis/tbiom/step6_realizability.py --out tbiom/reports/STEP6_REALIZABILITY.md
 
 Steps 1-5 established the shape of the problem: oracle complementarity is real and did not shrink
 when the anchor got stronger (rescue margins +0.222/+0.233 on VALmix), while realizable recovery
@@ -107,7 +107,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--anchor-col", default="p_fused")
     ap.add_argument("--expert", default="fsvfm_preserve")
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STEP6_REALIZABILITY.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STEP6_REALIZABILITY.md"))
     args = ap.parse_args()
 
     av = anchor_valmix(args.anchor_col)

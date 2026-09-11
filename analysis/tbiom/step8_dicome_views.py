@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step 8 — nested vs unified fusion over DiCoME's OWN two views.
 
-    python analysis/tbiom/step8_dicome_views.py --out tbiom/STEP8_DICOME_VIEWS.md
+    python analysis/tbiom/step8_dicome_views.py --out tbiom/reports/STEP8_DICOME_VIEWS.md
 
 The brief gates the DiCoME fork on external experts surviving complementarity against DiCoME.
 None did. But the step's OTHER half does not depend on that at all:
@@ -68,7 +68,7 @@ def domain_of(v: pd.Series) -> pd.Series:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STEP8_DICOME_VIEWS.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STEP8_DICOME_VIEWS.md"))
     args = ap.parse_args()
 
     vm = load(STEP2 / "p0ds_e01_VALmix.csv")

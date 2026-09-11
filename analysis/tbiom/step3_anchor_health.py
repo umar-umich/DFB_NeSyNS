@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step 3 — full health dashboard for the chosen anchor, across every domain.
 
-    python analysis/tbiom/step3_anchor_health.py --out tbiom/STEP3_ANCHOR_HEALTH.md
+    python analysis/tbiom/step3_anchor_health.py --out tbiom/reports/STEP3_ANCHOR_HEALTH.md
 
 Anchor: P0-DS epoch 1, the provisional retrainable chassis. All THREE readouts are scored as
 genuine anchor candidates — semantic, artifact and fused — not as a ceiling and a reference.
@@ -72,7 +72,7 @@ def load(where: str, stem: str, col: str) -> pd.DataFrame | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STEP3_ANCHOR_HEALTH.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STEP3_ANCHOR_HEALTH.md"))
     args = ap.parse_args()
 
     taus, cells = {}, {}

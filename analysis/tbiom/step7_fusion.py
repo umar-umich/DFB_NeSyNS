@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step 7 — the fusion comparison, run as a QUANTIFIED negative.
 
-    python analysis/tbiom/step7_fusion.py --out tbiom/STEP7_FUSION.md
+    python analysis/tbiom/step7_fusion.py --out tbiom/reports/STEP7_FUSION.md
 
 The brief says to build this only if experts survived Step 5 and a ladder rung realized
 complementarity. Neither happened. It is run anyway, deliberately, because "we ran the fusion
@@ -68,7 +68,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--anchor-col", default="p_fused")
     ap.add_argument("--expert", default="fsvfm_preserve")
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STEP7_FUSION.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STEP7_FUSION.md"))
     args = ap.parse_args()
 
     av = anchor_valmix(args.anchor_col)

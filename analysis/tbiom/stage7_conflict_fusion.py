@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage 7 — conflict-aware fusion, replayed over the saved branch opinions. No retraining.
 
-    python analysis/tbiom/stage7_conflict_fusion.py --arm run1auxedl --out tbiom/STAGE7_armB.md
+    python analysis/tbiom/stage7_conflict_fusion.py --arm run1auxedl --out tbiom/reports/STAGE7_armB.md
 
 WHY THIS RUNS. Stage 7's gate is "only if Stage 6 measured a strong view being suppressed by
 simple fusion". It was, on the dataset the brief named:

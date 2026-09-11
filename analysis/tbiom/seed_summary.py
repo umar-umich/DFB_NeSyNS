@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Seed aggregation — mean and spread per configuration, over the six OOD sets.
 
-    python analysis/tbiom/seed_summary.py --out tbiom/SEED_SUMMARY.md
+    python analysis/tbiom/seed_summary.py --out tbiom/reports/SEED_SUMMARY.md
 
 WHAT THIS SETTLES. Run 1's arm ordering rested on single seeds with margins of 0.004-0.011,
 against a measured seed-to-seed spread of 0.0025 -- so it was an observation, not a claim. Three
@@ -97,7 +97,7 @@ def fuse(g, views):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/SEED_SUMMARY.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/SEED_SUMMARY.md"))
     args = ap.parse_args()
 
     mp0 = float(np.mean([P0[d] for d in OOD]))

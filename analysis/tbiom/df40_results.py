@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """DF40 results in the reports' standard format, with FS and FR combined.
 
-    python analysis/tbiom/df40_results.py --out tbiom/DF40_RESULTS.md
+    python analysis/tbiom/df40_results.py --out tbiom/reports/DF40_RESULTS.md
 
 WHY FS AND FR ARE ONE DATASET. Our six existing OOD sets -- CDFv2, CDFv3, DFD, DFDC, DFDCP,
 DFEval24 -- contain face swaps and face reenactments and nothing else. None of them contains
@@ -82,7 +82,7 @@ def combine(parts: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/DF40_RESULTS.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/DF40_RESULTS.md"))
     args = ap.parse_args()
 
     ff = load("FFpp_val")

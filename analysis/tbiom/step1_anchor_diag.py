@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step 1 — is the Celeb-DF-v2 anchor gap a CLIP recipe gap or DiCoME's extra machinery?
 
-    python analysis/tbiom/step1_anchor_diag.py --out tbiom/STEP1_ANCHOR_DIAG.md
+    python analysis/tbiom/step1_anchor_diag.py --out tbiom/reports/STEP1_ANCHOR_DIAG.md
 
 Compares five readouts on the health dashboard, per dataset:
 
@@ -134,7 +134,7 @@ READOUTS = [
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STEP1_ANCHOR_DIAG.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STEP1_ANCHOR_DIAG.md"))
     args = ap.parse_args()
 
     # --- correctness check: does the exporter reproduce DiCoME's own eval path? --------------

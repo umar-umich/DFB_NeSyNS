@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step 2 — re-select the P0-DS checkpoint on the health dashboard, not on val AUROC.
 
-    python analysis/tbiom/step2_checkpoint_health.py --out tbiom/STEP2_CHECKPOINT_HEALTH.md
+    python analysis/tbiom/step2_checkpoint_health.py --out tbiom/reports/STEP2_CHECKPOINT_HEALTH.md
 
 P0-DS was selected at epoch 1 on the highest `val_auroc_video` (0.9960). That number is
 saturated — every candidate epoch is above 0.995, so the ranking among them is noise — and it
@@ -72,7 +72,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--col", default="p_fused",
                     help="readout to select on; p_fused is DiCoME's deployed head")
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STEP2_CHECKPOINT_HEALTH.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STEP2_CHECKPOINT_HEALTH.md"))
     args = ap.parse_args()
 
     rows = {}

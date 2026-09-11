@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase T — did the symbolic coherence term buy anything?
 
-    python analysis/tbiom/phaseT_summary.py --out tbiom/PHASE_T.md
+    python analysis/tbiom/phaseT_summary.py --out tbiom/reports/PHASE_T.md
 
 ONE VARIABLE. phaseTc01 and phaseTc05 are arm B seed 42 with `lambda_cons` set to 0.1 and 0.5.
 Everything else -- branches, fusion, aux EDL, data, seed, schedule -- is byte-identical to the
@@ -131,7 +131,7 @@ def coherence(g: pd.DataFrame) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/PHASE_T.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/PHASE_T.md"))
     args = ap.parse_args()
 
     res, missing = {}, []

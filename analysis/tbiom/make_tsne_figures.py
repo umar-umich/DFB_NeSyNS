@@ -307,7 +307,7 @@ def fig_configurations(out: Path):
     import json
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    f = Path("tbiom/SEED_SUMMARY.json")
+    f = Path("tbiom/reports/SEED_SUMMARY.json")
     if not f.is_file():
         print("  no SEED_SUMMARY.json"); return
     raw = json.load(open(f))

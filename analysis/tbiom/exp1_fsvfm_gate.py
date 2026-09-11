@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Experiment 1 — does an FS-VFM view clear the Branch-3 gate?
 
-    python analysis/tbiom/exp1_fsvfm_gate.py --out tbiom/EXP1_FSVFM_GATE.md
+    python analysis/tbiom/exp1_fsvfm_gate.py --out tbiom/reports/EXP1_FSVFM_GATE.md
 
 Two candidates, per the revised plan:
 
@@ -72,7 +72,7 @@ def load(pattern: Path, col: str) -> pd.DataFrame | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/EXP1_FSVFM_GATE.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/EXP1_FSVFM_GATE.md"))
     args = ap.parse_args()
 
     # --- tau per arm, frozen on FF++ val -------------------------------------------------------

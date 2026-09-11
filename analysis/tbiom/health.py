@@ -4,7 +4,7 @@
     python analysis/tbiom/health.py \
         --scores NAME PARQUET PROB_COL [NAME PARQUET PROB_COL ...] \
         --threshold-source logs/tbiom/score/clip_ffppval_seeded/per_sample_epoch_7.parquet p_sem \
-        --out tbiom/SOMETHING.md
+        --out tbiom/reports/SOMETHING.md
 
 WHY THIS EXISTS. The FF++ (+) DF40 run collapsed operationally while AUROC barely moved. On
 Celeb-DF-v2 it emitted 0.997 for real and fake alike — zero probability separation, every

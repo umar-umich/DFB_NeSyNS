@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step 4 — is single-anchor reliability R = g(V, M) a viable spine?
 
-    python analysis/tbiom/step4_reliability.py --out tbiom/STEP4_RELIABILITY.md
+    python analysis/tbiom/step4_reliability.py --out tbiom/reports/STEP4_RELIABILITY.md
 
 THE POINT OF THIS STEP IS THAT IT MIGHT FAIL. V1's ~0.81 error-detection result came from the
 MULTI-BRANCH setting, where the risk model saw vacuity V, inter-branch conflict C, support
@@ -94,7 +94,7 @@ def selective_risk(err: np.ndarray, risk: np.ndarray, budget: float = 0.10) -> t
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STEP4_RELIABILITY.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STEP4_RELIABILITY.md"))
     ap.add_argument("--folds", type=int, default=5)
     ap.add_argument("--level", choices=("frame", "video"), default="frame",
                     help="FRAME by default, because that is what V1's 0.8118 was computed at "

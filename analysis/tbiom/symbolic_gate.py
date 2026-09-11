@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Option 1 — the symbolic overlay as a selective-prediction gate.
 
-    python analysis/tbiom/symbolic_gate.py --out tbiom/SYMBOLIC_GATE.md
+    python analysis/tbiom/symbolic_gate.py --out tbiom/reports/SYMBOLIC_GATE.md
 
 THE QUESTION. Phase S showed the overlay explains faithfully. This asks whether it is also
 USEFUL: if the rules abstain on the samples they call Inconclusive (R4/R0), is what remains
@@ -65,7 +65,7 @@ def evaluate(y, p, keep, tau) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/SYMBOLIC_GATE.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/SYMBOLIC_GATE.md"))
     args = ap.parse_args()
 
     dev = pd.concat([x for x in (SO.load(d) for d in SO.DEV) if x is not None],

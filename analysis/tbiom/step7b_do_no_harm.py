@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Which experts can join WITHOUT hurting the fused system?
 
-    python analysis/tbiom/step7b_do_no_harm.py --out tbiom/STEP7B_DO_NO_HARM.md
+    python analysis/tbiom/step7b_do_no_harm.py --out tbiom/reports/STEP7B_DO_NO_HARM.md
 
 A different inclusion bar from Step 5's. Step 5 asked whether an expert's complementarity is
 RECOVERABLE by a label-free gate — a demanding test, and everything failed it. This asks the
@@ -48,7 +48,7 @@ NOISE = 0.01     # the spec's §22 band
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--anchor-col", default="p_fused")
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STEP7B_DO_NO_HARM.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STEP7B_DO_NO_HARM.md"))
     args = ap.parse_args()
 
     av = anchor_valmix(args.anchor_col)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase S — symbolic explanation overlay on the frozen detector.
 
-    python analysis/tbiom/symbolic_overlay.py --out tbiom/SYMBOLIC_OVERLAY.md
+    python analysis/tbiom/symbolic_overlay.py --out tbiom/reports/SYMBOLIC_OVERLAY.md
 
 WHAT THIS IS, AND WHAT IT IS NOT. The overlay reads the frozen model's already-exported
 per-branch opinions and narrates them. It never touches training, never enters the Real/Fake
@@ -50,7 +50,7 @@ BRANCHES = ["semantic", "artifact", "fsvfm"]
 from view_names import VIEW_NAME as LABEL  # one definition, shared with the figures
 DEV = ["FFpp_val", "VALmix"]       # threshold basis; never an OOD set
 
-# The rule set, SELECTED BY SEARCH ON DEV, not written by hand. See tbiom/RULE_SEARCH.md:
+# The rule set, SELECTED BY SEARCH ON DEV, not written by hand. See tbiom/reports/RULE_SEARCH.md:
 # 100 candidates over these two quantiles crossed with the two real-side rules the first
 # hand-written version was missing, scored on FF++ val + VALmix under hard constraints
 # agreement >= 0.99 and intervention >= 0.90, maximising coverage. This configuration won and
@@ -177,7 +177,7 @@ def apply_rules(g: pd.DataFrame, P: pd.DataFrame, cfg: dict | None = None):
     RULE ORDER IS PART OF THE RESULT. The real-side rules fire BEFORE R4, so a sample with two
     decisive real votes is called Real rather than swallowed by the conflict fallback. Moving
     R4 ahead of them would reproduce the old coverage. This ordering is the one measured in
-    tbiom/RULE_SEARCH.md and it must not be shuffled for tidiness.
+    tbiom/reports/RULE_SEARCH.md and it must not be shuffled for tidiness.
     """
     cfg = SELECTED if cfg is None else cfg
     n = len(g)
@@ -333,7 +333,7 @@ def emit_traces(ds: str, g, P, assess, rule, driver, th, n=4, seed=0):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/SYMBOLIC_OVERLAY.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/SYMBOLIC_OVERLAY.md"))
     ap.add_argument("--traces", type=int, default=0,
                     help="emit N example decision traces per rule per dataset")
     args = ap.parse_args()
@@ -411,11 +411,11 @@ def main() -> int:
           "| — | R0 | none of the above | Inconclusive (fallback) | no |", "",
           "**R6 is the rule the hand-written set was missing.** It is worth only about a "
           "ninth of the coverage gain, though — most of that came from relaxing the "
-          "decisiveness quantile, and `tbiom/RULE_SEARCH.md` decomposes the two. The overlay "
+          "decisiveness quantile, and `tbiom/reports/RULE_SEARCH.md` decomposes the two. The overlay "
           "could say \"all three views call this real\" but "
           "had no way to say \"two call it real and one of them decisively\" — even though the "
           "fake side had exactly that rule (R3) from the start. Asymmetry in a hand-written "
-          "rule set is easy to miss; the dev search in `tbiom/RULE_SEARCH.md` found it "
+          "rule set is easy to miss; the dev search in `tbiom/reports/RULE_SEARCH.md` found it "
           "immediately.", "",
           "A seventh candidate rule, a single decisive real vote driving the decision, was "
           "**rejected**: it lifted coverage further but dropped agreement to 0.984, buying the "

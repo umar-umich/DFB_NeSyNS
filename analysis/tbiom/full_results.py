@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The complete grid — every configuration on every test dataset.
 
-    python analysis/tbiom/full_results.py --out tbiom/FULL_RESULTS.md
+    python analysis/tbiom/full_results.py --out tbiom/reports/FULL_RESULTS.md
 
 WHAT THE NUMBERS ARE. Two metrics, both at VIDEO level:
 
@@ -134,7 +134,7 @@ def score(pref, ds, spec):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/FULL_RESULTS.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/FULL_RESULTS.md"))
     args = ap.parse_args()
 
     grid = {}

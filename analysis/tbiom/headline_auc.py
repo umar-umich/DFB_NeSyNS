@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The headline cross-dataset AUC table — the deliverable number.
 
-    python analysis/tbiom/headline_auc.py --out tbiom/HEADLINE_AUC.md
+    python analysis/tbiom/headline_auc.py --out tbiom/reports/HEADLINE_AUC.md
 
 Every anchor candidate x every readout, on every OOD test set scored so far, with the OOD mean
 computed only over columns ALL rows share. A mean over different column sets is not a
@@ -48,7 +48,7 @@ def score(arm: str, stem: str, col: str):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/HEADLINE_AUC.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/HEADLINE_AUC.md"))
     args = ap.parse_args()
 
     cells, nvid = {}, {}
@@ -123,7 +123,7 @@ def main() -> int:
               "- Single seed. The spec's §22 rule wants a confirming seed for |ΔAUROC| < 0.01, "
               "which covers most of the gaps between readouts in this table.",
               "- AUROC alone hid an operational collapse once in this project. The real-side "
-              "health for these same models is in `tbiom/STEP3_ANCHOR_HEALTH.md`; the artifact "
+              "health for these same models is in `tbiom/reports/STEP3_ANCHOR_HEALTH.md`; the artifact "
               "readout has markedly better zero-shot FPR_real (0.169) than fused (0.247) at "
               "similar AUROC."]
 

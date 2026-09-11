@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage 1 — MR-VAE health re-score across all seven datasets.
 
-    python analysis/tbiom/stage1_mrvae_seven.py --out tbiom/STAGE1_MRVAE_SEVEN.md
+    python analysis/tbiom/stage1_mrvae_seven.py --out tbiom/reports/STAGE1_MRVAE_SEVEN.md
 
 THE GAP THIS CLOSES. MR-VAE's operational advantage was established on only three of the seven
 datasets (CDFv2, DFDCP, VALmix). Its AUROC losses on CDFv3 (-0.066 as first reported) and
@@ -66,7 +66,7 @@ def load(path: Path, col: str) -> pd.DataFrame | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STAGE1_MRVAE_SEVEN.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STAGE1_MRVAE_SEVEN.md"))
     args = ap.parse_args()
 
     taus: dict[tuple[str, str], float] = {}

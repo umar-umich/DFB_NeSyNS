@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Selective prediction / referral — does the evidential machinery earn its keep?
 
-    python analysis/tbiom/referral.py --out tbiom/REFERRAL.md
+    python analysis/tbiom/referral.py --out tbiom/reports/REFERRAL.md
 
 THE QUESTION A REVIEWER WILL ASK. Arm D (three linear heads, mean-of-logits, plain
 cross-entropy) essentially ties the evidential framework on OOD AUROC. So why carry Dirichlet
@@ -165,7 +165,7 @@ def oracle_aurc(y, p, tau) -> float:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/REFERRAL.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/REFERRAL.md"))
     ap.add_argument("--arms", default="B", choices=["B", "BD"],
                     help="B = evidential only (paper scope); BD = restore the CE baseline")
     args = ap.parse_args()

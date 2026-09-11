@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stages 2-4 — the Branch-2 comparison and the decision rule.
 
-    python analysis/tbiom/stage23_compare.py --out tbiom/STAGE234_BRANCH2.md
+    python analysis/tbiom/stage23_compare.py --out tbiom/reports/STAGE234_BRANCH2.md
 
 Four arms on one dashboard, all seven datasets, all three readouts:
 
@@ -80,7 +80,7 @@ def vid(path: Path, col: str) -> pd.DataFrame | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STAGE234_BRANCH2.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STAGE234_BRANCH2.md"))
     args = ap.parse_args()
 
     taus, cells, missing = {}, {}, []

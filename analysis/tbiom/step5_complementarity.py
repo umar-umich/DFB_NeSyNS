@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step 5 — do the experts complement the CHOSEN anchor (P0-DS), not the old CLIP port?
 
-    python analysis/tbiom/step5_complementarity.py --out tbiom/STEP5_COMPLEMENTARITY.md
+    python analysis/tbiom/step5_complementarity.py --out tbiom/reports/STEP5_COMPLEMENTARITY.md
 
 Every complementarity number so far was measured against the weaker CLIP port. Step 1 showed
 DiCoME's readouts beat it by ~0.045 AUROC on Celeb-DF-v2, so the rescue question has to be asked
@@ -85,7 +85,7 @@ def expert_valmix(path: Path, col: str) -> pd.DataFrame:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STEP5_COMPLEMENTARITY.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STEP5_COMPLEMENTARITY.md"))
     args = ap.parse_args()
 
     results, decisions = {}, {}

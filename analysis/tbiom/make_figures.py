@@ -4,7 +4,7 @@
     python analysis/tbiom/make_figures.py --ablation
     python analysis/tbiom/make_figures.py --panels --dataset CDFv2 --arm C
 
-Every figure is drawn from SAVED data -- `tbiom/FULL_RESULTS.json` for the bars and the
+Every figure is drawn from SAVED data -- `tbiom/reports/FULL_RESULTS.json` for the bars and the
 `emb_*.npz` coordinates for the panels -- so a figure never depends on a fresh t-SNE and can be
 regenerated identically.
 

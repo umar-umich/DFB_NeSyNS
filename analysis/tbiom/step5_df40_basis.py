@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step 5, second basis — complementarity against P0-DS on DF40-Dev.
 
-    python analysis/tbiom/step5_df40_basis.py --out tbiom/STEP5_DF40.md
+    python analysis/tbiom/step5_df40_basis.py --out tbiom/reports/STEP5_DF40.md
 
 VALmix already returned the verdict at 100% join coverage. This is the confirmation on the
 generator zoo, where the earlier CLIP-port gate was also run, so the two anchors are compared on
@@ -80,7 +80,7 @@ def expert_df40(path: Path, col: str) -> pd.DataFrame:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--anchor-col", default="p_fused")
-    ap.add_argument("--out", type=Path, default=Path("tbiom/STEP5_DF40.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/STEP5_DF40.md"))
     args = ap.parse_args()
 
     av = anchor_df40(args.anchor_col)

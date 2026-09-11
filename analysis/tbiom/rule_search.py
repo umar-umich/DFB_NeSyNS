@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase R — search the symbolic rule set instead of hand-writing it.
 
-    python analysis/tbiom/rule_search.py --out tbiom/RULE_SEARCH.md
+    python analysis/tbiom/rule_search.py --out tbiom/reports/RULE_SEARCH.md
 
 WHY. Phase S's rule set was written by hand and it is visibly ASYMMETRIC: the fake side has
 three rules (consensus, majority, single-driver) and the real side has exactly one (all agree).
@@ -95,7 +95,7 @@ def score_split(g, th, cfg) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("tbiom/RULE_SEARCH.md"))
+    ap.add_argument("--out", type=Path, default=Path("tbiom/reports/RULE_SEARCH.md"))
     args = ap.parse_args()
 
     dev = pd.concat([x for x in (SO.load(d) for d in SO.DEV) if x is not None],

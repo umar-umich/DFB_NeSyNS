@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Replay saved branch opinions through three fusion operators — no retraining.
 
-    python analysis/tbiom/fusion_replay.py --arm run1auxedl --out tbiom/RUN1_FUSION.md
+    python analysis/tbiom/fusion_replay.py --arm run1auxedl --out tbiom/reports/RUN1_FUSION.md
 
 THE QUESTION. Run 1 asks two things in order. First, does per-branch supervision keep all three
 experts alive? Second, GIVEN live experts, which simple fusion gives the strongest AUC without
