@@ -47,8 +47,11 @@ HELD_OUT = [("jpeg40", "jpeg q40"), ("rs06", "resize 0.60")]
 SETS = ["CDFv2", "DFDCP"]
 
 
+PREFIX = ""
+
+
 def load(name: str):
-    f = S2 / f"p_{name}.csv"
+    f = S2 / f"p_{PREFIX}{name}.csv"
     if not f.is_file():
         return None
     d = pd.read_csv(f)
@@ -77,7 +80,12 @@ def fpr_at_tpr(y, p, target):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=Path("tbiom/reports/EVIDENCE_STAGE4B.md"))
+    ap.add_argument("--prefix", default="",
+                    help="export prefix, e.g. armA_ ; empty reads the frozen arm B files")
+    ap.add_argument("--detector", default="arm B, the frozen configuration")
     args = ap.parse_args()
+    global PREFIX
+    PREFIX = args.prefix
 
     dev = load("FFpp_val_base")
     if dev is None:
@@ -85,9 +93,9 @@ def main() -> int:
     _, tau = eer(dev["y"].to_numpy(), SO.fuse(dev))
 
     L = ["# Stage 4 — processing discrimination (the central test)", "",
-         "**Detector: arm B, the frozen configuration.** Run before the SBI training comparison "
-         "returns, to have a baseline reading of the property. If a retrained arm wins on dev "
-         "this must be repeated against that detector and this table superseded.", "",
+         f"**Detector: {args.detector}.** The detector is named because this property is a "
+         f"property OF a detector, and a table that does not say which one invites being "
+         f"quoted about the wrong model.", "",
          f"`tau` = {tau:.4f}, the EER on **baseline** FF++ val, applied unchanged everywhere "
          "below. Held-out severities (jpeg q40, resize 0.60) appear in no fitted Stage 2 curve.",
          "", "## Deployable: frozen threshold, never refitted", "",

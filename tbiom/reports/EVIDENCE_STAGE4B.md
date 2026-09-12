@@ -1,6 +1,6 @@
 # Stage 4 — processing discrimination (the central test)
 
-**Detector: arm B, the frozen configuration.** Run before the SBI training comparison returns, to have a baseline reading of the property. If a retrained arm wins on dev this must be repeated against that detector and this table superseded.
+**Detector: arm B, the frozen configuration.** The detector is named because this property is a property OF a detector, and a table that does not say which one invites being quoted about the wrong model.
 
 `tau` = 0.3971, the EER on **baseline** FF++ val, applied unchanged everywhere below. Held-out severities (jpeg q40, resize 0.60) appear in no fitted Stage 2 curve.
 
