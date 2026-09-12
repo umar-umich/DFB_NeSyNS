@@ -82,5 +82,89 @@
     "n": 173295,
     "avail_rate": 1.0,
     "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFD",
+    "cue": "semantic",
+    "n": 109298,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFD",
+    "cue": "artifact",
+    "n": 109298,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFD",
+    "cue": "fsvfm",
+    "n": 109298,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFDC",
+    "cue": "semantic",
+    "n": 132116,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFDC",
+    "cue": "artifact",
+    "n": 132116,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFDC",
+    "cue": "fsvfm",
+    "n": 132116,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFDCP",
+    "cue": "semantic",
+    "n": 17222,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFDCP",
+    "cue": "artifact",
+    "n": 17222,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFDCP",
+    "cue": "fsvfm",
+    "n": 17222,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFEval24",
+    "cue": "semantic",
+    "n": 23209,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFEval24",
+    "cue": "artifact",
+    "n": 23209,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
+  },
+  {
+    "dataset": "DFEval24",
+    "cue": "fsvfm",
+    "n": 23209,
+    "avail_rate": 1.0,
+    "reliability_known": 0.0
   }
 ]

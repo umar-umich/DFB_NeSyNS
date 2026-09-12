@@ -12,6 +12,10 @@ Written to `logs/tbiom/stage1/record/record_<dataset>.parquet`.
 | VALmix | 40,142 | 1.0000 | 0% |
 | CDFv2 | 16,572 | 1.0000 | 0% |
 | CDFv3 | 173,295 | 1.0000 | 0% |
+| DFD | 109,298 | 1.0000 | 0% |
+| DFDC | 132,116 | 1.0000 | 0% |
+| DFDCP | 17,222 | 1.0000 | 0% |
+| DFEval24 | 23,209 | 1.0000 | 0% |
 
 ## The three axes, honestly
 
@@ -22,10 +26,3 @@ Written to `logs/tbiom/stage1/record/record_<dataset>.parquet`.
 **Source: branch-level, with a shared-trunk marker.** `semantic` and `artifact` both carry `source_trunk = clip`; `fsvfm` is its own trunk. `source_region` is `full_face_crop` for all three because that is the truth — there are no regions in this architecture. The trunk field is the one that does work: Stage 4 measured that duplicating a branch raises fused certainty +0.0110 with no AUROC gain, and the CLIP-sharing pair is the standing instance of that in the live model.
 
 **Value is complete for two cues of three.** `semantic` carries `norm_semantic`; `artifact` carries `recon_err`, `resid_norm` and `kl_manifold`. `fsvfm` carries no scalar: its measurement is the 1024-d feature and its norm is structurally constant (LayerNorm, cv 6.6e-08), so no scalar was invented for it. Any Stage 3 mechanism reading `value` must handle a cue whose value field is legitimately empty.
-
-## Not yet exported
-
-- `DFD`
-- `DFDC`
-- `DFDCP`
-- `DFEval24`
