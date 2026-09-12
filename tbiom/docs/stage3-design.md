@@ -95,3 +95,44 @@ Stage 2 is useful in all three cases, including the ones that say simplify.
 Stage 2 issues **20** passes: 2 dev datasets × 7 severities (fit) + 2 OOD datasets × 3
 severities (held out). An earlier message said 16; that was an arithmetic error in the prose,
 not a gap in the grid.
+
+---
+
+## Sequencing decision (2026-09-13)
+
+**Stage 3 runs on the winner of the SBI training comparison, not on arm B.**
+
+Stage 3's prerequisites are met — the Stage 1 measurement record exists for all eight datasets
+and Stage 2's reliability curves are fitted — so it *could* run now against the frozen arm B.
+It will not, and the reason is in the evidence-diagnostic brief itself:
+
+> Select the improved training configuration using dev only. Freeze that detector, recompute its
+> measurements, and run M1/M2/M3 with identical deployment-available inputs. New training
+> invalidates old feature caches, reliability curves, and calibration parameters; characterize
+> the new detector rather than reusing Arm B's fitted relationships.
+
+Running Stage 3 on arm B now would produce M1/M2/M3 numbers describing a detector we may be
+about to replace. If an SBI arm wins on dev, arm B's reliability curves, its calibration and its
+`tau` all stop describing the deployed model, and every M2/M3 result fitted against them would
+have to be discarded and recomputed. The cost of waiting is a delay; the cost of not waiting is
+doing the stage twice and risking the first set of numbers being quoted.
+
+### What this does not defer
+
+Stage 4's third test — processing discrimination, the central empirical claim — is also
+unblocked, and it is a property of *a* detector rather than of the eventual winner. It can run
+on arm B now as a baseline reading, provided the writeup says which detector it describes. If
+the winner differs, it is cheap to repeat.
+
+### Order of operations
+
+1. arms A / B / C finish training and export (running)
+2. authenticity teacher trains, unblocking arm D
+3. arm D runs once its FPNet dependency is satisfied
+4. select on **dev only**, freeze the winner
+5. re-export the winner's Stage 1 measurement record; refit Stage 2 reliability curves against it
+6. Stage 3: M1 / M2 / M3 on identical deployment-available inputs
+7. Stage 4's processing test against the frozen winner
+
+Step 5 is not optional bookkeeping. It is the step that makes Stage 3's inputs describe the
+model Stage 3 is about.
