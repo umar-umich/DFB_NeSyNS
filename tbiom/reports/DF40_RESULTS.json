@@ -1,0 +1,47 @@
+{
+  "tau": 0.3971337890470362,
+  "check": {
+    "real_rows": 356,
+    "unique_reals": 178,
+    "max_p_fused_disagreement": 0.0,
+    "deterministic": true
+  },
+  "rows": {
+    "DF40-FSFR (21 methods)": {
+      "n_videos": 13109,
+      "n_real": 178,
+      "n_fake": 12931,
+      "auroc": 0.869147740948283,
+      "eer": 0.20219853170544785,
+      "fpr_real_at_tau": 0.08426966292134831,
+      "tpr_fake_at_tau": 0.6809991493310649,
+      "delta_rf": 0.5610418331338817,
+      "mean_p_on_real": 0.09272472376894436,
+      "mean_p_on_fake": 0.653766556902826
+    },
+    "DF40-EFS": {
+      "n_videos": 7726,
+      "n_real": 178,
+      "n_fake": 7548,
+      "auroc": 0.9795429103922164,
+      "eer": 0.07840904354453594,
+      "fpr_real_at_tau": 0.08426966292134831,
+      "tpr_fake_at_tau": 0.9542925278219396,
+      "delta_rf": 0.760543746453703,
+      "mean_p_on_real": 0.09272472376894436,
+      "mean_p_on_fake": 0.8532684702226474
+    },
+    "DF40-FE": {
+      "n_videos": 18828,
+      "n_real": 178,
+      "n_fake": 18650,
+      "auroc": 0.971016959363798,
+      "eer": 0.0709672560773564,
+      "fpr_real_at_tau": 0.08426966292134831,
+      "tpr_fake_at_tau": 0.9354959785522788,
+      "delta_rf": 0.8313211745547081,
+      "mean_p_on_real": 0.09272472376894436,
+      "mean_p_on_fake": 0.9240458983236525
+    }
+  }
+}
