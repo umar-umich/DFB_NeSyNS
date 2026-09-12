@@ -10,12 +10,24 @@ the shift is common-mode across both. So two quantities are reported per cue and
 they answer different questions:
 
   discrimination   the cue's AUROC at that severity, on DEV where both classes received the
-                   IDENTICAL processing. Falling AUROC means the cue is losing its ability to
-                   tell real from fake -- this is what reliability should track.
-  value drift      standardised shift of the raw measurement against its own baseline,
-                   pooled over both classes. Large drift with intact AUROC is a nuisance the
-                   fusion can absorb; large drift WITH collapsing AUROC is the failure mode the
-                   whole diagnostic is about.
+                   IDENTICAL processing. A GROUP-LEVEL ranking measure, and not a statement
+                   about any individual sample's reliability.
+  operating point  FPR and TPR at a threshold FROZEN ON BASELINE DEV and applied unchanged at
+                   every severity. This is the one that catches the failure AUROC cannot see:
+                   adding a constant to every score preserves ranking perfectly while pushing
+                   genuine videos over the decision threshold.
+  value drift      standardised shift of the raw measurement against its own baseline.
+
+READING THE THREE TOGETHER. An earlier version of this file claimed that large drift with a
+stable AUROC is "a nuisance the fusion can absorb". That was wrong, and it is the specific
+error this design now guards against -- preserved ranking says nothing about what happens at a
+fixed threshold.
+
+    large drift, stable AUROC, stable FPR/TPR   drift is tolerable under this evaluation
+    large drift, stable AUROC, FPR rises        ranking survives; calibration or the threshold
+                                                fails, and the fix is calibration
+    AUROC declines                              discrimination is genuinely lost; no threshold
+                                                adjustment recovers a ranking that is gone
 
 MATCHED PROCESSING IS THE CONTROL. Both classes get the same severity distribution, so nothing
 here can learn "compressed means fake". If processing were applied only to reals, every curve
@@ -57,6 +69,25 @@ FIT_TAGS = [("base", "none"), ("jpeg70", "jpeg q70"), ("jpeg50", "jpeg q50"),
 HELD_TAGS = [("base", "none"), ("jpeg40", "jpeg q40"), ("rs06", "resize 0.60")]
 
 
+def baseline_thresholds(base: pd.DataFrame, cues) -> dict:
+    """Per-cue decision threshold, frozen on BASELINE DEV and never refitted.
+
+    Direction is fixed a priori: higher p means more fake, for every cue. The threshold is that
+    cue's EER point on unprocessed dev. Freezing here is what makes the severity columns
+    comparable -- a threshold refitted per severity would hide exactly the drift we are looking
+    for by re-centring on it every time.
+    """
+    from health import eer
+    th = {}
+    y = base["y"].to_numpy()
+    for c in cues:
+        col = "p_fused" if c == "fused" else f"p_{c}"
+        if col in base:
+            _, t = eer(y, base[col].to_numpy())
+            th[c] = float(t)
+    return th
+
+
 def load(ds: str, tag: str):
     f = S2 / f"p_{ds}_{tag}.csv"
     if not f.is_file():
@@ -83,6 +114,7 @@ def main() -> int:
                 if g is None or base is None:
                     missing.append(f"{ds}/{tag}"); continue
                 y = g["y"].to_numpy()
+                TH = baseline_thresholds(base, BR + ["fused"])
                 for b in BR:
                     if f"p_{b}" not in g:
                         continue
@@ -93,12 +125,21 @@ def main() -> int:
                         drift = float((g[vc].mean() - base[vc].mean()) / s)
                     else:
                         drift = float("nan")
+                    pv = g[f"p_{b}"].to_numpy()
+                    t = TH.get(b, 0.5)
+                    fpr = float((pv[y == 0] >= t).mean()) if (y == 0).any() else float("nan")
+                    tpr = float((pv[y == 1] >= t).mean()) if (y == 1).any() else float("nan")
                     rows.append({"role": role, "dataset": ds, "severity": nice, "tag": tag,
                                  "cue": b, "auroc": a, "drift": drift,
+                                 "fpr": fpr, "tpr": tpr,
                                  "vacuity": float(g[f"u_{b}"].mean())})
+                pf = g["p_fused"].to_numpy(); tf = TH.get("fused", 0.5)
                 rows.append({"role": role, "dataset": ds, "severity": nice, "tag": tag,
-                             "cue": "fused", "auroc": auroc(y, g["p_fused"].to_numpy()),
-                             "drift": float("nan"), "vacuity": float(g["u_fused"].mean())})
+                             "cue": "fused", "auroc": auroc(y, pf),
+                             "drift": float("nan"),
+                             "fpr": float((pf[y == 0] >= tf).mean()) if (y == 0).any() else float("nan"),
+                             "tpr": float((pf[y == 1] >= tf).mean()) if (y == 1).any() else float("nan"),
+                             "vacuity": float(g["u_fused"].mean())})
 
     if not rows:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
@@ -130,6 +171,19 @@ def main() -> int:
                     continue
                 lab = VIEW_NAME.get(cue, cue.title())
                 cells = [f"{c.loc[t,'auroc']:.4f}" if t in c.index else "—" for t in sev]
+                L.append(f"| {'**' + lab + '**' if cue == 'fused' else lab} | "
+                         + " | ".join(cells) + " |")
+            L.append("")
+            L += ["FPR / TPR at a threshold **frozen on baseline dev**, never refitted", "",
+                  "| cue | " + " | ".join(names[t] for t in sev) + " |",
+                  "|---" * (len(sev) + 1) + "|"]
+            for cue in BR + ["fused"]:
+                c = D[D.cue == cue].set_index("tag")
+                if c.empty:
+                    continue
+                lab = VIEW_NAME.get(cue, cue.title())
+                cells = [f"{c.loc[t,'fpr']:.3f} / {c.loc[t,'tpr']:.3f}" if t in c.index else "—"
+                         for t in sev]
                 L.append(f"| {'**' + lab + '**' if cue == 'fused' else lab} | "
                          + " | ".join(cells) + " |")
             L.append("")
