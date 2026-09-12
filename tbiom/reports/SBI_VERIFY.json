@@ -1,0 +1,11 @@
+{
+  "checks": {
+    "pixels_identical": true,
+    "landmarks_ok": true,
+    "labels_ok": true,
+    "pairs_differ": true,
+    "norm_matches": true,
+    "split_safe": true
+  },
+  "sbi_failure_rate": 0.0
+}
