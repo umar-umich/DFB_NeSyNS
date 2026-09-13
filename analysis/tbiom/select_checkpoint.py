@@ -76,6 +76,9 @@ def checkpoint_for(arm: str, tag: str) -> Path | None:
 
 
 def stored_epoch(path: Path) -> int:
+    # Lightning checkpoints pickle the project Config; unpickling needs DISCERN_Ext importable.
+    if str(EXT) not in sys.path:
+        sys.path.insert(0, str(EXT))
     import torch
     ck = torch.load(path, map_location="cpu", mmap=True, weights_only=False)
     return int(ck["epoch"])
