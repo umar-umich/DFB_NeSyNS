@@ -52,9 +52,7 @@ def vid(path: Path, col: str) -> pd.DataFrame | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    # Any export prefix. Originally limited to the Stage 2/3/5 arms; extended so the same
-    # declared dev-only rule selects R0 (run1auxedl) and the SBI arms (sbiarmA/B/C) too.
-    ap.add_argument("--arm", required=True)
+    ap.add_argument("--arm", required=True, choices=["stage2", "stage3", "stage5"])
     ap.add_argument("--col", default="p_fused", help="readout to select on")
     args = ap.parse_args()
 
@@ -96,12 +94,7 @@ def main() -> int:
               f"{r['macro_fpr_real']:14.3f} {r['valmix_eer']:11.4f}")
 
     if rows:
-        # Ties break to the EARLIEST epoch, as declared in tbiom/docs/decision-2026-09-13.md.
-        def _epoch(tag):
-            import re
-            m = re.search(r"_e(\d+)$", tag)
-            return int(m.group(1)) if m else 10**6   # "last" sorts after every epoch
-        best = max(rows.items(), key=lambda kv: (kv[1]["macro_auroc"], -_epoch(kv[0])))
+        best = max(rows.items(), key=lambda kv: kv[1]["macro_auroc"])
         g = best[1]["ffpp_val_auroc"]
         print(f"\nSELECTED: {best[0]}  macro AUROC {best[1]['macro_auroc']:.4f}, "
               f"macro FPR_real {best[1]['macro_fpr_real']:.3f}")
