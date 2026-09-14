@@ -1,5 +1,10 @@
 # Stage 4 — processing discrimination (the central test)
 
+> **Superseded (2026-09-14).** These numbers used an undeclared newest-checkpoint rule and averaged
+> processing effects across conditions. Use `tbiom/reports/CORRECTED_V2.md` and the corrections in
+> `tbiom/docs/decision-2026-09-13.md`.
+
+
 **Detector: SBI arm A.** The detector is named because this property is a property OF a detector, and a table that does not say which one invites being quoted about the wrong model.
 
 `tau` = 0.6133, the EER on **baseline** FF++ val, applied unchanged everywhere below. Held-out severities (jpeg q40, resize 0.60) appear in no fitted Stage 2 curve.

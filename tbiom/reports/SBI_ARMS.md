@@ -1,5 +1,10 @@
 # SBI training comparison — arms A / B / C
 
+> **Superseded (2026-09-14).** These numbers used an undeclared newest-checkpoint rule and averaged
+> processing effects across conditions. Use `tbiom/reports/CORRECTED_V2.md` and the corrections in
+> `tbiom/docs/decision-2026-09-13.md`.
+
+
 Matched arms, one variable each, all reading the same eligible source pool. `tau` frozen per run at its own FF++ val EER; probabilities are the DS replay, matching every other table in the writeup.
 
 | arm | mean OOD AUROC | mean FPR_real |
