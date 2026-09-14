@@ -4,7 +4,7 @@
     python analysis/tbiom/select_checkpoint_v3.py --arm sbiarmA
 
 Cells = (source, forgery type): AUROC of that source's fakes of that type vs that source's genuine videos
-(DF40train vs FF++ val genuine). Type score = mean of cells; selection = mean of five type scores.
+(DF40train vs FF++ val genuine). Type score = mean of cells; selection = mean of three type scores (swap, reenactment, in-the-wild).
 """
 import argparse, json, re, sys
 from pathlib import Path
@@ -15,21 +15,25 @@ from health import auroc, eer  # noqa: E402
 import symbolic_overlay as SO  # noqa: E402
 from video_id import video_id  # noqa: E402
 
-RULE_VERSION = "v3-2026-09-14"
+RULE_VERSION = "v3.1-2026-09-14"
 OUT, TIE_TOL, BR = V2.OUT, 1e-6, SO.BRANCHES
 TYPES = {
     "swap": {"CDFv2val": "*", "DFDCPval": "*",
              "CDFv3valG": ["BlendFace", "Celeb-DF-v2", "GHOST", "HifiFace", "InSwapper", "MobileFaceSwap", "SimSwap", "UniFace"],
              "DS11val": ["facefusion", "facefusion_gan", "facefusion_live"], "DS20val": ["facefusion"]},
-    "reenactment": {"CDFv3valG": ["DaGAN", "FSRT", "HyperReenact", "LIA", "LivePortrait", "MCNET", "TPSMM"],
+    # video-driven reenactment plus audio-driven full-face talking heads (head pose and expression move)
+    "reenactment": {"CDFv3valG": ["DaGAN", "FSRT", "HyperReenact", "LIA", "LivePortrait", "MCNET", "TPSMM",
+                                  "AniTalker", "EchoMimic", "EDTalk", "FLOAT", "R3DPortrait", "SadTalker"],
                     "DS20val": ["liveportrait", "hellomeme"],
-                    "DF40train": ["danet", "facevid2vid", "fomm", "hyperreenact", "lia", "mcnet", "MRAA", "one_shot_free", "pirender", "tpsm"]},
-    "talking_face": {"CDFv3valG": ["AniTalker", "EchoMimic", "EDTalk", "FLOAT", "IP_LAP", "R3DPortrait", "SadTalker"],
-                     "DS11val": ["retalking", "wav2lip"], "DS20val": ["diff2lip", "latentsync", "memo"],
-                     "DF40train": ["sadtalker", "wav2lip"]},
-    "entire_face_synthesis": {"DF40train": ["ddim", "DiT", "pixart", "RDDM", "sd2.1", "SiT", "StyleGAN2", "StyleGAN3", "StyleGANXL", "VQGAN"]},
+                    "DF40train": ["danet", "facevid2vid", "fomm", "hyperreenact", "lia", "mcnet", "MRAA", "one_shot_free",
+                                  "pirender", "tpsm", "sadtalker"]},
     "in_the_wild": {"DFEval24val": "*", "FFIWval": "*"},
 }
+# Present in VALmix-v2 but outside the study's scope (face swap and reenactment); never scored for selection.
+EXCLUDED = {"lip_sync_only": {"CDFv3valG": ["IP_LAP"], "DS11val": ["retalking", "wav2lip"],
+                              "DS20val": ["diff2lip", "latentsync", "memo"], "DF40train": ["wav2lip"]},
+            "entire_face_synthesis": {"DF40train": ["ddim", "DiT", "pixart", "RDDM", "sd2.1", "SiT", "StyleGAN2",
+                                                    "StyleGAN3", "StyleGANXL", "VQGAN"]}}
 
 
 def table(path):
@@ -63,9 +67,15 @@ def score(tag):
             "ffpp_val_auroc_diagnostic": float(auroc(ff.y.to_numpy(), ff.s.to_numpy()))}
 
 
+GUARD = Path("logs/tbiom/newood/RULE_V3_CONFIRMED")
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--arm", required=True, choices=sorted(V2.RUN_DIR))
     args = ap.parse_args()
+    if not GUARD.is_file():
+        print(f"selection paused: forgery-type scope under revision (create {GUARD} once the rule is re-declared)")
+        return 2
     tags = sorted({p.name[: -len("_VALmixV2.csv")] for p in OUT.glob(f"{args.arm}_*_VALmixV2.csv")
                    if re.fullmatch(rf"{args.arm}_(e\d+|last)", p.name[: -len("_VALmixV2.csv")])})
     cands = []

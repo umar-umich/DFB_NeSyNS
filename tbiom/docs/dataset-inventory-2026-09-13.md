@@ -69,3 +69,7 @@ collections, GenVideo copies in several project folders.
    natural motion. LipSyncTIMIT c23/c40 adds controlled compression.
 3. **Dependencies to report**: DFDM and FaceFusion reuse Celeb-DF identities, so they share
    structure with CDFv2/CDFv3; FakeAVCeleb real videos number only 500.
+
+> **Superseded recommendation (2026-09-14):** no untouched final-test set is reserved; audio-visual datasets
+> (FakeAVCeleb, LAV-DF, PolyGlotFake, LipSyncTIMIT) are not used — the study is video-only and focused on face swap
+> and reenactment. Shared distribution between validation and test is not treated as leakage.

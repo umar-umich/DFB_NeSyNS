@@ -62,3 +62,26 @@ Face editing has no source outside our test sets and is **not represented**.
 - DF40train fakes are generated from our 720 FF++ **training** identities; FF++ val genuine videos use different
   identities from the same source.
 - Test sets not touched by VALmix-v2: DFD, DFDC, DFDCP test, DFEval24 test, KoDF, IDForge, DFDM, PolyGlotFake.
+
+## Amendment v3.1 (2026-09-14, before any v3 selection was run) — supersedes §3, §4 type list and §6 exposure notes
+
+**Scope.** The study targets **face swap and reenactment** in video. Audio-visual datasets (e.g. FakeAVCeleb) are not
+used. Lip-sync-only methods and entire-face synthesis are outside scope.
+
+| type | cells |
+|---|---|
+| **swap** | CDFv2val; DFDCPval; CDFv3valG: BlendFace, Celeb-DF-v2, GHOST, HifiFace, InSwapper, MobileFaceSwap, SimSwap, UniFace; DS11val: facefusion, facefusion_gan, facefusion_live; DS20val: facefusion |
+| **reenactment** (audio-driven full-face talking heads included) | CDFv3valG: DaGAN, FSRT, HyperReenact, LIA, LivePortrait, MCNET, TPSMM, AniTalker, EchoMimic, EDTalk, FLOAT, Real3DPortrait, SadTalker; DS20val: liveportrait, hellomeme; DF40train: danet, facevid2vid, fomm, hyperreenact, lia, mcnet, MRAA, one_shot_free, pirender, tpsm, sadtalker |
+| **in-the-wild** | DFEval24val; FFIWval |
+
+**Not scored for selection** (kept in the h5, excluded from every score): lip-sync-only — CDFv3valG IP_LAP; DS11val
+retalking, wav2lip; DS20val diff2lip, latentsync, memo; DF40train wav2lip — and entire-face synthesis (10 DF40train
+methods). Selection score = mean of the **three** type scores. Rule version `v3.1-2026-09-14`.
+
+**Leakage stance.** Leakage means the same test videos appearing in validation. Validation sharing generators,
+identities or distribution with a test set is standard practice and is **not** treated as leakage; no dataset is
+reserved as an untouched final test. The 101 CDFv3valG videos removed because they re-render CDFv2 test source pairs
+are not duplicates of test videos; the removal is kept only as conservative de-duplication, not as a leakage fix.
+
+**Headline test results follow the same scope**: CDFv3 excludes the lip-sync-only IP_LAP subset; KoDF excludes the
+audio-driven lip-sync subset; KoDF adversarial subsets are reported separately.

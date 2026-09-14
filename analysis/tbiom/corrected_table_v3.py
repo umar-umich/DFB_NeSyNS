@@ -17,11 +17,13 @@ from sklearn.metrics import average_precision_score  # noqa: E402
 S23, S2 = Path("logs/tbiom/stage23"), Path("logs/tbiom/stage2")
 SETS = ["CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "DFEval24", "FFIW", "KoDF", "KoDF-adv", "IDForge", "DFDM"]
 FILE = {"KoDF-adv": "KoDF"}
-EXPOSURE = {"CDFv2": "selection-exposed (v3)", "CDFv3": "selection-exposed (v3)", "FFIW": "selection-exposed (v3)",
-            "DFD": "development-exposed", "DFDC": "development-exposed", "DFDCP": "development-exposed",
-            "DFEval24": "development-exposed", "KoDF": "new", "KoDF-adv": "new", "IDForge": "new",
-            "DFDM": "new fakes; genuine = CDFv2 genuine pool"}
-BREAKDOWN = {"CDFv3": {"face swap": "FaceSwap", "reenactment": "FaceReenact", "talking face": "TalkingFace"},
+NOTES = {"CDFv3": "face swap + reenactment (talking heads included); lip-sync-only IP_LAP excluded",
+         "KoDF": "FSGAN, DFL, FaceSwap, first-order motion; audio-driven lip-sync excluded; adversarial subsets separate",
+         "KoDF-adv": "adversarially perturbed genuine and fake subsets",
+         "IDForge": "InfoSwap, Roop, SimSwap; genuine videos sampled (seed 0) to match fakes",
+         "DFDM": "genuine videos are the Celeb-DF v2 test genuine pool, shared with CDFv2/CDFv3",
+         "DFEval24": "in-the-wild mix; not filterable by method"}
+BREAKDOWN = {"CDFv3": {"face swap": "FaceSwap", "reenactment (incl. talking heads)": "FaceReenact|TalkingFace"},
              "KoDF": None, "IDForge": None, "DFDM": None}
 PROC_SETS, CONDS = ["CDFv2", "DFDCP"], [("base", "clean"), ("jpeg40", "jpeg q40"), ("rs06", "resize 0.60")]
 
@@ -31,7 +33,8 @@ def with_subset(tag, ds):
     g = videos(f)
     if g is None: return None
     g["subset"] = g["v"].str.split("/").str[-2]
-    if ds == "KoDF": g = g[~g.subset.str.startswith("adv-")]
+    if ds == "CDFv3": g = g[~g.subset.str.contains("IP_LAP")]
+    if ds == "KoDF": g = g[~g.subset.str.startswith("adv-") & (g.subset != "fake-audio-driven")]
     if ds == "KoDF-adv": g = g[g.subset.str.startswith("adv-")]
     return g.reset_index(drop=True)
 
@@ -83,16 +86,16 @@ def main():
     L = ["# Complete OOD comparison — protocol v3", "",
          "One seed per run. Video-level DS replay. τ = EER on FF++ val for each run's own checkpoint. Deployable = at τ; "
          "TPR@FPR = retrospective. Arms B and C predate the SBI provenance / worker-RNG fixes.", "",
-         "## 1. Checkpoints", "", "| run | epoch | sha256[:16] | v3 score | swap | reenact | talking | synthesis | in-the-wild | τ |",
-         "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|"]
+         "## 1. Checkpoints", "", "| run | epoch | sha256[:16] | v3.1 score | swap | reenactment | in-the-wild | τ |",
+         "|---|---:|---|---:|---:|---:|---:|---:|"]
     for n, q in res.items():
         r = q["run"]; t = r.get("types") or {}
         f = lambda k: f"{t[k]:.4f}" if k in t else "—"
-        L.append(f"| {n} | {r['epoch']} | `{q['sha']}` | {r['score']:.4f} | {f('swap')} | {f('reenactment')} | {f('talking_face')} | "
-                 f"{f('entire_face_synthesis')} | {f('in_the_wild')} | {q['tau']:.4f} |" if r["score"] is not None else
-                 f"| {n} | {r['epoch']} | `{q['sha']}` | — | — | — | — | — | — | {q['tau']:.4f} |")
+        L.append(f"| {n} | {r['epoch']} | `{q['sha']}` | {r['score']:.4f} | {f('swap')} | {f('reenactment')} | "
+                 f"{f('in_the_wild')} | {q['tau']:.4f} |" if r["score"] is not None else
+                 f"| {n} | {r['epoch']} | `{q['sha']}` | — | — | — | — | {q['tau']:.4f} |")
     for ds in SETS:
-        L += ["", f"## {ds} — {EXPOSURE[ds]}", "",
+        L += ["", f"## {ds}" + (f" — {NOTES[ds]}" if ds in NOTES else ""), "",
               "| run | real / fake | AUROC | AP | EER | FPR_real @τ | TPR @τ | bal. acc @τ | TPR@FPR .05 *(retro)* | TPR@FPR .10 *(retro)* |",
               "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
         for n, q in res.items():
@@ -119,9 +122,9 @@ def main():
                 if p is None: L.append(f"| {n} | {ds} | {nice} | *pending* | | | | | | |"); continue
                 d = (lambda k: "—" if c == "base" or b is None else f"{p[k]-b[k]:+.3f}")
                 L.append(f"| {n} | {ds} | {nice} | {p['fpr']:.3f} | {p['tpr']:.3f} | {d('fpr')} | {d('tpr')} | {p['auroc']:.4f} | {p['t05']:.3f} | {p['t10']:.3f} |")
-    L += ["", "## Cross-run AUROC by dataset", "", "| dataset | exposure | " + " | ".join(res) + " |", "|---|---|" + "---:|" * len(res)]
+    L += ["", "## Cross-run AUROC by dataset", "", "| dataset | " + " | ".join(res) + " |", "|---|" + "---:|" * len(res)]
     for ds in SETS:
-        L.append(f"| {ds} | {EXPOSURE[ds]} | " + " | ".join(f"{q['sets'][ds]['auroc']:.4f}" if ds in q["sets"] else "—" for q in res.values()) + " |")
+        L.append(f"| {ds} | " + " | ".join(f"{q['sets'][ds]['auroc']:.4f}" if ds in q["sets"] else "—" for q in res.values()) + " |")
     args.out.write_text("\n".join(L) + "\n")
     Path(str(args.out).replace(".md", ".json")).write_text(json.dumps(
         {n: {"tau": q["tau"], "sets": q["sets"], "subsets": q["subsets"], "proc": {f"{k[0]}|{k[1]}": v for k, v in q["proc"].items()}}
