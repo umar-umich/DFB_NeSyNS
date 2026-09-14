@@ -50,7 +50,13 @@ Face editing has no source outside our test sets and is **not represented**.
 
 ## 6. Leakage handling and exposure
 
-- CDFv3valG videos whose name appears in our CDFv2 or CDFv3 test splits are **removed** (20 found in the audit).
+- CDFv3valG videos whose name appears in our CDFv2 or CDFv3 test splits are **removed**: **101 videos**. They are
+  20 Celeb-DF source/target pair names (e.g. `id11_id7_0008`) that CDFv3 re-renders with 14 different generators;
+  every match is against CDFv2 `Celeb-synthesis`. The audit's "20" counted unique names, the builder counts videos.
+  These are not pixel duplicates of CDFv2 test videos but share their source footage and identities, so removal is
+  kept as conservative, identity-pair-level de-duplication.
+- GenD's validation crops are not all 256×256 (e.g. 166, 216, 390 px); the detector's CLIP preprocessing resizes
+  every input to 224, so batches are uniform, but crop scale differs from our test sets.
 - VALmix-v2 shares distribution with **CDFv2, CDFv3 (incl. CDFv3 generators), FFIW, DF40 generators and DeepSpeak**.
   Those are selection-exposed; DeepSpeak can no longer be an untouched final-test set.
 - DF40train fakes are generated from our 720 FF++ **training** identities; FF++ val genuine videos use different
