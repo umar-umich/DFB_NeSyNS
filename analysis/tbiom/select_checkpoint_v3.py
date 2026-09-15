@@ -70,8 +70,15 @@ def score(tag):
 GUARD = Path("logs/tbiom/newood/RULE_V3_CONFIRMED")
 
 
+def args_arm_is_two_view():
+    return "--arm" in sys.argv and sys.argv[sys.argv.index("--arm") + 1] == "dicomeours"
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--arm", required=True, choices=sorted(V2.RUN_DIR))
+    # DiCoME has two views (no bona-fide face prior); replay its own two-view DS fusion.
+    # BR and SO.BRANCHES are the same list object, so the in-place edit reaches fuse() too.
+    if args_arm_is_two_view(): SO.BRANCHES[:] = ["semantic", "artifact"]
     args = ap.parse_args()
     if not GUARD.is_file():
         print(f"selection paused: forgery-type scope under revision (create {GUARD} once the rule is re-declared)")

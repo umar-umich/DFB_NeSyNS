@@ -38,7 +38,7 @@ EXT = Path("/data/umar/Repos/DISCERN_Ext")
 VALMIX_SPLITS = EXT / "eval_adaptation/data/splits/VALmix"
 DOMAINS = ("CDFv2val", "DFDCPval", "DFEval24val")
 TIE_TOL = 1e-6
-RUN_DIR = {"run1auxedl": "run1_auxedl_seed42", "sbiarmA": "sbi_armA_seed42",
+RUN_DIR = {"dicomeours": "../_baseline_dicome/dicome_train/ffpp_reproduce_seed42", "run1auxedl": "run1_auxedl_seed42", "sbiarmA": "sbi_armA_seed42",
            "sbiarmB": "sbi_armB_seed42", "sbiarmC": "sbi_armC_seed42"}
 BR = SO.BRANCHES
 

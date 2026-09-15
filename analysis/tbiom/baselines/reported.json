@@ -1,0 +1,25 @@
+{
+  "_note": "Numbers as printed by each source (AUC as a fraction). level = frame|video. Training data FF++ c23 for all rows. 'GenD' in the DiCoME paper does not name the backbone.",
+  "sources": {
+    "dicome_paper": "https://arxiv.org/html/2606.01885v1 (Table 1)",
+    "gend_paper_v4": "https://arxiv.org/html/2508.06248 (v4, Table 4, 'recalculated by us')",
+    "effort_paper": "https://arxiv.org/html/2411.15633v3 (Table 1, Protocol-1)",
+    "forada_readme": "/data/umar/Repos/ForensicsAdapter/README.md (frame table + video table)",
+    "fsvfm_hf": "https://huggingface.co/Wolowolo/fsfm-3c FS-VFM ViT-L FT_on_FF++_c23_32frames experiments_test/test_results.txt"
+  },
+  "rows": [
+    {"method": "DiCoME", "source": "dicome_paper", "level": "video", "auc": {"CDFv2": 0.977, "DFD": 0.982, "DFDC": 0.882, "DFo": 0.993, "WDF": 0.911, "CDFv3": 0.886}},
+    {"method": "Effort", "source": "dicome_paper", "level": "video", "auc": {"CDFv2": 0.956, "DFD": 0.965, "DFDC": 0.843, "DFo": 0.977, "WDF": 0.848, "CDFv3": 0.850}},
+    {"method": "GenD (backbone unstated)", "source": "dicome_paper", "level": "video", "auc": {"CDFv2": 0.960, "DFD": 0.970, "DFDC": 0.871, "DFo": 0.989, "WDF": 0.890, "CDFv3": 0.859}},
+    {"method": "Effort", "source": "effort_paper", "level": "video", "auc": {"CDFv2": 0.956, "DFD": 0.965, "DFDC": 0.843, "DFDCP": 0.909, "DFo": 0.977, "WDF": 0.848, "FFIW": 0.921}},
+    {"method": "ForAda", "source": "gend_paper_v4", "level": "video", "auc": {"UADFV": 0.994, "DFD": 0.972, "DFDC": 0.873, "FSh": 0.820, "CDFv2": 0.957, "FFIW": 0.906, "KoDF": 0.882, "FAVC": 0.931, "DFDM": 0.971, "PGF": 0.866, "IDForge": 0.908, "DSv1.1": 0.818, "DSv2": 0.728, "CDFv3": 0.756}},
+    {"method": "Effort", "source": "gend_paper_v4", "level": "video", "auc": {"UADFV": 0.974, "DFD": 0.952, "DFDC": 0.854, "FSh": 0.912, "CDFv2": 0.932, "FFIW": 0.925, "KoDF": 0.881, "FAVC": 0.924, "DFDM": 0.982, "PGF": 0.849, "IDForge": 0.960, "DSv1.1": 0.821, "DSv2": 0.644, "CDFv3": 0.787}},
+    {"method": "GenD-CLIP", "source": "gend_paper_v4", "level": "video", "auc": {"UADFV": 0.992, "DFD": 0.964, "DFDC": 0.864, "FSh": 0.866, "CDFv2": 0.946, "FFIW": 0.915, "KoDF": 0.849, "FAVC": 0.960, "DFDM": 0.996, "PGF": 0.896, "IDForge": 0.978, "DSv1.1": 0.901, "DSv2": 0.777, "CDFv3": 0.859}},
+    {"method": "GenD-PE", "source": "gend_paper_v4", "level": "video", "auc": {"UADFV": 0.977, "DFD": 0.968, "DFDC": 0.822, "FSh": 0.876, "CDFv2": 0.950, "FFIW": 0.937, "KoDF": 0.851, "FAVC": 0.973, "DFDM": 0.983, "PGF": 0.923, "IDForge": 0.979, "DSv1.1": 0.878, "DSv2": 0.786, "CDFv3": 0.895}},
+    {"method": "GenD-DINO", "source": "gend_paper_v4", "level": "video", "auc": {"UADFV": 0.986, "DFD": 0.962, "DFDC": 0.856, "FSh": 0.888, "CDFv2": 0.925, "FFIW": 0.929, "KoDF": 0.897, "FAVC": 0.984, "DFDM": 0.998, "PGF": 0.924, "IDForge": 0.982, "DSv1.1": 0.869, "DSv2": 0.794, "CDFv3": 0.835}},
+    {"method": "ForAda", "source": "forada_readme", "level": "frame", "auc": {"CDFv1": 0.914, "CDFv2": 0.900, "DFDC": 0.843, "DFDCP": 0.890, "DFD": 0.933}},
+    {"method": "ForAda", "source": "forada_readme", "level": "video", "auc": {"CDFv2": 0.957, "DFDC": 0.872, "DFDCP": 0.929}},
+    {"method": "FS-VFM ViT-L", "source": "fsvfm_hf", "level": "frame", "auc": {"DFD": 0.93320, "CDFv1": 0.84512, "CDFv2": 0.87642, "DFDC": 0.83584, "DFDCP": 0.88290, "WDF": 0.90345, "CDFv3": 0.86387}},
+    {"method": "FS-VFM ViT-L", "source": "fsvfm_hf", "level": "video", "auc": {"DFD": 0.97174, "CDFv1": 0.93676, "CDFv2": 0.95166, "DFDC": 0.87749, "DFDCP": 0.93347, "WDF": 0.91589, "CDFv3": 0.91070}}
+  ]
+}
