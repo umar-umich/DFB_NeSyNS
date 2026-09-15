@@ -39,7 +39,10 @@ VALMIX_SPLITS = EXT / "eval_adaptation/data/splits/VALmix"
 DOMAINS = ("CDFv2val", "DFDCPval", "DFEval24val")
 TIE_TOL = 1e-6
 RUN_DIR = {"dicomeours": "../_baseline_dicome/dicome_train/ffpp_reproduce_seed42", "run1auxedl": "run1_auxedl_seed42", "sbiarmA": "sbi_armA_seed42",
-           "sbiarmB": "sbi_armB_seed42", "sbiarmC": "sbi_armC_seed42"}
+           "sbiarmB": "sbi_armB_seed42", "sbiarmC": "sbi_armC_seed42",
+           "sbiarmAs1337": "sbi_armA_seed1337", "sbiarmAs7": "sbi_armA_seed7",
+           "sbiarmBs1337": "sbi_armB_seed1337", "sbiarmBs7": "sbi_armB_seed7", "sbiarmBs42r": "sbi_armB_seed42r",
+           "warmgate": "warm_dicome_gate_seed42"}
 BR = SO.BRANCHES
 
 
