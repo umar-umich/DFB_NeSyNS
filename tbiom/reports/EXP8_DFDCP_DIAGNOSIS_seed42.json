@@ -1,0 +1,842 @@
+[
+ {
+  "w_clean": {
+   "T": 0.25,
+   "APP": 0.25,
+   "OM": 1.0
+  },
+  "w_proc": {
+   "T": 0.25,
+   "APP": 0.0,
+   "OM": 1.0
+  },
+  "dev": {
+   "clean": {
+    "branch T": 0.8186409264861272,
+    "branch APP": 0.8073402411757419,
+    "branch OM": 0.8127779087083367,
+    "DS equal": 0.86375319982105,
+    "DS-R (clean fit)": 0.8690164463883083,
+    "DS-R (clean+processed fit)": 0.8691974418713619
+   },
+   "jpeg40": {
+    "branch T": 0.7292753493400074,
+    "branch APP": 0.7152962684165484,
+    "branch OM": 0.7394256205292885,
+    "DS equal": 0.7696626365026429,
+    "DS-R (clean fit)": 0.7776512289096091,
+    "DS-R (clean+processed fit)": 0.786201662732006
+   },
+   "rs06": {
+    "branch T": 0.8089701619248014,
+    "branch APP": 0.7676000622961959,
+    "branch OM": 0.7673561919553832,
+    "DS equal": 0.8288421370724376,
+    "DS-R (clean fit)": 0.8351103696713,
+    "DS-R (clean+processed fit)": 0.838067386030983
+   }
+  },
+  "tests": {
+   "DFDCP": {
+    "branch T": 0.776204881050041,
+    "branch APP": 0.869811320754717,
+    "branch OM": 0.8726722723543888,
+    "DS equal": 0.8586853978671042,
+    "DS-R (clean fit)": 0.8670631665299425,
+    "DS-R (clean+processed fit)": 0.8617411812961444
+   },
+   "DFDCP jpeg40": {
+    "branch T": 0.7190627563576703,
+    "branch APP": 0.8059782608695653,
+    "branch OM": 0.8256357670221492,
+    "DS equal": 0.8161197703035274,
+    "DS-R (clean fit)": 0.8244360131255127,
+    "DS-R (clean+processed fit)": 0.8276456111566858
+   },
+   "DFDCP rs06": {
+    "branch T": 0.755701394585726,
+    "branch APP": 0.7981234618539786,
+    "branch OM": 0.7974159146841674,
+    "DS equal": 0.806942165709598,
+    "DS-R (clean fit)": 0.8106644790812141,
+    "DS-R (clean+processed fit)": 0.8071780147662018
+   },
+   "CDFv2": {
+    "branch T": 0.79643919365499,
+    "branch APP": 0.9612194315928618,
+    "branch OM": 0.9735789821546597,
+    "DS equal": 0.9470588235294117,
+    "DS-R (clean fit)": 0.9555518836748182,
+    "DS-R (clean+processed fit)": 0.9495208195637805
+   },
+   "CDFv2 jpeg40": {
+    "branch T": 0.715300727032386,
+    "branch APP": 0.8333443489755453,
+    "branch OM": 0.8872273628552545,
+    "DS equal": 0.8676140118968936,
+    "DS-R (clean fit)": 0.8797091870456047,
+    "DS-R (clean+processed fit)": 0.8868803701255783
+   },
+   "CDFv2 rs06": {
+    "branch T": 0.7727445472571051,
+    "branch APP": 0.9450925313945803,
+    "branch OM": 0.9548744216787839,
+    "DS equal": 0.9173661599471249,
+    "DS-R (clean fit)": 0.9307005948446795,
+    "DS-R (clean+processed fit)": 0.9108724388631857
+   },
+   "CDFv3": {
+    "branch T": 0.9306407223763817,
+    "branch APP": 0.8575967793294819,
+    "branch OM": 0.8801050811991084,
+    "DS equal": 0.9562434608561161,
+    "DS-R (clean fit)": 0.9588340990765591,
+    "DS-R (clean+processed fit)": 0.9629088386480462
+   },
+   "DFD": {
+    "branch T": 0.8198968468614077,
+    "branch APP": 0.9303761210540872,
+    "branch OM": 0.9338250347495339,
+    "DS equal": 0.9175717708075181,
+    "DS-R (clean fit)": 0.9285093437635811,
+    "DS-R (clean+processed fit)": 0.9198004101702099
+   },
+   "DFDC": {
+    "branch T": 0.7191321454434336,
+    "branch APP": 0.8758295535603698,
+    "branch OM": 0.8808187634650174,
+    "DS equal": 0.8473719088659596,
+    "DS-R (clean fit)": 0.8565728270411452,
+    "DS-R (clean+processed fit)": 0.8452064764077978
+   },
+   "DFEval24": {
+    "branch T": 0.6605612319016029,
+    "branch APP": 0.6741441092441044,
+    "branch OM": 0.6687509079463464,
+    "DS equal": 0.6995423950414024,
+    "DS-R (clean fit)": 0.7037673720400949,
+    "DS-R (clean+processed fit)": 0.699832937872258
+   },
+   "FFIW": {
+    "branch T": 0.8113734023204245,
+    "branch APP": 0.9186084096703735,
+    "branch OM": 0.9354114725643432,
+    "DS equal": 0.9127450605851722,
+    "DS-R (clean fit)": 0.9236116901560515,
+    "DS-R (clean+processed fit)": 0.9109737644196032
+   },
+   "KoDF": {
+    "branch T": 0.9659847014328024,
+    "branch APP": 0.8493806531657728,
+    "branch OM": 0.8547736732570239,
+    "DS equal": 0.954702133194589,
+    "DS-R (clean fit)": 0.9563905787240855,
+    "DS-R (clean+processed fit)": 0.9614409069078684
+   },
+   "IDForge": {
+    "branch T": 0.8917943047256782,
+    "branch APP": 0.9509799691084085,
+    "branch OM": 0.9634907162148576,
+    "DS equal": 0.952266091350657,
+    "DS-R (clean fit)": 0.9599373201740519,
+    "DS-R (clean+processed fit)": 0.9551112515353609
+   },
+   "DFDM": {
+    "branch T": 0.9791680291951708,
+    "branch APP": 0.9886070816601483,
+    "branch OM": 0.9919981426011432,
+    "DS equal": 0.9919752521222744,
+    "DS-R (clean fit)": 0.9934042720173706,
+    "DS-R (clean+processed fit)": 0.9930151338766007
+   },
+   "CDFv3 reenactment": {
+    "branch T": 0.9719662921348314,
+    "branch APP": 0.8136657303370787,
+    "branch OM": 0.8416011235955057,
+    "DS equal": 0.9615326544943821,
+    "DS-R (clean fit)": 0.962686095505618,
+    "DS-R (clean+processed fit)": 0.9705898876404494
+   },
+   "KoDF first-order motion": {
+    "branch T": 0.9927073934130386,
+    "branch APP": 0.7163954996616287,
+    "branch OM": 0.73055774870291,
+    "DS equal": 0.9815023685991427,
+    "DS-R (clean fit)": 0.98330701556508,
+    "DS-R (clean+processed fit)": 0.9894681930972253
+   }
+  }
+ },
+ {
+  "w_clean": {
+   "T": 0.25,
+   "APP": 0.25,
+   "OM": 1.0
+  },
+  "w_proc": {
+   "T": 0.25,
+   "APP": 0.0,
+   "OM": 1.0
+  },
+  "dev": {
+   "clean": {
+    "branch T": 0.8254997320791588,
+    "branch APP": 0.822876726102867,
+    "branch OM": 0.8306425149926481,
+    "DS equal": 0.8729349464134551,
+    "DS-R (clean fit)": 0.8770945486636518,
+    "DS-R (clean+processed fit)": 0.8780920281598856
+   },
+   "jpeg40": {
+    "branch T": 0.7461825810710133,
+    "branch APP": 0.7120695477795982,
+    "branch OM": 0.7398602141348888,
+    "DS equal": 0.7720304721808535,
+    "DS-R (clean fit)": 0.7837355701062608,
+    "DS-R (clean+processed fit)": 0.7953079334216954
+   },
+   "rs06": {
+    "branch T": 0.8128572206493848,
+    "branch APP": 0.7934137984291322,
+    "branch OM": 0.794556234453402,
+    "DS equal": 0.847681129442832,
+    "DS-R (clean fit)": 0.8536002053541735,
+    "DS-R (clean+processed fit)": 0.8536993288207273
+   }
+  },
+  "tests": {
+   "DFDCP": {
+    "branch T": 0.776204881050041,
+    "branch APP": 0.869811320754717,
+    "branch OM": 0.8726722723543888,
+    "DS equal": 0.8586853978671042,
+    "DS-R (clean fit)": 0.8670631665299425,
+    "DS-R (clean+processed fit)": 0.8617411812961444
+   },
+   "DFDCP jpeg40": {
+    "branch T": 0.7190627563576703,
+    "branch APP": 0.8059782608695653,
+    "branch OM": 0.8256357670221492,
+    "DS equal": 0.8161197703035274,
+    "DS-R (clean fit)": 0.8244360131255127,
+    "DS-R (clean+processed fit)": 0.8276456111566858
+   },
+   "DFDCP rs06": {
+    "branch T": 0.755701394585726,
+    "branch APP": 0.7981234618539786,
+    "branch OM": 0.7974159146841674,
+    "DS equal": 0.806942165709598,
+    "DS-R (clean fit)": 0.8106644790812141,
+    "DS-R (clean+processed fit)": 0.8071780147662018
+   },
+   "CDFv2": {
+    "branch T": 0.79643919365499,
+    "branch APP": 0.9612194315928618,
+    "branch OM": 0.9735789821546597,
+    "DS equal": 0.9470588235294117,
+    "DS-R (clean fit)": 0.9555518836748182,
+    "DS-R (clean+processed fit)": 0.9495208195637805
+   },
+   "CDFv2 jpeg40": {
+    "branch T": 0.715300727032386,
+    "branch APP": 0.8333443489755453,
+    "branch OM": 0.8872273628552545,
+    "DS equal": 0.8676140118968936,
+    "DS-R (clean fit)": 0.8797091870456047,
+    "DS-R (clean+processed fit)": 0.8868803701255783
+   },
+   "CDFv2 rs06": {
+    "branch T": 0.7727445472571051,
+    "branch APP": 0.9450925313945803,
+    "branch OM": 0.9548744216787839,
+    "DS equal": 0.9173661599471249,
+    "DS-R (clean fit)": 0.9307005948446795,
+    "DS-R (clean+processed fit)": 0.9108724388631857
+   },
+   "CDFv3": {
+    "branch T": 0.9306407223763817,
+    "branch APP": 0.8575967793294819,
+    "branch OM": 0.8801050811991084,
+    "DS equal": 0.9562434608561161,
+    "DS-R (clean fit)": 0.9588340990765591,
+    "DS-R (clean+processed fit)": 0.9629088386480462
+   },
+   "DFD": {
+    "branch T": 0.8198968468614077,
+    "branch APP": 0.9303761210540872,
+    "branch OM": 0.9338250347495339,
+    "DS equal": 0.9175717708075181,
+    "DS-R (clean fit)": 0.9285093437635811,
+    "DS-R (clean+processed fit)": 0.9198004101702099
+   },
+   "DFDC": {
+    "branch T": 0.7191321454434336,
+    "branch APP": 0.8758295535603698,
+    "branch OM": 0.8808187634650174,
+    "DS equal": 0.8473719088659596,
+    "DS-R (clean fit)": 0.8565728270411452,
+    "DS-R (clean+processed fit)": 0.8452064764077978
+   },
+   "DFEval24": {
+    "branch T": 0.6605612319016029,
+    "branch APP": 0.6741441092441044,
+    "branch OM": 0.6687509079463464,
+    "DS equal": 0.6995423950414024,
+    "DS-R (clean fit)": 0.7037673720400949,
+    "DS-R (clean+processed fit)": 0.699832937872258
+   },
+   "FFIW": {
+    "branch T": 0.8113734023204245,
+    "branch APP": 0.9186084096703735,
+    "branch OM": 0.9354114725643432,
+    "DS equal": 0.9127450605851722,
+    "DS-R (clean fit)": 0.9236116901560515,
+    "DS-R (clean+processed fit)": 0.9109737644196032
+   },
+   "KoDF": {
+    "branch T": 0.9659847014328024,
+    "branch APP": 0.8493806531657728,
+    "branch OM": 0.8547736732570239,
+    "DS equal": 0.954702133194589,
+    "DS-R (clean fit)": 0.9563905787240855,
+    "DS-R (clean+processed fit)": 0.9614409069078684
+   },
+   "IDForge": {
+    "branch T": 0.8917943047256782,
+    "branch APP": 0.9509799691084085,
+    "branch OM": 0.9634907162148576,
+    "DS equal": 0.952266091350657,
+    "DS-R (clean fit)": 0.9599373201740519,
+    "DS-R (clean+processed fit)": 0.9551112515353609
+   },
+   "DFDM": {
+    "branch T": 0.9791680291951708,
+    "branch APP": 0.9886070816601483,
+    "branch OM": 0.9919981426011432,
+    "DS equal": 0.9919752521222744,
+    "DS-R (clean fit)": 0.9934042720173706,
+    "DS-R (clean+processed fit)": 0.9930151338766007
+   },
+   "CDFv3 reenactment": {
+    "branch T": 0.9719662921348314,
+    "branch APP": 0.8136657303370787,
+    "branch OM": 0.8416011235955057,
+    "DS equal": 0.9615326544943821,
+    "DS-R (clean fit)": 0.962686095505618,
+    "DS-R (clean+processed fit)": 0.9705898876404494
+   },
+   "KoDF first-order motion": {
+    "branch T": 0.9927073934130386,
+    "branch APP": 0.7163954996616287,
+    "branch OM": 0.73055774870291,
+    "DS equal": 0.9815023685991427,
+    "DS-R (clean fit)": 0.98330701556508,
+    "DS-R (clean+processed fit)": 0.9894681930972253
+   }
+  }
+ },
+ {
+  "w_clean": {
+   "T": 0.25,
+   "APP": 0.25,
+   "OM": 1.0
+  },
+  "w_proc": {
+   "T": 0.25,
+   "APP": 0.0,
+   "OM": 1.0
+  },
+  "dev": {
+   "clean": {
+    "branch T": 0.8168999393060506,
+    "branch APP": 0.8168109178821182,
+    "branch OM": 0.8262487375889623,
+    "DS equal": 0.8685506949337545,
+    "DS-R (clean fit)": 0.8734096085325341,
+    "DS-R (clean+processed fit)": 0.8732416480693201
+   },
+   "jpeg40": {
+    "branch T": 0.7240987740396229,
+    "branch APP": 0.7171050003485165,
+    "branch OM": 0.7437518418693824,
+    "DS equal": 0.7717370655951582,
+    "DS-R (clean fit)": 0.780840881033782,
+    "DS-R (clean+processed fit)": 0.7910204814680794
+   },
+   "rs06": {
+    "branch T": 0.8094892871085057,
+    "branch APP": 0.7932159702446325,
+    "branch OM": 0.7949303065159713,
+    "DS equal": 0.8423400943063722,
+    "DS-R (clean fit)": 0.8485895622095193,
+    "DS-R (clean+processed fit)": 0.8476987706571334
+   }
+  },
+  "tests": {
+   "DFDCP": {
+    "branch T": 0.776204881050041,
+    "branch APP": 0.869811320754717,
+    "branch OM": 0.8726722723543888,
+    "DS equal": 0.8586853978671042,
+    "DS-R (clean fit)": 0.8670631665299425,
+    "DS-R (clean+processed fit)": 0.8617411812961444
+   },
+   "DFDCP jpeg40": {
+    "branch T": 0.7190627563576703,
+    "branch APP": 0.8059782608695653,
+    "branch OM": 0.8256357670221492,
+    "DS equal": 0.8161197703035274,
+    "DS-R (clean fit)": 0.8244360131255127,
+    "DS-R (clean+processed fit)": 0.8276456111566858
+   },
+   "DFDCP rs06": {
+    "branch T": 0.755701394585726,
+    "branch APP": 0.7981234618539786,
+    "branch OM": 0.7974159146841674,
+    "DS equal": 0.806942165709598,
+    "DS-R (clean fit)": 0.8106644790812141,
+    "DS-R (clean+processed fit)": 0.8071780147662018
+   },
+   "CDFv2": {
+    "branch T": 0.79643919365499,
+    "branch APP": 0.9612194315928618,
+    "branch OM": 0.9735789821546597,
+    "DS equal": 0.9470588235294117,
+    "DS-R (clean fit)": 0.9555518836748182,
+    "DS-R (clean+processed fit)": 0.9495208195637805
+   },
+   "CDFv2 jpeg40": {
+    "branch T": 0.715300727032386,
+    "branch APP": 0.8333443489755453,
+    "branch OM": 0.8872273628552545,
+    "DS equal": 0.8676140118968936,
+    "DS-R (clean fit)": 0.8797091870456047,
+    "DS-R (clean+processed fit)": 0.8868803701255783
+   },
+   "CDFv2 rs06": {
+    "branch T": 0.7727445472571051,
+    "branch APP": 0.9450925313945803,
+    "branch OM": 0.9548744216787839,
+    "DS equal": 0.9173661599471249,
+    "DS-R (clean fit)": 0.9307005948446795,
+    "DS-R (clean+processed fit)": 0.9108724388631857
+   },
+   "CDFv3": {
+    "branch T": 0.9306407223763817,
+    "branch APP": 0.8575967793294819,
+    "branch OM": 0.8801050811991084,
+    "DS equal": 0.9562434608561161,
+    "DS-R (clean fit)": 0.9588340990765591,
+    "DS-R (clean+processed fit)": 0.9629088386480462
+   },
+   "DFD": {
+    "branch T": 0.8198968468614077,
+    "branch APP": 0.9303761210540872,
+    "branch OM": 0.9338250347495339,
+    "DS equal": 0.9175717708075181,
+    "DS-R (clean fit)": 0.9285093437635811,
+    "DS-R (clean+processed fit)": 0.9198004101702099
+   },
+   "DFDC": {
+    "branch T": 0.7191321454434336,
+    "branch APP": 0.8758295535603698,
+    "branch OM": 0.8808187634650174,
+    "DS equal": 0.8473719088659596,
+    "DS-R (clean fit)": 0.8565728270411452,
+    "DS-R (clean+processed fit)": 0.8452064764077978
+   },
+   "DFEval24": {
+    "branch T": 0.6605612319016029,
+    "branch APP": 0.6741441092441044,
+    "branch OM": 0.6687509079463464,
+    "DS equal": 0.6995423950414024,
+    "DS-R (clean fit)": 0.7037673720400949,
+    "DS-R (clean+processed fit)": 0.699832937872258
+   },
+   "FFIW": {
+    "branch T": 0.8113734023204245,
+    "branch APP": 0.9186084096703735,
+    "branch OM": 0.9354114725643432,
+    "DS equal": 0.9127450605851722,
+    "DS-R (clean fit)": 0.9236116901560515,
+    "DS-R (clean+processed fit)": 0.9109737644196032
+   },
+   "KoDF": {
+    "branch T": 0.9659847014328024,
+    "branch APP": 0.8493806531657728,
+    "branch OM": 0.8547736732570239,
+    "DS equal": 0.954702133194589,
+    "DS-R (clean fit)": 0.9563905787240855,
+    "DS-R (clean+processed fit)": 0.9614409069078684
+   },
+   "IDForge": {
+    "branch T": 0.8917943047256782,
+    "branch APP": 0.9509799691084085,
+    "branch OM": 0.9634907162148576,
+    "DS equal": 0.952266091350657,
+    "DS-R (clean fit)": 0.9599373201740519,
+    "DS-R (clean+processed fit)": 0.9551112515353609
+   },
+   "DFDM": {
+    "branch T": 0.9791680291951708,
+    "branch APP": 0.9886070816601483,
+    "branch OM": 0.9919981426011432,
+    "DS equal": 0.9919752521222744,
+    "DS-R (clean fit)": 0.9934042720173706,
+    "DS-R (clean+processed fit)": 0.9930151338766007
+   },
+   "CDFv3 reenactment": {
+    "branch T": 0.9719662921348314,
+    "branch APP": 0.8136657303370787,
+    "branch OM": 0.8416011235955057,
+    "DS equal": 0.9615326544943821,
+    "DS-R (clean fit)": 0.962686095505618,
+    "DS-R (clean+processed fit)": 0.9705898876404494
+   },
+   "KoDF first-order motion": {
+    "branch T": 0.9927073934130386,
+    "branch APP": 0.7163954996616287,
+    "branch OM": 0.73055774870291,
+    "DS equal": 0.9815023685991427,
+    "DS-R (clean fit)": 0.98330701556508,
+    "DS-R (clean+processed fit)": 0.9894681930972253
+   }
+  }
+ },
+ {
+  "w_clean": {
+   "T": 0.25,
+   "APP": 0.25,
+   "OM": 1.0
+  },
+  "w_proc": {
+   "T": 0.25,
+   "APP": 0.0,
+   "OM": 1.0
+  },
+  "dev": {
+   "clean": {
+    "branch T": 0.8248130676414696,
+    "branch APP": 0.8148853432337188,
+    "branch OM": 0.8206230713472843,
+    "DS equal": 0.868688714964437,
+    "DS-R (clean fit)": 0.8738155956579815,
+    "DS-R (clean+processed fit)": 0.8739460933524851
+   },
+   "jpeg40": {
+    "branch T": 0.7420564886333779,
+    "branch APP": 0.7144021974834964,
+    "branch OM": 0.7367518987941372,
+    "DS equal": 0.773177969317102,
+    "DS-R (clean fit)": 0.7836799326238054,
+    "DS-R (clean+processed fit)": 0.7928374978843338
+   },
+   "rs06": {
+    "branch T": 0.8196034837582841,
+    "branch APP": 0.7745126165100787,
+    "branch OM": 0.7750982844507798,
+    "DS equal": 0.8381146741744674,
+    "DS-R (clean fit)": 0.8434053871100939,
+    "DS-R (clean+processed fit)": 0.8470796294527473
+   }
+  },
+  "tests": {
+   "DFDCP": {
+    "branch T": 0.776204881050041,
+    "branch APP": 0.869811320754717,
+    "branch OM": 0.8726722723543888,
+    "DS equal": 0.8586853978671042,
+    "DS-R (clean fit)": 0.8670631665299425,
+    "DS-R (clean+processed fit)": 0.8617411812961444
+   },
+   "DFDCP jpeg40": {
+    "branch T": 0.7190627563576703,
+    "branch APP": 0.8059782608695653,
+    "branch OM": 0.8256357670221492,
+    "DS equal": 0.8161197703035274,
+    "DS-R (clean fit)": 0.8244360131255127,
+    "DS-R (clean+processed fit)": 0.8276456111566858
+   },
+   "DFDCP rs06": {
+    "branch T": 0.755701394585726,
+    "branch APP": 0.7981234618539786,
+    "branch OM": 0.7974159146841674,
+    "DS equal": 0.806942165709598,
+    "DS-R (clean fit)": 0.8106644790812141,
+    "DS-R (clean+processed fit)": 0.8071780147662018
+   },
+   "CDFv2": {
+    "branch T": 0.79643919365499,
+    "branch APP": 0.9612194315928618,
+    "branch OM": 0.9735789821546597,
+    "DS equal": 0.9470588235294117,
+    "DS-R (clean fit)": 0.9555518836748182,
+    "DS-R (clean+processed fit)": 0.9495208195637805
+   },
+   "CDFv2 jpeg40": {
+    "branch T": 0.715300727032386,
+    "branch APP": 0.8333443489755453,
+    "branch OM": 0.8872273628552545,
+    "DS equal": 0.8676140118968936,
+    "DS-R (clean fit)": 0.8797091870456047,
+    "DS-R (clean+processed fit)": 0.8868803701255783
+   },
+   "CDFv2 rs06": {
+    "branch T": 0.7727445472571051,
+    "branch APP": 0.9450925313945803,
+    "branch OM": 0.9548744216787839,
+    "DS equal": 0.9173661599471249,
+    "DS-R (clean fit)": 0.9307005948446795,
+    "DS-R (clean+processed fit)": 0.9108724388631857
+   },
+   "CDFv3": {
+    "branch T": 0.9306407223763817,
+    "branch APP": 0.8575967793294819,
+    "branch OM": 0.8801050811991084,
+    "DS equal": 0.9562434608561161,
+    "DS-R (clean fit)": 0.9588340990765591,
+    "DS-R (clean+processed fit)": 0.9629088386480462
+   },
+   "DFD": {
+    "branch T": 0.8198968468614077,
+    "branch APP": 0.9303761210540872,
+    "branch OM": 0.9338250347495339,
+    "DS equal": 0.9175717708075181,
+    "DS-R (clean fit)": 0.9285093437635811,
+    "DS-R (clean+processed fit)": 0.9198004101702099
+   },
+   "DFDC": {
+    "branch T": 0.7191321454434336,
+    "branch APP": 0.8758295535603698,
+    "branch OM": 0.8808187634650174,
+    "DS equal": 0.8473719088659596,
+    "DS-R (clean fit)": 0.8565728270411452,
+    "DS-R (clean+processed fit)": 0.8452064764077978
+   },
+   "DFEval24": {
+    "branch T": 0.6605612319016029,
+    "branch APP": 0.6741441092441044,
+    "branch OM": 0.6687509079463464,
+    "DS equal": 0.6995423950414024,
+    "DS-R (clean fit)": 0.7037673720400949,
+    "DS-R (clean+processed fit)": 0.699832937872258
+   },
+   "FFIW": {
+    "branch T": 0.8113734023204245,
+    "branch APP": 0.9186084096703735,
+    "branch OM": 0.9354114725643432,
+    "DS equal": 0.9127450605851722,
+    "DS-R (clean fit)": 0.9236116901560515,
+    "DS-R (clean+processed fit)": 0.9109737644196032
+   },
+   "KoDF": {
+    "branch T": 0.9659847014328024,
+    "branch APP": 0.8493806531657728,
+    "branch OM": 0.8547736732570239,
+    "DS equal": 0.954702133194589,
+    "DS-R (clean fit)": 0.9563905787240855,
+    "DS-R (clean+processed fit)": 0.9614409069078684
+   },
+   "IDForge": {
+    "branch T": 0.8917943047256782,
+    "branch APP": 0.9509799691084085,
+    "branch OM": 0.9634907162148576,
+    "DS equal": 0.952266091350657,
+    "DS-R (clean fit)": 0.9599373201740519,
+    "DS-R (clean+processed fit)": 0.9551112515353609
+   },
+   "DFDM": {
+    "branch T": 0.9791680291951708,
+    "branch APP": 0.9886070816601483,
+    "branch OM": 0.9919981426011432,
+    "DS equal": 0.9919752521222744,
+    "DS-R (clean fit)": 0.9934042720173706,
+    "DS-R (clean+processed fit)": 0.9930151338766007
+   },
+   "CDFv3 reenactment": {
+    "branch T": 0.9719662921348314,
+    "branch APP": 0.8136657303370787,
+    "branch OM": 0.8416011235955057,
+    "DS equal": 0.9615326544943821,
+    "DS-R (clean fit)": 0.962686095505618,
+    "DS-R (clean+processed fit)": 0.9705898876404494
+   },
+   "KoDF first-order motion": {
+    "branch T": 0.9927073934130386,
+    "branch APP": 0.7163954996616287,
+    "branch OM": 0.73055774870291,
+    "DS equal": 0.9815023685991427,
+    "DS-R (clean fit)": 0.98330701556508,
+    "DS-R (clean+processed fit)": 0.9894681930972253
+   }
+  }
+ },
+ {
+  "w_clean": {
+   "T": 0.25,
+   "APP": 0.25,
+   "OM": 1.0
+  },
+  "w_proc": {
+   "T": 0.25,
+   "APP": 0.0,
+   "OM": 1.0
+  },
+  "dev": {
+   "clean": {
+    "branch T": 0.830395846745478,
+    "branch APP": 0.824916204387697,
+    "branch OM": 0.8303602407287873,
+    "DS equal": 0.8762291413647373,
+    "DS-R (clean fit)": 0.8806659687162409,
+    "DS-R (clean+processed fit)": 0.8797923443567114
+   },
+   "jpeg40": {
+    "branch T": 0.7408896899283594,
+    "branch APP": 0.7308253631090315,
+    "branch OM": 0.7545592249170981,
+    "DS equal": 0.7875723078560869,
+    "DS-R (clean fit)": 0.797266655156457,
+    "DS-R (clean+processed fit)": 0.8044726352176235
+   },
+   "rs06": {
+    "branch T": 0.8199646967978059,
+    "branch APP": 0.7953240709469354,
+    "branch OM": 0.7907226782115787,
+    "DS equal": 0.8488900760174826,
+    "DS-R (clean fit)": 0.8542413120876481,
+    "DS-R (clean+processed fit)": 0.8546155680532749
+   }
+  },
+  "tests": {
+   "DFDCP": {
+    "branch T": 0.776204881050041,
+    "branch APP": 0.869811320754717,
+    "branch OM": 0.8726722723543888,
+    "DS equal": 0.8586853978671042,
+    "DS-R (clean fit)": 0.8670631665299425,
+    "DS-R (clean+processed fit)": 0.8617411812961444
+   },
+   "DFDCP jpeg40": {
+    "branch T": 0.7190627563576703,
+    "branch APP": 0.8059782608695653,
+    "branch OM": 0.8256357670221492,
+    "DS equal": 0.8161197703035274,
+    "DS-R (clean fit)": 0.8244360131255127,
+    "DS-R (clean+processed fit)": 0.8276456111566858
+   },
+   "DFDCP rs06": {
+    "branch T": 0.755701394585726,
+    "branch APP": 0.7981234618539786,
+    "branch OM": 0.7974159146841674,
+    "DS equal": 0.806942165709598,
+    "DS-R (clean fit)": 0.8106644790812141,
+    "DS-R (clean+processed fit)": 0.8071780147662018
+   },
+   "CDFv2": {
+    "branch T": 0.79643919365499,
+    "branch APP": 0.9612194315928618,
+    "branch OM": 0.9735789821546597,
+    "DS equal": 0.9470588235294117,
+    "DS-R (clean fit)": 0.9555518836748182,
+    "DS-R (clean+processed fit)": 0.9495208195637805
+   },
+   "CDFv2 jpeg40": {
+    "branch T": 0.715300727032386,
+    "branch APP": 0.8333443489755453,
+    "branch OM": 0.8872273628552545,
+    "DS equal": 0.8676140118968936,
+    "DS-R (clean fit)": 0.8797091870456047,
+    "DS-R (clean+processed fit)": 0.8868803701255783
+   },
+   "CDFv2 rs06": {
+    "branch T": 0.7727445472571051,
+    "branch APP": 0.9450925313945803,
+    "branch OM": 0.9548744216787839,
+    "DS equal": 0.9173661599471249,
+    "DS-R (clean fit)": 0.9307005948446795,
+    "DS-R (clean+processed fit)": 0.9108724388631857
+   },
+   "CDFv3": {
+    "branch T": 0.9306407223763817,
+    "branch APP": 0.8575967793294819,
+    "branch OM": 0.8801050811991084,
+    "DS equal": 0.9562434608561161,
+    "DS-R (clean fit)": 0.9588340990765591,
+    "DS-R (clean+processed fit)": 0.9629088386480462
+   },
+   "DFD": {
+    "branch T": 0.8198968468614077,
+    "branch APP": 0.9303761210540872,
+    "branch OM": 0.9338250347495339,
+    "DS equal": 0.9175717708075181,
+    "DS-R (clean fit)": 0.9285093437635811,
+    "DS-R (clean+processed fit)": 0.9198004101702099
+   },
+   "DFDC": {
+    "branch T": 0.7191321454434336,
+    "branch APP": 0.8758295535603698,
+    "branch OM": 0.8808187634650174,
+    "DS equal": 0.8473719088659596,
+    "DS-R (clean fit)": 0.8565728270411452,
+    "DS-R (clean+processed fit)": 0.8452064764077978
+   },
+   "DFEval24": {
+    "branch T": 0.6605612319016029,
+    "branch APP": 0.6741441092441044,
+    "branch OM": 0.6687509079463464,
+    "DS equal": 0.6995423950414024,
+    "DS-R (clean fit)": 0.7037673720400949,
+    "DS-R (clean+processed fit)": 0.699832937872258
+   },
+   "FFIW": {
+    "branch T": 0.8113734023204245,
+    "branch APP": 0.9186084096703735,
+    "branch OM": 0.9354114725643432,
+    "DS equal": 0.9127450605851722,
+    "DS-R (clean fit)": 0.9236116901560515,
+    "DS-R (clean+processed fit)": 0.9109737644196032
+   },
+   "KoDF": {
+    "branch T": 0.9659847014328024,
+    "branch APP": 0.8493806531657728,
+    "branch OM": 0.8547736732570239,
+    "DS equal": 0.954702133194589,
+    "DS-R (clean fit)": 0.9563905787240855,
+    "DS-R (clean+processed fit)": 0.9614409069078684
+   },
+   "IDForge": {
+    "branch T": 0.8917943047256782,
+    "branch APP": 0.9509799691084085,
+    "branch OM": 0.9634907162148576,
+    "DS equal": 0.952266091350657,
+    "DS-R (clean fit)": 0.9599373201740519,
+    "DS-R (clean+processed fit)": 0.9551112515353609
+   },
+   "DFDM": {
+    "branch T": 0.9791680291951708,
+    "branch APP": 0.9886070816601483,
+    "branch OM": 0.9919981426011432,
+    "DS equal": 0.9919752521222744,
+    "DS-R (clean fit)": 0.9934042720173706,
+    "DS-R (clean+processed fit)": 0.9930151338766007
+   },
+   "CDFv3 reenactment": {
+    "branch T": 0.9719662921348314,
+    "branch APP": 0.8136657303370787,
+    "branch OM": 0.8416011235955057,
+    "DS equal": 0.9615326544943821,
+    "DS-R (clean fit)": 0.962686095505618,
+    "DS-R (clean+processed fit)": 0.9705898876404494
+   },
+   "KoDF first-order motion": {
+    "branch T": 0.9927073934130386,
+    "branch APP": 0.7163954996616287,
+    "branch OM": 0.73055774870291,
+    "DS equal": 0.9815023685991427,
+    "DS-R (clean fit)": 0.98330701556508,
+    "DS-R (clean+processed fit)": 0.9894681930972253
+   }
+  }
+ }
+]
