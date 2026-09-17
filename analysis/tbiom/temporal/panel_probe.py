@@ -40,8 +40,8 @@ FAMILIES = {"xclip": (XF, "xclip_temporal", "xclip_shuffled"), "timesformer": (T
             "consistency": (TF_ / "consistency", "ordered", "shuffled"), "spatial": (XF, "clip_framemean", "clip_framemean")}
 DEV_NAMES = ("VALmix", "VALmixV2", "FFpp_val")
 # Trained temporal branches (Experiment 4): opinions exported by train_branch.py at the development-selected epoch.
-BRANCHES = {"videomae_branch": Path("logs/tbiom/temporal/branches/videomae_seed42/opinions"),
-            "vjepa2_branch": Path("logs/tbiom/temporal/branches/vjepa2_seed42/opinions")}
+BRANCHES = {f"{m}_branch": Path(f"logs/tbiom/temporal/branches/{m}_seed42/opinions")
+            for m in ["videomae", "vjepa2", "videomae_ssv2", "vjepa2_ssv2", "videomae_large", "timesformer", "xclip", "vivit"]}
 PROC_SPEC = {"jpeg40": "jpeg40", "rs06": "resize06"}
 EPOCHS, SEED, K = 40, 0, 2
 REN = {"p_fsvfm_raw": "p_prior", "u_fsvfm_raw": "u_prior", "p_fsvfm": "p_gated", "u_fsvfm": "u_gated"}
@@ -143,6 +143,19 @@ def main():
             rec = json.load(open(d_.parent / "train_record.json"))
             report[fam] = {"ordered": {"epoch": rec["best_epoch"], "dev_v31": rec["best_dev_v31"]}}
             fams.append(name); print(f"branch {name}: epoch {rec['best_epoch']}, dev v3.1 {rec['best_dev_v31']:.4f}", flush=True)
+            # shuffled-frame twin of the TRAINED branch (same weights): development + CDFv3/KoDF only
+            if all((d_ / f"{n}_shuffled.csv").is_file() for n in DEV_NAMES):
+                sname = f"{fam}:shuffled"
+                sv = pd.concat([pd.read_csv(d_ / f"{n}_shuffled.csv") for n in DEV_NAMES]).set_index("v"); si = sv.index.get_indexer(dev.v)
+                if (si >= 0).all():
+                    dev[f"p_{sname}"], dev[f"u_{sname}"] = sv.p.to_numpy()[si], sv.u.to_numpy()[si]
+                    for tn in ("CDFv3", "KoDF"):
+                        f = d_ / f"{tn}_shuffled.csv"
+                        if f.is_file():
+                            o = pd.read_csv(f).set_index("v"); ti = o.index.get_indexer(tests[tn].v)
+                            if (ti >= 0).all():
+                                tests[tn][f"p_{sname}"], tests[tn][f"u_{sname}"] = o.p.to_numpy()[ti], o.u.to_numpy()[ti]
+                    fams.append(sname)
             continue
         tr = load(fam, "FFpp_train"); dv = [load(fam, n) for n in DEV_NAMES]
         if tr is None or any(x is None for x in dv):

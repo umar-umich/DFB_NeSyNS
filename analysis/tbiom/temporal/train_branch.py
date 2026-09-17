@@ -33,8 +33,17 @@ from video_id import video_id  # noqa: E402
 from extract_xclip import apply_processing, dataset_spec, OUT_OF_SCOPE, EXT  # noqa: E402
 from src.losses.evidential_loss import evidential_loss_discern_ext  # noqa: E402
 
-MODELS = {"videomae": ("MCG-NJU/videomae-base-finetuned-kinetics", 768), "vjepa2": ("facebook/vjepa2-vitl-fpc64-256", 1024)}
-T, EPOCHS, UNFREEZE, BATCH = 16, 10, 2, 32
+# name -> (HF id, feature dim, frames per clip)
+MODELS = {"videomae": ("MCG-NJU/videomae-base-finetuned-kinetics", 768, 16),
+          "vjepa2": ("facebook/vjepa2-vitl-fpc64-256", 1024, 16),
+          # added 2026-09-17 (same budget): motion-centric SSv2 fine-tunes, a larger VideoMAE, and three other designs
+          "videomae_ssv2": ("MCG-NJU/videomae-base-finetuned-ssv2", 768, 16),
+          "vjepa2_ssv2": ("facebook/vjepa2-vitl-fpc16-256-ssv2", 1024, 16),
+          "videomae_large": ("MCG-NJU/videomae-large-finetuned-kinetics", 1024, 16),
+          "timesformer": ("facebook/timesformer-base-finetuned-k400", 768, 8),
+          "xclip": ("microsoft/xclip-base-patch16-16-frames", 512, 16),
+          "vivit": ("google/vivit-b-16x2-kinetics400", 768, 32)}
+EPOCHS, UNFREEZE, BATCH = 10, 2, 32
 LR_BLOCKS, LR_HEAD = 2e-4, 2e-3
 DEV = ["VALmix", "VALmixV2", "FFpp_val"]
 TESTS = ["CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "DFEval24", "FFIW", "KoDF", "IDForge", "DFDM"]
@@ -53,8 +62,8 @@ def videos_of(ds):
 
 
 class Clips(torch.utils.data.Dataset):
-    def __init__(self, ds, proc):
-        self.h5rel, self.items = videos_of(ds); self.proc = proc; self.h = None
+    def __init__(self, ds, proc, T, shuffle=False):
+        self.h5rel, self.items = videos_of(ds); self.proc = proc; self.h = None; self.T = T; self.shuffle = shuffle
 
     def __len__(self):
         return len(self.items)
@@ -63,7 +72,9 @@ class Clips(torch.utils.data.Dataset):
         if self.h is None:
             self.h = h5py.File(EXT / self.h5rel, "r")
         ks, y, v = self.items[i]
-        idx = np.linspace(0, len(ks) - 1, T).round().astype(int)
+        idx = np.linspace(0, len(ks) - 1, self.T).round().astype(int)
+        if self.shuffle:                                   # order-sensitivity control: fixed permutation per video
+            idx = idx[np.random.default_rng(i).permutation(self.T)]
         fr = [np.asarray(self.h[ks[j]]) for j in idx]
         fr = [f if f.shape[:2] == (256, 256) else np.asarray(Image.fromarray(f).resize((256, 256), Image.BILINEAR)) for f in fr]
         return self.proc(fr), y, i
@@ -71,15 +82,30 @@ class Clips(torch.utils.data.Dataset):
 
 class Branch(nn.Module):
     def __init__(self, name):
-        super().__init__(); mid, d = MODELS[name]; self.name = name
-        if name == "vjepa2":
-            from transformers import AutoModel, AutoVideoProcessor
-            self.backbone = AutoModel.from_pretrained(mid); self.processor = AutoVideoProcessor.from_pretrained(mid)
+        super().__init__(); mid, d, self.T = MODELS[name]; self.name = name
+        if name.startswith("vjepa2"):
+            from transformers import AutoVideoProcessor, VJEPA2Model
+            self.backbone = VJEPA2Model.from_pretrained(mid); self.processor = AutoVideoProcessor.from_pretrained(mid)
             blocks = list(self.backbone.encoder.layer[-UNFREEZE:]) + [self.backbone.encoder.layernorm]
-        else:
+        elif name.startswith("videomae"):
             from transformers import AutoImageProcessor, VideoMAEModel
             self.backbone = VideoMAEModel.from_pretrained(mid); self.processor = AutoImageProcessor.from_pretrained(mid)
             blocks = list(self.backbone.encoder.layer[-UNFREEZE:])
+        elif name == "timesformer":
+            from transformers import AutoImageProcessor, TimesformerModel
+            self.backbone = TimesformerModel.from_pretrained(mid); self.processor = AutoImageProcessor.from_pretrained(mid)
+            blocks = list(self.backbone.encoder.layer[-UNFREEZE:]) + [self.backbone.layernorm]
+        elif name == "vivit":
+            from transformers import VivitImageProcessor, VivitModel     # the hub config lacks image_processor_type
+            self.backbone = VivitModel.from_pretrained(mid, add_pooling_layer=False); self.processor = VivitImageProcessor.from_pretrained(mid)
+            blocks = list(self.backbone.encoder.layer[-UNFREEZE:]) + [self.backbone.layernorm]
+        elif name == "xclip":
+            from transformers import AutoProcessor, XCLIPModel
+            self.backbone = XCLIPModel.from_pretrained(mid); self.processor = AutoProcessor.from_pretrained(mid).image_processor
+            v = self.backbone.vision_model
+            blocks = list(v.encoder.layers[-UNFREEZE:]) + [v.post_layernorm, self.backbone.visual_projection, self.backbone.mit]
+        else:
+            raise ValueError(name)
         for p in self.backbone.parameters():
             p.requires_grad_(False)
         self.trainable_blocks = nn.ModuleList(blocks)
@@ -89,20 +115,27 @@ class Branch(nn.Module):
         self.mean, self.std = self.processor.image_mean, self.processor.image_std
 
     def preprocess(self, frames):
-        if self.name == "vjepa2":
+        if self.name.startswith("vjepa2"):
             return self.processor(np.stack(frames), return_tensors="pt")["pixel_values_videos"][0]
-        return self.processor([Image.fromarray(f) for f in frames], return_tensors="pt")["pixel_values"][0]
+        out = self.processor([Image.fromarray(f) for f in frames], return_tensors="pt")["pixel_values"]
+        return out.reshape(-1, *out.shape[-3:])                  # (T, 3, H, W) whatever the processor's leading dims
 
     def forward(self, px):
-        if self.name == "vjepa2":
-            h = self.backbone(pixel_values_videos=px, skip_predictor=True).last_hidden_state
+        if self.name.startswith("vjepa2"):
+            z = self.backbone(pixel_values_videos=px, skip_predictor=True).last_hidden_state.mean(1)
+        elif self.name == "xclip":
+            B, T_ = px.shape[:2]
+            cls = self.backbone.visual_projection(self.backbone.vision_model(pixel_values=px.flatten(0, 1))[1]).view(B, T_, -1)
+            z = self.backbone.mit(cls)[1]
+        elif self.name == "timesformer":
+            z = self.backbone(pixel_values=px).last_hidden_state[:, 0]
         else:
-            h = self.backbone(pixel_values=px).last_hidden_state
-        return F.softplus(self.head(h.mean(1).float()))
+            z = self.backbone(pixel_values=px).last_hidden_state.mean(1)
+        return F.softplus(self.head(z.float()))
 
 
-def opinions(model, ds, dev, process=None, workers=4):
-    loader = torch.utils.data.DataLoader(Clips(ds, model.preprocess), batch_size=BATCH, num_workers=workers,
+def opinions(model, ds, dev, process=None, workers=4, shuffle=False):
+    loader = torch.utils.data.DataLoader(Clips(ds, model.preprocess, model.T, shuffle), batch_size=BATCH, num_workers=workers,
                                          worker_init_fn=lambda _: torch.set_num_threads(1))
     out, model_items = [], loader.dataset.items
     model.eval()
@@ -121,6 +154,8 @@ def opinions(model, ds, dev, process=None, workers=4):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--model", required=True, choices=sorted(MODELS))
     ap.add_argument("--seed", type=int, default=42); ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--export-shuffled-only", action="store_true",
+                    help="load best.pt of a finished run and write only the shuffled-frame control exports")
     a = ap.parse_args()
     import exp1_fusion_audit as A
     out_dir = Path(f"/data/umar/Repos/DFB_NeSyNS/logs/tbiom/temporal/branches/{a.model}_seed{a.seed}")
@@ -130,9 +165,13 @@ def main():
     n_blocks = sum(p.numel() for p in model.trainable_blocks.parameters()); n_head = sum(p.numel() for p in model.head.parameters())
     print(f"{a.model}: trainable blocks {n_blocks / 1e6:.1f}M, head {n_head / 1e3:.1f}K", flush=True)
 
+    if a.export_shuffled_only:
+        ck = torch.load(out_dir / "best.pt", map_location=dev)
+        model.trainable_blocks.load_state_dict(ck["trainable_blocks"]); model.head.load_state_dict(ck["head"])
+        export_shuffled(model, dev, out_dir, a.workers); return
     devtab = A.dev_tables({n: S23 / f"warmgate_e19_{n}.csv" for n in DEV}, [1.0])
     cl = A.cells(devtab)
-    train = Clips("FFpp_train", model.preprocess)
+    train = Clips("FFpp_train", model.preprocess, model.T)
     ys = torch.tensor([it[1] for it in train.items])
     w = torch.where(ys == 1, 1.0 / (ys == 1).sum(), 1.0 / (ys == 0).sum()).double()
     sampler = torch.utils.data.WeightedRandomSampler(w, len(ys), replacement=True, generator=torch.Generator().manual_seed(a.seed))
@@ -167,7 +206,7 @@ def main():
             o.to_csv(out_dir / "opinions" / "dev_clean.csv", index=False)
         json.dump({"model": a.model, "seed": a.seed, "history": history, "best_epoch": best[1], "best_dev_v31": best[0],
                    "budget": {"lr_blocks": LR_BLOCKS, "lr_head": LR_HEAD, "epochs": EPOCHS, "unfrozen_blocks": UNFREEZE, "trainable_block_params": n_blocks,
-                              "head_params": n_head, "batch": BATCH, "frames": T}},
+                              "head_params": n_head, "batch": BATCH, "frames": model.T}},
                   open(out_dir / "train_record.json", "w"), indent=1)
 
     ck = torch.load(out_dir / "best.pt", map_location=dev)
@@ -182,8 +221,16 @@ def main():
     for n in ("CDFv2", "DFDCP"):
         for c, spec in (("jpeg40", "jpeg:40"), ("rs06", "resize:0.6")):
             opinions(model, n, dev, spec, a.workers).to_csv(out_dir / "opinions" / f"{n}_{c}.csv", index=False)
+    export_shuffled(model, dev, out_dir, a.workers)
     (out_dir / "DONE").touch()
     print(f"done in {(time.time() - t0) / 60:.0f} min", flush=True)
+
+
+def export_shuffled(model, dev, out_dir, workers):
+    """Order-sensitivity control for the TRAINED branch: same selected weights, frames in a fixed shuffled order."""
+    for n in DEV + ["CDFv3", "KoDF"]:
+        opinions(model, n, dev, workers=workers, shuffle=True).to_csv(out_dir / "opinions" / f"{n}_shuffled.csv", index=False)
+    (out_dir / "SHUFFLED_DONE").touch()
 
 
 if __name__ == "__main__":
