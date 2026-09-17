@@ -45,7 +45,10 @@ class Encoder:
     def pixels(self, videos: list[list[np.ndarray]]) -> torch.Tensor:
         """(B, T, 3, H, W), normalised by the model's own processor."""
         if self.name == "vjepa2":
-            out = [self.proc(np.stack(v), return_tensors="pt")["pixel_values_videos"][0] for v in videos]
+            # The video processor stacks frames before resizing, so mixed crop sizes (CDFv3 validation, DFDM) must be
+            # brought to one size first; 256x256 is the model crop and leaves the usual 256-px crops unchanged.
+            fix = lambda f: f if f.shape[:2] == (256, 256) else np.asarray(Image.fromarray(f).resize((256, 256), Image.BILINEAR))
+            out = [self.proc(np.stack([fix(f) for f in v]), return_tensors="pt")["pixel_values_videos"][0] for v in videos]
             return torch.stack(out)
         return self.proc([[Image.fromarray(f) for f in v] for v in videos], return_tensors="pt")["pixel_values"]
 
