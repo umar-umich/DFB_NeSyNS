@@ -39,6 +39,9 @@ FAMILIES = {"xclip": (XF, "xclip_temporal", "xclip_shuffled"), "timesformer": (T
             "videomae": (TF_ / "videomae", "ordered", "shuffled"), "vjepa2": (TF_ / "vjepa2", "ordered", "shuffled"),
             "consistency": (TF_ / "consistency", "ordered", "shuffled"), "spatial": (XF, "clip_framemean", "clip_framemean")}
 DEV_NAMES = ("VALmix", "VALmixV2", "FFpp_val")
+# Trained temporal branches (Experiment 4): opinions exported by train_branch.py at the development-selected epoch.
+BRANCHES = {"videomae_branch": Path("logs/tbiom/temporal/branches/videomae_seed42/opinions"),
+            "vjepa2_branch": Path("logs/tbiom/temporal/branches/vjepa2_seed42/opinions")}
 PROC_SPEC = {"jpeg40": "jpeg40", "rs06": "resize06"}
 EPOCHS, SEED, K = 40, 0, 2
 REN = {"p_fsvfm_raw": "p_prior", "u_fsvfm_raw": "u_prior", "p_fsvfm": "p_gated", "u_fsvfm": "u_gated"}
@@ -97,7 +100,7 @@ def ds_views(t, views):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--out", type=Path, default=Path("tbiom/reports/EXP3B_TEMPORAL_PANEL.md"))
-    ap.add_argument("--families", nargs="+", default=list(FAMILIES))
+    ap.add_argument("--families", nargs="+", default=list(FAMILIES) + list(BRANCHES))
     a = ap.parse_args()
     dev = A.dev_tables({n: S23 / f"warmgate_e19_{n}.csv" for n in DEV_NAMES}, [1.0]).rename(columns=REN)
     grp = A.groups_for(dev); cl_all = A.cells(dev)
@@ -117,6 +120,30 @@ def main():
 
     fams, report = [], {}
     for fam in a.families:
+        if fam in BRANCHES:
+            d_ = BRANCHES[fam]; name = f"{fam}:ordered"
+            if not (d_.parent / "DONE").is_file():
+                print(f"{fam}: branch not finished -- skipped", flush=True); continue
+            def put(T, f):
+                o = pd.read_csv(f).set_index("v"); idx = o.index.get_indexer(T.v)
+                if (idx >= 0).all():
+                    T[f"p_{name}"], T[f"u_{name}"] = o.p.to_numpy()[idx], o.u.to_numpy()[idx]
+            dv = pd.concat([pd.read_csv(d_ / f"{n}.csv") for n in DEV_NAMES]).set_index("v"); idx = dv.index.get_indexer(dev.v)
+            assert (idx >= 0).all(), fam
+            dev[f"p_{name}"], dev[f"u_{name}"] = dv.p.to_numpy()[idx], dv.u.to_numpy()[idx]
+            for c, P in dproc.items():
+                pv = pd.concat([pd.read_csv(d_ / f"{n}_{c}.csv") for n in DEV_NAMES]).set_index("v"); ip = pv.index.get_indexer(P.v)
+                if (ip >= 0).all():
+                    P[f"p_{name}"], P[f"u_{name}"] = pv.p.to_numpy()[ip], pv.u.to_numpy()[ip]
+            for tn, T in tests.items():
+                base, _, proc = tn.partition(" ")
+                f = d_ / (f"{base}_{proc}.csv" if proc else f"{base}.csv")
+                if f.is_file():
+                    put(T, f)
+            rec = json.load(open(d_.parent / "train_record.json"))
+            report[fam] = {"ordered": {"epoch": rec["best_epoch"], "dev_v31": rec["best_dev_v31"]}}
+            fams.append(name); print(f"branch {name}: epoch {rec['best_epoch']}, dev v3.1 {rec['best_dev_v31']:.4f}", flush=True)
+            continue
         tr = load(fam, "FFpp_train"); dv = [load(fam, n) for n in DEV_NAMES]
         if tr is None or any(x is None for x in dv):
             print(f"{fam}: features incomplete -- skipped", flush=True); continue
@@ -257,6 +284,8 @@ def write(out, report, splits, test_res, dproc, arms):
                      f" | {np.mean([test_res[c][n] for c in A.TEST]):.4f} |")
     L += ["", "## Limitations", "",
           "- Stored frames are sparse (~0.25–0.6 s apart); dense-clip dynamics cannot be tested for most sets.",
+          "- `*_branch` rows are trained branches (last 2 blocks + evidential head, 10 epochs, batch 32, epoch chosen by the "
+          "development rule; analysis/tbiom/temporal/train_branch.py). They have no shuffled-frame twin.",
           "- Frozen features, small probes, one probe seed, one detector seed; a failing probe is not proof that "
           "adaptation cannot help.",
           "- Probe epochs use the full development set, so fold comparisons are conditional on them.",
