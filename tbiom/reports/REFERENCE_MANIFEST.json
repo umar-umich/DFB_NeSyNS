@@ -1,0 +1,188 @@
+{
+ "commit": "9cf8895",
+ "checkpoints": {
+  "T": {
+   "path": "logs/tbiom/temporal/branches/vjepa2_lora_B_seed42/best.pt",
+   "sha256": "6f0d9c63a6c052dec00a1b93872542ab72569ab2c6fb24d78ac11af7854bb1ce",
+   "bytes": 205257928
+  },
+  "APP/OM": {
+   "path": "/data/umar/Repos/DISCERN_Ext/runs/discern_ext_train/warm_dicome_gate_seed42/checkpoints/discern_ext-best-epoch=19-val_auroc_video=0.9956.ckpt",
+   "sha256": "fdc924a7cc9e1579455a9a99144ac982ababf2e2b890a4396d38b627f9b8e2f6",
+   "bytes": 2444559852
+  }
+ },
+ "temporal_train_record": {
+  "model": "vjepa2",
+  "seed": 42,
+  "best_epoch": 6,
+  "best_dev_v31": 0.8091709420774639,
+  "budget": {
+   "augment": "B",
+   "arm": "lora",
+   "lora": {
+    "r": 8,
+    "alpha": 16,
+    "dropout": 0.1,
+    "lr": 0.0002
+   },
+   "lr_blocks": 0.0002,
+   "lr_head": 0.002,
+   "epochs": 10,
+   "unfrozen_blocks": 2,
+   "trainable_block_params": 786432,
+   "head_params": 133506,
+   "batch": 32,
+   "frames": 16
+  }
+ },
+ "ds_operator_max_abs_diff_vs_discern": 0.0,
+ "splits": [
+  {
+   "split": 0,
+   "n_fit": 2911,
+   "n_sel": 2903,
+   "n_groups_fit": 1364,
+   "n_groups_sel": 1364,
+   "w": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "lr_coef": {
+    "p_T": 1.1409154133853094,
+    "u_T": 0.11596191187730362,
+    "p_APP": -1.9948716006144351,
+    "u_APP": 0.13440056016820467,
+    "p_OM": 4.079985177391735,
+    "u_OM": 0.8206442201948637
+   },
+   "lr_intercept": 1.0169979086315173,
+   "tau": {
+    "DS-R": 0.5647760868090039,
+    "LR": 0.8243540183406501
+   }
+  },
+  {
+   "split": 1,
+   "n_fit": 2971,
+   "n_sel": 2843,
+   "n_groups_fit": 1364,
+   "n_groups_sel": 1364,
+   "w": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "lr_coef": {
+    "p_T": 1.1045689965261751,
+    "u_T": 0.023377916913841702,
+    "p_APP": -1.843497530487184,
+    "u_APP": 0.17033059188193297,
+    "p_OM": 3.7838751814778395,
+    "u_OM": 0.8026108481983104
+   },
+   "lr_intercept": 0.8390723386446197,
+   "tau": {
+    "DS-R": 0.5647760868090039,
+    "LR": 0.5209321908662096
+   }
+  },
+  {
+   "split": 2,
+   "n_fit": 2942,
+   "n_sel": 2872,
+   "n_groups_fit": 1364,
+   "n_groups_sel": 1364,
+   "w": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "lr_coef": {
+    "p_T": 1.1589586278709103,
+    "u_T": 0.11632407544717951,
+    "p_APP": -1.7936749751920436,
+    "u_APP": 0.2585827087773345,
+    "p_OM": 3.7239921454458584,
+    "u_OM": 0.6484734280229341
+   },
+   "lr_intercept": 0.8926177257319926,
+   "tau": {
+    "DS-R": 0.37784128812459644,
+    "LR": 0.8235238801503708
+   }
+  },
+  {
+   "split": 3,
+   "n_fit": 2965,
+   "n_sel": 2849,
+   "n_groups_fit": 1364,
+   "n_groups_sel": 1364,
+   "w": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "lr_coef": {
+    "p_T": 1.1712558349072162,
+    "u_T": 0.14006820137991224,
+    "p_APP": -2.00609376657392,
+    "u_APP": 0.23456640697918005,
+    "p_OM": 4.1833169578150855,
+    "u_OM": 0.7831189545287928
+   },
+   "lr_intercept": 1.0292675642718279,
+   "tau": {
+    "DS-R": 0.5647760868090039,
+    "LR": 0.7372737447991444
+   }
+  },
+  {
+   "split": 4,
+   "n_fit": 2846,
+   "n_sel": 2968,
+   "n_groups_fit": 1364,
+   "n_groups_sel": 1364,
+   "w": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "lr_coef": {
+    "p_T": 1.1385854329228258,
+    "u_T": 0.13864666800328543,
+    "p_APP": -2.0302741217135503,
+    "u_APP": 0.24054657322951853,
+    "p_OM": 3.9683388296110937,
+    "u_OM": 0.7210556517849434
+   },
+   "lr_intercept": 0.8313109447327437,
+   "tau": {
+    "DS-R": 0.6376010582555366,
+    "LR": 0.818806084948991
+   }
+  }
+ ],
+ "dev_sets": [
+  "VALmix",
+  "VALmixV2",
+  "FFpp_val"
+ ],
+ "processed_dev": [
+  "jpeg40",
+  "rs06"
+ ],
+ "tests": [
+  "CDFv2",
+  "CDFv3",
+  "DFD",
+  "DFDC",
+  "DFDCP",
+  "DFEval24",
+  "FFIW",
+  "KoDF",
+  "IDForge",
+  "DFDM"
+ ]
+}

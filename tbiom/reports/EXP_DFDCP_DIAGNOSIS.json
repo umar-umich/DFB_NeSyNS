@@ -1,0 +1,1876 @@
+{
+ "vjepa2_lora_B_seed42": [
+  {
+   "w_clean": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "w_proc": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "dev": {
+    "clean": {
+     "branch T": 0.7969026069201117,
+     "branch APP": 0.8073402411757419,
+     "branch OM": 0.8127779087083367,
+     "DS-R (clean fit)": 0.8731944575685945,
+     "LR (clean fit)": 0.862582027067444,
+     "DS-R (clean+proc fit)": 0.8731944575685945,
+     "LR (clean+proc fit)": 0.8682541939732755
+    },
+    "jpeg40": {
+     "branch T": 0.7457829795799221,
+     "branch APP": 0.7152962684165484,
+     "branch OM": 0.7394256205292885,
+     "DS-R (clean fit)": 0.797182277191641,
+     "LR (clean fit)": 0.746763905255731,
+     "DS-R (clean+proc fit)": 0.797182277191641,
+     "LR (clean+proc fit)": 0.7956344835188132
+    },
+    "rs06": {
+     "branch T": 0.789233188499438,
+     "branch APP": 0.7676000622961959,
+     "branch OM": 0.7673561919553832,
+     "DS-R (clean fit)": 0.8447378566996644,
+     "LR (clean fit)": 0.8407144754466195,
+     "DS-R (clean+proc fit)": 0.8447378566996644,
+     "LR (clean+proc fit)": 0.8387790837792627
+    }
+   },
+   "tests": {
+    "CDFv2": {
+     "branch T": 0.7383426966292135,
+     "branch APP": 0.9612194315928618,
+     "branch OM": 0.9735789821546597,
+     "DS-R (clean fit)": 0.9598149372108394,
+     "LR (clean fit)": 0.9703238598810311,
+     "DS-R (clean+proc fit)": 0.9598149372108394,
+     "LR (clean+proc fit)": 0.9607072042300067
+    },
+    "CDFv3": {
+     "branch T": 0.9262526725196742,
+     "branch APP": 0.8575967793294819,
+     "branch OM": 0.8801050811991084,
+     "DS-R (clean fit)": 0.9615828139926307,
+     "LR (clean fit)": 0.9669028340080972,
+     "DS-R (clean+proc fit)": 0.9615828139926307,
+     "LR (clean+proc fit)": 0.9580516762953191
+    },
+    "DFD": {
+     "branch T": 0.7967035532520894,
+     "branch APP": 0.9303761210540872,
+     "branch OM": 0.9338250347495339,
+     "DS-R (clean fit)": 0.9337657719784068,
+     "LR (clean fit)": 0.9291809885030224,
+     "DS-R (clean+proc fit)": 0.9337657719784068,
+     "LR (clean+proc fit)": 0.9289618958340068
+    },
+    "DFDC": {
+     "branch T": 0.7009337252182655,
+     "branch APP": 0.8758295535603698,
+     "branch OM": 0.8808187634650174,
+     "DS-R (clean fit)": 0.8626127490378417,
+     "LR (clean fit)": 0.8606887037149209,
+     "DS-R (clean+proc fit)": 0.8626127490378417,
+     "LR (clean+proc fit)": 0.8622963239541925
+    },
+    "DFDCP": {
+     "branch T": 0.7408326497128794,
+     "branch APP": 0.869811320754717,
+     "branch OM": 0.8726722723543888,
+     "DS-R (clean fit)": 0.8656275635767022,
+     "LR (clean fit)": 0.8563679245283019,
+     "DS-R (clean+proc fit)": 0.8656275635767022,
+     "LR (clean+proc fit)": 0.866376127973749
+    },
+    "DFEval24": {
+     "branch T": 0.6732058980194664,
+     "branch APP": 0.6741441092441044,
+     "branch OM": 0.6687509079463464,
+     "DS-R (clean fit)": 0.7251827998644134,
+     "LR (clean fit)": 0.6829209239262021,
+     "DS-R (clean+proc fit)": 0.7251827998644134,
+     "LR (clean+proc fit)": 0.7199167110551548
+    },
+    "FFIW": {
+     "branch T": 0.801100083880773,
+     "branch APP": 0.9186084096703735,
+     "branch OM": 0.9354114725643432,
+     "DS-R (clean fit)": 0.9281821126327766,
+     "LR (clean fit)": 0.9267483327658231,
+     "DS-R (clean+proc fit)": 0.9281821126327766,
+     "LR (clean+proc fit)": 0.9276572349242996
+    },
+    "KoDF": {
+     "branch T": 0.9655532097974866,
+     "branch APP": 0.8493806531657728,
+     "branch OM": 0.8547736732570239,
+     "DS-R (clean fit)": 0.9574461698551189,
+     "LR (clean fit)": 0.9648653245817658,
+     "DS-R (clean+proc fit)": 0.9574461698551189,
+     "LR (clean+proc fit)": 0.9528836148243016
+    },
+    "IDForge": {
+     "branch T": 0.8898980729909958,
+     "branch APP": 0.9509799691084085,
+     "branch OM": 0.9634907162148576,
+     "DS-R (clean fit)": 0.965616880827969,
+     "LR (clean fit)": 0.9627343978801567,
+     "DS-R (clean+proc fit)": 0.965616880827969,
+     "LR (clean+proc fit)": 0.9624779579942949
+    },
+    "DFDM": {
+     "branch T": 0.9798383932191862,
+     "branch APP": 0.9886070816601483,
+     "branch OM": 0.9919981426011432,
+     "DS-R (clean fit)": 0.995605028057187,
+     "LR (clean fit)": 0.9962296111234648,
+     "DS-R (clean+proc fit)": 0.995605028057187,
+     "LR (clean+proc fit)": 0.9945880367817295
+    },
+    "CDFv3 reenactment": {
+     "branch T": 0.9740844452247192,
+     "branch APP": 0.8136657303370787,
+     "branch OM": 0.8416011235955057,
+     "DS-R (clean fit)": 0.9641959269662921,
+     "LR (clean fit)": 0.9699912219101123,
+     "DS-R (clean+proc fit)": 0.9641959269662921,
+     "LR (clean+proc fit)": 0.9591695926966292
+    },
+    "KoDF first-order motion": {
+     "branch T": 0.9886857094518385,
+     "branch APP": 0.7163954996616287,
+     "branch OM": 0.73055774870291,
+     "DS-R (clean fit)": 0.9813825287615611,
+     "LR (clean fit)": 0.9796342770133093,
+     "DS-R (clean+proc fit)": 0.9813825287615611,
+     "LR (clean+proc fit)": 0.9722324046920822
+    },
+    "CDFv2 jpeg40": {
+     "branch T": 0.6691754791804362,
+     "branch APP": 0.8333443489755453,
+     "branch OM": 0.8872273628552545,
+     "DS-R (clean fit)": 0.8694976867151355,
+     "LR (clean fit)": 0.7293291473892928,
+     "DS-R (clean+proc fit)": 0.8694976867151355,
+     "LR (clean+proc fit)": 0.8773628552544613
+    },
+    "CDFv2 rs06": {
+     "branch T": 0.7115994712491738,
+     "branch APP": 0.9450925313945803,
+     "branch OM": 0.9548744216787839,
+     "DS-R (clean fit)": 0.9418208856576339,
+     "LR (clean fit)": 0.9482154659616656,
+     "DS-R (clean+proc fit)": 0.9418208856576339,
+     "LR (clean+proc fit)": 0.9429610046265697
+    },
+    "DFDCP jpeg40": {
+     "branch T": 0.7094339622641509,
+     "branch APP": 0.8059782608695653,
+     "branch OM": 0.8256357670221492,
+     "DS-R (clean fit)": 0.8198215750615259,
+     "LR (clean fit)": 0.7264150943396226,
+     "DS-R (clean+proc fit)": 0.8198215750615259,
+     "LR (clean+proc fit)": 0.8152584085315833
+    },
+    "DFDCP rs06": {
+     "branch T": 0.7151917555373257,
+     "branch APP": 0.7981234618539786,
+     "branch OM": 0.7974159146841674,
+     "DS-R (clean fit)": 0.8083982772764561,
+     "LR (clean fit)": 0.7934064807219032,
+     "DS-R (clean+proc fit)": 0.8083982772764561,
+     "LR (clean+proc fit)": 0.8037530762920426
+    }
+   }
+  },
+  {
+   "w_clean": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "w_proc": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "dev": {
+    "clean": {
+     "branch T": 0.8157399527163506,
+     "branch APP": 0.822876726102867,
+     "branch OM": 0.8306425149926481,
+     "DS-R (clean fit)": 0.8849463456050866,
+     "LR (clean fit)": 0.8788503305957106,
+     "DS-R (clean+proc fit)": 0.8849463456050866,
+     "LR (clean+proc fit)": 0.8826044390506375
+    },
+    "jpeg40": {
+     "branch T": 0.7696286770937896,
+     "branch APP": 0.7120695477795982,
+     "branch OM": 0.7398602141348888,
+     "DS-R (clean fit)": 0.8126579168382816,
+     "LR (clean fit)": 0.7628458936872541,
+     "DS-R (clean+proc fit)": 0.8126579168382816,
+     "LR (clean+proc fit)": 0.8054679213965367
+    },
+    "rs06": {
+     "branch T": 0.8100693601081123,
+     "branch APP": 0.7934137984291322,
+     "branch OM": 0.794556234453402,
+     "DS-R (clean fit)": 0.866973376663095,
+     "LR (clean fit)": 0.8664873770525547,
+     "DS-R (clean+proc fit)": 0.866973376663095,
+     "LR (clean+proc fit)": 0.8652112310618509
+    }
+   },
+   "tests": {
+    "CDFv2": {
+     "branch T": 0.7383426966292135,
+     "branch APP": 0.9612194315928618,
+     "branch OM": 0.9735789821546597,
+     "DS-R (clean fit)": 0.9598149372108394,
+     "LR (clean fit)": 0.9703238598810311,
+     "DS-R (clean+proc fit)": 0.9598149372108394,
+     "LR (clean+proc fit)": 0.9604758757435559
+    },
+    "CDFv3": {
+     "branch T": 0.9262526725196742,
+     "branch APP": 0.8575967793294819,
+     "branch OM": 0.8801050811991084,
+     "DS-R (clean fit)": 0.9615828139926307,
+     "LR (clean fit)": 0.9666333075558387,
+     "DS-R (clean+proc fit)": 0.9615828139926307,
+     "LR (clean+proc fit)": 0.9572351362416412
+    },
+    "DFD": {
+     "branch T": 0.7967035532520894,
+     "branch APP": 0.9303761210540872,
+     "branch OM": 0.9338250347495339,
+     "DS-R (clean fit)": 0.9337657719784068,
+     "LR (clean fit)": 0.9310280115364861,
+     "DS-R (clean+proc fit)": 0.9337657719784068,
+     "LR (clean+proc fit)": 0.9291558467213321
+    },
+    "DFDC": {
+     "branch T": 0.7009337252182655,
+     "branch APP": 0.8758295535603698,
+     "branch OM": 0.8808187634650174,
+     "DS-R (clean fit)": 0.8626127490378417,
+     "LR (clean fit)": 0.8610450887662767,
+     "DS-R (clean+proc fit)": 0.8626127490378417,
+     "LR (clean+proc fit)": 0.8602339556661336
+    },
+    "DFDCP": {
+     "branch T": 0.7408326497128794,
+     "branch APP": 0.869811320754717,
+     "branch OM": 0.8726722723543888,
+     "DS-R (clean fit)": 0.8656275635767022,
+     "LR (clean fit)": 0.8565422477440525,
+     "DS-R (clean+proc fit)": 0.8656275635767022,
+     "LR (clean+proc fit)": 0.8638330598851518
+    },
+    "DFEval24": {
+     "branch T": 0.6732058980194664,
+     "branch APP": 0.6741441092441044,
+     "branch OM": 0.6687509079463464,
+     "DS-R (clean fit)": 0.7251827998644134,
+     "LR (clean fit)": 0.6858081933078302,
+     "DS-R (clean+proc fit)": 0.7251827998644134,
+     "LR (clean+proc fit)": 0.7210183526221491
+    },
+    "FFIW": {
+     "branch T": 0.801100083880773,
+     "branch APP": 0.9186084096703735,
+     "branch OM": 0.9354114725643432,
+     "DS-R (clean fit)": 0.9281821126327766,
+     "LR (clean fit)": 0.9280326221461851,
+     "DS-R (clean+proc fit)": 0.9281821126327766,
+     "LR (clean+proc fit)": 0.926091239026983
+    },
+    "KoDF": {
+     "branch T": 0.9655532097974866,
+     "branch APP": 0.8493806531657728,
+     "branch OM": 0.8547736732570239,
+     "DS-R (clean fit)": 0.9574461698551189,
+     "LR (clean fit)": 0.9629567557832386,
+     "DS-R (clean+proc fit)": 0.9574461698551189,
+     "LR (clean+proc fit)": 0.9526509845513488
+    },
+    "IDForge": {
+     "branch T": 0.8898980729909958,
+     "branch APP": 0.9509799691084085,
+     "branch OM": 0.9634907162148576,
+     "DS-R (clean fit)": 0.965616880827969,
+     "LR (clean fit)": 0.9626299389756011,
+     "DS-R (clean+proc fit)": 0.965616880827969,
+     "LR (clean+proc fit)": 0.9617640060393386
+    },
+    "DFDM": {
+     "branch T": 0.9798383932191862,
+     "branch APP": 0.9886070816601483,
+     "branch OM": 0.9919981426011432,
+     "DS-R (clean fit)": 0.995605028057187,
+     "LR (clean fit)": 0.9961805600973173,
+     "DS-R (clean+proc fit)": 0.995605028057187,
+     "LR (clean+proc fit)": 0.9941433074779924
+    },
+    "CDFv3 reenactment": {
+     "branch T": 0.9740844452247192,
+     "branch APP": 0.8136657303370787,
+     "branch OM": 0.8416011235955057,
+     "DS-R (clean fit)": 0.9641959269662921,
+     "LR (clean fit)": 0.9695804073033708,
+     "DS-R (clean+proc fit)": 0.9641959269662921,
+     "LR (clean+proc fit)": 0.9584375
+    },
+    "KoDF first-order motion": {
+     "branch T": 0.9886857094518385,
+     "branch APP": 0.7163954996616287,
+     "branch OM": 0.73055774870291,
+     "DS-R (clean fit)": 0.9813825287615611,
+     "LR (clean fit)": 0.9791690164674036,
+     "DS-R (clean+proc fit)": 0.9813825287615611,
+     "LR (clean+proc fit)": 0.9727752086623055
+    },
+    "CDFv2 jpeg40": {
+     "branch T": 0.6691754791804362,
+     "branch APP": 0.8333443489755453,
+     "branch OM": 0.8872273628552545,
+     "DS-R (clean fit)": 0.8694976867151355,
+     "LR (clean fit)": 0.7305023132848645,
+     "DS-R (clean+proc fit)": 0.8694976867151355,
+     "LR (clean+proc fit)": 0.8771315267680105
+    },
+    "CDFv2 rs06": {
+     "branch T": 0.7115994712491738,
+     "branch APP": 0.9450925313945803,
+     "branch OM": 0.9548744216787839,
+     "DS-R (clean fit)": 0.9418208856576339,
+     "LR (clean fit)": 0.9480006609385327,
+     "DS-R (clean+proc fit)": 0.9418208856576339,
+     "LR (clean+proc fit)": 0.9427792465300727
+    },
+    "DFDCP jpeg40": {
+     "branch T": 0.7094339622641509,
+     "branch APP": 0.8059782608695653,
+     "branch OM": 0.8256357670221492,
+     "DS-R (clean fit)": 0.8198215750615259,
+     "LR (clean fit)": 0.7316755537325677,
+     "DS-R (clean+proc fit)": 0.8198215750615259,
+     "LR (clean+proc fit)": 0.814909762100082
+    },
+    "DFDCP rs06": {
+     "branch T": 0.7151917555373257,
+     "branch APP": 0.7981234618539786,
+     "branch OM": 0.7974159146841674,
+     "DS-R (clean fit)": 0.8083982772764561,
+     "LR (clean fit)": 0.7923913043478261,
+     "DS-R (clean+proc fit)": 0.8083982772764561,
+     "LR (clean+proc fit)": 0.8005332239540607
+    }
+   }
+  },
+  {
+   "w_clean": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "w_proc": {
+    "T": 0.25,
+    "APP": 0.0,
+    "OM": 1.0
+   },
+   "dev": {
+    "clean": {
+     "branch T": 0.8086490122870279,
+     "branch APP": 0.8168109178821182,
+     "branch OM": 0.8262487375889623,
+     "DS-R (clean fit)": 0.8829161161281052,
+     "LR (clean fit)": 0.8806597716395608,
+     "DS-R (clean+proc fit)": 0.8812614249179044,
+     "LR (clean+proc fit)": 0.8787892633188227
+    },
+    "jpeg40": {
+     "branch T": 0.7566514339612986,
+     "branch APP": 0.7171050003485165,
+     "branch OM": 0.7437518418693824,
+     "DS-R (clean fit)": 0.8114421198439775,
+     "LR (clean fit)": 0.7636780479349081,
+     "DS-R (clean+proc fit)": 0.8139353703754161,
+     "LR (clean+proc fit)": 0.8089305122995807
+    },
+    "rs06": {
+     "branch T": 0.8014723271802527,
+     "branch APP": 0.7932159702446325,
+     "branch OM": 0.7949303065159713,
+     "DS-R (clean fit)": 0.8638192008588378,
+     "LR (clean fit)": 0.8609410180848028,
+     "DS-R (clean+proc fit)": 0.8634750094660443,
+     "LR (clean+proc fit)": 0.8587570103337806
+    }
+   },
+   "tests": {
+    "CDFv2": {
+     "branch T": 0.7383426966292135,
+     "branch APP": 0.9612194315928618,
+     "branch OM": 0.9735789821546597,
+     "DS-R (clean fit)": 0.9598149372108394,
+     "LR (clean fit)": 0.9689524124256444,
+     "DS-R (clean+proc fit)": 0.9542795769993391,
+     "LR (clean+proc fit)": 0.9586087243886319
+    },
+    "CDFv3": {
+     "branch T": 0.9262526725196742,
+     "branch APP": 0.8575967793294819,
+     "branch OM": 0.8801050811991084,
+     "DS-R (clean fit)": 0.9615828139926307,
+     "LR (clean fit)": 0.9682004276031478,
+     "DS-R (clean+proc fit)": 0.9675829049720238,
+     "LR (clean+proc fit)": 0.9595960514943366
+    },
+    "DFD": {
+     "branch T": 0.7967035532520894,
+     "branch APP": 0.9303761210540872,
+     "branch OM": 0.9338250347495339,
+     "DS-R (clean fit)": 0.9337657719784068,
+     "LR (clean fit)": 0.930288124818171,
+     "DS-R (clean+proc fit)": 0.927120260325191,
+     "LR (clean+proc fit)": 0.9274480014079398
+    },
+    "DFDC": {
+     "branch T": 0.7009337252182655,
+     "branch APP": 0.8758295535603698,
+     "branch OM": 0.8808187634650174,
+     "DS-R (clean fit)": 0.8626127490378417,
+     "LR (clean fit)": 0.8593687590802698,
+     "DS-R (clean+proc fit)": 0.8486801005689323,
+     "LR (clean+proc fit)": 0.857320494310225
+    },
+    "DFDCP": {
+     "branch T": 0.7408326497128794,
+     "branch APP": 0.869811320754717,
+     "branch OM": 0.8726722723543888,
+     "DS-R (clean fit)": 0.8656275635767022,
+     "LR (clean fit)": 0.8553322395406071,
+     "DS-R (clean+proc fit)": 0.8585008203445447,
+     "LR (clean+proc fit)": 0.861987284659557
+    },
+    "DFEval24": {
+     "branch T": 0.6732058980194664,
+     "branch APP": 0.6741441092441044,
+     "branch OM": 0.6687509079463464,
+     "DS-R (clean fit)": 0.7251827998644134,
+     "LR (clean fit)": 0.6907716333349475,
+     "DS-R (clean+proc fit)": 0.7223681661904993,
+     "LR (clean+proc fit)": 0.7205341145707229
+    },
+    "FFIW": {
+     "branch T": 0.801100083880773,
+     "branch APP": 0.9186084096703735,
+     "branch OM": 0.9354114725643432,
+     "DS-R (clean fit)": 0.9281821126327766,
+     "LR (clean fit)": 0.9252577465139649,
+     "DS-R (clean+proc fit)": 0.9142346502337865,
+     "LR (clean+proc fit)": 0.9228213837836042
+    },
+    "KoDF": {
+     "branch T": 0.9655532097974866,
+     "branch APP": 0.8493806531657728,
+     "branch OM": 0.8547736732570239,
+     "DS-R (clean fit)": 0.9574461698551189,
+     "LR (clean fit)": 0.9614434083086528,
+     "DS-R (clean+proc fit)": 0.9628191787400945,
+     "LR (clean+proc fit)": 0.9536440406627712
+    },
+    "IDForge": {
+     "branch T": 0.8898980729909958,
+     "branch APP": 0.9509799691084085,
+     "branch OM": 0.9634907162148576,
+     "DS-R (clean fit)": 0.965616880827969,
+     "LR (clean fit)": 0.961752125520151,
+     "DS-R (clean+proc fit)": 0.961289345673681,
+     "LR (clean+proc fit)": 0.9605625044762097
+    },
+    "DFDM": {
+     "branch T": 0.9798383932191862,
+     "branch APP": 0.9886070816601483,
+     "branch OM": 0.9919981426011432,
+     "DS-R (clean fit)": 0.995605028057187,
+     "LR (clean fit)": 0.9963146329021203,
+     "DS-R (clean+proc fit)": 0.9956835096990229,
+     "LR (clean+proc fit)": 0.9941988986409596
+    },
+    "CDFv3 reenactment": {
+     "branch T": 0.9740844452247192,
+     "branch APP": 0.8136657303370787,
+     "branch OM": 0.8416011235955057,
+     "DS-R (clean fit)": 0.9641959269662921,
+     "LR (clean fit)": 0.9719820926966292,
+     "DS-R (clean+proc fit)": 0.9742872191011236,
+     "LR (clean+proc fit)": 0.9621190308988764
+    },
+    "KoDF first-order motion": {
+     "branch T": 0.9886857094518385,
+     "branch APP": 0.7163954996616287,
+     "branch OM": 0.73055774870291,
+     "DS-R (clean fit)": 0.9813825287615611,
+     "LR (clean fit)": 0.9795073877735168,
+     "DS-R (clean+proc fit)": 0.9869938529212723,
+     "LR (clean+proc fit)": 0.9744952628017144
+    },
+    "CDFv2 jpeg40": {
+     "branch T": 0.6691754791804362,
+     "branch APP": 0.8333443489755453,
+     "branch OM": 0.8872273628552545,
+     "DS-R (clean fit)": 0.8694976867151355,
+     "LR (clean fit)": 0.7132683410442828,
+     "DS-R (clean+proc fit)": 0.8642927957699934,
+     "LR (clean+proc fit)": 0.8778255122273628
+    },
+    "CDFv2 rs06": {
+     "branch T": 0.7115994712491738,
+     "branch APP": 0.9450925313945803,
+     "branch OM": 0.9548744216787839,
+     "DS-R (clean fit)": 0.9418208856576339,
+     "LR (clean fit)": 0.945720423000661,
+     "DS-R (clean+proc fit)": 0.9337739590218109,
+     "LR (clean+proc fit)": 0.9412260409781891
+    },
+    "DFDCP jpeg40": {
+     "branch T": 0.7094339622641509,
+     "branch APP": 0.8059782608695653,
+     "branch OM": 0.8256357670221492,
+     "DS-R (clean fit)": 0.8198215750615259,
+     "LR (clean fit)": 0.734064807219032,
+     "DS-R (clean+proc fit)": 0.8133511074651354,
+     "LR (clean+proc fit)": 0.8141611977030353
+    },
+    "DFDCP rs06": {
+     "branch T": 0.7151917555373257,
+     "branch APP": 0.7981234618539786,
+     "branch OM": 0.7974159146841674,
+     "DS-R (clean fit)": 0.8083982772764561,
+     "LR (clean fit)": 0.7941345365053323,
+     "DS-R (clean+proc fit)": 0.8044913863822806,
+     "LR (clean+proc fit)": 0.8003076292042658
+    }
+   }
+  },
+  {
+   "w_clean": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "w_proc": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "dev": {
+    "clean": {
+     "branch T": 0.8090608877449882,
+     "branch APP": 0.8148853432337188,
+     "branch OM": 0.8206230713472843,
+     "DS-R (clean fit)": 0.8773345338646972,
+     "LR (clean fit)": 0.8687913221861524,
+     "DS-R (clean+proc fit)": 0.8773345338646972,
+     "LR (clean+proc fit)": 0.871179797902467
+    },
+    "jpeg40": {
+     "branch T": 0.7609595865402724,
+     "branch APP": 0.7144021974834964,
+     "branch OM": 0.7367518987941372,
+     "DS-R (clean fit)": 0.8077871944660284,
+     "LR (clean fit)": 0.7570884316456334,
+     "DS-R (clean+proc fit)": 0.8077871944660284,
+     "LR (clean+proc fit)": 0.8069504809724117
+    },
+    "rs06": {
+     "branch T": 0.8020452338760737,
+     "branch APP": 0.7745126165100787,
+     "branch OM": 0.7750982844507798,
+     "DS-R (clean fit)": 0.8530365464375502,
+     "LR (clean fit)": 0.8463520045851739,
+     "DS-R (clean+proc fit)": 0.8530365464375502,
+     "LR (clean+proc fit)": 0.846634695294107
+    }
+   },
+   "tests": {
+    "CDFv2": {
+     "branch T": 0.7383426966292135,
+     "branch APP": 0.9612194315928618,
+     "branch OM": 0.9735789821546597,
+     "DS-R (clean fit)": 0.9598149372108394,
+     "LR (clean fit)": 0.9699933906146728,
+     "DS-R (clean+proc fit)": 0.9598149372108394,
+     "LR (clean+proc fit)": 0.9590548578982154
+    },
+    "CDFv3": {
+     "branch T": 0.9262526725196742,
+     "branch APP": 0.8575967793294819,
+     "branch OM": 0.8801050811991084,
+     "DS-R (clean fit)": 0.9615828139926307,
+     "LR (clean fit)": 0.9673509075194469,
+     "DS-R (clean+proc fit)": 0.9615828139926307,
+     "LR (clean+proc fit)": 0.957995951417004
+    },
+    "DFD": {
+     "branch T": 0.7967035532520894,
+     "branch APP": 0.9303761210540872,
+     "branch OM": 0.9338250347495339,
+     "DS-R (clean fit)": 0.9337657719784068,
+     "LR (clean fit)": 0.9304955445171161,
+     "DS-R (clean+proc fit)": 0.9337657719784068,
+     "LR (clean+proc fit)": 0.9284024911913972
+    },
+    "DFDC": {
+     "branch T": 0.7009337252182655,
+     "branch APP": 0.8758295535603698,
+     "branch OM": 0.8808187634650174,
+     "DS-R (clean fit)": 0.8626127490378417,
+     "LR (clean fit)": 0.8613808609836119,
+     "DS-R (clean+proc fit)": 0.8626127490378417,
+     "LR (clean+proc fit)": 0.8602697569041693
+    },
+    "DFDCP": {
+     "branch T": 0.7408326497128794,
+     "branch APP": 0.869811320754717,
+     "branch OM": 0.8726722723543888,
+     "DS-R (clean fit)": 0.8656275635767022,
+     "LR (clean fit)": 0.8563474159146842,
+     "DS-R (clean+proc fit)": 0.8656275635767022,
+     "LR (clean+proc fit)": 0.8645713699753896
+    },
+    "DFEval24": {
+     "branch T": 0.6732058980194664,
+     "branch APP": 0.6741441092441044,
+     "branch OM": 0.6687509079463464,
+     "DS-R (clean fit)": 0.7251827998644134,
+     "LR (clean fit)": 0.6880538472713186,
+     "DS-R (clean+proc fit)": 0.7251827998644134,
+     "LR (clean+proc fit)": 0.7208488693041499
+    },
+    "FFIW": {
+     "branch T": 0.801100083880773,
+     "branch APP": 0.9186084096703735,
+     "branch OM": 0.9354114725643432,
+     "DS-R (clean fit)": 0.9281821126327766,
+     "LR (clean fit)": 0.9278372879103721,
+     "DS-R (clean+proc fit)": 0.9281821126327766,
+     "LR (clean+proc fit)": 0.9259324469101147
+    },
+    "KoDF": {
+     "branch T": 0.9655532097974866,
+     "branch APP": 0.8493806531657728,
+     "branch OM": 0.8547736732570239,
+     "DS-R (clean fit)": 0.9574461698551189,
+     "LR (clean fit)": 0.962241355158889,
+     "DS-R (clean+proc fit)": 0.9574461698551189,
+     "LR (clean+proc fit)": 0.9529211358360682
+    },
+    "IDForge": {
+     "branch T": 0.8898980729909958,
+     "branch APP": 0.9509799691084085,
+     "branch OM": 0.9634907162148576,
+     "DS-R (clean fit)": 0.965616880827969,
+     "LR (clean fit)": 0.9628765157889299,
+     "DS-R (clean+proc fit)": 0.965616880827969,
+     "LR (clean+proc fit)": 0.9616035069499356
+    },
+    "DFDM": {
+     "branch T": 0.9798383932191862,
+     "branch APP": 0.9886070816601483,
+     "branch OM": 0.9919981426011432,
+     "DS-R (clean fit)": 0.995605028057187,
+     "LR (clean fit)": 0.9963080927653006,
+     "DS-R (clean+proc fit)": 0.995605028057187,
+     "LR (clean+proc fit)": 0.9942610299407464
+    },
+    "CDFv3 reenactment": {
+     "branch T": 0.9740844452247192,
+     "branch APP": 0.8136657303370787,
+     "branch OM": 0.8416011235955057,
+     "DS-R (clean fit)": 0.9641959269662921,
+     "LR (clean fit)": 0.970405547752809,
+     "DS-R (clean+proc fit)": 0.9641959269662921,
+     "LR (clean+proc fit)": 0.9596664325842696
+    },
+    "KoDF first-order motion": {
+     "branch T": 0.9886857094518385,
+     "branch APP": 0.7163954996616287,
+     "branch OM": 0.73055774870291,
+     "DS-R (clean fit)": 0.9813825287615611,
+     "LR (clean fit)": 0.978816546356869,
+     "DS-R (clean+proc fit)": 0.9813825287615611,
+     "LR (clean+proc fit)": 0.972761109857884
+    },
+    "CDFv2 jpeg40": {
+     "branch T": 0.6691754791804362,
+     "branch APP": 0.8333443489755453,
+     "branch OM": 0.8872273628552545,
+     "DS-R (clean fit)": 0.8694976867151355,
+     "LR (clean fit)": 0.7221910112359551,
+     "DS-R (clean+proc fit)": 0.8694976867151355,
+     "LR (clean+proc fit)": 0.8766523463317911
+    },
+    "CDFv2 rs06": {
+     "branch T": 0.7115994712491738,
+     "branch APP": 0.9450925313945803,
+     "branch OM": 0.9548744216787839,
+     "DS-R (clean fit)": 0.9418208856576339,
+     "LR (clean fit)": 0.9473397224058162,
+     "DS-R (clean+proc fit)": 0.9418208856576339,
+     "LR (clean+proc fit)": 0.9418704560475876
+    },
+    "DFDCP jpeg40": {
+     "branch T": 0.7094339622641509,
+     "branch APP": 0.8059782608695653,
+     "branch OM": 0.8256357670221492,
+     "DS-R (clean fit)": 0.8198215750615259,
+     "LR (clean fit)": 0.7337981952420016,
+     "DS-R (clean+proc fit)": 0.8198215750615259,
+     "LR (clean+proc fit)": 0.8146021328958163
+    },
+    "DFDCP rs06": {
+     "branch T": 0.7151917555373257,
+     "branch APP": 0.7981234618539786,
+     "branch OM": 0.7974159146841674,
+     "DS-R (clean fit)": 0.8083982772764561,
+     "LR (clean fit)": 0.7944831829368335,
+     "DS-R (clean+proc fit)": 0.8083982772764561,
+     "LR (clean+proc fit)": 0.8022354388843315
+    }
+   }
+  },
+  {
+   "w_clean": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "w_proc": {
+    "T": 0.25,
+    "APP": 0.0,
+    "OM": 1.0
+   },
+   "dev": {
+    "clean": {
+     "branch T": 0.8166328076381673,
+     "branch APP": 0.824916204387697,
+     "branch OM": 0.8303602407287873,
+     "DS-R (clean fit)": 0.8856029412863524,
+     "LR (clean fit)": 0.8770822342212238,
+     "DS-R (clean+proc fit)": 0.8832048546707698,
+     "LR (clean+proc fit)": 0.8810230832953069
+    },
+    "jpeg40": {
+     "branch T": 0.7647523757715883,
+     "branch APP": 0.7308253631090315,
+     "branch OM": 0.7545592249170981,
+     "DS-R (clean fit)": 0.8188928546399149,
+     "LR (clean fit)": 0.7515838954482662,
+     "DS-R (clean+proc fit)": 0.8203287907436986,
+     "LR (clean+proc fit)": 0.8129223853291928
+    },
+    "rs06": {
+     "branch T": 0.8105087951396857,
+     "branch APP": 0.7953240709469354,
+     "branch OM": 0.7907226782115787,
+     "DS-R (clean fit)": 0.8658620530287072,
+     "LR (clean fit)": 0.8564156159952597,
+     "DS-R (clean+proc fit)": 0.8665071377917831,
+     "LR (clean+proc fit)": 0.8598881850008615
+    }
+   },
+   "tests": {
+    "CDFv2": {
+     "branch T": 0.7383426966292135,
+     "branch APP": 0.9612194315928618,
+     "branch OM": 0.9735789821546597,
+     "DS-R (clean fit)": 0.9598149372108394,
+     "LR (clean fit)": 0.9688037012557832,
+     "DS-R (clean+proc fit)": 0.9542795769993391,
+     "LR (clean+proc fit)": 0.9586748182419035
+    },
+    "CDFv3": {
+     "branch T": 0.9262526725196742,
+     "branch APP": 0.8575967793294819,
+     "branch OM": 0.8801050811991084,
+     "DS-R (clean fit)": 0.9615828139926307,
+     "LR (clean fit)": 0.9684233271164081,
+     "DS-R (clean+proc fit)": 0.9675829049720238,
+     "LR (clean+proc fit)": 0.9593197015875904
+    },
+    "DFD": {
+     "branch T": 0.7967035532520894,
+     "branch APP": 0.9303761210540872,
+     "branch OM": 0.9338250347495339,
+     "DS-R (clean fit)": 0.9337657719784068,
+     "LR (clean fit)": 0.9290085877142888,
+     "DS-R (clean+proc fit)": 0.927120260325191,
+     "LR (clean+proc fit)": 0.927717377640336
+    },
+    "DFDC": {
+     "branch T": 0.7009337252182655,
+     "branch APP": 0.8758295535603698,
+     "branch OM": 0.8808187634650174,
+     "DS-R (clean fit)": 0.8626127490378417,
+     "LR (clean fit)": 0.8585554562081246,
+     "DS-R (clean+proc fit)": 0.8486801005689323,
+     "LR (clean+proc fit)": 0.8587040855902729
+    },
+    "DFDCP": {
+     "branch T": 0.7408326497128794,
+     "branch APP": 0.869811320754717,
+     "branch OM": 0.8726722723543888,
+     "DS-R (clean fit)": 0.8656275635767022,
+     "LR (clean fit)": 0.8537940935192782,
+     "DS-R (clean+proc fit)": 0.8585008203445447,
+     "LR (clean+proc fit)": 0.8639048400328138
+    },
+    "DFEval24": {
+     "branch T": 0.6732058980194664,
+     "branch APP": 0.6741441092441044,
+     "branch OM": 0.6687509079463464,
+     "DS-R (clean fit)": 0.7251827998644134,
+     "LR (clean fit)": 0.6847973463754782,
+     "DS-R (clean+proc fit)": 0.7223681661904993,
+     "LR (clean+proc fit)": 0.7205401675463657
+    },
+    "FFIW": {
+     "branch T": 0.801100083880773,
+     "branch APP": 0.9186084096703735,
+     "branch OM": 0.9354114725643432,
+     "DS-R (clean fit)": 0.9281821126327766,
+     "LR (clean fit)": 0.9230074163891403,
+     "DS-R (clean+proc fit)": 0.9142346502337865,
+     "LR (clean+proc fit)": 0.9236861031982659
+    },
+    "KoDF": {
+     "branch T": 0.9655532097974866,
+     "branch APP": 0.8493806531657728,
+     "branch OM": 0.8547736732570239,
+     "DS-R (clean fit)": 0.9574461698551189,
+     "LR (clean fit)": 0.9634645401424798,
+     "DS-R (clean+proc fit)": 0.9628191787400945,
+     "LR (clean+proc fit)": 0.9536165252541423
+    },
+    "IDForge": {
+     "branch T": 0.8898980729909958,
+     "branch APP": 0.9509799691084085,
+     "branch OM": 0.9634907162148576,
+     "DS-R (clean fit)": 0.965616880827969,
+     "LR (clean fit)": 0.9610015232843045,
+     "DS-R (clean+proc fit)": 0.961289345673681,
+     "LR (clean+proc fit)": 0.9608622073847738
+    },
+    "DFDM": {
+     "branch T": 0.9798383932191862,
+     "branch APP": 0.9886070816601483,
+     "branch OM": 0.9919981426011432,
+     "DS-R (clean fit)": 0.995605028057187,
+     "LR (clean fit)": 0.9964258152280546,
+     "DS-R (clean+proc fit)": 0.9956835096990229,
+     "LR (clean+proc fit)": 0.9943035408300742
+    },
+    "CDFv3 reenactment": {
+     "branch T": 0.9740844452247192,
+     "branch APP": 0.8136657303370787,
+     "branch OM": 0.8416011235955057,
+     "DS-R (clean fit)": 0.9641959269662921,
+     "LR (clean fit)": 0.9725825140449438,
+     "DS-R (clean+proc fit)": 0.9742872191011236,
+     "LR (clean+proc fit)": 0.9616415028089887
+    },
+    "KoDF first-order motion": {
+     "branch T": 0.9886857094518385,
+     "branch APP": 0.7163954996616287,
+     "branch OM": 0.73055774870291,
+     "DS-R (clean fit)": 0.9813825287615611,
+     "LR (clean fit)": 0.9789434355966614,
+     "DS-R (clean+proc fit)": 0.9869938529212723,
+     "LR (clean+proc fit)": 0.9740300022558087
+    },
+    "CDFv2 jpeg40": {
+     "branch T": 0.6691754791804362,
+     "branch APP": 0.8333443489755453,
+     "branch OM": 0.8872273628552545,
+     "DS-R (clean fit)": 0.8694976867151355,
+     "LR (clean fit)": 0.7039656311962987,
+     "DS-R (clean+proc fit)": 0.8642927957699934,
+     "LR (clean+proc fit)": 0.8765697290152016
+    },
+    "CDFv2 rs06": {
+     "branch T": 0.7115994712491738,
+     "branch APP": 0.9450925313945803,
+     "branch OM": 0.9548744216787839,
+     "DS-R (clean fit)": 0.9418208856576339,
+     "LR (clean fit)": 0.9458526107072043,
+     "DS-R (clean+proc fit)": 0.9337739590218109,
+     "LR (clean+proc fit)": 0.9413086582947786
+    },
+    "DFDCP jpeg40": {
+     "branch T": 0.7094339622641509,
+     "branch APP": 0.8059782608695653,
+     "branch OM": 0.8256357670221492,
+     "DS-R (clean fit)": 0.8198215750615259,
+     "LR (clean fit)": 0.7235951599671863,
+     "DS-R (clean+proc fit)": 0.8133511074651354,
+     "LR (clean+proc fit)": 0.8145406070549631
+    },
+    "DFDCP rs06": {
+     "branch T": 0.7151917555373257,
+     "branch APP": 0.7981234618539786,
+     "branch OM": 0.7974159146841674,
+     "DS-R (clean fit)": 0.8083982772764561,
+     "LR (clean fit)": 0.7930475799835931,
+     "DS-R (clean+proc fit)": 0.8044913863822806,
+     "LR (clean+proc fit)": 0.8025533223954061
+    }
+   }
+  }
+ ],
+ "vjepa2_lora_seed42": [
+  {
+   "w_clean": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "w_proc": {
+    "T": 0.25,
+    "APP": 0.0,
+    "OM": 1.0
+   },
+   "dev": {
+    "clean": {
+     "branch T": 0.8186409264861272,
+     "branch APP": 0.8073402411757419,
+     "branch OM": 0.8127779087083367,
+     "DS-R (clean fit)": 0.8690164463883083,
+     "LR (clean fit)": 0.8549766256461456,
+     "DS-R (clean+proc fit)": 0.8691974418713619,
+     "LR (clean+proc fit)": 0.8560347039831598
+    },
+    "jpeg40": {
+     "branch T": 0.7292753493400074,
+     "branch APP": 0.7152962684165484,
+     "branch OM": 0.7394256205292885,
+     "DS-R (clean fit)": 0.7776512289096091,
+     "LR (clean fit)": 0.6873397281997495,
+     "DS-R (clean+proc fit)": 0.786201662732006,
+     "LR (clean+proc fit)": 0.7510248465774518
+    },
+    "rs06": {
+     "branch T": 0.8089701619248014,
+     "branch APP": 0.7676000622961959,
+     "branch OM": 0.7673561919553832,
+     "DS-R (clean fit)": 0.8351103696713,
+     "LR (clean fit)": 0.8093271273423198,
+     "DS-R (clean+proc fit)": 0.838067386030983,
+     "LR (clean+proc fit)": 0.8107553800430799
+    }
+   },
+   "tests": {
+    "CDFv2": {
+     "branch T": 0.79643919365499,
+     "branch APP": 0.9612194315928618,
+     "branch OM": 0.9735789821546597,
+     "DS-R (clean fit)": 0.9555518836748182,
+     "LR (clean fit)": 0.9656972901520159,
+     "DS-R (clean+proc fit)": 0.9495208195637805,
+     "LR (clean+proc fit)": 0.9672835426305354
+    },
+    "CDFv3": {
+     "branch T": 0.9306407223763817,
+     "branch APP": 0.8575967793294819,
+     "branch OM": 0.8801050811991084,
+     "DS-R (clean fit)": 0.9588340990765591,
+     "LR (clean fit)": 0.963474048128099,
+     "DS-R (clean+proc fit)": 0.9629088386480462,
+     "LR (clean+proc fit)": 0.9411147250147841
+    },
+    "DFD": {
+     "branch T": 0.8198968468614077,
+     "branch APP": 0.9303761210540872,
+     "branch OM": 0.9338250347495339,
+     "DS-R (clean fit)": 0.9285093437635811,
+     "LR (clean fit)": 0.9215603348885321,
+     "DS-R (clean+proc fit)": 0.9198004101702099,
+     "LR (clean+proc fit)": 0.9407704519414843
+    },
+    "DFDC": {
+     "branch T": 0.7191321454434336,
+     "branch APP": 0.8758295535603698,
+     "branch OM": 0.8808187634650174,
+     "DS-R (clean fit)": 0.8565728270411452,
+     "LR (clean fit)": 0.8561482749860547,
+     "DS-R (clean+proc fit)": 0.8452064764077978,
+     "LR (clean+proc fit)": 0.871914561611128
+    },
+    "DFDCP": {
+     "branch T": 0.776204881050041,
+     "branch APP": 0.869811320754717,
+     "branch OM": 0.8726722723543888,
+     "DS-R (clean fit)": 0.8670631665299425,
+     "LR (clean fit)": 0.854388843314192,
+     "DS-R (clean+proc fit)": 0.8617411812961444,
+     "LR (clean+proc fit)": 0.8717493847415915
+    },
+    "DFEval24": {
+     "branch T": 0.6605612319016029,
+     "branch APP": 0.6741441092441044,
+     "branch OM": 0.6687509079463464,
+     "DS-R (clean fit)": 0.7037673720400949,
+     "LR (clean fit)": 0.6656094135877197,
+     "DS-R (clean+proc fit)": 0.699832937872258,
+     "LR (clean+proc fit)": 0.7062793569318677
+    },
+    "FFIW": {
+     "branch T": 0.8113734023204245,
+     "branch APP": 0.9186084096703735,
+     "branch OM": 0.9354114725643432,
+     "DS-R (clean fit)": 0.9236116901560515,
+     "LR (clean fit)": 0.9197179612819639,
+     "DS-R (clean+proc fit)": 0.9109737644196032,
+     "LR (clean+proc fit)": 0.9336056274863175
+    },
+    "KoDF": {
+     "branch T": 0.9659847014328024,
+     "branch APP": 0.8493806531657728,
+     "branch OM": 0.8547736732570239,
+     "DS-R (clean fit)": 0.9563905787240855,
+     "LR (clean fit)": 0.9652605459057072,
+     "DS-R (clean+proc fit)": 0.9614409069078684,
+     "LR (clean+proc fit)": 0.9411395381413592
+    },
+    "IDForge": {
+     "branch T": 0.8917943047256782,
+     "branch APP": 0.9509799691084085,
+     "branch OM": 0.9634907162148576,
+     "DS-R (clean fit)": 0.9599373201740519,
+     "LR (clean fit)": 0.9563418939946104,
+     "DS-R (clean+proc fit)": 0.9551112515353609,
+     "LR (clean+proc fit)": 0.9631628811335001
+    },
+    "DFDM": {
+     "branch T": 0.9791680291951708,
+     "branch APP": 0.9886070816601483,
+     "branch OM": 0.9919981426011432,
+     "DS-R (clean fit)": 0.9934042720173706,
+     "LR (clean fit)": 0.994113876862304,
+     "DS-R (clean+proc fit)": 0.9930151338766007,
+     "LR (clean+proc fit)": 0.9931426665445842
+    },
+    "CDFv3 reenactment": {
+     "branch T": 0.9719662921348314,
+     "branch APP": 0.8136657303370787,
+     "branch OM": 0.8416011235955057,
+     "DS-R (clean fit)": 0.962686095505618,
+     "LR (clean fit)": 0.9669101123595506,
+     "DS-R (clean+proc fit)": 0.9705898876404494,
+     "LR (clean+proc fit)": 0.9335709269662922
+    },
+    "KoDF first-order motion": {
+     "branch T": 0.9927073934130386,
+     "branch APP": 0.7163954996616287,
+     "branch OM": 0.73055774870291,
+     "DS-R (clean fit)": 0.98330701556508,
+     "LR (clean fit)": 0.976088427701331,
+     "DS-R (clean+proc fit)": 0.9894681930972253,
+     "LR (clean+proc fit)": 0.9512251861042184
+    },
+    "CDFv2 jpeg40": {
+     "branch T": 0.715300727032386,
+     "branch APP": 0.8333443489755453,
+     "branch OM": 0.8872273628552545,
+     "DS-R (clean fit)": 0.8797091870456047,
+     "LR (clean fit)": 0.7064937210839392,
+     "DS-R (clean+proc fit)": 0.8868803701255783,
+     "LR (clean+proc fit)": 0.8663086582947785
+    },
+    "CDFv2 rs06": {
+     "branch T": 0.7727445472571051,
+     "branch APP": 0.9450925313945803,
+     "branch OM": 0.9548744216787839,
+     "DS-R (clean fit)": 0.9307005948446795,
+     "LR (clean fit)": 0.9357567746199603,
+     "DS-R (clean+proc fit)": 0.9108724388631857,
+     "LR (clean+proc fit)": 0.9465796430931923
+    },
+    "DFDCP jpeg40": {
+     "branch T": 0.7190627563576703,
+     "branch APP": 0.8059782608695653,
+     "branch OM": 0.8256357670221492,
+     "DS-R (clean fit)": 0.8244360131255127,
+     "LR (clean fit)": 0.7104593929450369,
+     "DS-R (clean+proc fit)": 0.8276456111566858,
+     "LR (clean+proc fit)": 0.822077522559475
+    },
+    "DFDCP rs06": {
+     "branch T": 0.755701394585726,
+     "branch APP": 0.7981234618539786,
+     "branch OM": 0.7974159146841674,
+     "DS-R (clean fit)": 0.8106644790812141,
+     "LR (clean fit)": 0.7985746513535685,
+     "DS-R (clean+proc fit)": 0.8071780147662018,
+     "LR (clean+proc fit)": 0.8118847415914684
+    }
+   }
+  },
+  {
+   "w_clean": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "w_proc": {
+    "T": 0.25,
+    "APP": 0.0,
+    "OM": 1.0
+   },
+   "dev": {
+    "clean": {
+     "branch T": 0.8254997320791588,
+     "branch APP": 0.822876726102867,
+     "branch OM": 0.8306425149926481,
+     "DS-R (clean fit)": 0.8770945486636518,
+     "LR (clean fit)": 0.868212567512401,
+     "DS-R (clean+proc fit)": 0.8780920281598856,
+     "LR (clean+proc fit)": 0.8601555128920152
+    },
+    "jpeg40": {
+     "branch T": 0.7461825810710133,
+     "branch APP": 0.7120695477795982,
+     "branch OM": 0.7398602141348888,
+     "DS-R (clean fit)": 0.7837355701062608,
+     "LR (clean fit)": 0.694358058241701,
+     "DS-R (clean+proc fit)": 0.7953079334216954,
+     "LR (clean+proc fit)": 0.7371533832188323
+    },
+    "rs06": {
+     "branch T": 0.8128572206493848,
+     "branch APP": 0.7934137984291322,
+     "branch OM": 0.794556234453402,
+     "DS-R (clean fit)": 0.8536002053541735,
+     "LR (clean fit)": 0.8416515815431437,
+     "DS-R (clean+proc fit)": 0.8536993288207273,
+     "LR (clean+proc fit)": 0.8402105242397778
+    }
+   },
+   "tests": {
+    "CDFv2": {
+     "branch T": 0.79643919365499,
+     "branch APP": 0.9612194315928618,
+     "branch OM": 0.9735789821546597,
+     "DS-R (clean fit)": 0.9555518836748182,
+     "LR (clean fit)": 0.9639127561136814,
+     "DS-R (clean+proc fit)": 0.9495208195637805,
+     "LR (clean+proc fit)": 0.9645571711830799
+    },
+    "CDFv3": {
+     "branch T": 0.9306407223763817,
+     "branch APP": 0.8575967793294819,
+     "branch OM": 0.8801050811991084,
+     "DS-R (clean fit)": 0.9588340990765591,
+     "LR (clean fit)": 0.9640312969112496,
+     "DS-R (clean+proc fit)": 0.9629088386480462,
+     "LR (clean+proc fit)": 0.9396147022699358
+    },
+    "DFD": {
+     "branch T": 0.8198968468614077,
+     "branch APP": 0.9303761210540872,
+     "branch OM": 0.9338250347495339,
+     "DS-R (clean fit)": 0.9285093437635811,
+     "LR (clean fit)": 0.921981459731845,
+     "DS-R (clean+proc fit)": 0.9198004101702099,
+     "LR (clean+proc fit)": 0.9375361413111798
+    },
+    "DFDC": {
+     "branch T": 0.7191321454434336,
+     "branch APP": 0.8758295535603698,
+     "branch OM": 0.8808187634650174,
+     "DS-R (clean fit)": 0.8565728270411452,
+     "LR (clean fit)": 0.8537832235036936,
+     "DS-R (clean+proc fit)": 0.8452064764077978,
+     "LR (clean+proc fit)": 0.8684244833456438
+    },
+    "DFDCP": {
+     "branch T": 0.776204881050041,
+     "branch APP": 0.869811320754717,
+     "branch OM": 0.8726722723543888,
+     "DS-R (clean fit)": 0.8670631665299425,
+     "LR (clean fit)": 0.8525020508613618,
+     "DS-R (clean+proc fit)": 0.8617411812961444,
+     "LR (clean+proc fit)": 0.8683347005742412
+    },
+    "DFEval24": {
+     "branch T": 0.6605612319016029,
+     "branch APP": 0.6741441092441044,
+     "branch OM": 0.6687509079463464,
+     "DS-R (clean fit)": 0.7037673720400949,
+     "LR (clean fit)": 0.6665960486175003,
+     "DS-R (clean+proc fit)": 0.699832937872258,
+     "LR (clean+proc fit)": 0.7034586702823108
+    },
+    "FFIW": {
+     "branch T": 0.8113734023204245,
+     "branch APP": 0.9186084096703735,
+     "branch OM": 0.9354114725643432,
+     "DS-R (clean fit)": 0.9236116901560515,
+     "LR (clean fit)": 0.9177931882168276,
+     "DS-R (clean+proc fit)": 0.9109737644196032,
+     "LR (clean+proc fit)": 0.9282618408922921
+    },
+    "KoDF": {
+     "branch T": 0.9659847014328024,
+     "branch APP": 0.8493806531657728,
+     "branch OM": 0.8547736732570239,
+     "DS-R (clean fit)": 0.9563905787240855,
+     "LR (clean fit)": 0.9639398062915232,
+     "DS-R (clean+proc fit)": 0.9614409069078684,
+     "LR (clean+proc fit)": 0.9367270671576082
+    },
+    "IDForge": {
+     "branch T": 0.8917943047256782,
+     "branch APP": 0.9509799691084085,
+     "branch OM": 0.9634907162148576,
+     "DS-R (clean fit)": 0.9599373201740519,
+     "LR (clean fit)": 0.9548059446083121,
+     "DS-R (clean+proc fit)": 0.9551112515353609,
+     "LR (clean+proc fit)": 0.9597065466928502
+    },
+    "DFDM": {
+     "branch T": 0.9791680291951708,
+     "branch APP": 0.9886070816601483,
+     "branch OM": 0.9919981426011432,
+     "DS-R (clean fit)": 0.9934042720173706,
+     "LR (clean fit)": 0.9939405632365829,
+     "DS-R (clean+proc fit)": 0.9930151338766007,
+     "LR (clean+proc fit)": 0.9926227256674209
+    },
+    "CDFv3 reenactment": {
+     "branch T": 0.9719662921348314,
+     "branch APP": 0.8136657303370787,
+     "branch OM": 0.8416011235955057,
+     "DS-R (clean fit)": 0.962686095505618,
+     "LR (clean fit)": 0.9683040730337079,
+     "DS-R (clean+proc fit)": 0.9705898876404494,
+     "LR (clean+proc fit)": 0.9331443117977528
+    },
+    "KoDF first-order motion": {
+     "branch T": 0.9927073934130386,
+     "branch APP": 0.7163954996616287,
+     "branch OM": 0.73055774870291,
+     "DS-R (clean fit)": 0.98330701556508,
+     "LR (clean fit)": 0.9778437288517934,
+     "DS-R (clean+proc fit)": 0.9894681930972253,
+     "LR (clean+proc fit)": 0.9449653169411234
+    },
+    "CDFv2 jpeg40": {
+     "branch T": 0.715300727032386,
+     "branch APP": 0.8333443489755453,
+     "branch OM": 0.8872273628552545,
+     "DS-R (clean fit)": 0.8797091870456047,
+     "LR (clean fit)": 0.7002643754130866,
+     "DS-R (clean+proc fit)": 0.8868803701255783,
+     "LR (clean+proc fit)": 0.8609054857898215
+    },
+    "CDFv2 rs06": {
+     "branch T": 0.7727445472571051,
+     "branch APP": 0.9450925313945803,
+     "branch OM": 0.9548744216787839,
+     "DS-R (clean fit)": 0.9307005948446795,
+     "LR (clean fit)": 0.9298744216787839,
+     "DS-R (clean+proc fit)": 0.9108724388631857,
+     "LR (clean+proc fit)": 0.9420522141440846
+    },
+    "DFDCP jpeg40": {
+     "branch T": 0.7190627563576703,
+     "branch APP": 0.8059782608695653,
+     "branch OM": 0.8256357670221492,
+     "DS-R (clean fit)": 0.8244360131255127,
+     "LR (clean fit)": 0.7123154224774405,
+     "DS-R (clean+proc fit)": 0.8276456111566858,
+     "LR (clean+proc fit)": 0.8191755537325677
+    },
+    "DFDCP rs06": {
+     "branch T": 0.755701394585726,
+     "branch APP": 0.7981234618539786,
+     "branch OM": 0.7974159146841674,
+     "DS-R (clean fit)": 0.8106644790812141,
+     "LR (clean fit)": 0.7972005742411813,
+     "DS-R (clean+proc fit)": 0.8071780147662018,
+     "LR (clean+proc fit)": 0.809290401968827
+    }
+   }
+  },
+  {
+   "w_clean": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "w_proc": {
+    "T": 0.25,
+    "APP": 0.0,
+    "OM": 1.0
+   },
+   "dev": {
+    "clean": {
+     "branch T": 0.8168999393060506,
+     "branch APP": 0.8168109178821182,
+     "branch OM": 0.8262487375889623,
+     "DS-R (clean fit)": 0.8734096085325341,
+     "LR (clean fit)": 0.8737776468191374,
+     "DS-R (clean+proc fit)": 0.8732416480693201,
+     "LR (clean+proc fit)": 0.8658435651846045
+    },
+    "jpeg40": {
+     "branch T": 0.7240987740396229,
+     "branch APP": 0.7171050003485165,
+     "branch OM": 0.7437518418693824,
+     "DS-R (clean fit)": 0.780840881033782,
+     "LR (clean fit)": 0.68330312430346,
+     "DS-R (clean+proc fit)": 0.7910204814680794,
+     "LR (clean+proc fit)": 0.75347200224537
+    },
+    "rs06": {
+     "branch T": 0.8094892871085057,
+     "branch APP": 0.7932159702446325,
+     "branch OM": 0.7949303065159713,
+     "DS-R (clean fit)": 0.8485895622095193,
+     "LR (clean fit)": 0.8320825598338963,
+     "DS-R (clean+proc fit)": 0.8476987706571334,
+     "LR (clean+proc fit)": 0.8359314809083469
+    }
+   },
+   "tests": {
+    "CDFv2": {
+     "branch T": 0.79643919365499,
+     "branch APP": 0.9612194315928618,
+     "branch OM": 0.9735789821546597,
+     "DS-R (clean fit)": 0.9555518836748182,
+     "LR (clean fit)": 0.9622273628552545,
+     "DS-R (clean+proc fit)": 0.9495208195637805,
+     "LR (clean+proc fit)": 0.9650198281559815
+    },
+    "CDFv3": {
+     "branch T": 0.9306407223763817,
+     "branch APP": 0.8575967793294819,
+     "branch OM": 0.8801050811991084,
+     "DS-R (clean fit)": 0.9588340990765591,
+     "LR (clean fit)": 0.9649638356912159,
+     "DS-R (clean+proc fit)": 0.9629088386480462,
+     "LR (clean+proc fit)": 0.9450075057999363
+    },
+    "DFD": {
+     "branch T": 0.8198968468614077,
+     "branch APP": 0.9303761210540872,
+     "branch OM": 0.9338250347495339,
+     "DS-R (clean fit)": 0.9285093437635811,
+     "LR (clean fit)": 0.9222607130927624,
+     "DS-R (clean+proc fit)": 0.9198004101702099,
+     "LR (clean+proc fit)": 0.9382185610999171
+    },
+    "DFDC": {
+     "branch T": 0.7191321454434336,
+     "branch APP": 0.8758295535603698,
+     "branch OM": 0.8808187634650174,
+     "DS-R (clean fit)": 0.8565728270411452,
+     "LR (clean fit)": 0.8535921027531694,
+     "DS-R (clean+proc fit)": 0.8452064764077978,
+     "LR (clean+proc fit)": 0.868832038853384
+    },
+    "DFDCP": {
+     "branch T": 0.776204881050041,
+     "branch APP": 0.869811320754717,
+     "branch OM": 0.8726722723543888,
+     "DS-R (clean fit)": 0.8670631665299425,
+     "LR (clean fit)": 0.851681706316653,
+     "DS-R (clean+proc fit)": 0.8617411812961444,
+     "LR (clean+proc fit)": 0.8691858080393765
+    },
+    "DFEval24": {
+     "branch T": 0.6605612319016029,
+     "branch APP": 0.6741441092441044,
+     "branch OM": 0.6687509079463464,
+     "DS-R (clean fit)": 0.7037673720400949,
+     "LR (clean fit)": 0.670191516149339,
+     "DS-R (clean+proc fit)": 0.699832937872258,
+     "LR (clean+proc fit)": 0.7071509854244347
+    },
+    "FFIW": {
+     "branch T": 0.8113734023204245,
+     "branch APP": 0.9186084096703735,
+     "branch OM": 0.9354114725643432,
+     "DS-R (clean fit)": 0.9236116901560515,
+     "LR (clean fit)": 0.9157883546910945,
+     "DS-R (clean+proc fit)": 0.9109737644196032,
+     "LR (clean+proc fit)": 0.9295192219850675
+    },
+    "KoDF": {
+     "branch T": 0.9659847014328024,
+     "branch APP": 0.8493806531657728,
+     "branch OM": 0.8547736732570239,
+     "DS-R (clean fit)": 0.9563905787240855,
+     "LR (clean fit)": 0.9647227447370528,
+     "DS-R (clean+proc fit)": 0.9614409069078684,
+     "LR (clean+proc fit)": 0.9436159249179541
+    },
+    "IDForge": {
+     "branch T": 0.8917943047256782,
+     "branch APP": 0.9509799691084085,
+     "branch OM": 0.9634907162148576,
+     "DS-R (clean fit)": 0.9599373201740519,
+     "LR (clean fit)": 0.953981033087358,
+     "DS-R (clean+proc fit)": 0.9551112515353609,
+     "LR (clean+proc fit)": 0.9606731278010986
+    },
+    "DFDM": {
+     "branch T": 0.9791680291951708,
+     "branch APP": 0.9886070816601483,
+     "branch OM": 0.9919981426011432,
+     "DS-R (clean fit)": 0.9934042720173706,
+     "LR (clean fit)": 0.9939176727577141,
+     "DS-R (clean+proc fit)": 0.9930151338766007,
+     "LR (clean+proc fit)": 0.9927927692247321
+    },
+    "CDFv3 reenactment": {
+     "branch T": 0.9719662921348314,
+     "branch APP": 0.8136657303370787,
+     "branch OM": 0.8416011235955057,
+     "DS-R (clean fit)": 0.962686095505618,
+     "LR (clean fit)": 0.9700596910112359,
+     "DS-R (clean+proc fit)": 0.9705898876404494,
+     "LR (clean+proc fit)": 0.940379213483146
+    },
+    "KoDF first-order motion": {
+     "branch T": 0.9927073934130386,
+     "branch APP": 0.7163954996616287,
+     "branch OM": 0.73055774870291,
+     "DS-R (clean fit)": 0.98330701556508,
+     "LR (clean fit)": 0.9803462666365892,
+     "DS-R (clean+proc fit)": 0.9894681930972253,
+     "LR (clean+proc fit)": 0.9578445747800587
+    },
+    "CDFv2 jpeg40": {
+     "branch T": 0.715300727032386,
+     "branch APP": 0.8333443489755453,
+     "branch OM": 0.8872273628552545,
+     "DS-R (clean fit)": 0.8797091870456047,
+     "LR (clean fit)": 0.6849471249173826,
+     "DS-R (clean+proc fit)": 0.8868803701255783,
+     "LR (clean+proc fit)": 0.8681262392597489
+    },
+    "CDFv2 rs06": {
+     "branch T": 0.7727445472571051,
+     "branch APP": 0.9450925313945803,
+     "branch OM": 0.9548744216787839,
+     "DS-R (clean fit)": 0.9307005948446795,
+     "LR (clean fit)": 0.9272637144745539,
+     "DS-R (clean+proc fit)": 0.9108724388631857,
+     "LR (clean+proc fit)": 0.9417547918043622
+    },
+    "DFDCP jpeg40": {
+     "branch T": 0.7190627563576703,
+     "branch APP": 0.8059782608695653,
+     "branch OM": 0.8256357670221492,
+     "DS-R (clean fit)": 0.8244360131255127,
+     "LR (clean fit)": 0.7066755537325676,
+     "DS-R (clean+proc fit)": 0.8276456111566858,
+     "LR (clean+proc fit)": 0.8214827727645612
+    },
+    "DFDCP rs06": {
+     "branch T": 0.755701394585726,
+     "branch APP": 0.7981234618539786,
+     "branch OM": 0.7974159146841674,
+     "DS-R (clean fit)": 0.8106644790812141,
+     "LR (clean fit)": 0.7987694831829368,
+     "DS-R (clean+proc fit)": 0.8071780147662018,
+     "LR (clean+proc fit)": 0.8106542247744053
+    }
+   }
+  },
+  {
+   "w_clean": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "w_proc": {
+    "T": 0.25,
+    "APP": 0.0,
+    "OM": 1.0
+   },
+   "dev": {
+    "clean": {
+     "branch T": 0.8248130676414696,
+     "branch APP": 0.8148853432337188,
+     "branch OM": 0.8206230713472843,
+     "DS-R (clean fit)": 0.8738155956579815,
+     "LR (clean fit)": 0.8648110442310996,
+     "DS-R (clean+proc fit)": 0.8739460933524851,
+     "LR (clean+proc fit)": 0.8596105877324632
+    },
+    "jpeg40": {
+     "branch T": 0.7420564886333779,
+     "branch APP": 0.7144021974834964,
+     "branch OM": 0.7367518987941372,
+     "DS-R (clean fit)": 0.7836799326238054,
+     "LR (clean fit)": 0.6821844785970206,
+     "DS-R (clean+proc fit)": 0.7928374978843338,
+     "LR (clean+proc fit)": 0.7473879664663295
+    },
+    "rs06": {
+     "branch T": 0.8196034837582841,
+     "branch APP": 0.7745126165100787,
+     "branch OM": 0.7750982844507798,
+     "DS-R (clean fit)": 0.8434053871100939,
+     "LR (clean fit)": 0.823414869855618,
+     "DS-R (clean+proc fit)": 0.8470796294527473,
+     "LR (clean+proc fit)": 0.8231727007474632
+    }
+   },
+   "tests": {
+    "CDFv2": {
+     "branch T": 0.79643919365499,
+     "branch APP": 0.9612194315928618,
+     "branch OM": 0.9735789821546597,
+     "DS-R (clean fit)": 0.9555518836748182,
+     "LR (clean fit)": 0.9658294778585591,
+     "DS-R (clean+proc fit)": 0.9495208195637805,
+     "LR (clean+proc fit)": 0.9670026437541309
+    },
+    "CDFv3": {
+     "branch T": 0.9306407223763817,
+     "branch APP": 0.8575967793294819,
+     "branch OM": 0.8801050811991084,
+     "DS-R (clean fit)": 0.9588340990765591,
+     "LR (clean fit)": 0.9635274985215848,
+     "DS-R (clean+proc fit)": 0.9629088386480462,
+     "LR (clean+proc fit)": 0.9397420734203703
+    },
+    "DFD": {
+     "branch T": 0.8198968468614077,
+     "branch APP": 0.9303761210540872,
+     "branch OM": 0.9338250347495339,
+     "DS-R (clean fit)": 0.9285093437635811,
+     "LR (clean fit)": 0.9265931808304689,
+     "DS-R (clean+proc fit)": 0.9198004101702099,
+     "LR (clean+proc fit)": 0.9410137884714156
+    },
+    "DFDC": {
+     "branch T": 0.7191321454434336,
+     "branch APP": 0.8758295535603698,
+     "branch OM": 0.8808187634650174,
+     "DS-R (clean fit)": 0.8565728270411452,
+     "LR (clean fit)": 0.8581952740557649,
+     "DS-R (clean+proc fit)": 0.8452064764077978,
+     "LR (clean+proc fit)": 0.8715554643447695
+    },
+    "DFDCP": {
+     "branch T": 0.776204881050041,
+     "branch APP": 0.869811320754717,
+     "branch OM": 0.8726722723543888,
+     "DS-R (clean fit)": 0.8670631665299425,
+     "LR (clean fit)": 0.8538658736669401,
+     "DS-R (clean+proc fit)": 0.8617411812961444,
+     "LR (clean+proc fit)": 0.8701292042657917
+    },
+    "DFEval24": {
+     "branch T": 0.6605612319016029,
+     "branch APP": 0.6741441092441044,
+     "branch OM": 0.6687509079463464,
+     "DS-R (clean fit)": 0.7037673720400949,
+     "LR (clean fit)": 0.6697920197569125,
+     "DS-R (clean+proc fit)": 0.699832937872258,
+     "LR (clean+proc fit)": 0.7051716623892306
+    },
+    "FFIW": {
+     "branch T": 0.8113734023204245,
+     "branch APP": 0.9186084096703735,
+     "branch OM": 0.9354114725643432,
+     "DS-R (clean fit)": 0.9236116901560515,
+     "LR (clean fit)": 0.9214749728010365,
+     "DS-R (clean+proc fit)": 0.9109737644196032,
+     "LR (clean+proc fit)": 0.9324578727503758
+    },
+    "KoDF": {
+     "branch T": 0.9659847014328024,
+     "branch APP": 0.8493806531657728,
+     "branch OM": 0.8547736732570239,
+     "DS-R (clean fit)": 0.9563905787240855,
+     "LR (clean fit)": 0.9639823301048587,
+     "DS-R (clean+proc fit)": 0.9614409069078684,
+     "LR (clean+proc fit)": 0.9391584287200833
+    },
+    "IDForge": {
+     "branch T": 0.8917943047256782,
+     "branch APP": 0.9509799691084085,
+     "branch OM": 0.9634907162148576,
+     "DS-R (clean fit)": 0.9599373201740519,
+     "LR (clean fit)": 0.9563789925969794,
+     "DS-R (clean+proc fit)": 0.9551112515353609,
+     "LR (clean+proc fit)": 0.9623056904660738
+    },
+    "DFDM": {
+     "branch T": 0.9791680291951708,
+     "branch APP": 0.9886070816601483,
+     "branch OM": 0.9919981426011432,
+     "DS-R (clean fit)": 0.9934042720173706,
+     "LR (clean fit)": 0.9942741102143857,
+     "DS-R (clean+proc fit)": 0.9930151338766007,
+     "LR (clean+proc fit)": 0.9929301120979451
+    },
+    "CDFv3 reenactment": {
+     "branch T": 0.9719662921348314,
+     "branch APP": 0.8136657303370787,
+     "branch OM": 0.8416011235955057,
+     "DS-R (clean fit)": 0.962686095505618,
+     "LR (clean fit)": 0.9668012640449438,
+     "DS-R (clean+proc fit)": 0.9705898876404494,
+     "LR (clean+proc fit)": 0.9321365870786517
+    },
+    "KoDF first-order motion": {
+     "branch T": 0.9927073934130386,
+     "branch APP": 0.7163954996616287,
+     "branch OM": 0.73055774870291,
+     "DS-R (clean fit)": 0.98330701556508,
+     "LR (clean fit)": 0.9779988157004286,
+     "DS-R (clean+proc fit)": 0.9894681930972253,
+     "LR (clean+proc fit)": 0.9475101511391834
+    },
+    "CDFv2 jpeg40": {
+     "branch T": 0.715300727032386,
+     "branch APP": 0.8333443489755453,
+     "branch OM": 0.8872273628552545,
+     "DS-R (clean fit)": 0.8797091870456047,
+     "LR (clean fit)": 0.6915399867812293,
+     "DS-R (clean+proc fit)": 0.8868803701255783,
+     "LR (clean+proc fit)": 0.8675148711169861
+    },
+    "CDFv2 rs06": {
+     "branch T": 0.7727445472571051,
+     "branch APP": 0.9450925313945803,
+     "branch OM": 0.9548744216787839,
+     "DS-R (clean fit)": 0.9307005948446795,
+     "LR (clean fit)": 0.936021150033047,
+     "DS-R (clean+proc fit)": 0.9108724388631857,
+     "LR (clean+proc fit)": 0.9454890945142101
+    },
+    "DFDCP jpeg40": {
+     "branch T": 0.7190627563576703,
+     "branch APP": 0.8059782608695653,
+     "branch OM": 0.8256357670221492,
+     "DS-R (clean fit)": 0.8244360131255127,
+     "LR (clean fit)": 0.7113822805578343,
+     "DS-R (clean+proc fit)": 0.8276456111566858,
+     "LR (clean+proc fit)": 0.8217493847415914
+    },
+    "DFDCP rs06": {
+     "branch T": 0.755701394585726,
+     "branch APP": 0.7981234618539786,
+     "branch OM": 0.7974159146841674,
+     "DS-R (clean fit)": 0.8106644790812141,
+     "LR (clean fit)": 0.7993539786710419,
+     "DS-R (clean+proc fit)": 0.8071780147662018,
+     "LR (clean+proc fit)": 0.810674733388023
+    }
+   }
+  },
+  {
+   "w_clean": {
+    "T": 0.25,
+    "APP": 0.25,
+    "OM": 1.0
+   },
+   "w_proc": {
+    "T": 0.25,
+    "APP": 0.0,
+    "OM": 1.0
+   },
+   "dev": {
+    "clean": {
+     "branch T": 0.830395846745478,
+     "branch APP": 0.824916204387697,
+     "branch OM": 0.8303602407287873,
+     "DS-R (clean fit)": 0.8806659687162409,
+     "LR (clean fit)": 0.8687231271169592,
+     "DS-R (clean+proc fit)": 0.8797923443567114,
+     "LR (clean+proc fit)": 0.8674499850236379
+    },
+    "jpeg40": {
+     "branch T": 0.7408896899283594,
+     "branch APP": 0.7308253631090315,
+     "branch OM": 0.7545592249170981,
+     "DS-R (clean fit)": 0.797266655156457,
+     "LR (clean fit)": 0.6570682345246003,
+     "DS-R (clean+proc fit)": 0.8044726352176235,
+     "LR (clean+proc fit)": 0.7671043428779102
+    },
+    "rs06": {
+     "branch T": 0.8199646967978059,
+     "branch APP": 0.7953240709469354,
+     "branch OM": 0.7907226782115787,
+     "DS-R (clean fit)": 0.8542413120876481,
+     "LR (clean fit)": 0.8264150714490146,
+     "DS-R (clean+proc fit)": 0.8546155680532749,
+     "LR (clean+proc fit)": 0.8372128640704438
+    }
+   },
+   "tests": {
+    "CDFv2": {
+     "branch T": 0.79643919365499,
+     "branch APP": 0.9612194315928618,
+     "branch OM": 0.9735789821546597,
+     "DS-R (clean fit)": 0.9555518836748182,
+     "LR (clean fit)": 0.9603602115003305,
+     "DS-R (clean+proc fit)": 0.9495208195637805,
+     "LR (clean+proc fit)": 0.9659781890284204
+    },
+    "CDFv3": {
+     "branch T": 0.9306407223763817,
+     "branch APP": 0.8575967793294819,
+     "branch OM": 0.8801050811991084,
+     "DS-R (clean fit)": 0.9588340990765591,
+     "LR (clean fit)": 0.9645180366646955,
+     "DS-R (clean+proc fit)": 0.9629088386480462,
+     "LR (clean+proc fit)": 0.9429502342719374
+    },
+    "DFD": {
+     "branch T": 0.8198968468614077,
+     "branch APP": 0.9303761210540872,
+     "branch OM": 0.9338250347495339,
+     "DS-R (clean fit)": 0.9285093437635811,
+     "LR (clean fit)": 0.9207153914395825,
+     "DS-R (clean+proc fit)": 0.9198004101702099,
+     "LR (clean+proc fit)": 0.9400673799749301
+    },
+    "DFDC": {
+     "branch T": 0.7191321454434336,
+     "branch APP": 0.8758295535603698,
+     "branch OM": 0.8808187634650174,
+     "DS-R (clean fit)": 0.8565728270411452,
+     "LR (clean fit)": 0.8526449972742239,
+     "DS-R (clean+proc fit)": 0.8452064764077978,
+     "LR (clean+proc fit)": 0.8701463782436961
+    },
+    "DFDCP": {
+     "branch T": 0.776204881050041,
+     "branch APP": 0.869811320754717,
+     "branch OM": 0.8726722723543888,
+     "DS-R (clean fit)": 0.8670631665299425,
+     "LR (clean fit)": 0.8488310090237899,
+     "DS-R (clean+proc fit)": 0.8617411812961444,
+     "LR (clean+proc fit)": 0.8692575881870386
+    },
+    "DFEval24": {
+     "branch T": 0.6605612319016029,
+     "branch APP": 0.6741441092441044,
+     "branch OM": 0.6687509079463464,
+     "DS-R (clean fit)": 0.7037673720400949,
+     "LR (clean fit)": 0.6626313495714493,
+     "DS-R (clean+proc fit)": 0.699832937872258,
+     "LR (clean+proc fit)": 0.706442787274224
+    },
+    "FFIW": {
+     "branch T": 0.8113734023204245,
+     "branch APP": 0.9186084096703735,
+     "branch OM": 0.9354114725643432,
+     "DS-R (clean fit)": 0.9236116901560515,
+     "LR (clean fit)": 0.9110750857494041,
+     "DS-R (clean+proc fit)": 0.9109737644196032,
+     "LR (clean+proc fit)": 0.9299314835269789
+    },
+    "KoDF": {
+     "branch T": 0.9659847014328024,
+     "branch APP": 0.8493806531657728,
+     "branch OM": 0.8547736732570239,
+     "DS-R (clean fit)": 0.9563905787240855,
+     "LR (clean fit)": 0.9650654366445209,
+     "DS-R (clean+proc fit)": 0.9614409069078684,
+     "LR (clean+proc fit)": 0.9411320339390058
+    },
+    "IDForge": {
+     "branch T": 0.8917943047256782,
+     "branch APP": 0.9509799691084085,
+     "branch OM": 0.9634907162148576,
+     "DS-R (clean fit)": 0.9599373201740519,
+     "LR (clean fit)": 0.9513851396448554,
+     "DS-R (clean+proc fit)": 0.9551112515353609,
+     "LR (clean+proc fit)": 0.9609574756990145
+    },
+    "DFDM": {
+     "branch T": 0.9791680291951708,
+     "branch APP": 0.9886070816601483,
+     "branch OM": 0.9919981426011432,
+     "DS-R (clean fit)": 0.9934042720173706,
+     "LR (clean fit)": 0.994015774810009,
+     "DS-R (clean+proc fit)": 0.9930151338766007,
+     "LR (clean+proc fit)": 0.9928614406613386
+    },
+    "CDFv3 reenactment": {
+     "branch T": 0.9719662921348314,
+     "branch APP": 0.8136657303370787,
+     "branch OM": 0.8416011235955057,
+     "DS-R (clean fit)": 0.962686095505618,
+     "LR (clean fit)": 0.9703546348314607,
+     "DS-R (clean+proc fit)": 0.9705898876404494,
+     "LR (clean+proc fit)": 0.9374122191011236
+    },
+    "KoDF first-order motion": {
+     "branch T": 0.9927073934130386,
+     "branch APP": 0.7163954996616287,
+     "branch OM": 0.73055774870291,
+     "DS-R (clean fit)": 0.98330701556508,
+     "LR (clean fit)": 0.9772445296638845,
+     "DS-R (clean+proc fit)": 0.9894681930972253,
+     "LR (clean+proc fit)": 0.9529593390480487
+    },
+    "CDFv2 jpeg40": {
+     "branch T": 0.715300727032386,
+     "branch APP": 0.8333443489755453,
+     "branch OM": 0.8872273628552545,
+     "DS-R (clean fit)": 0.8797091870456047,
+     "LR (clean fit)": 0.6716292134831461,
+     "DS-R (clean+proc fit)": 0.8868803701255783,
+     "LR (clean+proc fit)": 0.8683410442828817
+    },
+    "CDFv2 rs06": {
+     "branch T": 0.7727445472571051,
+     "branch APP": 0.9450925313945803,
+     "branch OM": 0.9548744216787839,
+     "DS-R (clean fit)": 0.9307005948446795,
+     "LR (clean fit)": 0.9282881692002644,
+     "DS-R (clean+proc fit)": 0.9108724388631857,
+     "LR (clean+proc fit)": 0.9425148711169862
+    },
+    "DFDCP jpeg40": {
+     "branch T": 0.7190627563576703,
+     "branch APP": 0.8059782608695653,
+     "branch OM": 0.8256357670221492,
+     "DS-R (clean fit)": 0.8244360131255127,
+     "LR (clean fit)": 0.6930680885972108,
+     "DS-R (clean+proc fit)": 0.8276456111566858,
+     "LR (clean+proc fit)": 0.8213904840032814
+    },
+    "DFDCP rs06": {
+     "branch T": 0.755701394585726,
+     "branch APP": 0.7981234618539786,
+     "branch OM": 0.7974159146841674,
+     "DS-R (clean fit)": 0.8106644790812141,
+     "LR (clean fit)": 0.7967596390484003,
+     "DS-R (clean+proc fit)": 0.8071780147662018,
+     "LR (clean+proc fit)": 0.8100184577522559
+    }
+   }
+  }
+ ]
+}
