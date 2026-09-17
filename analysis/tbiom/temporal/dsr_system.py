@@ -234,7 +234,7 @@ def diagnosis(branch, tag):
 
 
 # ----------------------------------------------------------------------------- item 2
-def confirmation(branches):
+def confirmation(branches, report="EXP5_CONFIRMATION_SEED", pilot=False):
     res = {}
     for b in branches:
         dev, dproc, tests = load(b); rr = []
@@ -248,9 +248,18 @@ def confirmation(branches):
                 r["tests"][tn] = {"branch T": auc(T.p_T.to_numpy()), "DS-R": auc(dsr(T, w)[0])}
             rr.append(r)
         res[b] = rr; print(f"confirmation {b}: weights " + "; ".join(str(tuple(r['w'].values())) for r in rr), flush=True)
-    json.dump(res, open(R / "EXP5_CONFIRMATION_SEED.json", "w"), indent=1, default=float)
+    json.dump(res, open(R / f"{report}.json", "w"), indent=1, default=float)
     rec = {b: json.load(open(BR / b / "train_record.json")) for b in branches}
-    L = ["# Experiment 5 — confirmation seed: temporal-branch training variability conditional on fixed branches", "",
+    head = (["# Experiment 9 — matched augmentation pilot for the V-JEPA 2 LoRA branch", "",
+             "Warranted by the Experiment 8 diagnosis (cause b: V-JEPA's development v3.1 drops 0.087 under JPEG q40). The pilot is the "
+             "SAME V-JEPA 2 LoRA recipe as the reference branch (same checkpoint, clips, sampling, LoRA rank 8 / alpha 16 / dropout 0.1, "
+             "losses, 10 epochs, batch 32, seed, development-only epoch selection) plus arm B's real processing mix on training clips: "
+             "none 40%, JPEG q70/q50/q30 and down-up resize 0.75/0.50/0.35 at 10% each, one draw per clip, label-independent, per-worker "
+             "RNG. JPEG q40 / resize 0.60 are never used in training. Appearance and Off-manifold residual are the same fixed warm+gate "
+             "epoch-19 branches; DS-R reliability weights are refitted on the same source-grouped folds. One seed per arm.", "",
+             "| run | selected epoch | branch dev v3.1 (train record) | DS-R weights per split (T, APP, OM) |", "|---|---:|---:|---|"]
+            if pilot else None)
+    L = head or ["# Experiment 5 — confirmation seed: temporal-branch training variability conditional on fixed branches", "",
          "V-JEPA 2 LoRA branch retrained on the EXACT seed-42 recipe (same pretrained checkpoint, clips, sampling, preprocessing, LoRA "
          "rank 8 / alpha 16 / dropout 0.1, losses, 10 epochs, batch 32, development-only epoch selection; no augmentation) with another "
          "seed. Appearance and Off-manifold residual are the SAME fixed warm+gate epoch-19 branches for every seed, and the DS-R "
@@ -277,12 +286,13 @@ def confirmation(branches):
         v = [np.mean([np.mean([r["tests"][t][arm] for r in res[b]]) for t in A.TEST]) for b in branches]
         L.append(f"| **10-set mean** | {arm} | " + " | ".join(f"**{x:.4f}**" for x in v) + f" | {max(v) - min(v):.4f} |")
     L += ["", "Two temporal-branch seeds cannot give a standard deviation worth quoting; spreads are reported instead. FaceShifter sealed."]
-    (R / "EXP5_CONFIRMATION_SEED.md").write_text("\n".join(L) + "\n"); print("wrote", R / "EXP5_CONFIRMATION_SEED.md")
+    (R / f"{report}.md").write_text("\n".join(L) + "\n"); print("wrote", R / f"{report}.md")
 
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("mode", choices=["uncertainty", "diagnosis", "confirmation"])
     ap.add_argument("--branch", nargs="+", default=["vjepa2_lora_seed42"])
+    ap.add_argument("--report", default="EXP5_CONFIRMATION_SEED"); ap.add_argument("--pilot", action="store_true")
     a = ap.parse_args()
     tag = a.branch[0].split("_seed")[-1]; tag = f"seed{tag}"
     if a.mode == "uncertainty":
@@ -290,7 +300,7 @@ def main():
     elif a.mode == "diagnosis":
         diagnosis(a.branch[0], tag)
     else:
-        confirmation(a.branch)
+        confirmation(a.branch, a.report, a.pilot)
 
 
 if __name__ == "__main__":

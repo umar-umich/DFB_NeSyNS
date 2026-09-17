@@ -236,11 +236,12 @@ def main():
     ap.add_argument("--seed", type=int, default=42); ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--lora", action="store_true", help="LoRA adapters in every layer instead of unfreezing the last blocks")
     ap.add_argument("--augment", default=None, choices=[None, "B"], help="B: DISCERN arm-B processing mix on training clips")
+    ap.add_argument("--run-suffix", default="", help="extra run-name tag (e.g. _fresh) so a rerun never overwrites an existing run")
     ap.add_argument("--export-shuffled-only", action="store_true",
                     help="load best.pt of a finished run and write only the shuffled-frame control exports")
     a = ap.parse_args()
     import exp1_fusion_audit as A
-    out_dir = Path(f"/data/umar/Repos/DFB_NeSyNS/logs/tbiom/temporal/branches/{a.model}{'_lora' if a.lora else ''}{'_B' if a.augment == 'B' else ''}_seed{a.seed}")
+    out_dir = Path(f"/data/umar/Repos/DFB_NeSyNS/logs/tbiom/temporal/branches/{a.model}{'_lora' if a.lora else ''}{'_B' if a.augment == 'B' else ''}{a.run_suffix}_seed{a.seed}")
     (out_dir / "opinions").mkdir(parents=True, exist_ok=True)
     torch.manual_seed(a.seed); np.random.seed(a.seed); dev = "cuda"
     model = Branch(a.model, lora=a.lora).to(dev)
