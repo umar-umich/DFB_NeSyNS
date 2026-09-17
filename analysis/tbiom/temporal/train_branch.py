@@ -24,6 +24,12 @@ to the attention projections of EVERY layer: query/value (VideoMAE, ViViT, V-JEP
 (TimeSformer, spatial and temporal attention), q_proj/v_proj (X-CLIP vision encoder and its multi-frame integration
 transformer). Trained: adapters + evidential head; lr 2e-4 adapters / 2e-3 head; batch, epochs, loss, selection and
 exports identical to the block arm. Run directory <model>_lora_seed<seed>.
+B AUGMENTATION (--augment B, added 2026-09-17 for Experiment 5, UMAR). DISCERN's SharedProcessing (arm B) on training
+clips only: one setting per CLIP drawn independently of the label -- none 40%, JPEG q70/q50/q30 10% each, down-up resize
+0.75/0.50/0.35 10% each -- applied to every stored 256-px frame of the clip before the model's preprocessing (DISCERN's
+arm B applies it to the 224-px CLIP crop). Per-worker RNG seeded from (run seed, worker id, worker torch seed), the
+corrected scheme of commit 29e7f18. JPEG q40 / resize 0.60 remain evaluation-only. Run directory
+<model>[_lora]_B_seed<seed>.
 The Appearance / Off-manifold residual (beta-VAE) / face-prior paths are not touched; fusion happens afterwards on cached
 opinions (analysis/tbiom/temporal/branch_fusion.py) with the audit's grouped fitting folds.
 """
@@ -113,8 +119,19 @@ def videos_of(ds):
 
 
 class Clips(torch.utils.data.Dataset):
-    def __init__(self, ds, proc, T, shuffle=False):
+    def __init__(self, ds, proc, T, shuffle=False, augment=None, seed=0):
         self.h5rel, self.items = videos_of(ds); self.proc = proc; self.h = None; self.T = T; self.shuffle = shuffle
+        self.augment, self.seed, self._rng, self._owner = augment, seed, None, None
+        if augment == "B":
+            from src.dataset.training_arms import SharedProcessing
+            self.processing = SharedProcessing(enabled=True)
+
+    def _worker_rng(self):
+        wi = torch.utils.data.get_worker_info(); wid = wi.id if wi is not None else -1
+        if self._owner != wid:
+            self._rng = np.random.default_rng([int(self.seed), wid + 1, (wi.seed % (2 ** 32)) if wi is not None else 0])
+            self._owner = wid
+        return self._rng
 
     def __len__(self):
         return len(self.items)
@@ -128,6 +145,10 @@ class Clips(torch.utils.data.Dataset):
             idx = idx[np.random.default_rng(i).permutation(self.T)]
         fr = [np.asarray(self.h[ks[j]]) for j in idx]
         fr = [f if f.shape[:2] == (256, 256) else np.asarray(Image.fromarray(f).resize((256, 256), Image.BILINEAR)) for f in fr]
+        if self.augment == "B":
+            setting = self.processing.sample(self._worker_rng())          # one draw per clip, label-independent
+            if setting[0] != "none":
+                fr = [self.processing.apply(f, setting) for f in fr]
         return self.proc(fr), y, i
 
 
@@ -214,11 +235,12 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--model", required=True, choices=sorted(MODELS))
     ap.add_argument("--seed", type=int, default=42); ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--lora", action="store_true", help="LoRA adapters in every layer instead of unfreezing the last blocks")
+    ap.add_argument("--augment", default=None, choices=[None, "B"], help="B: DISCERN arm-B processing mix on training clips")
     ap.add_argument("--export-shuffled-only", action="store_true",
                     help="load best.pt of a finished run and write only the shuffled-frame control exports")
     a = ap.parse_args()
     import exp1_fusion_audit as A
-    out_dir = Path(f"/data/umar/Repos/DFB_NeSyNS/logs/tbiom/temporal/branches/{a.model}{'_lora' if a.lora else ''}_seed{a.seed}")
+    out_dir = Path(f"/data/umar/Repos/DFB_NeSyNS/logs/tbiom/temporal/branches/{a.model}{'_lora' if a.lora else ''}{'_B' if a.augment == 'B' else ''}_seed{a.seed}")
     (out_dir / "opinions").mkdir(parents=True, exist_ok=True)
     torch.manual_seed(a.seed); np.random.seed(a.seed); dev = "cuda"
     model = Branch(a.model, lora=a.lora).to(dev)
@@ -231,7 +253,7 @@ def main():
         export_shuffled(model, dev, out_dir, a.workers); return
     devtab = A.dev_tables({n: S23 / f"warmgate_e19_{n}.csv" for n in DEV}, [1.0])
     cl = A.cells(devtab)
-    train = Clips("FFpp_train", model.preprocess, model.T)
+    train = Clips("FFpp_train", model.preprocess, model.T, augment=a.augment, seed=a.seed)
     ys = torch.tensor([it[1] for it in train.items])
     w = torch.where(ys == 1, 1.0 / (ys == 1).sum(), 1.0 / (ys == 0).sum()).double()
     sampler = torch.utils.data.WeightedRandomSampler(w, len(ys), replacement=True, generator=torch.Generator().manual_seed(a.seed))
@@ -265,7 +287,7 @@ def main():
                        out_dir / "best.pt")
             o.to_csv(out_dir / "opinions" / "dev_clean.csv", index=False)
         json.dump({"model": a.model, "seed": a.seed, "history": history, "best_epoch": best[1], "best_dev_v31": best[0],
-                   "budget": {"arm": "lora" if a.lora else "last_blocks", "lora": {"r": LORA_R, "alpha": LORA_ALPHA, "dropout": LORA_DROPOUT, "lr": LR_LORA} if a.lora else None, "lr_blocks": LR_BLOCKS, "lr_head": LR_HEAD, "epochs": EPOCHS, "unfrozen_blocks": UNFREEZE, "trainable_block_params": n_blocks,
+                   "budget": {"augment": a.augment, "arm": "lora" if a.lora else "last_blocks", "lora": {"r": LORA_R, "alpha": LORA_ALPHA, "dropout": LORA_DROPOUT, "lr": LR_LORA} if a.lora else None, "lr_blocks": LR_BLOCKS, "lr_head": LR_HEAD, "epochs": EPOCHS, "unfrozen_blocks": UNFREEZE, "trainable_block_params": n_blocks,
                               "head_params": n_head, "batch": BATCH, "frames": model.T}},
                   open(out_dir / "train_record.json", "w"), indent=1)
 

@@ -40,9 +40,14 @@ FAMILIES = {"xclip": (XF, "xclip_temporal", "xclip_shuffled"), "timesformer": (T
             "consistency": (TF_ / "consistency", "ordered", "shuffled"), "spatial": (XF, "clip_framemean", "clip_framemean")}
 DEV_NAMES = ("VALmix", "VALmixV2", "FFpp_val")
 # Trained temporal branches (Experiment 4): opinions exported by train_branch.py at the development-selected epoch.
-BRANCHES = {f"{m}{arm}_branch": Path(f"logs/tbiom/temporal/branches/{m}{arm}_seed42/opinions")
-            for m in ["videomae", "vjepa2", "videomae_ssv2", "vjepa2_ssv2", "videomae_large", "timesformer", "xclip", "vivit"]
-            for arm in ("", "_lora")}             # "" = last-2-blocks arm; "_lora" = LoRA adapters in every layer
+# every trained branch run: <model>[_lora][_B]_seed<seed>; seed-42 runs keep their original family names
+BRANCHES = {}
+for _d in sorted(Path("logs/tbiom/temporal/branches").glob("*_seed*/opinions")):
+    _n = _d.parent.name
+    BRANCHES[(_n[:-len("_seed42")] if _n.endswith("_seed42") else _n) + "_branch"] = _d
+# Temporal residual branches (DISCERN's off-manifold transform on temporal features): one family per exported view.
+for _d in sorted(Path("logs/tbiom/temporal/residual").glob("*/opinions_*")) + sorted(Path("logs/tbiom/temporal/branches").glob("*_res_seed42/opinions_*")):
+    BRANCHES[f"{_d.parent.name.replace('_seed42', '')}_{_d.name.split('_', 1)[1]}_res"] = _d
 PROC_SPEC = {"jpeg40": "jpeg40", "rs06": "resize06"}
 EPOCHS, SEED, K = 40, 0, 2
 REN = {"p_fsvfm_raw": "p_prior", "u_fsvfm_raw": "u_prior", "p_fsvfm": "p_gated", "u_fsvfm": "u_gated"}
@@ -141,7 +146,8 @@ def main():
                 f = d_ / (f"{base}_{proc}.csv" if proc else f"{base}.csv")
                 if f.is_file():
                     put(T, f)
-            rec = json.load(open(d_.parent / "train_record.json"))
+            rf = d_.parent / f"train_record_{d_.name}.json"
+            rec = json.load(open(rf if rf.is_file() else d_.parent / "train_record.json"))
             report[fam] = {"ordered": {"epoch": rec["best_epoch"], "dev_v31": rec["best_dev_v31"]}}
             fams.append(name); print(f"branch {name}: epoch {rec['best_epoch']}, dev v3.1 {rec['best_dev_v31']:.4f}", flush=True)
             # shuffled-frame twin of the TRAINED branch (same weights): development + CDFv3/KoDF only
