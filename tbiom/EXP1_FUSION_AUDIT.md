@@ -1,6 +1,6 @@
 # Experiment 1 — cached fusion audit (warm+gate, epoch 19)
 
-Replay only: no detector parameter was trained. All arms read the same saved per-frame opinions of the selected warm+gate checkpoint (Appearance and Off-manifold residual = frozen DiCoME views; Bona-fide face prior raw and gated). Script: `analysis/tbiom/exp1_fusion_audit.py`; raw numbers: `tbiom/EXP1_FUSION_AUDIT.json`.
+Replay only: no detector parameter was trained. All arms read the same saved per-frame opinions of the selected warm+gate checkpoint (Appearance and Off-manifold residual = frozen DiCoME views; Bona-fide face prior raw and gated). Script: `analysis/tbiom/exp1_fusion_audit_v1.py`; raw numbers: `tbiom/EXP1_FUSION_AUDIT.json`.
 
 ## Protocol
 
