@@ -40,8 +40,9 @@ FAMILIES = {"xclip": (XF, "xclip_temporal", "xclip_shuffled"), "timesformer": (T
             "consistency": (TF_ / "consistency", "ordered", "shuffled"), "spatial": (XF, "clip_framemean", "clip_framemean")}
 DEV_NAMES = ("VALmix", "VALmixV2", "FFpp_val")
 # Trained temporal branches (Experiment 4): opinions exported by train_branch.py at the development-selected epoch.
-BRANCHES = {f"{m}_branch": Path(f"logs/tbiom/temporal/branches/{m}_seed42/opinions")
-            for m in ["videomae", "vjepa2", "videomae_ssv2", "vjepa2_ssv2", "videomae_large", "timesformer", "xclip", "vivit"]}
+BRANCHES = {f"{m}{arm}_branch": Path(f"logs/tbiom/temporal/branches/{m}{arm}_seed42/opinions")
+            for m in ["videomae", "vjepa2", "videomae_ssv2", "vjepa2_ssv2", "videomae_large", "timesformer", "xclip", "vivit"]
+            for arm in ("", "_lora")}             # "" = last-2-blocks arm; "_lora" = LoRA adapters in every layer
 PROC_SPEC = {"jpeg40": "jpeg40", "rs06": "resize06"}
 EPOCHS, SEED, K = 40, 0, 2
 REN = {"p_fsvfm_raw": "p_prior", "u_fsvfm_raw": "u_prior", "p_fsvfm": "p_gated", "u_fsvfm": "u_gated"}

@@ -18,6 +18,12 @@ BUDGET AND RECIPE, FIXED BEFORE LAUNCH (2026-09-17)
   selection   after every epoch, the v3.1 development score on VALmix + VALmix-v2 + FF++ val (clean; same cells and
               scope as detector checkpoints); best epoch kept, ties -> earliest. Only the selected epoch is exported
               on processed development and the test sets.
+LORA ARM (--lora, added 2026-09-17, UMAR: adapters like the CLIP view's). Instead of unfreezing the last blocks, every
+backbone weight stays frozen and LoRA adapters (rank 8, alpha 16, dropout 0.1 -- the CLIP view's configuration) are added
+to the attention projections of EVERY layer: query/value (VideoMAE, ViViT, V-JEPA 2 encoder), the combined qkv
+(TimeSformer, spatial and temporal attention), q_proj/v_proj (X-CLIP vision encoder and its multi-frame integration
+transformer). Trained: adapters + evidential head; lr 2e-4 adapters / 2e-3 head; batch, epochs, loss, selection and
+exports identical to the block arm. Run directory <model>_lora_seed<seed>.
 The Appearance / Off-manifold residual (beta-VAE) / face-prior paths are not touched; fusion happens afterwards on cached
 opinions (analysis/tbiom/temporal/branch_fusion.py) with the audit's grouped fitting folds.
 """
@@ -44,6 +50,51 @@ MODELS = {"videomae": ("MCG-NJU/videomae-base-finetuned-kinetics", 768, 16),
           "xclip": ("microsoft/xclip-base-patch16-16-frames", 512, 16),
           "vivit": ("google/vivit-b-16x2-kinetics400", 768, 32)}
 EPOCHS, UNFREEZE, BATCH = 10, 2, 32
+LORA_R, LORA_ALPHA, LORA_DROPOUT, LR_LORA = 8, 16, 0.1, 2e-4
+LORA_TARGETS = {"videomae": ("encoder", {"query", "value"}), "vivit": ("encoder", {"query", "value"}),
+                "vjepa2": ("encoder", {"query", "value"}), "timesformer": ("encoder", {"qkv"}),
+                "xclip": (("vision_model", "mit"), {"q_proj", "v_proj"})}
+
+
+class LoRALinear(nn.Module):
+    """Frozen base Linear + trainable low-rank update B(A(dropout(x))) * alpha / r (B initialised to zero)."""
+
+    def __init__(self, base: nn.Linear):
+        super().__init__()
+        self.base = base
+        for p in self.base.parameters():
+            p.requires_grad_(False)
+        self.lora_A = nn.Linear(base.in_features, LORA_R, bias=False)
+        self.lora_B = nn.Linear(LORA_R, base.out_features, bias=False)
+        nn.init.kaiming_uniform_(self.lora_A.weight, a=math.sqrt(5)); nn.init.zeros_(self.lora_B.weight)
+        self.drop, self.scale = nn.Dropout(LORA_DROPOUT), LORA_ALPHA / LORA_R
+
+    def forward(self, x):
+        return self.base(x) + self.lora_B(self.lora_A(self.drop(x))) * self.scale
+
+    # Some attention implementations (VideoMAE) call F.linear(x, self.query.weight, q_bias) instead of the module, so the
+    # merged weight is exposed too: gradients still reach A and B; adapter dropout does not apply on that path.
+    @property
+    def weight(self):
+        return self.base.weight + (self.lora_B.weight @ self.lora_A.weight) * self.scale
+
+    @property
+    def bias(self):
+        return self.base.bias
+
+
+def inject_lora(backbone: nn.Module, family: str) -> list:
+    scopes, leaves = LORA_TARGETS[family]
+    scopes = (scopes,) if isinstance(scopes, str) else scopes
+    added = []
+    for name, mod in list(backbone.named_modules()):
+        if not any(name.startswith(sc) or f".{sc}." in f".{name}." for sc in scopes):
+            continue
+        for child, sub in list(mod.named_children()):
+            if isinstance(sub, nn.Linear) and child in leaves:
+                w = LoRALinear(sub); setattr(mod, child, w); added.append(w)
+    assert added, f"no LoRA targets found for {family}"
+    return added
 LR_BLOCKS, LR_HEAD = 2e-4, 2e-3
 DEV = ["VALmix", "VALmixV2", "FFpp_val"]
 TESTS = ["CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "DFEval24", "FFIW", "KoDF", "IDForge", "DFDM"]
@@ -81,8 +132,8 @@ class Clips(torch.utils.data.Dataset):
 
 
 class Branch(nn.Module):
-    def __init__(self, name):
-        super().__init__(); mid, d, self.T = MODELS[name]; self.name = name
+    def __init__(self, name, lora=False):
+        super().__init__(); mid, d, self.T = MODELS[name]; self.name = name; self.lora = lora
         if name.startswith("vjepa2"):
             from transformers import AutoVideoProcessor, VJEPA2Model
             self.backbone = VJEPA2Model.from_pretrained(mid); self.processor = AutoVideoProcessor.from_pretrained(mid)
@@ -108,9 +159,17 @@ class Branch(nn.Module):
             raise ValueError(name)
         for p in self.backbone.parameters():
             p.requires_grad_(False)
-        self.trainable_blocks = nn.ModuleList(blocks)
-        for p in self.trainable_blocks.parameters():
-            p.requires_grad_(True)
+        if lora:
+            family = "videomae" if name.startswith("videomae") else "vjepa2" if name.startswith("vjepa2") else name
+            blocks = inject_lora(self.backbone, family)          # backbone stays frozen; only adapters train
+            self.trainable_blocks = nn.ModuleList(blocks)
+            for w in blocks:
+                for p in list(w.lora_A.parameters()) + list(w.lora_B.parameters()):
+                    p.requires_grad_(True)
+        else:
+            self.trainable_blocks = nn.ModuleList(blocks)
+            for p in self.trainable_blocks.parameters():
+                p.requires_grad_(True)
         self.head = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, 128), nn.GELU(), nn.Linear(128, 2))
         self.mean, self.std = self.processor.image_mean, self.processor.image_std
 
@@ -154,15 +213,16 @@ def opinions(model, ds, dev, process=None, workers=4, shuffle=False):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--model", required=True, choices=sorted(MODELS))
     ap.add_argument("--seed", type=int, default=42); ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--lora", action="store_true", help="LoRA adapters in every layer instead of unfreezing the last blocks")
     ap.add_argument("--export-shuffled-only", action="store_true",
                     help="load best.pt of a finished run and write only the shuffled-frame control exports")
     a = ap.parse_args()
     import exp1_fusion_audit as A
-    out_dir = Path(f"/data/umar/Repos/DFB_NeSyNS/logs/tbiom/temporal/branches/{a.model}_seed{a.seed}")
+    out_dir = Path(f"/data/umar/Repos/DFB_NeSyNS/logs/tbiom/temporal/branches/{a.model}{'_lora' if a.lora else ''}_seed{a.seed}")
     (out_dir / "opinions").mkdir(parents=True, exist_ok=True)
     torch.manual_seed(a.seed); np.random.seed(a.seed); dev = "cuda"
-    model = Branch(a.model).to(dev)
-    n_blocks = sum(p.numel() for p in model.trainable_blocks.parameters()); n_head = sum(p.numel() for p in model.head.parameters())
+    model = Branch(a.model, lora=a.lora).to(dev)
+    n_blocks = sum(p.numel() for p in model.trainable_blocks.parameters() if p.requires_grad); n_head = sum(p.numel() for p in model.head.parameters())
     print(f"{a.model}: trainable blocks {n_blocks / 1e6:.1f}M, head {n_head / 1e3:.1f}K", flush=True)
 
     if a.export_shuffled_only:
@@ -177,7 +237,7 @@ def main():
     sampler = torch.utils.data.WeightedRandomSampler(w, len(ys), replacement=True, generator=torch.Generator().manual_seed(a.seed))
     loader = torch.utils.data.DataLoader(train, batch_size=BATCH, sampler=sampler, num_workers=a.workers, drop_last=True,
                                          worker_init_fn=lambda _: torch.set_num_threads(1), persistent_workers=True)
-    opt = torch.optim.AdamW([{"params": model.trainable_blocks.parameters(), "lr": LR_BLOCKS},
+    opt = torch.optim.AdamW([{"params": [p for p in model.trainable_blocks.parameters() if p.requires_grad], "lr": LR_LORA if a.lora else LR_BLOCKS},
                              {"params": model.head.parameters(), "lr": LR_HEAD}], weight_decay=0.01)
     total = EPOCHS * len(loader)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: max(1e-6 / LR_BLOCKS, 0.5 * (1 + math.cos(math.pi * s / total))))
@@ -185,7 +245,7 @@ def main():
     t0 = time.time()
     for ep in range(EPOCHS):
         model.train(); model.backbone.eval()                  # frozen parts deterministic (no dropout)
-        model.trainable_blocks.train(); losses = []
+        model.trainable_blocks.train(); losses = []           # block arm: blocks train; LoRA arm: adapter dropout active
         for px, y, _ in loader:
             px, y = px.to(dev, non_blocking=True), y.to(dev)
             with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -205,7 +265,7 @@ def main():
                        out_dir / "best.pt")
             o.to_csv(out_dir / "opinions" / "dev_clean.csv", index=False)
         json.dump({"model": a.model, "seed": a.seed, "history": history, "best_epoch": best[1], "best_dev_v31": best[0],
-                   "budget": {"lr_blocks": LR_BLOCKS, "lr_head": LR_HEAD, "epochs": EPOCHS, "unfrozen_blocks": UNFREEZE, "trainable_block_params": n_blocks,
+                   "budget": {"arm": "lora" if a.lora else "last_blocks", "lora": {"r": LORA_R, "alpha": LORA_ALPHA, "dropout": LORA_DROPOUT, "lr": LR_LORA} if a.lora else None, "lr_blocks": LR_BLOCKS, "lr_head": LR_HEAD, "epochs": EPOCHS, "unfrozen_blocks": UNFREEZE, "trainable_block_params": n_blocks,
                               "head_params": n_head, "batch": BATCH, "frames": model.T}},
                   open(out_dir / "train_record.json", "w"), indent=1)
 
