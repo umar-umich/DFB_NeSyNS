@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Cached fusion audit, v2 (tbiom/docs/discern-v2-fusion-audit-brief.md, decisions of 2026-09-16).
 
-    python analysis/tbiom/exp1_fusion_audit.py --run warmgate  --out tbiom/EXP1_FUSION_AUDIT_v2.md
-    python analysis/tbiom/exp1_fusion_audit.py --run warmgateB --out tbiom/EXP2_FUSION_AUDIT.md
+    python analysis/tbiom/exp1_fusion_audit.py --run warmgate  --out tbiom/reports/EXP1_FUSION_AUDIT_v2.md
+    python analysis/tbiom/exp1_fusion_audit.py --run warmgateB --out tbiom/reports/EXP2_FUSION_AUDIT.md
 
 CONDITIONAL ON THE DEVELOPMENT-SELECTED CHECKPOINT. The audit replays the saved per-frame opinions of the checkpoint the
 v3.1 rule already selected for the run (its selection record names it). Nothing is retrained; the question is how
 alternative fusions behave on THAT checkpoint's branches.
 
-Changes from v1 (v1 kept as exp1_fusion_audit_v1.py and tbiom/EXP1_FUSION_AUDIT.md):
+Changes from v1 (v1 kept as exp1_fusion_audit_v1.py and tbiom/reports/EXP1_FUSION_AUDIT.md):
   * MLP arithmetic reconciled. v1's table averaged the 5 initialisations; v1's Delta and verdict used the median
     initialisation. Both are now reported side by side, each with its own paired bootstrap. The REGISTERED comparator
     for the verdict is unchanged (median initialisation, rich inputs).

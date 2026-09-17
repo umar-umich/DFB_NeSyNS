@@ -35,7 +35,7 @@ Report, per arm: OOD mean, and separately the reenactment subset (CDFv3 reenactm
 
 Decision rule. If learned participation beats MLP stacking by a meaningful margin across the grouped selection fold, the fusion is a candidate contribution and the paper can build on it. If stacking matches or beats it, the honest framing is that gains come from three-view representation complementarity, not the gating machinery, and the paper is written that way. If the result is close, report it as unresolved, not a win and not a proof that fusion is exhausted.
 
-Write `tbiom/EXP1_FUSION_AUDIT.md` with the five-arm table, the grouped-fold protocol, the decision, and the two limitations (replay cannot establish the best fusion-training method, and one warm+gate seed is one seed).
+Write `tbiom/reports/EXP1_FUSION_AUDIT.md` with the five-arm table, the grouped-fold protocol, the decision, and the two limitations (replay cannot establish the best fusion-training method, and one warm+gate seed is one seed).
 
 Pass condition. The audit completes with the grouped fit-and-select protocol and input parity, and returns one of the three verdicts above. Stop and report. Do not start Experiment 2 in the same unattended run.
 

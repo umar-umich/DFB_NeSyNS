@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Experiment 1 -- cached fusion audit on the warm+gate checkpoint (tbiom/docs/discern-v2-fusion-audit-brief.md).
 
-    python analysis/tbiom/exp1_fusion_audit_v1.py --out tbiom/EXP1_FUSION_AUDIT.md   (v1, kept as run; superseded by exp1_fusion_audit.py v2)
+    python analysis/tbiom/exp1_fusion_audit_v1.py --out tbiom/reports/EXP1_FUSION_AUDIT.md   (v1, kept as run; superseded by exp1_fusion_audit.py v2)
 
 Nothing about the detector is retrained. Every arm reads the SAME saved per-frame opinions of the selected warm+gate
 checkpoint (epoch 19): Appearance, Off-manifold residual (both frozen DiCoME views) and the Bona-fide face prior, whose
@@ -283,7 +283,7 @@ def test_table(ds_name, grid):
 
 def main():
     global FEATS
-    ap = argparse.ArgumentParser(); ap.add_argument("--out", type=Path, default=Path("tbiom/EXP1_FUSION_AUDIT.md"))
+    ap = argparse.ArgumentParser(); ap.add_argument("--out", type=Path, default=Path("tbiom/reports/EXP1_FUSION_AUDIT.md"))
     a = ap.parse_args()
     grid = [round(x, 2) for x in np.linspace(0, 1, 21)]
 
@@ -418,7 +418,7 @@ def write_md(out, results, verdict, replay_err, n_dev, n_groups, largest):
     L = ["# Experiment 1 — cached fusion audit (warm+gate, epoch 19)", "",
          "Replay only: no detector parameter was trained. All arms read the same saved per-frame opinions of the selected "
          "warm+gate checkpoint (Appearance and Off-manifold residual = frozen DiCoME views; Bona-fide face prior raw and "
-         "gated). Script: `analysis/tbiom/exp1_fusion_audit_v1.py`; raw numbers: `tbiom/EXP1_FUSION_AUDIT.json`.", "",
+         "gated). Script: `analysis/tbiom/exp1_fusion_audit_v1.py`; raw numbers: `tbiom/reports/EXP1_FUSION_AUDIT.json`.", "",
          "## Protocol", "",
          f"- Development data: the v3.1 selection data (VALmix, VALmix-v2 in-scope subsets, FF++ val) — {n_dev} videos "
          f"in {n_groups} source-video groups (largest {largest} videos). Groups join a fake with the genuine video it "
