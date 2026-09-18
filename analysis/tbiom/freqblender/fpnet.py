@@ -9,7 +9,7 @@ WHAT THIS IS, PRECISELY (finish-line brief, Experiment 5: "distinguish any local
 pretrained configuration and record which is used").
   * The upstream checkout `/data/umar/Repos/FreqBlender` at the pinned revision 7c8bc7f is CALLED IN PLACE: its network
     (`net/aeNet/conv_autoencoder_pixelshuffle.conv_autoencoder`), its four losses (`utils/loss_function.loss_function`),
-    its crop (`utils/energy_contrast.face_cut`), its DCT convention and its config (`config/base.json`) are imported,
+    its DCT convention and its config (`config/base.json`) are imported,
     not reimplemented. Nothing in that checkout is edited.
   * The FACIAL-FIDELITY teacher is the official MobileFaceNet + MTCNN shipped in the repository, with a face bank we
     build from our own training-split frames.
@@ -23,10 +23,16 @@ pretrained configuration and record which is used").
     non-interactively (audited in tbiom/docs/freqblender-source-audit.md). FPNet is therefore TRAINED HERE. Every
     result must be labelled a local reproduction of FreqBlender, never "the released FreqBlender".
 DEVIATIONS FROM UPSTREAM, ALL DELIBERATE AND ALL RECORDED IN THE REPORT
-  1. Inputs are our stored 256-px DISCERN face crops (the frames the detector itself trains on), re-cropped by
-     upstream's own `face_cut` on our 81-point landmarks and resized to upstream's 400 px, instead of upstream's dlib
-     crops taken from full FF++ frames. The detector consumes our crops, so the generator is fitted on the same
-     distribution it will be applied to.
+  1. GEOMETRY (v2, 2026-09-18). Inputs are our stored 256-px DISCERN face crops -- the exact frames the detector
+     trains on -- resized to upstream's 400 px, with NO re-cropping. v1 used upstream's own `face_cut` (the
+     81-landmark box plus w/8 margins) and was withdrawn: that box covers only ~32% of the stored crop's area, so
+     every pseudo-fake was a visibly tighter face than the ordinary samples it was mixed with, and since arm D
+     substitutes them into FAKE slots only, crop scale became a label-correlated nuisance the detector could learn
+     instead of the frequency artefact (`logs/tbiom/freqblender/v1_facecut_confounded/README.md`). Applying FPNet to
+     the whole crop keeps a pseudo-fake pixel-aligned with the sample it replaces, with no seam and no scale cue, and
+     FPNet is TRAINED on that same geometry so generator and application never disagree. The cost is that the face
+     occupies a smaller share of the 400-px grid than in upstream's dlib crops, which shifts where facial structure
+     sits in the DCT bands; the PI-loss boundaries (50, 400) are upstream's and are left unchanged.
   2. SPLIT SAFETY. Upstream trains on FF++ videos 000-999 indiscriminately. We use ONLY the 720 FF++ source ids of our
      training split (both members of each Deepfakes pair are in the same official split, asserted below), so no
      validation or test source video is seen by the generator, its face bank or its teachers.
@@ -120,28 +126,33 @@ def authenticity_teacher(torch, dev):
     return t
 
 
-def crop400(img, lmk, face_cut, size=IMAGE_SIZE):
-    im, lm = face_cut(img, lmk, size)
-    return im, lm
+def pair_400(cv2, real_root, fake_root, v, fdir, frame, size=IMAGE_SIZE):
+    """The real and donor-fake stored crops at upstream's 400 px, whole-crop (v2 geometry), with scaled landmarks.
+
+    No re-crop and no jitter: the blend must land back on exactly the pixels of the stored crop it replaces. The
+    81-point landmarks are in 256-px crop coordinates, so they are scaled by size/256 for the fidelity teacher.
+    """
+    lm = np.load(real_root / "landmarks81" / v / f"{frame}.npy").astype(np.float32) * (size / 256.0)
+    r = cv2.cvtColor(cv2.imread(str(real_root / "frames" / v / f"{frame}.png")), cv2.COLOR_BGR2RGB)
+    f = cv2.cvtColor(cv2.imread(str(fake_root / "frames" / fdir / f"{frame}.png")), cv2.COLOR_BGR2RGB)
+    rs = lambda x: cv2.resize(x, (size, size), interpolation=cv2.INTER_AREA if x.shape[0] > size else cv2.INTER_LINEAR)
+    return rs(r), rs(f), lm
 
 
 # ----------------------------------------------------------------------------- face bank
 def build_facebank():
     import cv2
-    torch, cfg, face_cut = upstream()
+    torch, cfg, _ = upstream()
     bank = FB / "net/mobileface/face_bank"; bank.mkdir(exist_ok=True)
     ids = train_ids(); n = 0
     for v in ids:
         frames = sorted((REAL / "frames" / v).glob("*.png"))
         done = False
         for fr in frames[:4]:                       # first frame with a landmark file, as upstream uses frame 000
-            lmk_p = REAL / "landmarks81" / v / (fr.stem + ".npy")
-            if not lmk_p.exists():
+            if not (REAL / "landmarks81" / v / (fr.stem + ".npy")).exists():
                 continue
-            img = cv2.imread(str(fr))
-            lm = np.load(lmk_p).astype(np.int32)
-            im, _ = face_cut(img, lm, IMAGE_SIZE)
-            cv2.imwrite(str(bank / f"{v}.png"), im); n += 1; done = True
+            img = cv2.resize(cv2.imread(str(fr)), (IMAGE_SIZE, IMAGE_SIZE))   # v2: the whole stored crop, no re-crop
+            cv2.imwrite(str(bank / f"{v}.png"), img); n += 1; done = True
             break
         if not done:
             print("no landmark for", v)
@@ -161,17 +172,10 @@ class Pairs:
     def __getitem__(self, i):
         import cv2, torch
         from torch_dct import dct_2d
-        from utils.energy_contrast import face_cut
         v, fdir, frame = self.items[i]
-        lm = np.load(REAL / "landmarks81" / v / f"{frame}.npy").astype(np.int32)
-        r = cv2.cvtColor(cv2.imread(str(REAL / "frames" / v / f"{frame}.png")), cv2.COLOR_BGR2RGB)
-        f = cv2.cvtColor(cv2.imread(str(FAKE / "frames" / fdir / f"{frame}.png")), cv2.COLOR_BGR2RGB)
-        np.random.seed((i * 7919) % (2 ** 31))      # face_cut jitters its margins; keep the pair's crop identical
-        ri, rl = face_cut(r, lm, IMAGE_SIZE)
-        np.random.seed((i * 7919) % (2 ** 31))
-        fi, _ = face_cut(f, lm, IMAGE_SIZE)
+        ri, fi, lm = pair_400(cv2, REAL, FAKE, v, fdir, frame)
         dct = lambda x: dct_2d(torch.tensor(np.ascontiguousarray(x) / 255).permute(2, 0, 1).float(), norm="ortho")
-        return dct(ri), dct(fi), (int(v), int(fdir.split("_")[1]), torch.tensor(rl.astype(np.float32)))
+        return dct(ri), dct(fi), (int(v), int(fdir.split("_")[1]), torch.tensor(lm))
 
 
 def items_for(pairs):
@@ -189,7 +193,7 @@ def items_for(pairs):
 
 # ----------------------------------------------------------------------------- training (upstream loop)
 def train(epochs, batch, workers, limit):
-    torch, cfg, face_cut = upstream()
+    torch, cfg, _ = upstream()
     from net.aeNet.conv_autoencoder_pixelshuffle import conv_autoencoder
     from utils.loss_function import loss_function
     torch.set_num_threads(4)
@@ -241,8 +245,8 @@ def train(epochs, batch, workers, limit):
 # ----------------------------------------------------------------------------- generation
 def generate(weights, batch, workers):
     """Pseudo-fakes for every eligible real training frame; written at 256 px beside the SBI pool convention."""
-    import cv2, torch
-    torch, cfg, face_cut = upstream()
+    import cv2
+    torch, cfg, _ = upstream()
     from net.aeNet.conv_autoencoder_pixelshuffle import conv_autoencoder
     from torch_dct import dct_2d, idct_2d
     torch.set_num_threads(4)
@@ -268,13 +272,8 @@ def generate(weights, batch, workers):
             return len(todo)
 
         def __getitem__(self, i):
-            key, v, fdir, frame = todo[i]
-            lm = np.load(REAL / "landmarks81" / v / frame.replace(".png", ".npy")).astype(np.int32)
-            r = cv2.cvtColor(cv2.imread(str(REAL / "frames" / v / frame)), cv2.COLOR_BGR2RGB)
-            f = cv2.cvtColor(cv2.imread(str(FAKE / "frames" / fdir / frame)), cv2.COLOR_BGR2RGB)
-            # deterministic crop for the pair: fix the jitter face_cut draws, and keep the real crop's box
-            np.random.seed(i % (2 ** 31)); ri, _ = face_cut(r, lm, IMAGE_SIZE)
-            np.random.seed(i % (2 ** 31)); fi, _ = face_cut(f, lm, IMAGE_SIZE)
+            _key, v, fdir, frame = todo[i]
+            ri, fi, _lm = pair_400(cv2, REAL, FAKE, v, fdir, frame.replace(".png", ""))
             d = lambda x: dct_2d(torch.tensor(np.ascontiguousarray(x) / 255).permute(2, 0, 1).float(), norm="ortho")
             return d(ri), d(fi), i
 
