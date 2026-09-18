@@ -470,8 +470,8 @@ def exp3():
 
 
 # ----------------------------------------------------------------------------- Experiment 4
-def exp4():
-    branches = [REF_T, CONF_T]; res = {}
+def exp4(branches=None):
+    branches = branches or [REF_T, CONF_T]; res = {}
     for b in branches:
         dev, dproc, tests = D.load(b); rr = []
         for k, Fd, Sd in D.splits(dev):
@@ -520,15 +520,20 @@ def exp4():
     for arm in ("branch T", "DS-R", "LR"):
         v = [np.mean([np.mean([r["tests"][t][arm] for r in res[b]]) for t in A.TEST]) for b in branches]
         L.append(f"| **10-set mean** | {arm} | " + " | ".join(f"**{x:.4f}**" for x in v) + f" | {max(v) - min(v):.4f} |")
-    L += ["", "Two temporal-branch seeds cannot give a standard deviation worth quoting; spreads (max − min) are reported "
-          "instead. Both runs were trained on 2026-09-17 with the identical command except `--seed`; their training "
-          "records are the evidence that only the seed differs.", "", FOOT]
+    L += ["", f"{len(branches)} temporal-branch seeds is too few for a standard deviation worth quoting; spreads "
+          "(max − min) are reported instead. The runs were trained with the identical command except `--seed`; their "
+          "training records are the evidence that only the seed differs.", "", FOOT]
     (R / "EXP_CONFIRM_SEED.md").write_text("\n".join(L) + "\n"); print("wrote", R / "EXP_CONFIRM_SEED.md")
 
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("stage", choices=["manifest", "exp1", "exp2", "exp3", "exp4"])
-    a = ap.parse_args(); {"manifest": manifest, "exp1": exp1, "exp2": exp2, "exp3": exp3, "exp4": exp4}[a.stage]()
+    ap.add_argument("--branches", nargs="+", default=None, help="exp4: the temporal-branch runs to compare")
+    a = ap.parse_args()
+    if a.stage == "exp4":
+        exp4(a.branches)
+    else:
+        {"manifest": manifest, "exp1": exp1, "exp2": exp2, "exp3": exp3}[a.stage]()
 
 
 if __name__ == "__main__":
