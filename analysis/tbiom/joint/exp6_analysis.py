@@ -104,8 +104,10 @@ def ds_equal(t, views=VIEWS):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--run", default="joint_seed42"); a = ap.parse_args()
-    arms = {"staged": staged(), "staged 4-frame": staged(pick_frames), "joint": joint(a.run)}
+    ap = argparse.ArgumentParser(); ap.add_argument("--runs", nargs="+", default=["joint_seed42"]); a = ap.parse_args()
+    arms = {"staged": staged(), "staged 4-frame": staged(pick_frames)}
+    for run in a.runs:
+        arms[f"joint ({run.replace('joint_', '')})" if len(a.runs) > 1 else "joint"] = joint(run)
     base = arms["staged"][0]
     rows = []
     for k, Fd, Sd in D.splits(base):
@@ -132,11 +134,12 @@ def main():
         rows.append(row)
         print(f"split {k}: " + " | ".join(f"{n} DS-R {row['arms'][n]['dev']['DS-R']['v31']:.4f}" for n in arms), flush=True)
     json.dump(rows, open(R / "EXP_JOINT_ABLATION.json", "w"), indent=1, default=float)
-    write(rows, list(arms), a.run)
+    write(rows, list(arms), a.runs)
 
 
-def write(rows, names, run):
-    rec = json.load(open(JOINT / run / "train_record.json"))
+def write(rows, names, runs):
+    recs = {r: json.load(open(JOINT / r / "train_record.json")) for r in runs}
+    rec = recs[runs[0]]
     m = lambda n, rule, field: float(np.mean([r["arms"][n]["dev"][rule][field] for r in rows]))
     L = ["# Experiment 6 — joint training vs the staged reference", "",
          "The deployed reference is staged: the Appearance and Off-manifold views are frozen (warm-started from our "
@@ -150,8 +153,9 @@ def write(rows, names, run):
          f"{rec['budget']['spatial_frames_per_clip']} of the clip's 16 frames to the spatial views, adapters "
          f"{rec['budget']['lr_adapters']}, heads {rec['budget']['lr_heads']}, arm-B augmentation, "
          f"{rec['budget']['trainable_adapters'] / 1e6:.2f}M adapter + {rec['budget']['trainable_heads'] / 1e6:.2f}M "
-         f"head parameters trainable. Development-only selection chose epoch {rec['best_epoch']} "
-         f"(equal-trust v3.1 {rec['best_dev_v31']:.4f}).", "",
+         f"head parameters trainable. Development-only selection per seed: " +
+         "; ".join(f"`{r}` epoch {x['best_epoch']} (equal-trust v3.1 {x['best_dev_v31']:.4f})" for r, x in recs.items())
+         + ".", "",
          "`staged 4-frame` restricts the frozen views to exactly the four frames the joint model's spatial views see, "
          "recomputed from the same cached per-frame opinions, so the comparison is not a frame-budget difference in "
          "disguise.", "", F.CITE, "",
