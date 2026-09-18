@@ -239,7 +239,12 @@ def train(epochs, batch, workers, limit):
         torch.save({"model": model.state_dict(), "epoch": ep, "loss": float(m[4])}, run / "weights/last.tar")
         json.dump({"epochs": epochs, "batch": batch, "n_pairs": len(items), "history": hist, "best_loss": float(best),
                    "config": cfg, "revision": "7c8bc7f"}, open(run / "train_record.json", "w"), indent=1)
-    (run / "DONE").write_text(f"{best:.6f}\n")
+    # The completion marker is what the Experiment 5 chain waits on, so a smoke run must never write it: a
+    # 1-epoch generator once got as far as training a detector arm before the mistake was caught.
+    if limit or epochs < 25:
+        print(f"smoke run (epochs={epochs}, limit={limit}): DONE not written", flush=True)
+    else:
+        (run / "DONE").write_text(f"loss {best:.6f} epochs {epochs} pairs {len(items)}\n")
 
 
 # ----------------------------------------------------------------------------- generation

@@ -12,9 +12,13 @@ export CUDA_VISIBLE_DEVICES=1 NO_ALBUMENTATIONS_UPDATE=1 OMP_NUM_THREADS=4 MKL_N
 cd "$ROOT" || exit 2
 say() { echo "[$(date '+%m-%d %H:%M')] $*"; }
 
-# 1. wait for the generator
+# 1. wait for the generator, and verify what finished is the full run and not a smoke run
 while [ ! -f "$FBLOG/fpnet/DONE" ]; do sleep 120; done
-say "FPNet done (loss $(cat "$FBLOG/fpnet/DONE"))"
+read -r EPOCHS PAIRS < <($PYA -c "import json;d=json.load(open('$FBLOG/fpnet/train_record.json'));print(d['epochs'],d['n_pairs'])")
+if [ "$EPOCHS" -lt 25 ] || [ "$PAIRS" -lt 5000 ]; then
+  say "REFUSING to continue: FPNet record says epochs=$EPOCHS pairs=$PAIRS (expected 30 and 5760)"; exit 1
+fi
+say "FPNet done ($(cat "$FBLOG/fpnet/DONE" | tr -d '\n'))"
 
 # 2. pseudo-fakes
 if [ ! -f "$FBLOG/pseudofake_index.txt" ]; then
