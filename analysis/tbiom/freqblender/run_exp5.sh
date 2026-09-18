@@ -47,8 +47,11 @@ for ck in "$RUN/checkpoints/"*.ckpt; do
     echo "$ck|warmgate_${ds}.yaml|${ds}|$S23/${tag}_${ds}.csv|" >> "$J"
   done
 done
-say "development exports ($(wc -l < "$J") jobs)"
-bash "$ROOT/logs/tbiom/fusion_audit/lane.sh" 1 "$J" >> "$FBLOG/exports.log" 2>&1
+say "development exports ($(wc -l < "$J") jobs, 3 lanes)"
+for L in 1 2 3; do
+  BATCH=64 bash "$ROOT/logs/tbiom/fusion_audit/lane.sh" 1 "$J" >> "$FBLOG/exports_lane$L.log" 2>&1 &
+done
+wait
 $PYA analysis/tbiom/select_checkpoint_v3.py --arm warmgateBFreq > "$FBLOG/selection.log" 2>&1 \
   || { say "selection FAILED (see $FBLOG/selection.log)"; exit 1; }
 read -r SEL CK < <($PYA -c "import json;s=json.load(open('$S23/warmgateBFreq_selection_v3.json'))['selected'];print(s['tag'],s['checkpoint'])")
@@ -67,8 +70,13 @@ for ds in CDFv2 DFDCP; do
   echo "$CK|warmgate_${ds}.yaml|${ds}|$S2/p_v3_warmgateBFreq_${ds}_jpeg40.csv|jpeg:40" >> "$J"
   echo "$CK|warmgate_${ds}.yaml|${ds}|$S2/p_v3_warmgateBFreq_${ds}_rs06.csv|resize:0.6" >> "$J"
 done
-say "test and processed exports ($(wc -l < "$J") jobs)"
-bash "$ROOT/logs/tbiom/fusion_audit/lane.sh" 1 "$J" >> "$FBLOG/exports.log" 2>&1
+say "test and processed exports ($(wc -l < "$J") jobs, 3 lanes)"
+# Three lanes on GPU 1: the lane script claims each job with mkdir, so they drain one queue without
+# duplicating work, and the export stage stops being the chain's long pole.
+for L in 1 2 3; do
+  BATCH=64 bash "$ROOT/logs/tbiom/fusion_audit/lane.sh" 1 "$J" >> "$FBLOG/exports_lane$L.log" 2>&1 &
+done
+wait
 
 # 6. analysis
 say "analysis"
