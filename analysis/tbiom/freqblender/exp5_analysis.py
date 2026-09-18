@@ -131,6 +131,12 @@ def write(rows, arms, a):
          "disqualifier were **frozen before the FreqBlender arm was trained**: "
          "`tbiom/docs/exp5-freqblender-preregistration.md`. DS-R is the primary fusion, logistic stacking on matched "
          "inputs the mandatory comparator; both are refitted separately per arm on the same source-grouped folds.", "",
+         "**What a verdict here does and does not change.** The arms are the `sbi_arm*` family, because that recipe "
+         "trains the Appearance and Off-manifold views; the deployed reference takes those views from the warm-start "
+         "+ gated detector, where they are frozen. So this experiment answers whether FreqBlender helps spatial "
+         "views that are being trained — the question the brief poses — and an adoption verdict would be a finding "
+         "about spatial training rather than an automatic re-pointing of the deployed reference, which would need its "
+         "own matched comparison. Fixed before the numbers were read.", "",
          "**This is a local reproduction of FreqBlender, not the released FreqBlender.** The released FPNet weights are "
          "behind a Baidu Pan account wall, so FPNet was trained here from the upstream implementation at its pinned "
          "revision, with a locally trained split-safe authenticity teacher; the facial-fidelity teacher is the official "
