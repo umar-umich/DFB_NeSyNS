@@ -45,6 +45,7 @@ S23, R = Path("logs/tbiom/stage23"), Path("tbiom/reports")
 CACHE = Path("logs/tbiom/acquisition/vjepa2_lora_B_seed42")
 DEV, VIEWS, K = ("VALmix", "VALmixV2", "FFpp_val"), ["T", "APP", "OM"], 2.0
 N_WIN, BUDGET, N_RANDOM = 4, 2, 20
+RULES = ("mean", "conf", "max")          # how acquired observations are aggregated within a branch
 QCOLS = ["blur", "motion", "blockiness", "luma", "contrast"]
 
 
@@ -120,15 +121,36 @@ class Pool:
             self.P[b][m] = np.repeat(self.base[b][0][:, None], N_WIN, 1)[m]
             self.U[b][m] = np.repeat(self.base[b][1][:, None], N_WIN, 1)[m]
 
-    def score(self, chosen, w):
-        """chosen: (n, k) window indices per video, or an empty array for the no-acquisition reference."""
+    def score(self, chosen, w, rule="mean"):
+        """chosen: (n, k) window indices per video, or an empty array for the no-acquisition reference.
+
+        `rule` is how the observed windows are aggregated WITHIN a branch before fusion (the brief forbids treating
+        overlapping clips as independent sources, so evidence summation is not among the options):
+          mean      plain mean of the observed opinions -- the obvious rule, and the one Step 1 used first
+          conf      vacuity-weighted mean: an observation counts in proportion to 1/u, so a confident window is not
+                    diluted by a vacuous one
+          max       the most suspicious observation wins. A manipulation may touch only part of a video, so averaging
+                    a fake segment with genuine ones is the wrong summary for detection even if it is the right one
+                    for estimation.
+        """
         pu = {}
         for b in VIEWS:
-            p, u = self.base[b]
-            if chosen.shape[1]:
-                rows = np.arange(len(self.v))[:, None]
-                p = (p + self.P[b][rows, chosen].sum(1)) / (1 + chosen.shape[1])
-                u = (u + self.U[b][rows, chosen].sum(1)) / (1 + chosen.shape[1])
+            p0, u0 = self.base[b]
+            if not chosen.shape[1]:
+                pu[b] = (p0, u0); continue
+            rows = np.arange(len(self.v))[:, None]
+            P = np.concatenate([p0[:, None], self.P[b][rows, chosen]], 1)
+            U = np.concatenate([u0[:, None], self.U[b][rows, chosen]], 1)
+            if rule == "mean":
+                p, u = P.mean(1), U.mean(1)
+            elif rule == "conf":
+                wts = 1.0 / np.clip(U, 1e-9, None); wts /= wts.sum(1, keepdims=True)
+                p, u = (P * wts).sum(1), (U * wts).sum(1)
+            elif rule == "max":
+                j = P.argmax(1); r = np.arange(len(self.v))
+                p, u = P[r, j], U[r, j]
+            else:
+                raise ValueError(rule)
             pu[b] = (p, u)
         return fuse(pu, w)
 
@@ -165,18 +187,18 @@ def main():
     base = dev.set_index("v")
     rng = np.random.default_rng(7)
     rows = []
-    for k, Fd, Sd in D.splits(dev):
+    for (k, Fd, Sd), rule in [(sp, r) for sp in D.splits(dev) for r in RULES]:
         w = F.fit_w([Fd], VIEWS)
         pools = {"fit": Pool(Fd.v, base, win), "sel": Pool(Sd.v, base, win)}
         ys = {"fit": Fd.y.to_numpy(), "sel": Sd.y.to_numpy()}
         none = {t: pools[t].score(np.zeros((len(pools[t].v), 0), int), w) for t in pools}
         ff = np.where(Sd.source == "FFpp_val")[0]
         tau = float(eer(ys["sel"][ff], none["sel"][ff])[1])
-        r = {"split": k, "w": dict(zip(VIEWS, w)), "tau": tau, "policies": {}, "oracle": {}}
+        r = {"split": k, "rule": rule, "w": dict(zip(VIEWS, w)), "tau": tau, "policies": {}, "oracle": {}}
         r["policies"]["no acquisition (k=0)"] = metrics(none["sel"], ys["sel"], tau)
 
         # per-action scores, computed once per pool (hidden from the policies except through a chosen action)
-        act = {t: np.stack([pools[t].score(np.full((len(pools[t].v), 1), j), w)[:, None] for j in range(N_WIN)], 1)[:, :, 0]
+        act = {t: np.stack([pools[t].score(np.full((len(pools[t].v), 1), j), w, rule)[:, None] for j in range(N_WIN)], 1)[:, :, 0]
                for t in pools}
         for t in pools:
             assert act[t].shape == (len(pools[t].v), N_WIN)
@@ -186,7 +208,8 @@ def main():
         fixed = act["sel"][:, 0]
         r["policies"]["fixed window w0 (k=1)"] = metrics(fixed, ys["sel"], tau)
         best_fit = int(np.argmax([A.fast_auc(act["fit"][ys["fit"] == 0, j], act["fit"][ys["fit"] == 1, j]) for j in range(N_WIN)]))
-        r["policies"][f"fixed best-on-fitting w{best_fit} (k=1)"] = metrics(act["sel"][:, best_fit], ys["sel"], tau)
+        r["policies"]["fixed best-on-fitting (k=1)"] = metrics(act["sel"][:, best_fit], ys["sel"], tau)
+        r["best_fit_window"] = int(best_fit)
         rnd = [metrics(act["sel"][np.arange(n_sel), rng.integers(0, N_WIN, n_sel)], ys["sel"], tau) for _ in range(N_RANDOM)]
         r["policies"]["random window (k=1)"] = {m: float(np.mean([x[m] for x in rnd])) for m in rnd[0]}
         qs = pools["sel"].Q[:, :, 0] / (pools["sel"].Q[:, :, 0].std() + 1e-9) - pools["sel"].Q[:, :, 2] / (pools["sel"].Q[:, :, 2].std() + 1e-9)
@@ -218,7 +241,7 @@ def main():
 
         # ---- k = 2: fixed pair, greedy supervised, and the bounded two-step oracle
         pairs = [(i, j) for i in range(N_WIN) for j in range(i + 1, N_WIN)]
-        act2 = {t: {p: pools[t].score(np.tile(np.array(p), (len(pools[t].v), 1)), w) for p in pairs} for t in pools}
+        act2 = {t: {p: pools[t].score(np.tile(np.array(p), (len(pools[t].v), 1)), w, rule) for p in pairs} for t in pools}
         r["policies"]["fixed windows w0+w2 (k=2)"] = metrics(act2["sel"][(0, 2)], ys["sel"], tau)
         second = np.where(pred.argsort(1)[:, -2] == pick, pred.argsort(1)[:, -3], pred.argsort(1)[:, -2])
         greedy = np.array([act2["sel"][tuple(sorted((int(p1), int(p2))))][i] for i, (p1, p2) in enumerate(zip(pick, second))])
@@ -227,20 +250,39 @@ def main():
         r["policies"]["oracle (k=2)"] = metrics(np.array([act2["sel"][pairs[j]][i] for i, j in enumerate(L2.argmin(1))]),
                                                 ys["sel"], tau)
         rows.append(r)
-        print(f"split {k}: none {r['policies']['no acquisition (k=0)']['auroc']:.4f} | supervised "
+        print(f"split {k} [{rule}]: none {r['policies']['no acquisition (k=0)']['auroc']:.4f} | supervised "
               f"{r['policies']['supervised one-step (k=1)']['auroc']:.4f} | oracle "
               f"{r['policies']['oracle (k=1)']['auroc']:.4f} | modal {r['oracle']['modal_share']:.2f}", flush=True)
     json.dump(rows, open(R / f"{a.report}.json", "w"), indent=2, default=float)
-    write(rows, a.report)
+    write(rows, a.report)      # `rows` holds every (split, aggregation rule) cell
 
 
-def write(rows, report):
-    m = lambda pol, met: float(np.mean([r["policies"][pol][met] for r in rows]))
+def write(all_rows, report):
+    by_rule = {r: [x for x in all_rows if x["rule"] == r] for r in RULES}
+    best_rule = max(RULES, key=lambda r: np.mean([x["policies"]["supervised one-step (k=1)"]["auroc"] for x in by_rule[r]]))
+    rows = by_rule[best_rule]
+    m = lambda pol, met, rr=None: float(np.mean([r["policies"][pol][met] for r in (rr or rows)]))
     pols = list(rows[0]["policies"])
     none_auc = m("no acquisition (k=0)", "auroc")
     cost = {"no acquisition (k=0)": 0, "oracle (k=1)": 1, "oracle (k=2)": 2}
     L = ["# Experiment 7 — acquisition pilot, Step 1 (controls and the go/no-go)", "", __doc__.split("\n\n", 1)[1].strip(),
-         "", F.CITE, "", "## 1. Policies at equal budget (selection folds, mean of 5 splits)", "",
+         "", F.CITE, "",
+         "## 0. The aggregation rule for acquired observations", "",
+         "The first pass averaged an acquired window into the branch's opinion, which is the obvious rule and also a "
+         "way to lose: a denser look at one segment gets averaged into an estimate that already spans the video. Two "
+         "other within-branch rules are tried before concluding anything (evidence summation is not among them — the "
+         "brief forbids treating overlapping clips as independent sources).", "",
+         "| aggregation | no acquisition | supervised one-step (k=1) | best non-learned control | oracle (k=1) |",
+         "|---|---:|---:|---:|---:|"]
+    for r in RULES:
+        rr = by_rule[r]
+        ctrl = max(m("fixed window w0 (k=1)", "auroc", rr), m("random window (k=1)", "auroc", rr),
+                   m("quality-based (k=1)", "auroc", rr))
+        L.append(f"| {r}{' **(reported below)**' if r == best_rule else ''} | "
+                 f"{m('no acquisition (k=0)', 'auroc', rr):.4f} | {m('supervised one-step (k=1)', 'auroc', rr):.4f} | "
+                 f"{ctrl:.4f} | {m('oracle (k=1)', 'auroc', rr):.4f} |")
+    L += ["", f"The rest of this report uses **{best_rule}**, the aggregation whose learned selector scores highest.", "",
+         "## 1. Policies at equal budget (selection folds, mean of 5 splits)", "",
          "| policy | additional inspections | AUROC | Δ vs no acquisition | log loss | FPR | TPR |",
          "|---|---:|---:|---:|---:|---:|---:|"]
     for p in pols:
@@ -250,7 +292,7 @@ def write(rows, report):
     modal = float(np.mean([r["oracle"]["modal_share"] for r in rows]))
     hist = np.sum([r["oracle"]["pick_hist"] for r in rows], 0)
     head = max(m("fixed window w0 (k=1)", "auroc"), m("random window (k=1)", "auroc"),
-               m([p for p in pols if p.startswith("fixed best-on-fitting")][0], "auroc"))
+               m("fixed best-on-fitting (k=1)", "auroc"), m("quality-based (k=1)", "auroc"))
     null_gain = m("oracle on permuted windows (null, k=1)", "auroc") - none_auc
     c1 = m("oracle (k=1)", "auroc") - none_auc >= 0.005 or m("oracle (k=2)", "auroc") - none_auc >= 0.005
     c2 = m("supervised one-step (k=1)", "auroc") - head >= 0.002
