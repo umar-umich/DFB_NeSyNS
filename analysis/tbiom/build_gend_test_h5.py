@@ -26,7 +26,7 @@ from PIL import Image
 EXT = Path("/data/umar/Repos/DISCERN_Ext")
 G = Path("/data/kutub/datasets/GEND/extracted/test")
 H5DIR, SPL, CFG = EXT / "eval_adaptation/data/h5", EXT / "eval_adaptation/data/splits", EXT / "eval_adaptation/configs"
-ARMS = ["run1auxedl", "sbiarmA", "sbiarmB", "sbiarmC"]
+ARMS = ["run1auxedl", "sbiarmA", "sbiarmB", "sbiarmC", "warmgate"]
 
 
 def videos(d: Path):
@@ -49,6 +49,13 @@ def plan(ds):
         reals = videos(k / "test-real")
         pick = sorted(np.random.default_rng(0).choice(reals, size=n_fake, replace=False).tolist())
         return [("real", k / "test-real", pick)] + [(s, p, None) for s, p in fakes]
+    if ds == "FaceShifter":
+        # SEALED until the recipe is fixed (tbiom/docs/SEALED_BENCHMARKS.md). The official release manipulates the
+        # FF++ videos, and the audit of 2026-09-17 established that this release covers exactly the FF++ TEST split
+        # ids, disjoint from our train (720) and validation (140) source ids -- unseen manipulation on held-out
+        # source videos, which is what the report must say. Real and fake sit in one directory each.
+        k = G / "FSh"
+        return [("FaceShifter-real", k / "real", None), ("FaceShifter-fake", k / "fake", None)]
     if ds == "DFDM":
         k = G / "DFDM"
         return [("Celeb-real", G / "CDFv2/Celeb-real", None), ("YouTube-real", G / "CDFv2/YouTube-real", None)] + \
@@ -58,11 +65,18 @@ def plan(ds):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", required=True, choices=["FFIW", "KoDF", "IDForge", "DFDM"])
+    ap.add_argument("--dataset", required=True, choices=["FFIW", "KoDF", "IDForge", "DFDM", "FaceShifter"])
+    ap.add_argument("--unseal", action="store_true",
+                    help="required for FaceShifter: confirms the recipe is fixed and the seal has been lifted")
     args = ap.parse_args(); ds = args.dataset
+    if ds == "FaceShifter" and not args.unseal:
+        print("FaceShifter is sealed (tbiom/docs/SEALED_BENCHMARKS.md). Build it only once the final recipe is fixed, "
+              "and then pass --unseal; it is scored once, with no tuning afterwards.")
+        return 2
     items = plan(ds)
     for sub, _, _ in items:
-        assert ("real" in sub.lower()) == (sub in ("FFIW-real", "real", "adv-real", "Celeb-real", "YouTube-real")), sub
+        assert ("real" in sub.lower()) == (sub in ("FFIW-real", "real", "adv-real", "Celeb-real", "YouTube-real",
+                                                   "FaceShifter-real")), sub
     h5p = H5DIR / f"{ds}.h5"
     if h5p.exists():
         print(f"{h5p} exists; refusing to overwrite"); return 1
