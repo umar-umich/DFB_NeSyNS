@@ -29,7 +29,28 @@ The pseudo-fake is upstream's own construction, read off its authenticity loss:
 `x = IDCT(DCT(real)·M1 + DCT(fake)·M2)` with `(M1, M2, M3) = FPNet(DCT(fake))` — the real face keeps its
 facial-attribute band and borrows the forgery-trace band of a real manipulation; the quality band M3 is dropped.
 
-## The two arms
+## Amendment, 2026-09-18 — the arms changed, the criteria did not
+
+The first attempt used `warm_dicome_gate_B_seed42` as the control and the same config with arm D as the treatment.
+That pair is unusable: the warm+gate recipe sets `freeze_views: true`, so only the face-prior branch and its gate
+train. The two checkpoints differ in 12 of 1,015 tensors, all in that branch; Appearance and Off-manifold come out
+bit-identical, and the face prior is not part of the reference fusion. A training-data intervention cannot reach the
+views the study is about, so the comparison returned Δ = 0.0000 everywhere (`tbiom/reports/void/`).
+
+The arms below are therefore replaced by the `sbi_arm*` family, which trains the Appearance and Off-manifold views
+under the same arm-B processing. **Nothing else changes**: the acceptance criteria, the disqualifier, the bootstrap
+rule, the 10% fraction and the frozen temporal branch are exactly as written below, and they were written before any
+FreqBlender arm was trained. The amendment is recorded here rather than folded silently into the text.
+
+| arm | what it is | status |
+|---|---|---|
+| **Spatial-B** (control) | `sbi_armB_seed42`: the SBI-comparison arm B — trainable CLIP views, arm-B processing, no warm start, no freezing — at its development-selected epoch 8 (v3.1 rule, `sbiarmB_selection_v3.json`) | already trained; re-exported under the tag `fbB` so every row comes from that one checkpoint |
+| **Spatial-B-Freq** | `sbi_armD_seed42`: byte-identical config with `training_arm: D` and `freq_fraction: 0.1` | training 2026-09-18 |
+
+The reference detector's own Appearance and Off-manifold views stay frozen and untouched; this study asks whether
+FreqBlender helps spatial views **that are actually being trained**, which is the question the brief poses.
+
+## The two arms (original text, superseded above for the arm identities only)
 
 | arm | what it is | status |
 |---|---|---|
