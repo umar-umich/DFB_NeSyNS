@@ -55,6 +55,11 @@ def load_frames(path: Path) -> pd.DataFrame:
     d = pd.read_csv(path)
     need = ["p_semantic", "u_semantic", "p_artifact", "u_artifact", "p_fsvfm", "u_fsvfm", "p_fsvfm_raw",
             "u_fsvfm_raw", "gate_fsvfm"]
+    # Runs without `face_prior_gate` have no gated/raw distinction to export, so their CSVs carry p_fsvfm only (the
+    # sbi_arm* family, used by the FreqBlender study). Treat the ungated opinion as the raw one with a gate of 1;
+    # files that DO have the raw columns are untouched, so no earlier result moves.
+    if "p_fsvfm_raw" not in d and "p_fsvfm" in d:
+        d["p_fsvfm_raw"], d["u_fsvfm_raw"], d["gate_fsvfm"] = d["p_fsvfm"], d["u_fsvfm"], 1.0
     missing = [c for c in need if c not in d]
     assert not missing, f"{path}: missing {missing}"
     raw = d["key"].astype(str).str.split("::").str[-1]

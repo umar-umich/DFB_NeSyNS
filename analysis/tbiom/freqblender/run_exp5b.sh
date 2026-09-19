@@ -55,7 +55,7 @@ for L in 1 2 3; do BATCH=48 bash "$LANE" 1 "$J" >> "$FBLOG/fbD_lane$L.log" 2>&1 
 wait
 
 say "waiting for the control's queue"
-while read -r _ck _cfg _ds out _proc; do
+while IFS='|' read -r _ck _cfg _ds out _proc; do        # the job file is pipe-delimited, not whitespace
   while [ ! -f "$out" ]; do sleep 120; done
 done < "$FBLOG/jobs_fbB.txt"
 
