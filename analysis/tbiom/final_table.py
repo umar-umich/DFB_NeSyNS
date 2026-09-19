@@ -89,11 +89,28 @@ def main():
          *table(list(OURS), SLICES + PROC, with_mean=False),
          "", "Processed conditions are JPEG q40 and down-up resize 0.60, applied at evaluation only; neither severity "
          "is used in training (the arm-B mixture trains on q70/q50/q30 and 0.75/0.50/0.35).", "",
-         "## Appendix C — sealed", "",
-         "| benchmark | status |", "|---|---|",
-         "| FaceShifter (GenD release) | TODO(run) — sealed until the recipe is fixed by Experiment 5; unsealed and "
-         "scored once, with no tuning afterwards (decision of 2026-09-18). Source-split audit: its 140 ids are exactly "
-         "the FF++ test split, disjoint from our train and validation source ids. |", "",
+         "## Appendix C — the confirmation read", ""]
+    fsp = R / "FACESHIFTER.json"
+    if fsp.exists():
+        fs = json.load(open(fsp))
+        g = lambda arm: float(np.mean([x[arm]["auroc"] for x in fs]))
+        L += ["FaceShifter was sealed until Experiment 5 fixed the recipe, then unsealed and scored **once** with the "
+              "deployed weights — no refit, no threshold change, nothing tuned afterwards. Its 140 source ids are "
+              "exactly the FF++ test split, disjoint from our training and validation source ids, so it tests an "
+              "unseen *manipulation* on held-out source videos; it is not called zero-leakage.", "",
+              "| arm | video AUROC | FPR at the frozen τ | TPR |", "|---|---:|---:|---:|",
+              f"| **DISCERN-v2 (DS-R)** | **{g('DS-R'):.4f}** | {np.mean([x['DS-R']['fpr'] for x in fs]):.3f} | "
+              f"{np.mean([x['DS-R']['tpr'] for x in fs]):.3f} |",
+              f"| logistic comparator | {g('LR'):.4f} | {np.mean([x['LR']['fpr'] for x in fs]):.3f} | "
+              f"{np.mean([x['LR']['tpr'] for x in fs]):.3f} |"]
+        for v in ("T", "APP", "OM"):
+            L.append(f"| {v} view alone | {g(f'branch {v}'):.4f} | — | — |")
+        L += ["", "The fusion beats every view on a manipulation none of them has seen, which is the claim the "
+              "sealed benchmark exists to test.", ""]
+    else:
+        L += ["| benchmark | status |", "|---|---|",
+              "| FaceShifter (GenD release) | TODO(run) — sealed until the recipe is fixed. |", ""]
+    L += [
          "CDFv2 and DeepfakeEval2024 informed development through VALmix and are not untouched confirmation data."]
     (R / "FINAL_TABLE.md").write_text("\n".join(L) + "\n"); print("wrote", R / "FINAL_TABLE.md")
 

@@ -76,10 +76,18 @@ DeepfakeEval2024 is the hardest row for every method in the matrix, ours include
 
 Processed conditions are JPEG q40 and down-up resize 0.60, applied at evaluation only; neither severity is used in training (the arm-B mixture trains on q70/q50/q30 and 0.75/0.50/0.35).
 
-## Appendix C — sealed
+## Appendix C — the confirmation read
 
-| benchmark | status |
-|---|---|
-| FaceShifter (GenD release) | TODO(run) — sealed until the recipe is fixed by Experiment 5; unsealed and scored once, with no tuning afterwards (decision of 2026-09-18). Source-split audit: its 140 ids are exactly the FF++ test split, disjoint from our train and validation source ids. |
+FaceShifter was sealed until Experiment 5 fixed the recipe, then unsealed and scored **once** with the deployed weights — no refit, no threshold change, nothing tuned afterwards. Its 140 source ids are exactly the FF++ test split, disjoint from our training and validation source ids, so it tests an unseen *manipulation* on held-out source videos; it is not called zero-leakage.
+
+| arm | video AUROC | FPR at the frozen τ | TPR |
+|---|---:|---:|---:|
+| **DISCERN-v2 (DS-R)** | **0.9549** | 0.003 | 0.579 |
+| logistic comparator | 0.9480 | 0.007 | 0.426 |
+| T view alone | 0.9244 | — | — |
+| APP view alone | 0.8659 | — | — |
+| OM view alone | 0.8686 | — | — |
+
+The fusion beats every view on a manipulation none of them has seen, which is the claim the sealed benchmark exists to test.
 
 CDFv2 and DeepfakeEval2024 informed development through VALmix and are not untouched confirmation data.
