@@ -94,7 +94,8 @@ class Pack:
         x = [p, u, (p.max(2) - p.min(2))[..., None], p.std(2, keepdims=True), conf[..., None]]
         x += [q if quality else np.zeros_like(q), mk[..., None]]
         feats = np.concatenate(x, 2) * mk[..., None]
-        return (torch.tensor(feats, dtype=torch.float32), torch.tensor(p), torch.tensor(u), torch.tensor(mk))
+        f32 = lambda z: torch.tensor(z, dtype=torch.float32)
+        return f32(feats), f32(p), f32(u), f32(mk)
 
 
 # ----------------------------------------------------------------------------- fusion (the deployed operator)
