@@ -30,7 +30,7 @@ for ck in "$RUN/checkpoints/"*.ckpt; do
   done
 done
 say "arm E development exports ($(wc -l < "$J") jobs, 3 lanes)"
-for L in 1 2 3; do BATCH=48 bash "$LANE" 1 "$J" >> "$FBLOG/fbE_dev_lane$L.log" 2>&1 & done
+for L in 1 2 3 4 5; do BATCH=96 bash "$LANE" 1 "$J" >> "$FBLOG/fbE_dev_lane$L.log" 2>&1 & done
 wait
 $PYA analysis/tbiom/select_checkpoint_v3.py --arm sbiarmE > "$FBLOG/selection_armE.log" 2>&1 || {
   say "selection FAILED"; exit 1; }
@@ -51,7 +51,7 @@ for ds in CDFv2 DFDCP; do
   echo "$CK|sbiarmB_${ds}.yaml|${ds}|$S2/p_v3_fbE_${ds}_rs06.csv|resize:0.6" >> "$J"
 done
 say "arm E test and processed exports ($(wc -l < "$J") jobs, 3 lanes)"
-for L in 1 2 3; do BATCH=48 bash "$LANE" 1 "$J" >> "$FBLOG/fbE_lane$L.log" 2>&1 & done
+for L in 1 2 3 4 5; do BATCH=96 bash "$LANE" 1 "$J" >> "$FBLOG/fbE_lane$L.log" 2>&1 & done
 wait
 
 say "waiting for the control's queue"
