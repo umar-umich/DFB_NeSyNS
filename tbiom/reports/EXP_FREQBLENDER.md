@@ -68,3 +68,21 @@ Compression robustness is claimed only if the processed-development criterion is
 CDFv3 test reenactment is reported here, after the development verdict, and was never a selection criterion. DS-R weights per split and every raw number are in `EXP_FREQBLENDER.json`.
 
 One detector seed and one temporal-branch seed unless stated. CDFv2 and DeepfakeEval2024 informed development and are not untouched confirmation data. FaceShifter is sealed (`tbiom/docs/SEALED_BENCHMARKS.md`).
+
+## Addendum (2026-09-20) — DeepFakeEval24 broken out, read after the verdict
+
+Requested after the verdict; it does not enter the decision, which was made on the frozen development criteria and
+was not based on FaceShifter (FaceShifter was scored afterwards, once, with the reference system, which does not
+contain FreqBlender). Mean over the same five fitted splits; FPR/TPR at each arm's own frozen τ.
+
+| arm | rule | development DFEval24val cell | test DFEval24 AUROC | test FPR | test TPR |
+|---|---|---:|---:|---:|---:|
+| Spatial-B | DS-R | 0.6915 | 0.7252 | 0.093 | 0.287 |
+| Spatial-B | logistic | 0.6978 | 0.7341 | 0.063 | 0.254 |
+| Spatial-B-Freq | DS-R | 0.6880 | 0.7283 | 0.053 | 0.220 |
+| Spatial-B-Freq | logistic | 0.6859 | 0.7206 | 0.067 | 0.252 |
+
+FreqBlender moves DeepFakeEval24 by −0.0035 (development) / +0.0031 (test) under DS-R and −0.0119 / −0.0135 under
+the logistic comparator: flat to negative. Its in-the-wild development gain (+0.0198 under DS-R) comes from the other
+in-the-wild cell, FFIW-val, consistent with the FFIW test row (0.8957 → 0.9342). DeepFakeEval24 therefore gives no
+reason to revisit the verdict.
