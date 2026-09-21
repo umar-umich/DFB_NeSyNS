@@ -46,7 +46,11 @@ RUN_DIR = {"dicomeours": "../_baseline_dicome/dicome_train/ffpp_reproduce_seed42
            "warmgateB": "warm_dicome_gate_B_seed42",
            "warmgateBFreq": "warm_dicome_gate_BFreq_seed42",
            "sbiarmD": "sbi_armD_seed42",
-           "sbiarmE": "sbi_armE_seed42"}
+           "sbiarmE": "sbi_armE_seed42",
+           "wgUB": "warm_dicome_gate_unfrozenB_seed42",
+           "wgUE": "warm_dicome_gate_unfrozenE_seed42",
+           "sbiarmEs1337": "sbi_armE_seed1337",
+           "sbiarmEs7": "sbi_armE_seed7"}
 BR = SO.BRANCHES
 
 
