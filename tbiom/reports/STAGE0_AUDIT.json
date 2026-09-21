@@ -1,0 +1,110 @@
+{
+ "commit": "baf16b6",
+ "hashes": {
+  "T (V-JEPA 2 LoRA, B-augmented)": "6f0d9c63a6c052dec00a1b93872542ab72569ab2c6fb24d78ac11af7854bb1ce",
+  "APP + OM (warm+gate, epoch 19)": "fdc924a7cc9e1579455a9a99144ac982ababf2e2b890a4396d38b627f9b8e2f6"
+ },
+ "discount_check": {
+  "0.25": {
+   "max|dp|": 0.2886042668245331,
+   "max|du|": 0.678805046807719,
+   "mean|du|": 0.16460352237270384
+  },
+  "0.5": {
+   "max|dp|": 0.20534537528868824,
+   "max|du|": 0.47047340622457956,
+   "mean|du|": 0.14531979752187657
+  },
+  "0.75": {
+   "max|dp|": 0.105458003171649,
+   "max|du|": 0.23838625596898416,
+   "mean|du|": 0.08301565275271965
+  }
+ },
+ "ds_operator_err": 2.220446049250313e-16,
+ "frames_per_video": {
+  "VALmix": {
+   "videos": 1350,
+   "min": 1,
+   "median": 32.0,
+   "max": 32,
+   "median_raw_frame_step": 11.0
+  },
+  "VALmixV2": {
+   "videos": 4852,
+   "min": 1,
+   "median": 16.0,
+   "max": 16,
+   "median_raw_frame_step": 21.0
+  },
+  "FFpp_val": {
+   "videos": 700,
+   "min": 31,
+   "median": 32.0,
+   "max": 32,
+   "median_raw_frame_step": 14.0
+  }
+ },
+ "segments": {
+  "VALmix": {
+   "videos": 1350,
+   "segments_per_video": 4,
+   "distinct_frames_per_segment": {
+    "min": 0,
+    "median": 8.0,
+    "max": 8
+   },
+   "degenerate_segments": 12,
+   "degenerate_videos": 6,
+   "segments_repeating_frames": 5388,
+   "segments": 5400,
+   "quality_descriptors": [
+    "blur",
+    "blockiness",
+    "contrast",
+    "motion",
+    "luma"
+   ]
+  },
+  "VALmixV2": {
+   "videos": 3764,
+   "segments_per_video": 4,
+   "distinct_frames_per_segment": {
+    "min": 0,
+    "median": 4.0,
+    "max": 4
+   },
+   "degenerate_segments": 21,
+   "degenerate_videos": 10,
+   "segments_repeating_frames": 15035,
+   "segments": 15056,
+   "quality_descriptors": [
+    "blur",
+    "blockiness",
+    "contrast",
+    "motion",
+    "luma"
+   ]
+  },
+  "FFpp_val": {
+   "videos": 700,
+   "segments_per_video": 4,
+   "distinct_frames_per_segment": {
+    "min": 7,
+    "median": 8.0,
+    "max": 8
+   },
+   "degenerate_segments": 0,
+   "degenerate_videos": 0,
+   "segments_repeating_frames": 2800,
+   "segments": 2800,
+   "quality_descriptors": [
+    "blur",
+    "blockiness",
+    "contrast",
+    "motion",
+    "luma"
+   ]
+  }
+ }
+}

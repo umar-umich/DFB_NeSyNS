@@ -1,18 +1,22 @@
-# Reference manifest — DISCERN-v2 finish line (Stage 0)
+# Reference manifest — executable brief, Stage 0 audit
 
-Resolved from the live tree on 2026-09-17; repository commit `9cf8895`. Every finish-line experiment (1–4) cites this file and uses exactly these artefacts. Nothing here is from memory: paths, hashes and fitted parameters were read or recomputed by `analysis/tbiom/temporal/finish_line.py manifest`.
+Resolved from the live tree on 2026-09-20, commit `baf16b6`, by `analysis/tbiom/stage0_audit.py`; every number below is recomputed, not retyped. Every later experiment in `tbiom/docs/discern-v2-executable-brief.md` cites this file. Raw numbers: `STAGE0_AUDIT.json`.
 
-## 1. The three branches
+## 1. The three reference branches
 
-| view | what it is | resolved checkpoint | sha256 (first 16) | size |
-|---|---|---|---|---:|
-| **T** | V-JEPA 2 ViT-L (`facebook/vjepa2-vitl-fpc64-256`), LoRA r=8 α=16 dropout 0.1 on q/v of every encoder layer + evidential head, **B-augmented** training | `logs/tbiom/temporal/branches/vjepa2_lora_B_seed42/best.pt` | `6f0d9c63a6c052de` | 205 MB |
-| **APP** | Appearance view of the warm+gate DISCERN detector: CLIP ViT-L/14 + LoRA r=8 α=16 (q_proj, v_proj), evidential head | `/data/umar/Repos/DISCERN_Ext/runs/discern_ext_train/warm_dicome_gate_seed42/checkpoints/discern_ext-best-epoch=19-val_auroc_video=0.9956.ckpt` | `fdc924a7cc9e1579` | 2.4 GB |
-| **OM** | Off-manifold residual view of the same checkpoint: β-VAE (latent 32, β_KLD 2.0, λ_align 1.0, λ_vae 0.7) on the shared CLIP feature path, evidential head | same file | `fdc924a7cc9e1579` | — |
+| view | checkpoint | sha256 (first 16) |
+|---|---|---|
+| T (V-JEPA 2 LoRA, B-augmented) | `logs/tbiom/temporal/branches/vjepa2_lora_B_seed42/best.pt` | `6f0d9c63a6c052de` |
+| APP + OM (warm+gate, epoch 19) | `/data/umar/Repos/DISCERN_Ext/runs/discern_ext_train/warm_dicome_gate_seed42/checkpoints/discern_ext-best-epoch=19-val_auroc_video=0.9956.ckpt` | `fdc924a7cc9e1579` |
 
-The face prior (FSFM student, `logs/fpad/studentA_preserve_seed42/epoch_009.pth`) exists inside the warm+gate checkpoint but **is not part of the reference**: it is excluded from Experiments 1–4 and appears only in explicitly labelled historical comparisons (EXP7B).
+APP and OM are the Appearance and Off-manifold views of one checkpoint (shared CLIP ViT-L/14 + LoRA r8 α16 path; β-VAE latent 32, β_KLD 2.0, λ_align 1.0, λ_vae 0.7). The face prior inside that checkpoint is outside the reference. The hashes match the previous manifest (yes).
 
-## 2. Temporal-branch recipe (from its training record, not from memory)
+**Preprocessing and aggregation order.**
+- T: one clip per video, 16 frames at `linspace(0, n−1, 16)` over the video's stored crops, in temporal order, V-JEPA 2's own 256-px processor; the branch emits one Dirichlet per clip, so there is no frame aggregation.
+- APP/OM: every stored crop scored separately at 224 px (CLIP preprocessing); per-frame (p, u) are **averaged per video first**, then the three views are discounted and fused.
+- Order: per-frame spatial opinions → per-video mean → reconstruct α from (p, u) → discount each view → Dempster combination T ⊕ APP ⊕ OM (associative).
+
+Temporal-branch training record:
 
 ```json
 {
@@ -41,46 +45,72 @@ The face prior (FSFM student, `logs/fpad/studentA_preserve_seed42/epoch_009.pth`
 }
 ```
 
-## 3. Preprocessing and aggregation
+## 2. The discount rule, read from code
 
-- **T**: one clip per video — 16 frames sampled uniformly (`np.linspace`, rounded) over the video's stored 256-px face crops, **in temporal order**; V-JEPA 2's own `AutoVideoProcessor` (256-px, its own mean/std). The branch emits ONE Dirichlet per video, so no frame aggregation is needed: `p = α₁/S`, `u = 2/S`.
-- **APP/OM**: per-frame 224-px CLIP crops from the same H5 stores, each frame's evidential head giving (p, u); **per-video mean of every frame quantity first, then fuse** (the corrected-table rule). Video id = the directory containing the frame (`analysis/tbiom/video_id.py`).
-- Processed conditions are applied to the stored crops before each branch's own preprocessing; JPEG q40 and resize 0.60 are evaluation-only.
+`analysis/tbiom/temporal/finish_line.py::dsr` (identical in `dsr_system.py`):
 
-## 4. DS-R, exactly
+```python
+S = K / u                                   # K = 2 classes
+alpha = [(1 - p) * S, p * S]                # reconstruct the Dirichlet from (p, u)
+alpha' = 1 + w * (alpha - 1)                # discount
+```
 
-For view b with opinion (p_b, u_b): S_b = K/u_b with K = 2, α_b = [(1−p_b)S_b, p_b S_b]. Shafer discounting by a reliability weight w_b: α'_b = 1 + w_b(α_b − 1) (w_b = 1 leaves the opinion untouched, w_b = 0 makes it vacuous). The discounted opinions are combined **sequentially by Dempster's rule** — the identical operator DISCERN deploys (`analysis/tbiom/symbolic_overlay.py`; checked numerically, max |Δp| = 0.0e+00 at w = 1). The fused opinion carries p_f, vacuity u_f = K/S_f and accumulated conflict k_f = 1 − ∏(1 − k_pair).
+That is **evidence scaling**: e' = w·e, S' = w·Σe + K, b' = w·e / (w·Σe + K), u' = K / (w·Σe + K). It is **not** belief-mass (Shafer) discounting, b' = w·b, u' = 1 − w·(1 − u). The two coincide only at w = 1. The previous manifest called this rule "Shafer discounting"; that name was wrong and is corrected here — the equations it printed were right.
 
-Weights are searched over w ∈ {0, .25, .5, .75, 1}³ with max w = 1 (a global scale is unidentifiable), maximising the v3.1 objective on the fitting fold.
+Numerical check on 2,000 opinions (p ∈ [0.05, 0.95], u ∈ [0.02, 0.9]):
 
-**Matched comparator (mandatory, everywhere):** logistic stacking on exactly the same inputs — the six numbers (p, u) of T, APP, OM — standardised, `LogisticRegression(C=1, class_weight='balanced')`, fitted on the same fitting fold.
+| w | max \|Δp\| code vs belief-mass | max \|Δu\| | mean \|Δu\| |
+|---:|---:|---:|---:|
+| 0.25 | 0.2886 | 0.6788 | 0.1646 |
+| 0.5 | 0.2053 | 0.4705 | 0.1453 |
+| 0.75 | 0.1055 | 0.2384 | 0.0830 |
 
-## 5. Folds and fitted parameters
+The combination after discounting is Dempster's rule on the discounted opinions, identical to DISCERN's in-model `DS_Combin` / `_combine_two_opinions` (max |Δp| 2.2e-16 at w = 1): with b_i = e_i / S_i and u_i = K / S_i, conflict C = Σ_{j≠k} b_1j b_2k, b = (b_1 b_2 + b_1 u_2 + b_2 u_1)/(1 − C), u = u_1 u_2 / (1 − C), α = b·K/u + 1. DISCERN's own face-prior gate uses the same evidence-scaling form (`1 + g·(α − 1)`).
 
-Development = VALmix + VALmix-v2 + FF++ val videos, in-scope cells only. Each split is a source-grouped 50/50 `GroupShuffleSplit(test_size=0.5, random_state=k)`, k = 0…4, over the union-find source groups of `exp1_fusion_audit.groups_for` (identical to every earlier audit). τ = EER of the fused score on the selection fold's FF++ val videos.
+**Consequence for Stage 1A:** every controller predicts w per view and applies α' = 1 + w(α − 1), unchanged. Changing to belief-mass discounting would be a separate experiment, never combined with a new predictor.
 
-| split | fit videos | fit groups | selection videos | selection groups | DS-R w (T, APP, OM) | τ DS-R | τ LR |
-|---|---:|---:|---:|---:|---|---:|---:|
-| 0 | 2911 | 1364 | 2903 | 1364 | (0.25, 0.25, 1.0) | 0.5648 | 0.8244 |
-| 1 | 2971 | 1364 | 2843 | 1364 | (0.25, 0.25, 1.0) | 0.5648 | 0.5209 |
-| 2 | 2942 | 1364 | 2872 | 1364 | (0.25, 0.25, 1.0) | 0.3778 | 0.8235 |
-| 3 | 2965 | 1364 | 2849 | 1364 | (0.25, 0.25, 1.0) | 0.5648 | 0.7373 |
-| 4 | 2846 | 1364 | 2968 | 1364 | (0.25, 0.25, 1.0) | 0.6376 | 0.8188 |
+Fitted weights on the five source-grouped splits (from the previous manifest): (0.25, 0.25, 1.0); (0.25, 0.25, 1.0); (0.25, 0.25, 1.0); (0.25, 0.25, 1.0); (0.25, 0.25, 1.0) for (T, APP, OM).
 
-Logistic coefficients per split (standardised inputs):
+## 3. Cache inventory and segment granularity
 
-| split | p_T | u_T | p_APP | u_APP | p_OM | u_OM | intercept |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 0 | +1.141 | +0.116 | -1.995 | +0.134 | +4.080 | +0.821 | +1.017 |
-| 1 | +1.105 | +0.023 | -1.843 | +0.170 | +3.784 | +0.803 | +0.839 |
-| 2 | +1.159 | +0.116 | -1.794 | +0.259 | +3.724 | +0.648 | +0.893 |
-| 3 | +1.171 | +0.140 | -2.006 | +0.235 | +4.183 | +0.783 | +1.029 |
-| 4 | +1.139 | +0.139 | -2.030 | +0.241 | +3.968 | +0.721 | +0.831 |
+**What a 'frame' is here.** The stored crops are a sparse, even sample of each source video, not its frames:
 
-## 6. Evaluation sets
+| development source file | videos | stored crops per video (min / median / max) | median raw-frame step between stored crops |
+|---|---:|---|---:|
+| VALmix | 1350 | 1 / 32 / 32 | 11.0 |
+| VALmixV2 | 4852 | 1 / 16 / 16 | 21.0 |
+| FFpp_val | 700 | 31 / 32 / 32 | 14.0 |
 
-- Development (clean): VALmix, VALmixV2, FFpp_val; processed development: the same selection-fold videos under JPEG q40 and resize 0.60.
-- Tests (read only after fitting): CDFv2, CDFv3, DFD, DFDC, DFDCP, DFEval24, FFIW, KoDF, IDForge, DFDM, plus the CDFv3-reenactment and KoDF first-order-motion slices and the CDFv2 / DFDCP processed versions.
-- Out of scope and dropped from every table: lip-sync-only (IP_LAP), audio-driven fakes, adversarial subsets.
+So a video is 16–32 stills roughly 10–15 source frames apart (≈ 0.3–0.5 s at 30 fps). `/data/umar/Datasets/tbiom_frames` (29 GB) holds the same 32-still sampling for CDFv2, CDFv3, DFD, DFDC, DFDCP and DFEval24 — it is not denser.
 
-One detector seed and one temporal-branch seed unless stated. CDFv2 and DeepfakeEval2024 informed development and are not untouched confirmation data. FaceShifter is sealed (`tbiom/docs/SEALED_BENCHMARKS.md`).
+**What exists per (view, granularity, condition):**
+
+| view | granularity | clean development | JPEG q40 / resize 0.60 development | tests |
+|---|---|---|---|---|
+| APP, OM | per stored crop | yes (`warmgate_e19_*`) | yes (`p_dev_warmgate_e19_*`) | clean all ten; processed CDFv2, DFDCP |
+| T | one opinion per video (full span) | yes | yes | clean all ten; processed CDFv2, DFDCP |
+| T | per segment (4 contiguous quarters + full) | yes (`logs/tbiom/acquisition/`) | **no** | **no** |
+| quality descriptors (blur, blockiness, contrast, motion, luma) | per segment | yes, same cache | **no** | **no** |
+
+Segment cache detail (clean development only):
+
+| source | videos | segments/video | distinct stored crops per segment (min / median / max) | segments whose 16-frame clip repeats crops | degenerate (empty) segments |
+|---|---:|---:|---|---:|---:|
+| VALmix | 1350 | 4 | 0 / 8 / 8 | 5388 of 5400 | 12 in 6 videos |
+| VALmixV2 | 3764 | 4 | 0 / 4 / 4 | 15035 of 15056 | 21 in 10 videos |
+| FFpp_val | 700 | 4 | 7 / 8 / 8 | 2800 of 2800 | 0 in 0 videos |
+
+Timestamps: the stored-crop file names carry the source frame index (`000.png`, `014.png`, …; `frame_0010.png`), so segment order and approximate time are recoverable; source fps is not stored.
+
+## 4. Gate
+
+Aligned segment-level opinions from all three views **do not exist** in the form Stage 1A needs:
+
+1. **Processed conditions have no segment-level temporal opinions and no quality descriptors.** The controllers are trained on clean *and* processed examples, so these must be generated by local clip inference before any controller is fitted. This adds GPU cost (the clean pass took ≈13 GPU-minutes for 29k segment clips; two processed conditions ≈ 30 more).
+2. **At the stored density a segment holds 4–8 distinct crops**, so every per-segment V-JEPA clip is those crops repeated to 16 frames. Each segment is still a genuinely different observation — its frames are distinct from the other segments' — so this is not the forbidden repetition of one video-level opinion across timestamps; but the temporal branch sees a stuttered clip at segment granularity, and that is recorded as a limitation of every segment-level result.
+3. **Degenerate segments** (videos with fewer crops than segments) were filled with the full-span opinion in the acquisition cache. That *is* the forbidden simulation; those segments are excluded, not filled, in every Stage 1A fit.
+4. **Spatial segment opinions need no inference**: they are exact means of the cached per-frame opinions over the same crops the temporal segment used.
+
+**Processing-sensitive branch for Stage 1B** (from Experiment 3 on the same reference): development v3.1 drop clean → JPEG q40 is T 0.0498, APP 0.0994, OM 0.0813. The spatial path is the more processing-sensitive one, and APP and OM share the adapted CLIP path, so 1B treats them as one coupled spatial experiment.
+
+**Pass condition.** Three checkpoints named and hashed; the discount rule read from code and verified (evidence scaling); segment granularity recorded (4 segments of 4–8 distinct stored crops, clean development only). Stage 1A proceeds only after the missing processed segment opinions and descriptors are generated.

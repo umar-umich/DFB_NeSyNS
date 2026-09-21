@@ -86,3 +86,19 @@ FreqBlender moves DeepFakeEval24 by −0.0035 (development) / +0.0031 (test) und
 the logistic comparator: flat to negative. Its in-the-wild development gain (+0.0198 under DS-R) comes from the other
 in-the-wild cell, FFIW-val, consistent with the FFIW test row (0.8957 → 0.9342). DeepFakeEval24 therefore gives no
 reason to revisit the verdict.
+
+### FFIW broken out the same way (2026-09-20, read after the verdict)
+
+| arm | rule | development FFIW-val cell | test FFIW AUROC | test FPR | test TPR |
+|---|---|---:|---:|---:|---:|
+| Spatial-B | DS-R | 0.8704 | 0.8957 | 0.054 | 0.518 |
+| Spatial-B | logistic | 0.8782 | 0.9018 | 0.033 | 0.470 |
+| Spatial-B-Freq | DS-R | 0.9135 | 0.9342 | 0.029 | 0.546 |
+| Spatial-B-Freq | logistic | 0.9079 | 0.9255 | 0.038 | 0.563 |
+
+FFIW is where FreqBlender helps, consistently: +0.0431 on the development cell and +0.0385 on the test set under
+DS-R (+0.0297 / +0.0237 logistic), and on FFIW the false-positive rate at the frozen τ *falls* (0.054 → 0.029 under
+DS-R). The false-positive increase that failed the frozen criterion (+0.024 against a +0.02 limit — a near miss)
+comes from the pooled development set, not from FFIW. The verdict stands as pre-registered; whether an FFIW-specific
+in-the-wild gain of this size justifies revisiting a near-miss on the FPR limit is a decision for the authors, and
+would have to be stated as an override of the frozen rule.
