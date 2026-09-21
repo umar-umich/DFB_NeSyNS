@@ -23,7 +23,10 @@ import stage2_train as S  # noqa: E402
 R = Path("tbiom/reports"); VIEWS = ["T", "APP", "OM"]; PROC = ("jpeg40", "rs06"); N_BOOT = 1000
 CONFIGS = {"sparse × pooling (reference)": "reference_sparse_pool", "sparse × GRU head": "sparse_gru_seed42",
            "dense × pooling": "dense_pool_seed42", "dense × GRU head": "dense_gru_seed42",
-           "dense-subsampled × pooling (diagnostic)": "dsub_pool_seed42"}
+           "dense-subsampled × pooling (diagnostic)": "dsub_pool_seed42",
+           "sparse × Mamba head (only if triggered)": "sparse_mamba_seed42",
+           "dense × Mamba head (only if triggered)": "dense_mamba_seed42"}
+TRIGGER = 0.005        # pre-registration amendment of 2026-09-21: GRU over pooling, same sampling, selection part
 MARGIN, ROBUST, REEN, COMPUTE = 0.005, -0.005, -0.005, 2.0
 
 
@@ -73,6 +76,13 @@ def main():
         res[name] = r
     ref = res["sparse × pooling (reference)"]
     new = [n for n in CONFIGS if n != "sparse × pooling (reference)" and "diagnostic" not in n and res.get(n)]
+    pairs = {"sparse": ("sparse × pooling (reference)", "sparse × GRU head", "sparse × Mamba head (only if triggered)"),
+             "dense": ("dense × pooling", "dense × GRU head", "dense × Mamba head (only if triggered)")}
+    trig = {}
+    for smp, (pn, gn, mn) in pairs.items():
+        if res.get(pn) and res.get(gn):
+            d = res[gn]["select|clean|DS-R"]["v31"] - res[pn]["select|clean|DS-R"]["v31"]
+            trig[smp] = {"delta": d, "fires": d >= TRIGGER, "mamba_run": bool(res.get(mn))}
     cand = max(new, key=lambda n: res[n]["select|clean|DS-R"]["v31"]) if new else None
 
     L = ["# Stage 2 — bounded temporal experiment", "",
@@ -118,7 +128,13 @@ def main():
                                 "allocated budget — not as evidence that temporal information is absent."),
               f"FPR / TPR at the fitting part's τ, confirmation clean: candidate {c['confirm|clean|DS-R']['fpr']:.3f} / "
               f"{c['confirm|clean|DS-R']['tpr']:.3f}, reference {rf['confirm|clean|DS-R']['fpr']:.3f} / {rf['confirm|clean|DS-R']['tpr']:.3f}.", ""]
-    L += ["## 3. Order diagnostics (branch alone, whole subset) — diagnostics, never gates", "",
+    L += ["## Mamba trigger (pre-registered 2026-09-21, before any fused number was computed)", "",
+          "A small temporal head is useful if a GRU configuration beats pooling at the same sampling by ≥ +0.005 fused "
+          "DS-R subset-v3.1 on the selection part; only then is a Mamba head trained, for that sampling.", ""]
+    for smp, t in trig.items():
+        L.append(f"- {smp}: GRU − pooling = {t['delta']:+.4f} → trigger **{'fires' if t['fires'] else 'does not fire'}**"
+                 + (f"; Mamba head {'trained and in the candidate set' if t['mamba_run'] else 'not trained yet'}" if t["fires"] else "; no Mamba head trained") + ".")
+    L += ["", "## 3. Order diagnostics (branch alone, whole subset) — diagnostics, never gates", "",
           "| configuration | ordered AUROC | reversed | locally permuted | shuffled | mean |Δp| reversed | mean |Δp| shuffled |",
           "|---|---:|---:|---:|---:|---:|---:|"]
     for n in CONFIGS:
@@ -132,7 +148,7 @@ def main():
     L += ["", "Frames for every configuration are cut by the same dlib / 81-landmark aligned-crop function; the dense "
           "window is 32 consecutive source frames at the video's midpoint. One seed per configuration."]
     (R / "EXP_TEMPORAL_SAMPLING.md").write_text("\n".join(L) + "\n"); print("wrote", R / "EXP_TEMPORAL_SAMPLING.md")
-    json.dump({n: (None if r is None else {k: v for k, v in r.items() if k not in ("scores", "diag")}) for n, r in res.items()},
+    json.dump({"_mamba_trigger": trig} | {n: (None if r is None else {k: v for k, v in r.items() if k not in ("scores", "diag")}) for n, r in res.items()},
               open(R / "EXP_TEMPORAL_SAMPLING.json", "w"), indent=1, default=float)
 
 

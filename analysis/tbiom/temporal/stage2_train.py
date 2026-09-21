@@ -106,6 +106,27 @@ def ffpp_train_labels():
 
 
 # ----------------------------------------------------------------------------- model
+class SelectiveSSM(nn.Module):
+    """One small selective state-space (Mamba-style) block, pure PyTorch: input-dependent step size, B and C."""
+
+    def __init__(self, d=256, n=8):
+        super().__init__()
+        self.inp = nn.Linear(d, 2 * d); self.conv = nn.Conv1d(d, d, 2, padding=1, groups=d)
+        self.dt, self.B, self.C = nn.Linear(d, d), nn.Linear(d, n), nn.Linear(d, n)
+        self.A_log = nn.Parameter(torch.log(torch.arange(1, n + 1, dtype=torch.float32)).repeat(d, 1))
+        self.Dskip = nn.Parameter(torch.ones(d)); self.d = d
+
+    def forward(self, x):                                                       # (B, L, d) -> (B, L, d)
+        xs, z = self.inp(x).chunk(2, -1)
+        xs = F.silu(self.conv(xs.transpose(1, 2))[..., : x.shape[1]].transpose(1, 2))
+        dt = F.softplus(self.dt(xs)); Bm, Cm = self.B(xs), self.C(xs); A = -torch.exp(self.A_log)
+        h = x.new_zeros(x.shape[0], self.d, A.shape[1]); ys = []
+        for t in range(x.shape[1]):
+            h = torch.exp(dt[:, t, :, None] * A) * h + dt[:, t, :, None] * Bm[:, t, None, :] * xs[:, t, :, None]
+            ys.append((h * Cm[:, t, None, :]).sum(-1) + self.Dskip * xs[:, t])
+        return torch.stack(ys, 1) * F.silu(z)
+
+
 class Branch2(TB.Branch):
     def __init__(self, head="pool"):
         super().__init__("vjepa2", lora=True)
@@ -113,16 +134,21 @@ class Branch2(TB.Branch):
         if head == "gru":
             self.tgru = nn.GRU(1024, 256, batch_first=True)
             self.head = nn.Sequential(nn.LayerNorm(256), nn.Linear(256, 128), nn.GELU(), nn.Linear(128, 2))
+        elif head == "mamba":                           # only trained if the Stage 2 trigger fires (see the amendment)
+            self.tgru = nn.Sequential(nn.Linear(1024, 256), SelectiveSSM(256, 8))
+            self.head = nn.Sequential(nn.LayerNorm(256), nn.Linear(256, 128), nn.GELU(), nn.Linear(128, 2))
 
     def forward(self, px):
         if self.head_type == "pool":
             return super().forward(px)
         h = self.backbone(pixel_values_videos=px, skip_predictor=True).last_hidden_state   # (B, 8*256, 1024), t-major
         h = h.view(h.shape[0], T // 2, -1, h.shape[-1]).mean(2)                             # (B, 8, 1024)
-        return F.softplus(self.head(self.tgru(h.float())[0].mean(1)))
+        seq = self.tgru(h.float())
+        seq = seq[0] if isinstance(seq, tuple) else seq                                     # GRU returns (out, h)
+        return F.softplus(self.head(seq.mean(1)))
 
     def head_params(self):
-        return list(self.head.parameters()) + (list(self.tgru.parameters()) if self.head_type == "gru" else [])
+        return list(self.head.parameters()) + (list(self.tgru.parameters()) if self.head_type in ("gru", "mamba") else [])
 
 
 # ----------------------------------------------------------------------------- opinions
@@ -187,7 +213,7 @@ def reference_exports(a):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sampling", required=True, choices=["sparse", "dense", "dsub"]); ap.add_argument("--head", required=True, choices=["pool", "gru"])
+    ap.add_argument("--sampling", required=True, choices=["sparse", "dense", "dsub"]); ap.add_argument("--head", required=True, choices=["pool", "gru", "mamba"])
     ap.add_argument("--workers", type=int, default=10); ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--diagnostics", action="store_true", help="after training: ordered/reversed/local/shuffled exports")
     ap.add_argument("--reference", action="store_true",
@@ -235,13 +261,13 @@ def main():
         if score > best[0] + 1e-6:
             best = (score, ep)
             torch.save({"epoch": ep, "trainable_blocks": model.trainable_blocks.state_dict(), "head": model.head.state_dict(),
-                        "tgru": model.tgru.state_dict() if a.head == "gru" else None}, run / "best.pt")
+                        "tgru": model.tgru.state_dict() if a.head in ("gru", "mamba") else None}, run / "best.pt")
         json.dump({"sampling": a.sampling, "head": a.head, "seed": a.seed, "history": hist, "best_epoch": best[1], "best": best[0],
                    "budget": {"epochs": EPOCHS, "batch": BATCH, "frames": T, "lora": [TB.LORA_R, TB.LORA_ALPHA, TB.LORA_DROPOUT],
                               "lr": [TB.LR_LORA, TB.LR_HEAD], "augment": "B"}}, open(run / "train_record.json", "w"), indent=1)
     ck = torch.load(run / "best.pt", map_location=dev)
     model.trainable_blocks.load_state_dict(ck["trainable_blocks"]); model.head.load_state_dict(ck["head"])
-    if a.head == "gru":
+    if a.head in ("gru", "mamba"):
         model.tgru.load_state_dict(ck["tgru"])
     print(f"selected epoch {ck['epoch']}; exporting the whole subset", flush=True)
     dl = dev_loader(a.sampling, model, set(base.v), labels, a.workers)

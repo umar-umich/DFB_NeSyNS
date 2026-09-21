@@ -75,3 +75,20 @@ with the report "insufficient demonstrated benefit under the tested configuratio
 For the candidate and the reference: ordered, reversed, locally permuted (adjacent pairs swapped) and fully shuffled
 inputs, with paired score changes and AUROC intervals. No shuffle-gap threshold gates anything; no linear order probe
 is required.
+
+## Amendment, 2026-09-21 — the Mamba trigger, defined before the fused comparison was computed
+
+The brief lets Mamba enter as a temporal head "only if this comparison shows a small temporal head is useful" and
+leaves *useful* undefined. Fixed now, while only branch-alone training logs exist and no fused selection or
+confirmation number has been computed:
+
+* **A small temporal head is useful** if, on the **selection part**, a GRU-head configuration beats the pooling
+  configuration with the **same sampling** by **≥ +0.005** fused DS-R subset-v3.1. Checked separately for sparse and
+  dense sampling.
+* **If it is**, a Mamba head is trained for each sampling where the GRU head was useful, with the identical budget, and
+  it joins the candidate set. The candidate is still chosen on the selection part and the stopping rule is still
+  assessed only on the confirmation part. **If it is not**, no Mamba head is trained, and the report says so.
+* **Mamba head:** the same place as the GRU — V-JEPA 2 tokens averaged over space within each of the 8 temporal
+  steps, a linear map 1024 → 256, one selective state-space block (input-dependent step size, B and C; state size 8;
+  causal depthwise convolution of width 2; gated output), mean over steps, the same evidential head. Pure PyTorch, the
+  same block as in Stage 1A.
