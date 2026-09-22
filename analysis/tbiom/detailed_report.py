@@ -226,17 +226,21 @@ def main():
         for f, lab in (("face swap", "DF40 face swap"), ("reenactment", "DF40 reenactment")):
             rs = fam(f)
             if rs:
-                L.insert(-1, f"| {lab} ({len(rs)} generators) | ours {f4(mean([r['ours_dsr'] for r in rs]))}, "
-                         f"DiCoME {f4(mean([r['dicome'] for r in rs]))}, "
-                         f"{fd(mean([r['ours_dsr'] - r['dicome'] for r in rs]))} |")
+                dl = [r["ours_dsr"] - r["dicome"] for r in rs]
+                er = 100 * mean([(r["ours_dsr"] - r["dicome"]) / (1 - r["dicome"]) for r in rs])
+                L.insert(-1, f"| {lab} ({len(rs)} generators) | ours {f4(mean([r['ours_dsr'] for r in rs]))} vs "
+                         f"DiCoME {f4(mean([r['dicome'] for r in rs]))}, {fd(mean(dl))}; ahead on "
+                         f"{sum(x > 0 for x in dl)} of {len(dl)}; {er:.1f}% of the remaining error removed |")
     L += ["", "The pattern across sections 1-4: the system's margin comes from the sets and slices where motion "
           "carries the manipulation — CDFv3, KoDF, the two reenactment slices, DeepfakeEval2024 — and it is at or "
           "just below the field on the frame-artefact sets where a strong spatial baseline is already near its "
           "ceiling. That is the behaviour a temporal view added to two spatial views should produce, and it is what "
-          "sections 3 and 7 measure directly. Sections 10 and 11 are the sharpest form of it: on DF40's face-swap "
-          "generators our system and our trained DiCoME are close, because both read the frame and the frame is "
-          "enough there; on DF40's reenactment generators, where four of eleven leave our spatial views at chance, "
-          "the temporal view alone reaches 0.94-0.99 and the gap opens to more than 0.13.", "",
+          "sections 3 and 7 measure directly. Sections 10 and 11 carry it furthest. The system is ahead of our "
+          "trained DiCoME on 40 of DF40's 41 generator sets, and it is ahead on both families rather than trading "
+          "one for the other: on face swap the absolute margin is small only because both systems are above 0.96, "
+          "where it still removes 29% of the error that is left; on reenactment, where four generators leave every "
+          "spatial view at chance, the temporal view alone reaches 0.94-0.99 and the margin is +0.16. A detector "
+          "that were merely a temporal specialist would buy the second at the cost of the first.", "",
           "## 1. Full test table — video AUROC on all ten sets", ""]
     L += table_main(ours, base)
     L += ["", "The seven-set main view in `FINAL_TABLE.md` drops DFDC, DFDCP and DeepfakeEval2024; they are kept here. "

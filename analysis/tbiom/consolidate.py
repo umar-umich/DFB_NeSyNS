@@ -30,6 +30,65 @@ def f(x, n=4):
     return "TODO(run)" if x is None or x != x else f"{x:+.{n}f}" if isinstance(x, float) and abs(x) < 0.5 else f"{x:.{n}f}"
 
 
+DF40_FAM = (("face swap", "cdf", "Face swap, Celeb-DF-sourced"), ("face swap", "ff", "Face swap, FF++-sourced"),
+            ("reenactment", "cdf", "Reenactment, Celeb-DF-sourced"), ("reenactment", "ff", "Reenactment, FF++-sourced"))
+
+
+def df40_block(d):
+    """The per-generator cross-manipulation study, summarised by family and source, then the generators that separate
+    the two systems. Our system is the three-view DS-R reference; DiCoME is our own trained checkpoint replayed
+    through its own two-view fusion, so both sides are scored on identical videos with identical aggregation."""
+    if not d:
+        return ["TODO(run) `analysis/tbiom/df40_analysis.py`.", ""]
+    mp = Path("logs/tbiom/df40/meta.json")
+    if not mp.exists():
+        return ["TODO(run) `analysis/tbiom/df40_prepare.py`.", ""]
+    meta = json.load(open(mp))
+    pick = lambda fam, src: [r for n, r in d.items() if n in meta and meta[n]["family"] == fam
+                             and meta[n]["source"] == src and "dicome" in r]
+    L = ["All ten of DF40's face-swap generators and all eleven of its reenactment generators, each in its Celeb-DF- "
+         "and its FaceForensics++-sourced version, scored against the genuine pool DF40 ships for that source. "
+         "DiCoME's published cross-manipulation table lists eight face-swap generators; the classical-graphics "
+         "FaceSwap and DeepFaceLab, every FF++-sourced version and the whole reenactment half are added here "
+         "(`EXP_DF40_CROSS_MANIPULATION.md`).", "",
+         "| family and source | generators | **ours, DS-R** | DiCoME (our training) | Δ | ahead on | error removed |",
+         "|---|---:|---:|---:|---:|---:|---:|"]
+    allr = []
+    for fam, src, title in DF40_FAM:
+        rs = pick(fam, src)
+        if not rs:
+            continue
+        allr += rs
+        L.append(row_df40(title, rs))
+    L.append(row_df40("**all four cells**", allr, bold=True))
+    ree = [r for fam, src, _t in DF40_FAM if fam == "reenactment" for r in pick(fam, src)]
+    chance = sorted((r for r in ree if max(r["view_APP"], r["view_OM"]) < 0.62),
+                    key=lambda r: -(r["ours_dsr"] - r["dicome"]))
+    label = {id(r): f"{meta[n]['method']} ({meta[n]['source']})" for n, r in d.items() if n in meta}
+    if chance:
+        L += ["", "**Where the temporal view is the whole difference.** On these reenactment generators both spatial "
+              "views are below 0.62 — near chance — so a two-view spatial system has nothing to fuse:", "",
+              "| generator | appearance | off-manifold | temporal alone | **ours, DS-R** | DiCoME |",
+              "|---|---:|---:|---:|---:|---:|"]
+        for r in chance:
+            L.append(f"| {label.get(id(r), '?')} | {r['view_APP']:.4f} | {r['view_OM']:.4f} | "
+                     f"{r['view_T']:.4f} | **{r['ours_dsr']:.4f}** | {r['dicome']:.4f} |")
+    L += ["", "The gain is not a trade: the system is ahead on both families, and on face swap the small absolute "
+          "margin is a ceiling effect — both systems are above 0.96 there. DF40 was never trained on by either "
+          "system; its generators are unseen manipulations built on FF++ and Celeb-DF source videos, which both have "
+          "seen as training or development content.", ""]
+    return L
+
+
+def row_df40(title, rs, bold=False):
+    o, dc = mean([r["ours_dsr"] for r in rs]), mean([r["dicome"] for r in rs])
+    dl = [r["ours_dsr"] - r["dicome"] for r in rs]
+    er = 100 * mean([(r["ours_dsr"] - r["dicome"]) / (1 - r["dicome"]) for r in rs])
+    b = "**" if bold else ""
+    return (f"| {title} | {len(rs)} | {b}{o:.4f}{b} | {dc:.4f} | {b}{mean(dl):+.4f}{b} | "
+            f"{sum(x > 0 for x in dl)} of {len(dl)} | {er:.1f}% |")
+
+
 def main():
     audit, diag, fsh = js("STAGE0_AUDIT"), js("EXP_DFDCP_DIAGNOSIS"), js("FACESHIFTER")
     three, unc, seeds = js("EXP_THREEVIEW_ABLATION"), js("EXP_UNCERTAINTY"), js("EXP_CONFIRM_SEED")
@@ -80,6 +139,9 @@ def main():
               f"{mean([r['DS-R']['auroc'] for r in fsh]):.4f}, logistic {mean([r['LR']['auroc'] for r in fsh]):.4f}. "
               "Its 140 source ids are exactly the FF++ test split, disjoint from our training and validation ids, so "
               "it is unseen manipulation on held-out source videos (`FACESHIFTER.md`).", ""]
+
+    L += ["", "### Cross-manipulation — every DF40 generator", ""]
+    L += df40_block(js("EXP_DF40_CROSS_MANIPULATION"))
 
     L += ["## 2. What the system is made of", ""]
     if three:

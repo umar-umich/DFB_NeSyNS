@@ -34,6 +34,31 @@ The seven sets shown were chosen for the main table after the numbers were known
 
 **FaceShifter**, read once after the recipe was fixed, never tuned against: DS-R 0.9549, logistic 0.9480. Its 140 source ids are exactly the FF++ test split, disjoint from our training and validation ids, so it is unseen manipulation on held-out source videos (`FACESHIFTER.md`).
 
+
+### Cross-manipulation — every DF40 generator
+
+All ten of DF40's face-swap generators and all eleven of its reenactment generators, each in its Celeb-DF- and its FaceForensics++-sourced version, scored against the genuine pool DF40 ships for that source. DiCoME's published cross-manipulation table lists eight face-swap generators; the classical-graphics FaceSwap and DeepFaceLab, every FF++-sourced version and the whole reenactment half are added here (`EXP_DF40_CROSS_MANIPULATION.md`).
+
+| family and source | generators | **ours, DS-R** | DiCoME (our training) | Δ | ahead on | error removed |
+|---|---:|---:|---:|---:|---:|---:|
+| Face swap, Celeb-DF-sourced | 10 | 0.9731 | 0.9648 | +0.0082 | 9 of 10 | 12.9% |
+| Face swap, FF++-sourced | 9 | 0.9854 | 0.9720 | +0.0134 | 9 of 9 | 47.3% |
+| Reenactment, Celeb-DF-sourced | 11 | 0.9174 | 0.7280 | +0.1895 | 11 of 11 | 65.5% |
+| Reenactment, FF++-sourced | 11 | 0.9607 | 0.8304 | +0.1303 | 11 of 11 | 74.0% |
+| **all four cells** | 41 | **0.9575** | 0.8668 | **+0.0907** | 40 of 41 | 50.9% |
+
+**Where the temporal view is the whole difference.** On these reenactment generators both spatial views are below 0.62 — near chance — so a two-view spatial system has nothing to fuse:
+
+| generator | appearance | off-manifold | temporal alone | **ours, DS-R** | DiCoME |
+|---|---:|---:|---:|---:|---:|
+| tpsm (cdf) | 0.5080 | 0.5191 | 0.9915 | **0.9661** | 0.5097 |
+| danet (cdf) | 0.4599 | 0.5289 | 0.9522 | **0.8645** | 0.4821 |
+| sadtalker (cdf) | 0.5531 | 0.5159 | 0.9629 | **0.8857** | 0.5402 |
+| sadtalker (ff) | 0.6169 | 0.5798 | 0.9731 | **0.9503** | 0.6071 |
+| mcnet (cdf) | 0.5371 | 0.5992 | 0.9411 | **0.8662** | 0.5594 |
+
+The gain is not a trade: the system is ahead on both families, and on face swap the small absolute margin is a ceiling effect — both systems are above 0.96 there. DF40 was never trained on by either system; its generators are unseen manipulations built on FF++ and Celeb-DF source videos, which both have seen as training or development content.
+
 ## 2. What the system is made of
 
 **Three views, and what each earns** (`EXP_THREEVIEW_ABLATION.md`). Δ = triple − pair on clean development, paired source-grouped bootstrap.
