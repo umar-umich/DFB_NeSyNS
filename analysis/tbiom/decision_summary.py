@@ -134,7 +134,7 @@ def main():
         L.append(f"| Dense sampling and a temporal head (Stage 2) | candidate confirm {f(tmp['cand_confirm'], sign=False)} vs reference {f(tmp['ref_confirm'], sign=False)}; GRU − pooling {t} | stopped: margin, robustness and reenactment all fail |")
         L.append("| Mamba as a temporal head | trigger never fired (a GRU head must beat pooling by +0.005 first) | not trained |")
     if acq:
-        L.append(f"| Acquisition policy / PPO | no acquisition {acq['none']:.4f}; learned selector {acq['learned']:.4f}; oracle {acq['oracle']:.4f}; **null oracle {acq['null']:.4f}** | no-go: the null oracle beats the real one, so the headroom is label selection |")
+        L.append(f"| Acquisition policy / PPO | no acquisition {acq['none']:.4f}; learned selector {acq['learned']:.4f}; oracle {acq['oracle']:.4f}; **null oracle {acq['null']:.4f}** (each averaged over the three aggregation rules) | no-go: the null oracle beats the real one, so the headroom is label selection |")
     if fb:
         L.append(f"| FreqBlender (local reproduction) | clean {f(fb['clean'])}, reenactment {f(fb['reen'])}, false positives {f(fb['fpr'], 3)} | not adopted: false positives exceed the +0.02 limit |")
     L.append("| Joint training of all branches | development DS-R 0.8768 / 0.8804 (two seeds) vs staged 0.8808; leave-one-out for Off-manifold collapses +0.0102 → +0.0003 | not adopted: no gain, and it removes the disagreement DS-R exploits |")
