@@ -221,11 +221,22 @@ def main():
           f"{f4(max(mean([mean([x['arms'][a]['tests'][t] for t in TESTS]) for x in ops]) for a in ops[0]['arms']) - min(mean([mean([x['arms'][a]['tests'][t] for t in TESTS]) for x in ops]) for a in ops[0]['arms'])) if ops else 'TODO(run)'} |"]
     if fsh:
         L.insert(-1, f"| sealed benchmark | FaceShifter {f4(mean([x['DS-R']['auroc'] for x in fsh]))}, read once |")
+    if df40 and meta:
+        fam = lambda f: [r for n, r in df40.items() if meta[n]["family"] == f and "dicome" in r]
+        for f, lab in (("face swap", "DF40 face swap"), ("reenactment", "DF40 reenactment")):
+            rs = fam(f)
+            if rs:
+                L.insert(-1, f"| {lab} ({len(rs)} generators) | ours {f4(mean([r['ours_dsr'] for r in rs]))}, "
+                         f"DiCoME {f4(mean([r['dicome'] for r in rs]))}, "
+                         f"{fd(mean([r['ours_dsr'] - r['dicome'] for r in rs]))} |")
     L += ["", "The pattern across sections 1-4: the system's margin comes from the sets and slices where motion "
           "carries the manipulation — CDFv3, KoDF, the two reenactment slices, DeepfakeEval2024 — and it is at or "
           "just below the field on the frame-artefact sets where a strong spatial baseline is already near its "
           "ceiling. That is the behaviour a temporal view added to two spatial views should produce, and it is what "
-          "sections 3 and 7 measure directly.", "",
+          "sections 3 and 7 measure directly. Sections 10 and 11 are the sharpest form of it: on DF40's face-swap "
+          "generators our system and our trained DiCoME are close, because both read the frame and the frame is "
+          "enough there; on DF40's reenactment generators, where four of eleven leave our spatial views at chance, "
+          "the temporal view alone reaches 0.94-0.99 and the gap opens to more than 0.13.", "",
           "## 1. Full test table — video AUROC on all ten sets", ""]
     L += table_main(ours, base)
     L += ["", "The seven-set main view in `FINAL_TABLE.md` drops DFDC, DFDCP and DeepfakeEval2024; they are kept here. "
