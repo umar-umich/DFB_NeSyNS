@@ -37,6 +37,7 @@ BR = Path("logs/tbiom/temporal/branches")
 CONTRASTS = [("grouped-R", "Dempster-R"), ("grouped-R", "AVG-R"), ("grouped-R", "T+OM"),
              ("grouped-R", "grouped-TA-R"), ("grouped-R", "grouped-TO-R")]
 SEEDS = {"42": ("ours", "vjepa2_lora_B_seed42", "vjepa2_lora_B_seed42"),
+         "T1337": ("ours", "vjepa2_lora_B_seed1337", "vjepa2_lora_B_seed1337"),
          "armB42": ("armB42", "vjepa2_lora_B_seed42", "vjepa2_lora_B_seed42"),
          "armB1337": ("armB1337", "vjepa2_lora_B_seed1337", "vjepa2_lora_B_seed1337")}
 
@@ -160,6 +161,7 @@ def write(res, secs):
          f"Wall clock {secs / 60:.1f} minutes, CPU. {N_BOOT} draws per contrast, fixed seed.", ""]
     for tag, r in res.items():
         who = {"42": "deployed warm+gate spatial views, V-JEPA 2 seed 42",
+               "T1337": "deployed warm+gate spatial views, V-JEPA 2 seed 1337 (temporal seed only)",
                "armB42": "SBI arm B spatial seed 42, V-JEPA 2 seed 42",
                "armB1337": "SBI arm B spatial seed 1337, V-JEPA 2 seed 1337"}.get(tag, tag)
         L += [f"## Detector seed `{tag}` — {who}", "",

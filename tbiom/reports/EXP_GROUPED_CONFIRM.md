@@ -50,18 +50,51 @@ Wall clock 2.4 minutes, CPU. 2000 draws per contrast, fixed seed.
 | grouped-R − grouped-TO-R | swap | -0.0019 | [-0.0034, -0.0004] | **yes** |
 | grouped-R − grouped-TO-R | all | +0.0049 | [+0.0029, +0.0068] | **yes** |
 
+## Detector seed `T1337` — deployed warm+gate spatial views, V-JEPA 2 seed 1337 (temporal seed only)
+
+41 generator sets, 22 of them reenactment.
+
+| arm | reenactment | swap | all sets |
+|---|---:|---:|---:|
+| AVG-R | 0.9510 | 0.9782 | 0.9636 |
+| Dempster-R | 0.9515 | 0.9774 | 0.9635 |
+| T+OM | 0.9541 | 0.9767 | 0.9646 |
+| grouped-R | 0.9540 | 0.9767 | 0.9645 |
+| grouped-TA-R | 0.9508 | 0.9778 | 0.9633 |
+| grouped-TO-R | 0.9434 | 0.9780 | 0.9594 |
+
+| contrast | family | Δ | 95% CI | excludes zero |
+|---|---|---:|---|---|
+| grouped-R − Dempster-R | reenactment | +0.0025 | [+0.0019, +0.0031] | **yes** |
+| grouped-R − Dempster-R | swap | -0.0007 | [-0.0011, -0.0004] | **yes** |
+| grouped-R − Dempster-R | all | +0.0010 | [+0.0006, +0.0014] | **yes** |
+| grouped-R − AVG-R | reenactment | +0.0030 | [+0.0017, +0.0045] | **yes** |
+| grouped-R − AVG-R | swap | -0.0015 | [-0.0025, -0.0007] | **yes** |
+| grouped-R − AVG-R | all | +0.0009 | [-0.0001, +0.0019] | no |
+| grouped-R − T+OM | reenactment | -0.0001 | [-0.0003, +0.0001] | no |
+| grouped-R − T+OM | swap | +0.0000 | [-0.0001, +0.0001] | no |
+| grouped-R − T+OM | all | -0.0001 | [-0.0002, +0.0001] | no |
+| grouped-R − grouped-TA-R | reenactment | +0.0032 | [+0.0023, +0.0041] | **yes** |
+| grouped-R − grouped-TA-R | swap | -0.0011 | [-0.0016, -0.0006] | **yes** |
+| grouped-R − grouped-TA-R | all | +0.0012 | [+0.0006, +0.0018] | **yes** |
+| grouped-R − grouped-TO-R | reenactment | +0.0105 | [+0.0083, +0.0130] | **yes** |
+| grouped-R − grouped-TO-R | swap | -0.0013 | [-0.0025, -0.0001] | **yes** |
+| grouped-R − grouped-TO-R | all | +0.0051 | [+0.0035, +0.0067] | **yes** |
+
 ## The gate
 
 | requirement | status |
 |---|---|
 | reenactment interval excludes zero, seed 42 | pass — +0.0114 [+0.0086, +0.0144] |
+| reenactment interval excludes zero, seed T1337 | pass — +0.0025 [+0.0019, +0.0031] |
 | control grouped-TA-R loses to grouped-R, seed 42 | pass — +0.0033 [+0.0010, +0.0054] |
 | control grouped-TO-R loses to grouped-R, seed 42 | pass — +0.0049 [+0.0029, +0.0068] |
+| control grouped-TA-R loses to grouped-R, seed T1337 | pass — +0.0012 [+0.0006, +0.0018] |
+| control grouped-TO-R loses to grouped-R, seed T1337 | pass — +0.0051 [+0.0035, +0.0067] |
 | grouped-R does more than the two-view T+OM fusion, seed 42 | **fail** — -0.0000 [-0.0002, +0.0001] |
+| grouped-R does more than the two-view T+OM fusion, seed T1337 | **fail** — -0.0001 [-0.0002, +0.0001] |
 
 **Verdict: grouped-R NOT confirmed.**
 
 Per the pre-registration the matrix in `EXP_GROUPED_DEVELOPMENT.md` and `EXP_GROUPED_EXPOSED.md` is therefore a diagnostic, not a comparison supporting a novelty claim, and grouped-R is reported as an exploratory trade-off. No fusion-operator novelty claim is made.
-
-The second detector seed is still exporting; this run covers the seeds listed above only.
 
