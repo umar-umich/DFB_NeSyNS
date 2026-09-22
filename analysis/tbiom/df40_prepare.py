@@ -23,6 +23,12 @@ CFG, SPL = EXT / "eval_adaptation/configs", "eval_adaptation/data/splits/DF40"
 LOG = Path("/data/umar/Repos/DFB_NeSyNS/logs/tbiom/df40")
 S23 = Path("/data/umar/Repos/DFB_NeSyNS/logs/tbiom/stage23")
 METHODS = ["blendface", "e4s", "facedancer", "faceswap", "fsgan", "inswap", "mobileswap", "simswap", "uniface"]
+# Face reenactment, the second half of the study's scope. wav2lip is excluded: it is lip-sync only, which this
+# project's evaluation scope leaves out, and the v3.1 rule already excludes it from the development cells.
+METHODS_FR = ["danet", "facevid2vid", "fomm", "hyperreenact", "lia", "mcnet", "MRAA", "one_shot_free", "pirender",
+              "sadtalker", "tpsm"]
+FAMILY = {**{m: "face swap" for m in METHODS}, "deepfacelab": "face swap",
+          **{m: "reenactment" for m in METHODS_FR}}
 # the two DiCoME's published cross-manipulation table does not list
 NOT_IN_DICOME_TABLE = {"faceswap", "deepfacelab"}
 OURS = EXT / ("runs/discern_ext_train/warm_dicome_gate_seed42/checkpoints/"
@@ -33,20 +39,21 @@ TEMPLATES = {"warmgate": "warmgate_CDFv2.yaml", "dicome": "dicome_KoDF.yaml", "r
 
 
 def datasets():
-    """dataset name -> (fake split, real split)."""
+    """dataset name -> (fake split, real split, method, source, family). Method names contain underscores
+    (`one_shot_free`), so the mapping is written out rather than parsed back from the dataset name."""
     out = {}
-    for m in METHODS:
+    for m in METHODS + METHODS_FR:
         for src, real in (("cdf", "DF40-cdf-real"), ("ff", "DF40-ff-real")):
             if (EXT / SPL / f"{m}-{src}.txt").exists():
-                out[f"DF40_{m}_{src}"] = (f"{m}-{src}", real)
+                out[f"DF40_{m}_{src}"] = (f"{m}-{src}", real, m, src, FAMILY[m])
     if (EXT / SPL / "deepfacelab.txt").exists():
-        out["DF40_deepfacelab"] = ("deepfacelab", "deepfacelab-real")
+        out["DF40_deepfacelab"] = ("deepfacelab", "deepfacelab-real", "deepfacelab", "cdf", FAMILY["deepfacelab"])
     return out
 
 
 def write_configs(ds):
     n = 0
-    for name, (fake, real) in ds.items():
+    for name, (fake, real, *_rest) in ds.items():
         files = "\n".join(f"  - {SPL}/{s}.txt" for s in (real, fake))       # real first: label comes from the subset name
         for fam, tmpl in TEMPLATES.items():
             out = CFG / f"{fam}_{name}.yaml"
@@ -70,7 +77,11 @@ def main():
         (LOG / f"jobs_{tag}.txt").write_text("\n".join(jobs) + "\n")
         print(f"  {tag}: {len(jobs)} export jobs -> {LOG / f'jobs_{tag}.txt'}")
     (LOG / "datasets.txt").write_text("\n".join(ds) + "\n")
-    print("generators:", ", ".join(sorted({n.split('_')[1] for n in ds})))
+    import json
+    meta = {n: {"method": m, "source": src, "family": fam} for n, (_f, _r, m, src, fam) in ds.items()}
+    (LOG / "meta.json").write_text(json.dumps(meta, indent=1))
+    for fam in sorted({v["family"] for v in meta.values()}):
+        print(f"  {fam}: {sum(1 for v in meta.values() if v['family'] == fam)} datasets")
     print("not in DiCoME's published table:", ", ".join(sorted(NOT_IN_DICOME_TABLE)))
 
 

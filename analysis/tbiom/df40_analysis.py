@@ -31,7 +31,9 @@ VIEWS = ["T", "APP", "OM"]
 NOT_LISTED = {"faceswap", "deepfacelab"}          # absent from DiCoME's published cross-manipulation table
 PRETTY = {"blendface": "BlendFace", "e4s": "e4s", "facedancer": "FaceDancer", "faceswap": "FaceSwap",
           "fsgan": "FSGAN", "inswap": "InSwapper", "mobileswap": "MobileFaceSwap", "simswap": "SimSwap",
-          "uniface": "UniFace", "deepfacelab": "DeepFaceLab"}
+          "uniface": "UniFace", "deepfacelab": "DeepFaceLab", "danet": "DaNet", "facevid2vid": "FaceVid2Vid",
+          "fomm": "FOMM", "hyperreenact": "HyperReenact", "lia": "LIA", "mcnet": "MCNet", "MRAA": "MRAA",
+          "one_shot_free": "One-Shot Free-View", "pirender": "PIRender", "sadtalker": "SadTalker", "tpsm": "TPSM"}
 
 
 def ours_table(name):
@@ -72,18 +74,18 @@ def main():
         print(f"{n}: ours {r['ours_dsr']:.4f}" + (f", DiCoME {r['dicome']:.4f}" if "dicome" in r else ""), flush=True)
     json.dump(res, open(R / "EXP_DF40_CROSS_MANIPULATION.json", "w"), indent=1, default=float)
 
-    def rows(src):
-        out = []
-        for n, r in res.items():
-            parts = n.split("_")
-            m, s = parts[1], (parts[2] if len(parts) > 2 else "cdf")
-            if s == src:
-                out.append((m, r))
-        return sorted(out)
+    meta = json.load(open(LOG / "meta.json"))
+
+    def rows(src, family):
+        return sorted((meta[n]["method"], r) for n, r in res.items()
+                      if meta[n]["source"] == src and meta[n]["family"] == family)
 
     L = ["# Cross-manipulation results — DF40 face-swap generators", "", __doc__.split("\n\n", 1)[1].strip(), "", F.CITE, ""]
-    for src, title in (("cdf", "Celeb-DF-sourced"), ("ff", "FaceForensics++-sourced")):
-        rs = rows(src)
+    for family, src, title in (("face swap", "cdf", "Face swap — Celeb-DF-sourced"),
+                               ("face swap", "ff", "Face swap — FaceForensics++-sourced"),
+                               ("reenactment", "cdf", "Reenactment — Celeb-DF-sourced"),
+                               ("reenactment", "ff", "Reenactment — FaceForensics++-sourced")):
+        rs = rows(src, family)
         if not rs:
             continue
         L += [f"## {title} generators", "",
