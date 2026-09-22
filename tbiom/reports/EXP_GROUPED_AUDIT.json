@@ -1,0 +1,180 @@
+{
+ "commit": "2b3f75226801f1995efd07b7428927e48cc8314f",
+ "dirty": true,
+ "algebra": {
+  "T": {
+   "rows": 5814,
+   "outside_admissible": 0,
+   "max_violation": 0.0,
+   "roundoff_only": true,
+   "u_min": 0.0170212765957331,
+   "u_max": 0.772894336046671,
+   "sum_dev_max": 1.1102230246251565e-16
+  },
+  "APP": {
+   "rows": 5814,
+   "outside_admissible": 0,
+   "max_violation": 0.0,
+   "roundoff_only": true,
+   "u_min": 0.1234533876875,
+   "u_max": 0.565268614375,
+   "sum_dev_max": 1.1102230246251565e-16
+  },
+  "OM": {
+   "rows": 5814,
+   "outside_admissible": 0,
+   "max_violation": 0.0,
+   "roundoff_only": true,
+   "u_min": 0.062342016666666666,
+   "u_max": 0.8166999103846154,
+   "sum_dev_max": 1.1102230246251565e-16
+  }
+ },
+ "checks": [
+  {
+   "name": "constructed opinions are admissible",
+   "pass": true,
+   "detail": "0 violations"
+  },
+  {
+   "name": "b1 + b0 + u = 1",
+   "pass": true,
+   "detail": "max dev 2.22e-16"
+  },
+  {
+   "name": "p recovered from the opinion",
+   "pass": true,
+   "detail": "max dev 0.00e+00"
+  },
+  {
+   "name": "evidence round trip e -> opinion -> e",
+   "pass": true,
+   "detail": "max dev 1.11e-16"
+  },
+  {
+   "name": "alpha_k = e_k + 1 and u = 2/sum(alpha)",
+   "pass": true,
+   "detail": "max dev 1.11e-16"
+  },
+  {
+   "name": "evidence scaling is e' = r e, not belief-mass discounting",
+   "pass": true,
+   "detail": "belief-mass discounting would give b' = r b, u' = 1 - r(1-u)"
+  },
+  {
+   "name": "Dempster: masses non-negative",
+   "pass": true,
+   "detail": "min 6.25e-04"
+  },
+  {
+   "name": "Dempster: masses sum to 1",
+   "pass": true,
+   "detail": "max dev 7.77e-16"
+  },
+  {
+   "name": "Dempster: two-source symmetry",
+   "pass": true,
+   "detail": "max dev 2.22e-16"
+  },
+  {
+   "name": "Yager: masses non-negative",
+   "pass": true,
+   "detail": "min 2.57e-03"
+  },
+  {
+   "name": "Yager: masses sum to 1",
+   "pass": true,
+   "detail": "max dev 2.22e-16"
+  },
+  {
+   "name": "Yager: two-source symmetry",
+   "pass": true,
+   "detail": "max dev 2.22e-16"
+  },
+  {
+   "name": "PCR6: masses non-negative",
+   "pass": true,
+   "detail": "min 4.23e-04"
+  },
+  {
+   "name": "PCR6: masses sum to 1",
+   "pass": true,
+   "detail": "max dev 4.44e-16"
+  },
+  {
+   "name": "PCR6: two-source symmetry",
+   "pass": true,
+   "detail": "max dev 2.22e-16"
+  },
+  {
+   "name": "cautious: masses sum to 1",
+   "pass": true,
+   "detail": "max dev 1.55e-15"
+  },
+  {
+   "name": "cautious: idempotent on admissible opinions",
+   "pass": true,
+   "detail": "max dev 6.66e-16"
+  },
+  {
+   "name": "cautious: exchange invariant",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "cautious: duplicating a view inside the group changes nothing",
+   "pass": true,
+   "detail": "the property Dempster does not have"
+  },
+  {
+   "name": "Dempster: duplicating a view DOES change the result (the double count being avoided)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "evidence average: adds the Dirichlet prior once",
+   "pass": true,
+   "detail": "an average of probabilities would not satisfy this"
+  },
+  {
+   "name": "vacuous is the Dempster identity",
+   "pass": true,
+   "detail": "max dev 0.00e+00"
+  },
+  {
+   "name": "grouped-R with a vacuous temporal view reduces to the cautious spatial pair",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "grouped-R with an absent temporal view reduces to the same",
+   "pass": true,
+   "detail": "absence handled as pass-through"
+  },
+  {
+   "name": "grouped-R is not three-source Dempster",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "grouped-R is not the global cautious rule",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "grouped-R is APP/OM exchange invariant",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "PCR6 keeps near-zero vacuity under opposite strong opinions",
+   "pass": true,
+   "detail": "u_PCR6 = 4.00e-04 against u_Dempster = 6.78e-03 \u2014 the brief's warning, confirmed"
+  }
+ ],
+ "checkpoints": {
+  "T (V-JEPA 2 LoRA, B-augmented, seed 42)": "6f0d9c63a6c052de",
+  "T (V-JEPA 2 LoRA, B-augmented, seed 1337)": "cdb205184f70ceab",
+  "APP + OM (warm+gate, epoch 19) \u2014 deployed reference": "fdc924a7cc9e1579"
+ }
+}

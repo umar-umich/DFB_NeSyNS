@@ -1,0 +1,75 @@
+# Pre-registration — grouped (dependency-partitioned t-norm) evidential fusion
+# Written before any candidate arm was scored on development or on the exposed suites.
+# Brief: tbiom/docs/grouped-fusion-brief.md. Audit: tbiom/reports/GROUPED_REFERENCE_MANIFEST.md.
+version: 1
+written: 2026-09-22
+supersedes: [tbiom/reports/EXP_FUSION_NOVEL.md]   # exploratory, single seed, interval-free; kept, not deleted
+
+nominated_candidate: grouped-R                    # nominated in advance; a failure is reported, not swapped out
+baselines_that_must_appear_in_every_table: [Dempster-R, AVG-R]
+proposed_method_excludes: Dempster-R              # baseline row only, labelled as the DS / DiCoME-family reference
+
+representation:
+  frame: binary {fake, genuine}
+  base_rate: uniform
+  W: 2
+  identities: [alpha_k = e_k + 1, u = 2/sum(alpha), b_k = e_k/sum(alpha), p_fake = b_fake + u/2, sum(b) + u = 1]
+  admissible_reconstruction: u/2 <= p <= 1 - u/2
+  discount: evidence scaling e'_k = r * e_k        # NOT belief-mass (Shafer) discounting
+  numerical_policy:
+    total_conflict: return the vacuous opinion when 1 - K < 1e-9; frequency reported
+    dogmatic_output: u_F = 0 kept as the limiting opinion; no uncertainty floor; concentration reported undefined
+    missing_view: dropped, never replaced by a vacuous opinion; family pass-through; all absent -> vacuous
+
+protocol:
+  folds: existing five source-grouped v3.1 folds (GroupShuffleSplit on source id, seeds 0-4)
+  objective: v3.1 macro AUROC over swap / reenactment / in-the-wild cells
+  threshold: EER on FF++ val, per arm, at its own tau
+  discount_grid: existing grid (0.0, 0.25, 0.5, 0.75, 1.0), max(w) == 1, no new continuous optimisation
+  weights: refitted per arm per fold; historical Dempster-R weights are never imported for a new arm
+  arms_run_twice: all-one-discount (isolates the grouping) and separately-fitted-discount
+  bootstrap: paired, source groups resampled with every linked clean / processed / manipulated copy together
+  bootstrap_draws: 2000 for Stage 3 contrasts, fixed seeds
+  compute: cached CPU only, OMP_NUM_THREADS=8, <= 8 CPU wall-clock hours; unfinished analyses reported, not extended
+
+stage3_confirmation_gate:
+  reenactment_interval: 95% paired interval on the DF40 reenactment grouped-R minus Dempster-R gain excludes zero
+  seed_consistency: sign of the reenactment gain holds under both detector seeds
+  controls_must_lose: grouped-TA-R and grouped-TO-R both below grouped-R under both seeds
+  on_pass: grouped-R is a confirmed candidate; the Stage 6 matrix proceeds as a comparison
+  on_fail: report as an exploratory trade-off, run the matrix as a diagnostic only, make no novelty claim
+
+decision_criteria:
+  detection_advancement:
+    clean_macro_auroc_gain: ">= 0.002 over BOTH Dempster-R and AVG-R"
+    interval: paired 95% lower bound above zero against each
+  safeguards:
+    clean_decline_max: 0.005
+    processed_decline_max: 0.005
+    development_reenactment_decline_max: 0.005
+    calibrated_fpr_rise_max: 0.01
+    calibrated_tpr_loss_max: 0.01
+  uncertainty_guard:                               # load-bearing; applies regardless of the detection number
+    score: raw fused vacuity                       # frozen here; entropy and margin remain diagnostics only
+    disqualify_if: vacuity error-AUROC below Dempster-R by more than 0.005
+    expected_to_be_at_risk: [GCP-AO-R, GAP-PCR6-AO-R]   # PCR6 outer, by construction (see EXP_GROUPED_AUDIT.md)
+  alternative_reliability_advancement:             # if detection is not superior
+    noninferiority: paired lower bound > -0.005 against both comparators on clean, processed and reenactment
+    requires: development macro E-AURC improvement with its paired interval excluding zero
+    relative_e_aurc_reduction: ">= 5%, claimed ONLY when the comparator E-AURC is positive; otherwise UNDEFINED"
+  inconclusive_if: noninferiority cannot be assessed reliably
+  note: passing point-estimate safeguards alone does not establish noninferiority
+
+exposure:
+  untouched_confirmation_set: none
+  deficit: DF40 informed the choice of the grouped operator, so no generator family was held out from operator design
+  consequence: every finding is labelled exploratory; the seed check and the falsification controls are what Stage 3
+    can establish, and neither is a generalisation claim to unseen generators
+  detector_seeds: SBI arm B seeds 42 and 1337 at their v3.1-selected epochs, each with the V-JEPA 2 branch at the
+    matching seed; the deployed warm+gate recipe exists at one seed only and this task forbids training another
+  five_folds_are_not_five_seeds: true
+
+reporting:
+  df40_means: [family-balanced, generator-macro]   # both, with explicit weights; never the favourable family alone
+  groupings_compared_directly: true                # not inferred from separate tests against a third method
+  preserve: no prior report is deleted, renamed or relabelled
