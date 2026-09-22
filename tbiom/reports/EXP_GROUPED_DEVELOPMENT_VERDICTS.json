@@ -1,0 +1,93 @@
+{
+ "grouped-R": {
+  "gain": -0.0016321912496017887,
+  "cis": false,
+  "safe": true,
+  "vacuity": false,
+  "pass": false
+ },
+ "grouped-TA-R": {
+  "gain": 0.0004011666139450698,
+  "cis": false,
+  "safe": false,
+  "vacuity": false,
+  "pass": false
+ },
+ "grouped-TO-R": {
+  "gain": -0.00331879492030418,
+  "cis": false,
+  "safe": false,
+  "vacuity": false,
+  "pass": false
+ },
+ "Dempster-R": {
+  "gain": 0.0,
+  "cis": false,
+  "safe": true,
+  "vacuity": true,
+  "pass": false
+ },
+ "AVG-R": {
+  "gain": -0.0009412814879881104,
+  "cis": false,
+  "safe": true,
+  "vacuity": false,
+  "pass": false
+ },
+ "CAUT-R": {
+  "gain": -0.005724369991095046,
+  "cis": false,
+  "safe": false,
+  "vacuity": false,
+  "pass": false
+ },
+ "PCR6-R": {
+  "gain": -0.0006165457612269387,
+  "cis": false,
+  "safe": false,
+  "vacuity": false,
+  "pass": false
+ },
+ "GCP-AO-R": {
+  "gain": -0.001198025163550387,
+  "cis": false,
+  "safe": true,
+  "vacuity": false,
+  "pass": false
+ },
+ "GCY-AO-R": {
+  "gain": -0.0017088916831122791,
+  "cis": false,
+  "safe": true,
+  "vacuity": false,
+  "pass": false
+ },
+ "GAP-AO-R": {
+  "gain": -0.003939261099775937,
+  "cis": false,
+  "safe": true,
+  "vacuity": false,
+  "pass": false
+ },
+ "T only": {
+  "gain": -0.07140659374368097,
+  "cis": false,
+  "safe": false,
+  "vacuity": false,
+  "pass": false
+ },
+ "T+APP": {
+  "gain": -0.010328308242528728,
+  "cis": false,
+  "safe": false,
+  "vacuity": false,
+  "pass": false
+ },
+ "T+OM": {
+  "gain": -0.0013058710700427634,
+  "cis": false,
+  "safe": true,
+  "vacuity": false,
+  "pass": false
+ }
+}
