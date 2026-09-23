@@ -5,41 +5,62 @@ written before any candidate was scored.
 
 ## Terminal outcome
 
-**No demonstrated advantage.** grouped-R fails its Stage 3 confirmation gate. Three of the four requirements pass;
-the fourth fails for a reason that is algebraic rather than statistical, and it removes the basis for the claim.
+**No demonstrated advantage.** grouped-R fails its Stage 3 confirmation gate. The requirement that it do more than a
+plain two-view fusion fails at every one of the four detector configurations, for a reason that is algebraic rather
+than statistical, and the falsification controls that passed on the deployed system fail once the detector changes.
 
-Secondary outcome: **independent confirmation pending** for the full detector-seed swap (SBI arm B seeds 42 and 1337),
-whose exports were still running when this was written. The temporal-seed swap is complete and reproduces every sign.
+All four seed configurations are now complete. The full detector-seed swap did **not** reproduce the effect, and it
+exposed a stronger version of the same conclusion.
 
 ## The gate, requirement by requirement
 
-| requirement | seed 42 | seed T1337 (temporal seed swapped) | verdict |
-|---|---|---|---|
-| DF40 reenactment gain over Dempster-R, CI excludes zero | +0.0114 [+0.0086, +0.0144] | +0.0025 [+0.0019, +0.0031] | **pass** |
-| control grouped-TA-R loses | +0.0033 [+0.0010, +0.0054] | +0.0012 [+0.0006, +0.0018] | **pass** |
-| control grouped-TO-R loses | +0.0049 [+0.0029, +0.0068] | +0.0051 [+0.0035, +0.0067] | **pass** |
-| grouped-R does more than two-view T+OM | −0.0000 [−0.0002, +0.0001] | −0.0001 [−0.0002, +0.0001] | **fail** |
+Four configurations: the deployed warm+gate spatial views with V-JEPA 2 seed 42 and seed 1337, and SBI arm B — the
+one three-branch family trained at several seeds — at seeds 42 and 1337 with the matching temporal branch. Each
+system's reliability weights are fitted on **its own** development exports.
 
-2,000 paired source-group draws per contrast, reused real videos grouped across generator sets.
+| requirement | warm+gate / T42 | warm+gate / T1337 | armB42 | armB1337 |
+|---|---|---|---|---|
+| DF40 reenactment gain over Dempster-R | +0.0114 | +0.0025 | **+0.0000** | +0.0020 |
+| control grouped-TA-R loses | +0.0033 | +0.0012 | **+0.0000** | **−0.0003** |
+| control grouped-TO-R loses | +0.0049 | +0.0051 | **+0.0010 (CI spans 0)** | **−0.0005** |
+| does more than two-view T+OM | **+0.0000** | **−0.0001** | **+0.0000** | **+0.0000** |
+
+Bold = fails. 2,000 paired source-group draws per contrast, reused real videos grouped across generator sets, and a
+materiality floor of 1e-4 AUROC so that two arms differing only by floating-point noise cannot produce a "significant"
+interval by repeating the same tiny difference in every draw.
+
+**The T+OM requirement fails at all four seeds. The falsification controls, which passed under both warm+gate
+configurations, fail under both arm-B seeds.** The partition effect does not survive a change of detector.
 
 ## Why the fourth requirement fails
 
-The operator's own fitted discount sets the **appearance weight to zero in 4 of 5 folds**. An evidence-scaled opinion
-with r = 0 carries no evidence; its canonical weights are both 1; the minimum of 1 and w_OM is w_OM. The cautious
-inner step therefore returns the off-manifold opinion unchanged, and what remains is the outer Dempster step between
-two views. In those folds grouped-R **is** the two-view fusion of temporal and off-manifold, bit for bit — verified
-numerically on all 41 DF40 sets (`EXP_GROUPED_EXPOSED.md` §0) and reproduced by the bootstrap above.
+The operator's own fitted discount sets the **appearance weight to zero** in 4 of 5 folds on the deployed system,
+2 of 5 on armB42 and 3 of 5 on armB1337. An evidence-scaled opinion with r = 0 carries no evidence; its canonical
+weights are both 1; the minimum of 1 and w_OM is w_OM. The cautious inner step therefore returns the off-manifold
+opinion unchanged, and what remains is the outer Dempster step between two views. In those folds grouped-R **is** the
+two-view fusion of temporal and off-manifold, bit for bit.
 
-So the cross-manipulation gain that motivated this study is real, but it is not the dependency partition. It is the
-decision to drop the appearance view. The partition is doing no work once the discount is free to be fitted.
+The arm-B seeds sharpen this considerably. There the **baseline's** fit discards the appearance view too —
+Dempster-R zeroes it in 5 of 5 folds at armB42, as does grouped-TA-R — so Dempster-R, grouped-TA-R, grouped-R and
+T+OM all collapse onto the same function and score identically (0.9607 reenactment, 0.9674 swap, 0.9638 overall).
+That is why three requirements read exactly +0.0000 at that seed.
+
+The general statement is therefore stronger than "grouped-R equals T+OM". It is: **once the reliability weight is
+free to be fitted, the appearance view is discarded, and the redundancy the partition was designed to handle has
+already been removed by the discount.** The partition has nothing left to do. A fused operator cannot demonstrate a
+dependence correction on a pair of views when the fit has already deleted one of them.
 
 ## What the controls do and do not establish
 
-The falsification controls pass under both seeds: pairing the temporal view with either spatial view is worse than
-pairing the two CLIP heads. That is a genuine finding about the architecture — it is consistent with the two CLIP
-heads being the redundant pair. But it does not rescue the operator, because the winning configuration is reachable
-without any partition at all. A control that beats two wrong groupings is not evidence for a mechanism when a
-simpler arm matches the winner exactly.
+Under the two warm+gate configurations the controls pass: pairing the temporal view with either spatial view is worse
+than pairing the two CLIP heads. Read alone that looks like support for the dependence argument.
+
+Under both arm-B seeds they do not. grouped-TA-R matches grouped-R exactly at armB42 and beats it by +0.0003 at
+armB1337; grouped-TO-R beats it by +0.0005 at armB1337. So the control result is a property of one detector, not of
+the architecture — which is exactly what a second detector seed is for, and exactly why the brief required one.
+
+Even where the controls pass, they would not have rescued the operator: a grouping that beats two wrong groupings is
+not evidence for a mechanism when a simpler arm matches the winner exactly.
 
 ## Development, for completeness
 
@@ -94,8 +115,11 @@ This is reported here and in every table rather than left to the favourable fami
   generalisation claim to unseen generators.
 - The five folds are not five detector seeds, and the bootstrap quantifies sample uncertainty conditional on the
   trained encoders, not encoder-training variability.
-- The completed seed swap changes the temporal branch only; the full swap, which also changes the spatial views, is
-  still exporting. The deployed warm+gate recipe exists at one seed and this task forbids training another, so the
-  full swap uses SBI arm B, where seed is the only difference within the family.
-- The reenactment effect size is seed-sensitive even where its sign is not: +0.0114 at seed 42 against +0.0025 at
-  seed T1337, a factor of four.
+- The deployed warm+gate recipe exists at one seed and this task forbids training another, so the full detector swap
+  uses SBI arm B, a different training recipe. Within arm B the seed is the only difference, but arm B is not the
+  deployed recipe, so the four configurations differ in more than a seed.
+- The reenactment effect size ranges over an order of magnitude across configurations where it is positive at all:
+  +0.0114, +0.0025, +0.0020, and +0.0000.
+- An earlier run of this stage fitted the arm-B weights on warm+gate development exports. That was wrong — the
+  weights must come from the system being scored — and the numbers here are the corrected ones. The error is
+  recorded rather than silently overwritten; it changed the arm-B conclusions.

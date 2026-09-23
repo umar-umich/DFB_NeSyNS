@@ -33,13 +33,21 @@ import df40_analysis as X  # noqa: E402
 from fusion_combos import attach  # noqa: E402
 
 R, LOG, N_BOOT = Path("tbiom/reports"), Path("logs/tbiom/df40"), 2000
+# Materiality floor. Two arms that differ only by floating-point noise can still produce a bootstrap interval that
+# excludes zero, because the same tiny difference repeats in every draw. 1e-4 AUROC is well below the smallest
+# effect reported anywhere in this study (4e-4) and far above that noise, so a contrast must clear it to count.
+TOL = 1e-4
 BR = Path("logs/tbiom/temporal/branches")
 CONTRASTS = [("grouped-R", "Dempster-R"), ("grouped-R", "AVG-R"), ("grouped-R", "T+OM"),
              ("grouped-R", "grouped-TA-R"), ("grouped-R", "grouped-TO-R")]
-SEEDS = {"42": ("ours", "vjepa2_lora_B_seed42", "vjepa2_lora_B_seed42"),
-         "T1337": ("ours", "vjepa2_lora_B_seed1337", "vjepa2_lora_B_seed1337"),
-         "armB42": ("armB42", "vjepa2_lora_B_seed42", "vjepa2_lora_B_seed42"),
-         "armB1337": ("armB1337", "vjepa2_lora_B_seed1337", "vjepa2_lora_B_seed1337")}
+# tag -> (DF40 export prefix, temporal branch, development spatial tag)
+# The development tag matters: the reliability weights must be fitted on the SAME system that is then scored, so an
+# arm-B seed fits on its own arm-B development exports, not on the deployed warm+gate ones.
+SEEDS = {"42": ("ours", "vjepa2_lora_B_seed42", "warmgate_e19"),
+         "T1337": ("ours", "vjepa2_lora_B_seed1337", "warmgate_e19"),
+         "armB42": ("armB42", "vjepa2_lora_B_seed42", "sbiarmB_e08"),
+         "armB1337": ("armB1337", "vjepa2_lora_B_seed1337", "sbiarmBs1337_e03")}
+DEV_SETS = ("VALmix", "VALmixV2", "FFpp_val")
 
 
 def groups_of(t):
@@ -56,14 +64,21 @@ def groups_of(t):
     return np.array(out)
 
 
+def dev_table(spatial_tag, branch):
+    """Development opinions of the system being scored: its own spatial exports, its own temporal branch."""
+    ob = BR / branch / "opinions"
+    return attach(A.dev_tables({n: X.S23 / f"{spatial_tag}_{n}.csv" for n in DEV_SETS}, [1.0]),
+                  [ob / f"{n}.csv" for n in DEV_SETS])
+
+
 def table(name, spatial_tag, branch):
     d = A.load_frames(X.S23 / f"{spatial_tag}_{name}.csv")
     return attach(A.video_table(d, [1.0]), [BR / branch / "opinions" / f"{name}.csv"])
 
 
 def run_seed(tag, meta, arms):
-    spatial, branch, devbranch = SEEDS[tag]
-    dev = D.load(devbranch)[0]
+    spatial, branch, devtag = SEEDS[tag]
+    dev = dev_table(devtag, branch)
     names = [n for n in meta if (X.S23 / f"{spatial}_{n}.csv").exists()
              and (BR / branch / "opinions" / f"{n}.csv").exists()]
     tabs = {n: table(n, spatial, branch) for n in names}
@@ -122,7 +137,12 @@ def boot_cell(tabs, scores, names, a, b, seed):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--seeds", default="42")
-    tags = ap.parse_args().seeds.split(",")
+    ap.add_argument("--rewrite", action="store_true", help="re-render the report from the stored JSON only")
+    a = ap.parse_args()
+    if a.rewrite:
+        write(json.load(open(R / "EXP_GROUPED_CONFIRM.json")), 0.0)
+        return
+    tags = a.seeds.split(",")
     t0 = time.time()
     meta = json.load(open(LOG / "meta.json"))
     arms = sorted({a for c in CONTRASTS for a in c})
@@ -169,10 +189,14 @@ def write(res, secs):
               "| arm | reenactment | swap | all sets |", "|---|---:|---:|---:|"]
         for a, p in r["point"].items():
             L.append(f"| {a} | {p['reenactment']:.4f} | {p['swap']:.4f} | {p['all']:.4f} |")
-        L += ["", "| contrast | family | Δ | 95% CI | excludes zero |", "|---|---|---:|---|---|"]
+        z = sum(1 for w in r["w"]["grouped-R"] if w[1] == 0.0)
+        L += ["", f"Fitted appearance weight is zero in **{z} of {len(r['w']['grouped-R'])} folds** for grouped-R "
+              f"(weights: {'; '.join('(' + ', '.join(f'{x:g}' for x in w) + ')' for w in r['w']['grouped-R'])}). "
+              "Where it is zero, grouped-R and T+OM are the same function.", "",
+              "| contrast | family | Δ | 95% CI | material (|Δ| > 1e-4) |", "|---|---|---:|---|---|"]
         for k, b in r["boot"].items():
             c, fam = k.split("|")
-            ex = b["ci"][0] > 0 or b["ci"][1] < 0
+            ex = (b["ci"][0] > TOL or b["ci"][1] < -TOL)
             L.append(f"| {c} | {fam} | {b['delta']:+.4f} | [{b['ci'][0]:+.4f}, {b['ci'][1]:+.4f}] | "
                      f"{'**yes**' if ex else 'no'} |")
         L.append("")
@@ -189,18 +213,19 @@ def gate(res):
     for t in res:
         b = get(t, "grouped-R − Dempster-R", "reenactment")
         if b:
-            rows.append((f"reenactment interval excludes zero, seed {t}", b["ci"][0] > 0, f"{b['delta']:+.4f} [{b['ci'][0]:+.4f}, {b['ci'][1]:+.4f}]"))
+            rows.append((f"reenactment interval excludes zero, seed {t}", b["ci"][0] > TOL,
+                         f"{b['delta']:+.4f} [{b['ci'][0]:+.4f}, {b['ci'][1]:+.4f}]"))
     for t in res:
         for c in ("grouped-TA-R", "grouped-TO-R"):
             b = get(t, f"grouped-R − {c}", "all")
             if b:
-                rows.append((f"control {c} loses to grouped-R, seed {t}", b["delta"] > 0 and b["ci"][0] > 0,
+                rows.append((f"control {c} loses to grouped-R, seed {t}", b["ci"][0] > TOL,
                              f"{b['delta']:+.4f} [{b['ci'][0]:+.4f}, {b['ci'][1]:+.4f}]"))
     for t in res:
         b = get(t, "grouped-R − T+OM", "all")
         if b:
-            rows.append((f"grouped-R does more than the two-view T+OM fusion, seed {t}", b["ci"][0] > 0,
-                         f"{b['delta']:+.4f} [{b['ci'][0]:+.4f}, {b['ci'][1]:+.4f}]"))
+            rows.append((f"grouped-R does more than the two-view T+OM fusion, seed {t}", b["ci"][0] > TOL,
+                         f"{b['delta']:+.4e} [{b['ci'][0]:+.4e}, {b['ci'][1]:+.4e}]"))
     for n, ok, d in rows:
         L.append(f"| {n} | {'pass' if ok else '**fail**'} — {d} |")
     seeds_done = len(res) >= 2

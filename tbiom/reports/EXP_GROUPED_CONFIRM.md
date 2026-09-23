@@ -17,7 +17,7 @@ For Celeb-DF-sourced sets the real pool is numbered in a different namespace fro
 fakes, so the real-fake link is not recoverable from the manifest: reals group by video, fakes by identity pair, and
 this is a documented limitation rather than an assumed linkage.
 
-Wall clock 2.4 minutes, CPU. 2000 draws per contrast, fixed seed.
+Wall clock 4.3 minutes, CPU. 2000 draws per contrast, fixed seed.
 
 ## Detector seed `42` — deployed warm+gate spatial views, V-JEPA 2 seed 42
 
@@ -32,7 +32,9 @@ Wall clock 2.4 minutes, CPU. 2000 draws per contrast, fixed seed.
 | grouped-TA-R | 0.9408 | 0.9797 | 0.9588 |
 | grouped-TO-R | 0.9398 | 0.9775 | 0.9573 |
 
-| contrast | family | Δ | 95% CI | excludes zero |
+Fitted appearance weight is zero in **4 of 5 folds** for grouped-R (weights: (0.25, 0, 1); (0.25, 0.25, 1); (0.25, 0, 1); (0.25, 0, 1); (0.25, 0, 1)). Where it is zero, grouped-R and T+OM are the same function.
+
+| contrast | family | Δ | 95% CI | material (|Δ| > 1e-4) |
 |---|---|---:|---|---|
 | grouped-R − Dempster-R | reenactment | +0.0114 | [+0.0086, +0.0144] | **yes** |
 | grouped-R − Dempster-R | swap | -0.0033 | [-0.0052, -0.0016] | **yes** |
@@ -63,7 +65,9 @@ Wall clock 2.4 minutes, CPU. 2000 draws per contrast, fixed seed.
 | grouped-TA-R | 0.9508 | 0.9778 | 0.9633 |
 | grouped-TO-R | 0.9434 | 0.9780 | 0.9594 |
 
-| contrast | family | Δ | 95% CI | excludes zero |
+Fitted appearance weight is zero in **4 of 5 folds** for grouped-R (weights: (0.25, 0, 1); (0.25, 0.25, 1); (0.25, 0, 1); (0.25, 0, 1); (0.25, 0, 1)). Where it is zero, grouped-R and T+OM are the same function.
+
+| contrast | family | Δ | 95% CI | material (|Δ| > 1e-4) |
 |---|---|---:|---|---|
 | grouped-R − Dempster-R | reenactment | +0.0025 | [+0.0019, +0.0031] | **yes** |
 | grouped-R − Dempster-R | swap | -0.0007 | [-0.0011, -0.0004] | **yes** |
@@ -78,8 +82,74 @@ Wall clock 2.4 minutes, CPU. 2000 draws per contrast, fixed seed.
 | grouped-R − grouped-TA-R | swap | -0.0011 | [-0.0016, -0.0006] | **yes** |
 | grouped-R − grouped-TA-R | all | +0.0012 | [+0.0006, +0.0018] | **yes** |
 | grouped-R − grouped-TO-R | reenactment | +0.0105 | [+0.0083, +0.0130] | **yes** |
-| grouped-R − grouped-TO-R | swap | -0.0013 | [-0.0025, -0.0001] | **yes** |
+| grouped-R − grouped-TO-R | swap | -0.0013 | [-0.0025, -0.0001] | no |
 | grouped-R − grouped-TO-R | all | +0.0051 | [+0.0035, +0.0067] | **yes** |
+
+## Detector seed `armB42` — SBI arm B spatial seed 42, V-JEPA 2 seed 42
+
+41 generator sets, 22 of them reenactment.
+
+| arm | reenactment | swap | all sets |
+|---|---:|---:|---:|
+| AVG-R | 0.9584 | 0.9688 | 0.9632 |
+| Dempster-R | 0.9607 | 0.9674 | 0.9638 |
+| T+OM | 0.9607 | 0.9674 | 0.9638 |
+| grouped-R | 0.9607 | 0.9674 | 0.9638 |
+| grouped-TA-R | 0.9607 | 0.9674 | 0.9638 |
+| grouped-TO-R | 0.9580 | 0.9684 | 0.9628 |
+
+Fitted appearance weight is zero in **2 of 5 folds** for grouped-R (weights: (0.25, 0, 1); (0.25, 0.25, 1); (0.25, 0, 1); (0.25, 0.25, 1); (0.25, 0.25, 1)). Where it is zero, grouped-R and T+OM are the same function.
+
+| contrast | family | Δ | 95% CI | material (|Δ| > 1e-4) |
+|---|---|---:|---|---|
+| grouped-R − Dempster-R | reenactment | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − Dempster-R | swap | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − Dempster-R | all | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − AVG-R | reenactment | +0.0023 | [+0.0008, +0.0039] | **yes** |
+| grouped-R − AVG-R | swap | -0.0014 | [-0.0028, -0.0002] | **yes** |
+| grouped-R − AVG-R | all | +0.0006 | [-0.0008, +0.0019] | no |
+| grouped-R − T+OM | reenactment | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − T+OM | swap | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − T+OM | all | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − grouped-TA-R | reenactment | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − grouped-TA-R | swap | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − grouped-TA-R | all | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − grouped-TO-R | reenactment | +0.0027 | [+0.0015, +0.0039] | **yes** |
+| grouped-R − grouped-TO-R | swap | -0.0010 | [-0.0021, -0.0001] | **yes** |
+| grouped-R − grouped-TO-R | all | +0.0010 | [-0.0000, +0.0019] | no |
+
+## Detector seed `armB1337` — SBI arm B spatial seed 1337, V-JEPA 2 seed 1337
+
+41 generator sets, 22 of them reenactment.
+
+| arm | reenactment | swap | all sets |
+|---|---:|---:|---:|
+| AVG-R | 0.9644 | 0.9748 | 0.9692 |
+| Dempster-R | 0.9640 | 0.9753 | 0.9692 |
+| T+OM | 0.9660 | 0.9715 | 0.9686 |
+| grouped-R | 0.9660 | 0.9715 | 0.9686 |
+| grouped-TA-R | 0.9643 | 0.9742 | 0.9689 |
+| grouped-TO-R | 0.9652 | 0.9737 | 0.9691 |
+
+Fitted appearance weight is zero in **3 of 5 folds** for grouped-R (weights: (0.25, 0, 1); (0.25, 0, 1); (0.25, 0.25, 1); (0.25, 0.25, 1); (0.25, 0, 1)). Where it is zero, grouped-R and T+OM are the same function.
+
+| contrast | family | Δ | 95% CI | material (|Δ| > 1e-4) |
+|---|---|---:|---|---|
+| grouped-R − Dempster-R | reenactment | +0.0020 | [+0.0003, +0.0039] | **yes** |
+| grouped-R − Dempster-R | swap | -0.0039 | [-0.0055, -0.0023] | **yes** |
+| grouped-R − Dempster-R | all | -0.0007 | [-0.0023, +0.0008] | no |
+| grouped-R − AVG-R | reenactment | +0.0016 | [-0.0001, +0.0034] | no |
+| grouped-R − AVG-R | swap | -0.0033 | [-0.0048, -0.0020] | **yes** |
+| grouped-R − AVG-R | all | -0.0007 | [-0.0020, +0.0007] | no |
+| grouped-R − T+OM | reenactment | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − T+OM | swap | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − T+OM | all | +0.0000 | [+0.0000, +0.0000] | no |
+| grouped-R − grouped-TA-R | reenactment | +0.0018 | [+0.0003, +0.0033] | **yes** |
+| grouped-R − grouped-TA-R | swap | -0.0028 | [-0.0041, -0.0015] | **yes** |
+| grouped-R − grouped-TA-R | all | -0.0003 | [-0.0016, +0.0009] | no |
+| grouped-R − grouped-TO-R | reenactment | +0.0009 | [-0.0002, +0.0019] | no |
+| grouped-R − grouped-TO-R | swap | -0.0022 | [-0.0032, -0.0013] | **yes** |
+| grouped-R − grouped-TO-R | all | -0.0005 | [-0.0015, +0.0004] | no |
 
 ## The gate
 
@@ -87,12 +157,20 @@ Wall clock 2.4 minutes, CPU. 2000 draws per contrast, fixed seed.
 |---|---|
 | reenactment interval excludes zero, seed 42 | pass — +0.0114 [+0.0086, +0.0144] |
 | reenactment interval excludes zero, seed T1337 | pass — +0.0025 [+0.0019, +0.0031] |
+| reenactment interval excludes zero, seed armB42 | **fail** — +0.0000 [+0.0000, +0.0000] |
+| reenactment interval excludes zero, seed armB1337 | pass — +0.0020 [+0.0003, +0.0039] |
 | control grouped-TA-R loses to grouped-R, seed 42 | pass — +0.0033 [+0.0010, +0.0054] |
 | control grouped-TO-R loses to grouped-R, seed 42 | pass — +0.0049 [+0.0029, +0.0068] |
 | control grouped-TA-R loses to grouped-R, seed T1337 | pass — +0.0012 [+0.0006, +0.0018] |
 | control grouped-TO-R loses to grouped-R, seed T1337 | pass — +0.0051 [+0.0035, +0.0067] |
-| grouped-R does more than the two-view T+OM fusion, seed 42 | **fail** — -0.0000 [-0.0002, +0.0001] |
-| grouped-R does more than the two-view T+OM fusion, seed T1337 | **fail** — -0.0001 [-0.0002, +0.0001] |
+| control grouped-TA-R loses to grouped-R, seed armB42 | **fail** — +0.0000 [+0.0000, +0.0000] |
+| control grouped-TO-R loses to grouped-R, seed armB42 | **fail** — +0.0010 [-0.0000, +0.0019] |
+| control grouped-TA-R loses to grouped-R, seed armB1337 | **fail** — -0.0003 [-0.0016, +0.0009] |
+| control grouped-TO-R loses to grouped-R, seed armB1337 | **fail** — -0.0005 [-0.0015, +0.0004] |
+| grouped-R does more than the two-view T+OM fusion, seed 42 | **fail** — -1.5845e-05 [-1.5357e-04, +1.0998e-04] |
+| grouped-R does more than the two-view T+OM fusion, seed T1337 | **fail** — -5.7674e-05 [-1.7880e-04, +6.0915e-05] |
+| grouped-R does more than the two-view T+OM fusion, seed armB42 | **fail** — +1.5994e-06 [+0.0000e+00, +4.5173e-06] |
+| grouped-R does more than the two-view T+OM fusion, seed armB1337 | **fail** — +8.7872e-06 [+2.9620e-06, +1.7332e-05] |
 
 **Verdict: grouped-R NOT confirmed.**
 
