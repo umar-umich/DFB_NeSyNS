@@ -1,0 +1,148 @@
+# PCR6+ on development
+
+Four detector configurations, each fitting its reliability weights on its own development exports. The conflict-by-
+source score is a logistic model on at most five inputs, fitted on the fitting fold only and applied to the selection
+fold, so it never sees the data it is scored on. Paired source-group bootstrap, 2000 draws, materiality floor 1e-4.
+
+Wall clock 7.2 minutes, CPU. Pre-registration: `tbiom/configs/pcr6p_fusion_preregister.yaml`.
+
+## Configuration `42`
+
+| arm | v3.1 clean | swap | reenact | in-the-wild | JPEG q40 | resize 0.60 | FPR | TPR | NLL | Brier | ECE | Δ v3.1 vs Dempster-R (95% CI) | folds with T/APP/OM weight 0 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **PCR6P-R** | 0.8794 | 0.9301 | 0.9111 | 0.7971 | 0.8104 | 0.8581 | 0.104 | 0.735 | 0.4795 | 0.1529 | 0.1547 | -0.0014 [-0.0040, +0.0012] | 0/3/0 |
+| PCR6-R | 0.8793 | 0.9314 | 0.9078 | 0.7987 | 0.8093 | 0.8574 | 0.083 | 0.684 | 0.4710 | 0.1501 | 0.1506 | -0.0015 [-0.0038, +0.0008] | 0/2/0 |
+| PCR6-pairwise-R | 0.8802 | 0.9333 | 0.9067 | 0.8006 | 0.8091 | 0.8574 | 0.078 | 0.675 | 0.4744 | 0.1491 | 0.1437 | -0.0006 [-0.0024, +0.0012] | 0/1/0 |
+| Yager-R | 0.8787 | 0.9296 | 0.9085 | 0.7978 | 0.8129 | 0.8575 | 0.103 | 0.729 | 0.4744 | 0.1537 | 0.1642 | -0.0021 [-0.0055, +0.0011] | 0/4/0 |
+| Averaging-R *(baseline)* | 0.8799 | 0.9322 | 0.9133 | 0.7942 | 0.8088 | 0.8592 | 0.109 | 0.748 | 0.4263 | 0.1370 | 0.1352 | -0.0009 [-0.0032, +0.0013] | 0/0/0 |
+| Dempster-R *(baseline)* | 0.8808 | 0.9345 | 0.9085 | 0.7993 | 0.8096 | 0.8589 | 0.107 | 0.737 | 0.4706 | 0.1469 | 0.1310 | +0.0000 [+0.0000, +0.0000] | 0/0/0 |
+| T+OM (PCR6+) | 0.8800 | 0.9284 | 0.9157 | 0.7958 | 0.8135 | 0.8595 | 0.113 | 0.749 | 0.4851 | 0.1564 | 0.1646 | -0.0008 [-0.0041, +0.0024] | 0/5/0 |
+| T+APP (PCR6+) | 0.8693 | 0.9197 | 0.9065 | 0.7817 | 0.7937 | 0.8516 | 0.116 | 0.682 | 0.4300 | 0.1380 | 0.0990 | -0.0115 [-0.0156, -0.0074] | 0/0/1 |
+
+### Uncertainty scores, configuration `42`
+
+| score | error-detection AUROC | E-AURC | risk@90 | risk@80 | Δ error-AUROC vs conflict-by-source (95% CI) |
+|---|---:|---:|---:|---:|---|
+| vacuity | 0.7343 | 0.07190 | 0.1885 | 0.1641 | +0.0090 [-0.0103, +0.0290] (2/5 splits above the floor) |
+| conflict_K | 0.6727 | 0.09083 | 0.2018 | 0.1830 | +0.0707 [+0.0450, +0.0958] (4/5 splits above the floor) |
+| entropy | 0.7508 | 0.06445 | 0.1824 | 0.1642 | -0.0074 [-0.0238, +0.0086] (2/5 splits above the floor) |
+| margin | 0.7508 | 0.06445 | 0.1824 | 0.1642 | -0.0074 [-0.0238, +0.0086] (2/5 splits above the floor) |
+| **conflict_by_source** | 0.7432 | 0.06662 | 0.1886 | 0.1671 | — |
+
+Conflict-by-source coefficients (standardised inputs, mean over folds): vacuity +0.863, K_TS +0.404, K_AO -0.126, K_all +0.183, margin -0.005.
+
+
+### Conflict case analysis, configuration `42`
+
+| case | videos | K_TS | K_AO | K_all | PCR6+-R correct |
+|---|---:|---:|---:|---:|---:|
+| temporal right, both spatial wrong | 362 | 0.4194 | 0.0072 | 0.0142 | 0.6552 |
+| temporal wrong, both spatial right | 520 | 0.3740 | 0.0076 | 0.0106 | 0.6472 |
+| all three agree and right | 1512 | 0.0324 | 0.0038 | 0.0095 | 1.0000 |
+| all three wrong | 214 | 0.0439 | 0.0092 | 0.0135 | 0.0018 |
+
+## Configuration `T1337`
+
+| arm | v3.1 clean | swap | reenact | in-the-wild | JPEG q40 | resize 0.60 | FPR | TPR | NLL | Brier | ECE | Δ v3.1 vs Dempster-R (95% CI) | folds with T/APP/OM weight 0 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **PCR6P-R** | 0.8803 | 0.9303 | 0.9064 | 0.8044 | 0.8240 | 0.8555 | 0.080 | 0.687 | 0.4389 | 0.1425 | 0.1433 | +0.0002 [-0.0016, +0.0021] | 0/5/0 |
+| PCR6-R | 0.8804 | 0.9310 | 0.9054 | 0.8048 | 0.8251 | 0.8552 | 0.082 | 0.688 | 0.4366 | 0.1421 | 0.1458 | +0.0003 [-0.0018, +0.0024] | 0/5/0 |
+| PCR6-pairwise-R | 0.8796 | 0.9314 | 0.9036 | 0.8038 | 0.8216 | 0.8536 | 0.072 | 0.663 | 0.4456 | 0.1411 | 0.1347 | -0.0005 [-0.0025, +0.0015] | 0/3/0 |
+| Yager-R | 0.8802 | 0.9314 | 0.9043 | 0.8048 | 0.8257 | 0.8545 | 0.082 | 0.688 | 0.4371 | 0.1425 | 0.1492 | +0.0001 [-0.0025, +0.0026] | 0/5/0 |
+| Averaging-R *(baseline)* | 0.8783 | 0.9315 | 0.9042 | 0.7991 | 0.8193 | 0.8538 | 0.074 | 0.674 | 0.4156 | 0.1323 | 0.1351 | -0.0018 [-0.0042, +0.0006] | 0/3/0 |
+| Dempster-R *(baseline)* | 0.8801 | 0.9312 | 0.9054 | 0.8036 | 0.8226 | 0.8555 | 0.067 | 0.653 | 0.4346 | 0.1401 | 0.1296 | +0.0000 [+0.0000, +0.0000] | 0/4/0 |
+| T+OM (PCR6+) | 0.8803 | 0.9303 | 0.9064 | 0.8044 | 0.8240 | 0.8555 | 0.080 | 0.687 | 0.4389 | 0.1425 | 0.1433 | +0.0002 [-0.0016, +0.0021] | 0/5/0 |
+| T+APP (PCR6+) | 0.8694 | 0.9182 | 0.9029 | 0.7871 | 0.8092 | 0.8471 | 0.101 | 0.651 | 0.4026 | 0.1283 | 0.0802 | -0.0106 [-0.0155, -0.0057] | 0/0/1 |
+
+### Uncertainty scores, configuration `T1337`
+
+| score | error-detection AUROC | E-AURC | risk@90 | risk@80 | Δ error-AUROC vs conflict-by-source (95% CI) |
+|---|---:|---:|---:|---:|---|
+| vacuity | 0.7502 | 0.07807 | 0.2052 | 0.1810 | +0.0546 [+0.0333, +0.0766] (3/5 splits above the floor) |
+| conflict_K | 0.7062 | 0.08555 | 0.2137 | 0.1883 | +0.0985 [+0.0766, +0.1197] (5/5 splits above the floor) |
+| entropy | 0.8087 | 0.05091 | 0.2015 | 0.1593 | -0.0040 [-0.0105, +0.0022] (1/5 splits above the floor) |
+| margin | 0.8087 | 0.05091 | 0.2015 | 0.1593 | -0.0040 [-0.0105, +0.0022] (1/5 splits above the floor) |
+| **conflict_by_source** | 0.8047 | 0.05134 | 0.2091 | 0.1718 | — |
+
+Conflict-by-source coefficients (standardised inputs, mean over folds): vacuity +0.733, K_TS +0.445, K_AO +0.000, K_all +0.000, margin +0.550.
+
+
+### Conflict case analysis, configuration `T1337`
+
+| case | videos | K_TS | K_AO | K_all | PCR6+-R correct |
+|---|---:|---:|---:|---:|---:|
+| temporal right, both spatial wrong | 340 | 0.4116 | 0.0000 | 0.0000 | 0.6052 |
+| temporal wrong, both spatial right | 517 | 0.2578 | 0.0000 | 0.0000 | 0.5791 |
+| all three agree and right | 1515 | 0.0347 | 0.0000 | 0.0000 | 0.9978 |
+| all three wrong | 236 | 0.0522 | 0.0000 | 0.0000 | 0.0008 |
+
+## Configuration `armB42`
+
+| arm | v3.1 clean | swap | reenact | in-the-wild | JPEG q40 | resize 0.60 | FPR | TPR | NLL | Brier | ECE | Δ v3.1 vs Dempster-R (95% CI) | folds with T/APP/OM weight 0 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **PCR6P-R** | 0.8671 | 0.9099 | 0.9083 | 0.7832 | 0.8101 | 0.8493 | 0.063 | 0.621 | 0.5479 | 0.1750 | 0.1926 | +0.0004 [-0.0010, +0.0017] | 0/5/0 |
+| PCR6-R | 0.8671 | 0.9103 | 0.9072 | 0.7837 | 0.8090 | 0.8496 | 0.063 | 0.622 | 0.5385 | 0.1734 | 0.1939 | +0.0003 [-0.0015, +0.0021] | 0/5/0 |
+| PCR6-pairwise-R | 0.8671 | 0.9099 | 0.9083 | 0.7832 | 0.8101 | 0.8493 | 0.063 | 0.621 | 0.5479 | 0.1750 | 0.1926 | +0.0004 [-0.0010, +0.0017] | 0/5/0 |
+| Yager-R | 0.8671 | 0.9105 | 0.9062 | 0.7845 | 0.8075 | 0.8493 | 0.082 | 0.636 | 0.5331 | 0.1725 | 0.1960 | +0.0003 [-0.0019, +0.0026] | 0/5/0 |
+| Averaging-R *(baseline)* | 0.8647 | 0.9119 | 0.9038 | 0.7783 | 0.8078 | 0.8476 | 0.087 | 0.691 | 0.4732 | 0.1574 | 0.1724 | -0.0021 [-0.0049, +0.0007] | 0/2/0 |
+| Dempster-R *(baseline)* | 0.8668 | 0.9101 | 0.9092 | 0.7809 | 0.8108 | 0.8491 | 0.067 | 0.651 | 0.5470 | 0.1741 | 0.1845 | +0.0000 [+0.0000, +0.0000] | 0/5/0 |
+| T+OM (PCR6+) | 0.8671 | 0.9099 | 0.9083 | 0.7832 | 0.8101 | 0.8493 | 0.063 | 0.621 | 0.5479 | 0.1750 | 0.1926 | +0.0004 [-0.0010, +0.0017] | 0/5/0 |
+| T+APP (PCR6+) | 0.8651 | 0.9104 | 0.9051 | 0.7799 | 0.8084 | 0.8470 | 0.073 | 0.633 | 0.5478 | 0.1738 | 0.1869 | -0.0016 [-0.0040, +0.0007] | 0/0/5 |
+
+### Uncertainty scores, configuration `armB42`
+
+| score | error-detection AUROC | E-AURC | risk@90 | risk@80 | Δ error-AUROC vs conflict-by-source (95% CI) |
+|---|---:|---:|---:|---:|---|
+| vacuity | 0.7190 | 0.10091 | 0.2497 | 0.2257 | -0.0101 [-0.0285, +0.0088] (1/5 splits above the floor) |
+| conflict_K | 0.7107 | 0.09662 | 0.2501 | 0.2298 | -0.0016 [-0.0255, +0.0220] (2/5 splits above the floor) |
+| entropy | 0.7794 | 0.07052 | 0.2401 | 0.2027 | -0.0704 [-0.0887, -0.0529] (1/5 splits above the floor) |
+| margin | 0.7794 | 0.07052 | 0.2401 | 0.2027 | -0.0704 [-0.0887, -0.0529] (1/5 splits above the floor) |
+| **conflict_by_source** | 0.7089 | 0.10463 | 0.2531 | 0.2404 | — |
+
+Conflict-by-source coefficients (standardised inputs, mean over folds): vacuity +0.897, K_TS +0.701, K_AO +0.000, K_all +0.000, margin -0.537.
+
+
+### Conflict case analysis, configuration `armB42`
+
+| case | videos | K_TS | K_AO | K_all | PCR6+-R correct |
+|---|---:|---:|---:|---:|---:|
+| temporal right, both spatial wrong | 446 | 0.3800 | 0.0000 | 0.0000 | 0.5869 |
+| temporal wrong, both spatial right | 501 | 0.3078 | 0.0000 | 0.0000 | 0.4440 |
+| all three agree and right | 1581 | 0.0369 | 0.0000 | 0.0000 | 0.9896 |
+| all three wrong | 305 | 0.0500 | 0.0000 | 0.0000 | 0.0180 |
+
+## Configuration `armB1337`
+
+| arm | v3.1 clean | swap | reenact | in-the-wild | JPEG q40 | resize 0.60 | FPR | TPR | NLL | Brier | ECE | Δ v3.1 vs Dempster-R (95% CI) | folds with T/APP/OM weight 0 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **PCR6P-R** | 0.8751 | 0.9202 | 0.8969 | 0.8081 | 0.8284 | 0.8500 | 0.049 | 0.585 | 0.5306 | 0.1658 | 0.1790 | -0.0008 [-0.0025, +0.0009] | 0/0/0 |
+| PCR6-R | 0.8747 | 0.9204 | 0.8966 | 0.8072 | 0.8279 | 0.8495 | 0.048 | 0.575 | 0.5205 | 0.1643 | 0.1799 | -0.0012 [-0.0031, +0.0007] | 0/1/0 |
+| PCR6-pairwise-R | 0.8752 | 0.9209 | 0.8946 | 0.8102 | 0.8288 | 0.8504 | 0.049 | 0.586 | 0.5535 | 0.1694 | 0.1827 | -0.0007 [-0.0024, +0.0010] | 0/0/0 |
+| Yager-R | 0.8746 | 0.9192 | 0.8985 | 0.8060 | 0.8289 | 0.8486 | 0.054 | 0.591 | 0.4858 | 0.1597 | 0.1798 | -0.0013 [-0.0039, +0.0012] | 0/4/0 |
+| Averaging-R *(baseline)* | 0.8739 | 0.9190 | 0.8977 | 0.8051 | 0.8270 | 0.8500 | 0.057 | 0.620 | 0.4540 | 0.1485 | 0.1651 | -0.0020 [-0.0042, +0.0003] | 0/0/0 |
+| Dempster-R *(baseline)* | 0.8759 | 0.9212 | 0.8955 | 0.8110 | 0.8292 | 0.8513 | 0.053 | 0.600 | 0.5506 | 0.1686 | 0.1745 | +0.0000 [+0.0000, +0.0000] | 0/0/0 |
+| T+OM (PCR6+) | 0.8750 | 0.9174 | 0.9024 | 0.8052 | 0.8303 | 0.8482 | 0.059 | 0.605 | 0.4890 | 0.1602 | 0.1737 | -0.0009 [-0.0036, +0.0018] | 0/5/0 |
+| T+APP (PCR6+) | 0.8741 | 0.9176 | 0.8997 | 0.8049 | 0.8283 | 0.8491 | 0.059 | 0.599 | 0.4730 | 0.1543 | 0.1584 | -0.0018 [-0.0041, +0.0004] | 0/0/5 |
+
+### Uncertainty scores, configuration `armB1337`
+
+| score | error-detection AUROC | E-AURC | risk@90 | risk@80 | Δ error-AUROC vs conflict-by-source (95% CI) |
+|---|---:|---:|---:|---:|---|
+| vacuity | 0.7398 | 0.09959 | 0.2618 | 0.2353 | +0.1011 [+0.0780, +0.1247] (4/5 splits above the floor) |
+| conflict_K | 0.7535 | 0.08787 | 0.2562 | 0.2268 | +0.0874 [+0.0717, +0.1036] (5/5 splits above the floor) |
+| entropy | 0.8311 | 0.05692 | 0.2505 | 0.1903 | +0.0098 [+0.0049, +0.0150] (5/5 splits above the floor) |
+| margin | 0.8311 | 0.05692 | 0.2505 | 0.1903 | +0.0098 [+0.0049, +0.0150] (5/5 splits above the floor) |
+| **conflict_by_source** | 0.8409 | 0.05283 | 0.2518 | 0.1961 | — |
+
+Conflict-by-source coefficients (standardised inputs, mean over folds): vacuity +0.646, K_TS +0.022, K_AO -0.306, K_all +0.053, margin +1.118.
+
+
+### Conflict case analysis, configuration `armB1337`
+
+| case | videos | K_TS | K_AO | K_all | PCR6+-R correct |
+|---|---:|---:|---:|---:|---:|
+| temporal right, both spatial wrong | 423 | 0.4683 | 0.0117 | 0.0344 | 0.4199 |
+| temporal wrong, both spatial right | 468 | 0.2922 | 0.0261 | 0.0276 | 0.5153 |
+| all three agree and right | 1574 | 0.0481 | 0.0070 | 0.0230 | 0.9981 |
+| all three wrong | 361 | 0.0809 | 0.0213 | 0.0236 | 0.0049 |
+

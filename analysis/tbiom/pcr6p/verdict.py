@@ -73,17 +73,28 @@ def main():
 
 def write(V, dev, exp, meta):
     ni = {t: v["detection"] for t, v in V.items()}
-    all_ni = all(d["noninferior_clean"] and d["fpr_ok"] and d["tpr_ok"]
-                 and all(d[f"noninferior_{k}"] for k in PROC + ("reenactment",) if d[f"noninferior_{k}"] is not None)
-                 for d in ni.values())
-    any_rel = any(v["reliability"]["beats_all"] for v in V.values())
-    outcome = ("1. noninferior AND a reliability benefit" if all_ni and any_rel else
-               "2. **PCR6+-R noninferior, with no reliability benefit beyond the simple scores**" if all_ni else
-               "3. trades detection for a demonstrated reliability benefit" if any_rel else
+    auroc_ni = {t: (d["noninferior_clean"]
+                    and all(d[f"noninferior_{k}"] for k in PROC + ("reenactment",)
+                            if d[f"noninferior_{k}"] is not None)) for t, d in ni.items()}
+    op_ok = {t: (d["fpr_ok"] and d["tpr_ok"]) for t, d in ni.items()}
+    n_rel = sum(v["reliability"]["beats_all"] for v in V.values())
+    n_cfg = len(V)
+    # A benefit shown in one configuration of four is not a demonstrated benefit: it is the configuration that
+    # happened to favour it. The pre-registration exists to stop exactly that, so the requirement is a majority.
+    rel_shown = n_rel >= 3
+    all_ni = all(auroc_ni.values()) and all(op_ok.values())
+    outcome = ("1. noninferior AND a reliability benefit, confirmed across configurations" if all_ni and rel_shown else
+               "2. PCR6+-R noninferior, with no reliability benefit beyond the simple scores" if all_ni else
+               "3. trades detection for a demonstrated reliability benefit" if rel_shown else
                "4. **no demonstrated benefit**")
     L = ["# PCR6+ outcome", "", "Section 9 of `tbiom/docs/pcr6plus-fusion-brief.md`. Pre-registration: "
          "`tbiom/configs/pcr6p_fusion_preregister.yaml`, written before any candidate was scored.", "",
          f"## Terminal outcome: {outcome}", "",
+         f"AUROC noninferiority holds in **{sum(auroc_ni.values())} of {n_cfg}** configurations; the calibrated "
+         f"operating-point safeguards hold in **{sum(op_ok.values())} of {n_cfg}**; the conflict-by-source score "
+         f"beats every simple score in **{n_rel} of {n_cfg}**. A benefit appearing in one configuration of four is "
+         "reported as what it is — the configuration that happened to favour it — and not as a demonstrated "
+         "benefit.", "",
          "Outcome 6, independent confirmation pending, **also applies and applies unconditionally**: no untouched "
          "set remains. CDFv2 and DeepfakeEval2024 informed development, and DF40 has informed operator design in "
          "three consecutive studies.", "",
@@ -106,6 +117,12 @@ def write(V, dev, exp, meta):
         L.append(f"| `{t}` | **{r['cbs_err_auroc']:.4f}** | " + " | ".join(f"{b[s]['simple']:.4f}" for s in SIMPLE)
                  + f" | {'yes' if r['beats_all'] else '**no**'} | {r['cbs_eaurc']:.5f} vs {r['vacuity_eaurc']:.5f} "
                  f"({'improves' if r['eaurc_improves_over_vacuity'] else 'worse'}) |")
+    cases = dev["42"][0]["cases"]
+    cg = lambda nm, k: float(np.nanmean([r["cases"][nm][k] for r in dev["42"]]))
+    CASES = [f"| {nm} | {cg(nm, 'n'):.0f} | {cg(nm, 'K_TS'):.4f} | {cg(nm, 'K_AO'):.4f} | {cg(nm, 'K_all'):.4f} | "
+             f"{cg(nm, 'fused_correct'):.4f} |" for nm in cases]
+    CA = cg("temporal right, both spatial wrong", "K_TS")
+    CB = cg("temporal wrong, both spatial right", "K_TS")
     L += ["", "Entropy and margin are numerically identical as error rankers here, and necessarily so: on a binary "
           "frame both are strictly monotone functions of |p − 0.5|, so they induce the same ordering. They are "
           "reported separately because the pre-registration named both.", "",
@@ -113,6 +130,19 @@ def write(V, dev, exp, meta):
           "configurations. It does improve selective prediction over fused vacuity (lower E-AURC in three of four), "
           "but the pre-registration required it to beat every simple score, not the weakest one, precisely so that "
           "this kind of partial result could not be presented as a benefit.", "",
+          "## 2b. Why it fails — the research question, answered", "",
+          "Section 1 of the brief asked whether conflict attributed to its source views predicts fused errors better "
+          "than vacuity, entropy or margin. The conflict case analysis on development answers it directly, and the "
+          "answer is no, for a reason that is visible rather than statistical.", "",
+          "| case (configuration `42`) | videos | K_TS | K_AO | K_all | PCR6+-R correct |",
+          "|---|---:|---:|---:|---:|---:|"] + CASES + [
+          "", f"Temporal-versus-spatial conflict is high in **both** disagreement cases — {CA:.4f} when the temporal "
+          f"view is the one that is right, and {CB:.4f} when it is the one that is wrong. The quantity marks that "
+          "the views disagree; it carries almost no information about *which* of them to believe, and a score built "
+          "on it inherits that. Predictive entropy already captures the part that does predict errors — how "
+          "confidently the fusion committed — which is why entropy wins in three of the four configurations.", "",
+          "K_AO and K_all are an order of magnitude smaller than K_TS in every case, so the decomposition by source "
+          "pair adds little beyond the total: on this system essentially all conflict is temporal-versus-spatial.", "",
           "## 3. What the PCR6+ correction changes", "",
           "| configuration | Δ v3.1 (PCR6+ − PCR6) | Δ DF40 family-balanced | Δ DF40 reenactment, Celeb-DF |",
           "|---|---:|---:|---:|"]
