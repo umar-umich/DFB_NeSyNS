@@ -145,6 +145,35 @@ def _bucket(tup):
     return "K_all" if (ts and ao) else ("K_TS" if ts else "K_AO")
 
 
+def fuse_simple(masses, rule):
+    """Direct S-source conjunctive, Dempster and Yager on the same tuple enumeration.
+
+    Dempster is associative so a pairwise fold would agree, but Yager is not: its conflict must be collected over
+    all S sources at once and assigned to Theta in one step, which is what the S-source rule does."""
+    n, S, _ = masses.shape
+    m = {FAKE: masses[:, :, 0], GEN: masses[:, :, 1], THETA: masses[:, :, 2]}
+    out = {FAKE: np.zeros(n), GEN: np.zeros(n), THETA: np.zeros(n)}
+    K = np.zeros(n)
+    for t in spec(S):
+        pi = np.ones(n)
+        for i, x in enumerate(t["tup"]):
+            pi = pi * m[x][:, i]
+        if t["conflict"]:
+            K += pi
+        else:
+            out[t["inter"]] += pi
+    f = np.stack([out[FAKE], out[GEN], out[THETA]], 1)
+    if rule == "conjunctive":
+        return f, K
+    if rule == "yager":                                  # all conflict to ignorance
+        f[:, 2] += K
+        return f
+    if rule == "dempster":                               # conflict normalised away
+        d = np.clip(1 - K, EPS, None)
+        return f / d[:, None]
+    raise ValueError(rule)
+
+
 def masses_of(t, views, w=None):
     """(n, S, 3) discounted opinions for the named views, in the given order."""
     out = []
