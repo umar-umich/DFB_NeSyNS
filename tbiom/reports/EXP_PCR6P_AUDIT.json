@@ -1,0 +1,146 @@
+{
+ "tests": [
+  {
+   "test": "PCR6: output masses non-negative and sum to one",
+   "expected": "non-negative, sum to one",
+   "pass": true,
+   "detail": "min 1.04e-03, max |sum-1| 4.44e-16"
+  },
+  {
+   "test": "PCR6: probabilities in [0, 1]",
+   "expected": "valid probabilities",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "test": "PCR6+: output masses non-negative and sum to one",
+   "expected": "non-negative, sum to one",
+   "pass": true,
+   "detail": "min 2.63e-05, max |sum-1| 4.44e-16"
+  },
+  {
+   "test": "PCR6+: probabilities in [0, 1]",
+   "expected": "valid probabilities",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "test": "PCR6: permutation of the three views",
+   "expected": "identical output",
+   "pass": true,
+   "detail": "max dev 4.44e-16"
+  },
+  {
+   "test": "PCR6+: permutation of the three views",
+   "expected": "identical output",
+   "pass": true,
+   "detail": "max dev 4.44e-16"
+  },
+  {
+   "test": "PCR6 on (genuine=1), (fake=1), (Theta=1)",
+   "expected": "fake, genuine and Theta each 1/3",
+   "pass": true,
+   "detail": "got [0.333333, 0.333333, 0.333333]"
+  },
+  {
+   "test": "PCR6+ on the same three views",
+   "expected": "equals the two-source fusion of the first two",
+   "pass": true,
+   "detail": "got [0.5, 0.5, 0.0], two-source [0.5, 0.5, 0.0]"
+  },
+  {
+   "test": "PCR6+: a view with r = 0 acts as if removed",
+   "expected": "equals the fusion of the other two views",
+   "pass": true,
+   "detail": "max dev 0.000e+00"
+  },
+  {
+   "test": "PCR6: a view with r = 0 acts as if removed",
+   "expected": "PCR6+ yes; PCR6 is expected to fail this",
+   "pass": true,
+   "detail": "max dev 2.789e-01  (a non-zero deviation here IS the flaw PCR6+ corrects)"
+  },
+  {
+   "test": "two sources: PCR6 equals PCR6+",
+   "expected": "identical (paper, Remark 3)",
+   "pass": true,
+   "detail": "max dev 0.00e+00"
+  },
+  {
+   "test": "two sources: direct rule equals the independent two-source PCR5 implementation",
+   "expected": "identical",
+   "pass": true,
+   "detail": "max dev 2.22e-16"
+  },
+  {
+   "test": "fully conflicting dogmatic views",
+   "expected": "finite, stated, documented",
+   "pass": true,
+   "detail": "PCR6 [0.666667, 0.333333, 0.0], PCR6+ [0.666667, 0.333333, 0.0]"
+  },
+  {
+   "test": "very small vacuity",
+   "expected": "stable arithmetic, no NaN",
+   "pass": true,
+   "detail": "PCR6+ [0.553774, 0.446226, 0.0]"
+  },
+  {
+   "test": "evidence to opinion and back",
+   "expected": "exact for u > 0",
+   "pass": true,
+   "detail": "max dev 2.22e-16"
+  },
+  {
+   "test": "conflict attribution sums to K on every sample",
+   "expected": "K_TS + K_AO + K_all = K",
+   "pass": true,
+   "detail": "max dev 3.33e-16"
+  },
+  {
+   "test": "historical PCR6-R row is direct three-source PCR6",
+   "expected": "expected NO \u2014 it is a pairwise fold",
+   "pass": true,
+   "detail": "max dev 2.082e-01; the historical row must be relabelled PCR6-pairwise-R"
+  }
+ ],
+ "notes": {
+  "neutrality_example": {
+   "PCR6": [
+    0.3333333333333333,
+    0.3333333333333333,
+    0.3333333333333333
+   ],
+   "PCR6+": [
+    0.5,
+    0.5,
+    0.0
+   ],
+   "two_source": [
+    0.5,
+    0.5,
+    0.0
+   ]
+  },
+  "zero_weight_dev_PCR6+": 0.0,
+  "zero_weight_dev_PCR6": 0.27887799400776586,
+  "dogmatic_conflict": {
+   "PCR6": [
+    0.6666666666666666,
+    0.3333333333333333,
+    0.0
+   ],
+   "PCR6+": [
+    0.6666666666666666,
+    0.3333333333333333,
+    0.0
+   ]
+  },
+  "conflict_shares_mean": {
+   "K": 0.3216516107086198,
+   "K_TS": 0.17421252757464117,
+   "K_AO": 0.06758961652209641,
+   "K_all": 0.07984946661188215
+  },
+  "pairwise_vs_direct_max_dev": 0.20819427975252242
+ }
+}

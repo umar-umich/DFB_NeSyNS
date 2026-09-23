@@ -1,0 +1,84 @@
+# Pre-registration — three-view PCR6+ evidential fusion
+# Written before any candidate arm was scored on development or on the exposed suites.
+# Brief: tbiom/docs/pcr6plus-fusion-brief.md. Manifest: tbiom/reports/PCR6P_REFERENCE_MANIFEST.md.
+# Audit: tbiom/reports/EXP_PCR6P_AUDIT.md (17/17 unit tests pass).
+version: 1
+written: 2026-09-23
+supersedes_queue: grouped-fusion            # closed; its reports stand unchanged as a diagnostic finding
+
+nominated_candidate: PCR6P-R                # direct three-source PCR6+ after the existing evidence-scaling discount
+credit: >
+  PCR6+ is established prior work: T. Dezert, J. Dezert, F. Smarandache, "Improvement of Proportional Conflict
+  Redistribution Rules of Combination of Basic Belief Assignments", JAIF 16(1), June 2021, 48-73. It is never
+  presented as a new operator. The candidate contribution, if any, is the conflict-by-source uncertainty score.
+baselines_in_every_table: [Dempster-R, Averaging-R]
+proposed_method_excludes: Dempster-R        # baseline row and DiCoME-family reference only; not reinstated on failure
+
+representation:
+  frame: binary {fake, genuine}
+  base_rate: uniform
+  W: 2
+  discount: evidence scaling e'_k = r * e_k
+  differs_from_belief_mass_discounting_at: intermediate r; agrees at r = 0 and r = 1
+  zero_denominator: the fraction is discarded (paper's convention); never fires on admissible inputs
+  dogmatic_output: kept as the limiting opinion; no uncertainty floor
+
+matrix:                                     # fixed; not to be expanded into a further operator sweep
+  - {id: PCR6P-R,           construction: direct three-source PCR6+,          role: primary candidate}
+  - {id: PCR6-R,            construction: direct three-source PCR6,           role: isolates the PCR6+ correction}
+  - {id: PCR6-pairwise-R,   construction: historical two-source fold,         role: labelled historical row}
+  - {id: Yager-R,           construction: conflict to Theta,                  role: redistribution vs ignorance}
+  - {id: Averaging-R,       construction: evidence averaging, prior once,     role: simple non-Dempster control}
+  - {id: Dempster-R,        construction: standard three-source Dempster,     role: mandatory baseline}
+  - {id: "T+OM (PCR6+)",    construction: two views,                          role: does Appearance add value}
+  - {id: "T+APP (PCR6+)",   construction: two views,                          role: does Off-manifold add value}
+
+protocol:
+  folds: existing five source-grouped v3.1 folds
+  objective: v3.1 macro AUROC over swap / reenactment / in-the-wild cells
+  threshold: EER on FF++ val, per arm, on its own scores
+  grid: [0.0, 0.25, 0.5, 0.75, 1.0] per view, max == 1, existing candidate cap
+  weights: fitted per arm, per fold, per detector configuration, on THAT configuration's own development exports
+  configurations: [42, T1337, armB42, armB1337]   # arm B is a different recipe, not merely a different seed
+  report_zero_weight_folds: true                  # per operator and configuration, per view
+  bootstrap: {draws: 2000, unit: source groups with linked processed and manipulated copies, materiality: 1.0e-4}
+  compute: cached CPU only, OMP_NUM_THREADS=8, <= 8 CPU wall-clock hours
+
+uncertainty_scores:                          # frozen before scoring; they never change the decision
+  decision: the fused PCR6+-R probability
+  for_pcr6p:
+    - fused vacuity
+    - total conflict K
+    - predictive entropy
+    - decision margin |p_fake - 0.5|
+    - conflict-by-source: logistic on at most five inputs [vacuity, K_TS, K_AO, K_all, margin],
+        fitted on the fitting folds only, coefficients reported
+  also_report: [vacuity and margin for Dempster-R and Averaging-R, margin for every arm]
+  errors_defined_at: the frozen threshold rule
+
+acceptance:
+  detection_declared_trade:
+    noninferiority_vs_Dempster_R: paired 95% lower bound > -0.005 on development clean macro AUROC
+    same_on: [jpeg40, rs06, reenactment]
+    calibrated_fpr_rise_max: 0.01
+    calibrated_tpr_loss_max: 0.01
+    on_failure: reported as a trade, not hidden; does NOT reinstate Dempster-R as the method
+  reliability_benefit_required_for_any_uncertainty_claim:
+    conflict_by_source_must_beat: [fused vacuity, total conflict K, predictive entropy, margin]
+    metric: development error-detection AUROC for PCR6+-R, paired interval excluding zero against EACH
+    and_also: development macro E-AURC improvement over PCR6+-R vacuity, paired interval excluding zero
+    reported_per: [development dataset, processing condition]    # not only pooled
+    context_only: Dempster-R vacuity   # reported for context; matching its value is not a goal
+  pcr6plus_correction:
+    report: PCR6+-R against PCR6-R on detection and on the r = 0 zero-weight test
+    note: a correction that changes nothing on data is itself reportable
+  inconclusive_if: a requirement cannot be assessed reliably
+
+exposure:
+  untouched_confirmation_set: none
+  consequence: outcome 6 (independent confirmation pending) applies to every result in this study
+  five_folds_are_not_five_detector_seeds: true
+
+reporting:
+  df40_means: [family-balanced, generator-macro]     # both, with explicit weights
+  preserve: no prior report is deleted, renamed or relabelled; the historical fold is relabelled only in NEW tables
