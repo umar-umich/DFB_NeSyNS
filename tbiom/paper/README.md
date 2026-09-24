@@ -66,11 +66,13 @@ identical. It is excluded, and the method section says so and why.
 
 ## Open items before submission
 
-1. **`refs.bib`**: 11 of 13 entries verified. Two still incomplete — `edl` (volume/pages) and `pcr` (exact
-   volume/pages for the PCR5/PCR6 source). GenD, Effort, ForAda and FSFM were recovered from DISCERN's own
-   reference list; `discern` and `dicome` from the supplied PDFs. A few verified entries carry a `FILL` note for a
-   missing page range only.
-2. **Compile once** and fix float placement. The draft has three `table*` floats (`tab_crossdataset`,
-   `tab_df40gen`, `tab_extension`) and one `figure*`, which is a lot of full-width floats for an IEEEtran journal
-   layout; expect to move some.
-3. **Length** — not yet measured against the T-BIOM page limit, because the draft has not been compiled.
+The bibliography is **complete**: 28 entries, author-year keys, no `FILL` fields. The PCR family is cited as two
+records — Smarandache & Dezert for the PCR rules and Martin & Osswald for the PCR6 generalisation — which is the
+correct attribution and matches how the 2021 PCR6$^+$ paper cites them.
+
+1. **Compile once.** No LaTeX toolchain exists on the machine where this was written, so the draft has never been
+   run through `pdflatex`. `analysis/tbiom/paper/check_tex.py` validates structure only.
+2. **Float placement.** Three `table*` floats (`tab_crossdataset`, `tab_df40gen`, `tab_extension`) and one
+   `figure*` is a lot of full-width floats for IEEEtran; expect to move or narrow some.
+3. **Length** — unmeasured against the T-BIOM limit for the same reason. Section V is the place to tighten.
+4. **V-JEPA 2 author list** — currently `and others`; expand at camera-ready.

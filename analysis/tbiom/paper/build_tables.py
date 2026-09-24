@@ -25,11 +25,11 @@ PRETTY = {"blendface": "BlendFace", "e4s": "e4s", "facedancer": "FaceDancer", "f
           "uniface": "UniFace", "deepfacelab": "DeepFaceLab", "danet": "DaNet", "facevid2vid": "FaceVid2Vid",
           "fomm": "FOMM", "hyperreenact": "HyperReenact", "lia": "LIA", "mcnet": "MCNet", "MRAA": "MRAA",
           "one_shot_free": "One-Shot Free", "pirender": "PIRender", "sadtalker": "SadTalker", "tpsm": "TPSM"}
-BASE_NAME = {"R0 (v3.1, ep 6)": "DISCERN (conf.\\ version)", "DiCoME (our training, v3.1, ep 5)": "DiCoME~\\cite{dicome}",
-             "GenD-CLIP": "GenD-CLIP~\\cite{gend}", "GenD-PE": "GenD-PE~\\cite{gend}",
-             "GenD-DINO": "GenD-DINO~\\cite{gend}", "Effort": "Effort~\\cite{effort}",
-             "ForAda": "ForAda~\\cite{forada}", "FSFM": "FSFM~\\cite{fsfm}",
-             "FSFM-Adapter": "FSFM-Adapter~\\cite{fsfm}"}
+BASE_NAME = {"R0 (v3.1, ep 6)": "DISCERN (conf.\\ version)", "DiCoME (our training, v3.1, ep 5)": "DiCoME~\\cite{kang2026dicome}",
+             "GenD-CLIP": "GenD-CLIP~\\cite{yermakov2026deepfake}", "GenD-PE": "GenD-PE~\\cite{yermakov2026deepfake}",
+             "GenD-DINO": "GenD-DINO~\\cite{yermakov2026deepfake}", "Effort": "Effort~\\cite{yan2025effort}",
+             "ForAda": "ForAda~\\cite{cui2025forada}", "FSFM": "FSFM~\\cite{wang2025fsfm}",
+             "FSFM-Adapter": "FSFM-Adapter~\\cite{wang2025fsfm}"}
 DROP = {"A (v3.1, ep 5)", "B (v3.1, ep 8)", "C (v3.1, ep 2)"}      # internal SBI arms, not comparators
 
 
@@ -195,7 +195,7 @@ def main():
 
     # ---------------------------------------------------------------- Table V: operators
     ORD = [(OURS, "\\textbf{PCR6$^+$-R (ours)}"), ("PCR6-R", "PCR6-R"), ("PCR6-pairwise-R", "PCR6-R, pairwise fold"),
-           ("Yager-R", "Yager-R"), ("Averaging-R", "Averaging-R~\\cite{rcml}"), ("Dempster-R", "Dempster-R~\\cite{shafer}")]
+           ("Yager-R", "Yager-R"), ("Averaging-R", "Averaging-R~\\cite{xu2024rcml}"), ("Dempster-R", "Dempster-R~\\cite{shafer1976}")]
     body = ["\\begin{table}[t]", "\\centering",
             "\\caption{Combination rules over the same three view opinions with the same fitted reliabilities. Only "
             "the operator changes. $\\Delta_{r=0}$ is the largest change caused by removing a view the reliability "

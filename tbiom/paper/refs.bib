@@ -1,169 +1,196 @@
 %% Bibliography for the T-BIOM extension.
-%%
-%% PROVENANCE. Entries marked VERIFIED were checked against the primary source or its publisher record during
-%% preparation (2026-09-23). Entries marked FILL are placeholders: the citation is required by the text but the
-%% bibliographic record was not verified here, and must be completed before submission. Nothing in this file is
-%% invented -- an unverified field is left as a visible FILL rather than guessed.
+%% Keys are author-year throughout. Records marked "supplied" were provided by the authors from primary sources;
+%% records marked "verified" were read from a primary PDF during preparation. Nothing here is guessed.
 
-%% ---------------------------------------------------------------- VERIFIED
-@article{pcr6plus,
+%% ---------------------------------------------------------------- our work and the closest baseline
+@inproceedings{farooq2026discern,
+  author    = {Farooq, Muhammad Umar and Uddin, Kutub and Khan, Awais and Malik, Khalid},
+  title     = {Uncertainty-Aware Deepfake Detection via Multi-View Structural Learning},
+  booktitle = {Proceedings of the IEEE International Joint Conference on Biometrics (IJCB)},
+  year      = {2026},
+  eprint    = {2607.28769},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{kang2026dicome,
+  author    = {Kang, Xiaolu and Wang, Zhongyuan and Cheng, Jikang and Huang, Baojin and Lei, Zhanhe and Wu, Gang and Zou, Qin and Wang, Qian},
+  title     = {Divide and Conquer: Reliable Multi-View Evidential Learning for Deepfake Detection},
+  booktitle = {Proceedings of the 43rd International Conference on Machine Learning (ICML)},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {306},
+  year      = {2026},
+  eprint    = {2606.01885},
+  archivePrefix = {arXiv}
+}
+
+%% ---------------------------------------------------------------- comparators
+@inproceedings{yermakov2026deepfake,
+  author    = {Yermakov, Andrii and Cech, Jan and Matas, Jiri and Fritz, Mario},
+  title     = {Deepfake detection that generalizes across benchmarks},
+  booktitle = {Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision},
+  pages     = {773--783},
+  year      = {2026}
+}
+
+@inproceedings{yan2025effort,
+  author    = {Yan, Zhiyuan and Wang, Jiangming and Jin, Peng and Zhang, Ke-Yue and Liu, Chengchun and Chen, Shen and Yao, Taiping and Ding, Shouhong and Wu, Baoyuan and Yuan, Li},
+  title     = {Orthogonal Subspace Decomposition for Generalizable {AI}-Generated Image Detection},
+  booktitle = {Proceedings of the International Conference on Machine Learning (ICML)},
+  year      = {2025}
+}
+
+@inproceedings{cui2025forada,
+  author    = {Cui, Xinjie and Li, Yuezun and Luo, Ao and Zhou, Jiaran and Dong, Junyu},
+  title     = {Forensics Adapter: Adapting {CLIP} for Generalizable Face Forgery Detection},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pages     = {19207--19217},
+  year      = {2025}
+}
+
+@inproceedings{wang2025fsfm,
+  author    = {Wang, Gaojian and Lin, Feng and Wu, Tong and Liu, Zhenguang and Ba, Zhongjie and Ren, Kui},
+  title     = {{FSFM}: A Generalizable Face Security Foundation Model via Self-Supervised Facial Representation Learning},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pages     = {24364--24376},
+  year      = {2025}
+}
+
+%% ---------------------------------------------------------------- evidential learning and fusion
+@inproceedings{sensoy2018edl,
+  author    = {Sensoy, Murat and Kaplan, Lance and Kandemir, Melih},
+  title     = {Evidential Deep Learning to Quantify Classification Uncertainty},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {31},
+  pages     = {3179--3189},
+  year      = {2018}
+}
+
+@inproceedings{xu2024rcml,
+  author    = {Xu, Cai and Si, Jiajun and Guan, Ziyu and Zhao, Wei and Wu, Yue and Gao, Xiyue},
+  title     = {Reliable Conflictive Multi-View Learning},
+  booktitle = {Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume    = {38},
+  pages     = {16129--16137},
+  year      = {2024}
+}
+
+@inproceedings{bezirganyan2025dbf,
+  author    = {Bezirganyan, Grigor and Sellami, Sana and Berti-{\'E}quille, Laure and Fournier, S{\'e}bastien},
+  title     = {Multimodal Learning with Uncertainty Quantification Based on Discounted Belief Fusion},
+  booktitle = {Proceedings of the International Conference on Artificial Intelligence and Statistics (AISTATS)},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {258},
+  pages     = {3142--3150},
+  year      = {2025}
+}
+
+@book{shafer1976,
+  author    = {Shafer, Glenn},
+  title     = {A Mathematical Theory of Evidence},
+  publisher = {Princeton University Press},
+  year      = {1976}
+}
+
+@incollection{smarandache2006pcr5,
+  author    = {Smarandache, Florentin and Dezert, Jean},
+  title     = {Proportional Conflict Redistribution Rules for Information Fusion},
+  booktitle = {Advances and Applications of {DSmT} for Information Fusion, Collected Works},
+  editor    = {Smarandache, Florentin and Dezert, Jean},
+  volume    = {2},
+  chapter   = {1},
+  pages     = {3--68},
+  publisher = {American Research Press},
+  address   = {Rehoboth, NM, USA},
+  year      = {2006}
+}
+
+@incollection{martin2006pcr6,
+  author    = {Martin, Arnaud and Osswald, Christophe},
+  title     = {A New Generalization of the Proportional Conflict Redistribution Rule Stable in Terms of Decision},
+  booktitle = {Advances and Applications of {DSmT} for Information Fusion, Collected Works},
+  editor    = {Smarandache, Florentin and Dezert, Jean},
+  volume    = {2},
+  chapter   = {2},
+  pages     = {69--88},
+  publisher = {American Research Press},
+  address   = {Rehoboth, NM, USA},
+  year      = {2006}
+}
+
+@article{dezert2021pcr6plus,
   author  = {Dezert, Th{\'e}o and Dezert, Jean and Smarandache, Florentin},
   title   = {Improvement of Proportional Conflict Redistribution Rules of Combination of Basic Belief Assignments},
   journal = {Journal of Advances in Information Fusion},
   volume  = {16},
   number  = {1},
   pages   = {48--73},
-  year    = {2021},
-  note    = {VERIFIED against the publisher PDF}
+  year    = {2021}
 }
 
-@inproceedings{rcml,
-  author    = {Xu, Cai and Si, Jiajun and Guan, Ziyu and Zhao, Wei and Wu, Yue and Gao, Xiyue},
-  title     = {Reliable Conflictive Multi-View Learning},
-  booktitle = {Proc. AAAI Conf. Artificial Intelligence},
-  volume    = {38},
-  pages     = {16129--16137},
-  year      = {2024},
-  note      = {VERIFIED. Its conflictive opinion aggregation is average pooling, the Averaging-R row of Table~\ref{tab:operators}}
+@inproceedings{geifman2019biasreduced,
+  author    = {Geifman, Yonatan and Uziel, Guy and El-Yaniv, Ran},
+  title     = {Bias-Reduced Uncertainty Estimation for Deep Neural Classifiers},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2019},
+  eprint    = {1805.08206},
+  archivePrefix = {arXiv}
 }
 
-@inproceedings{dbf,
-  author    = {Bezirganyan, Grigor and Sellami, Sana and Berti-{\'E}quille, Laure and Fournier, S{\'e}bastien},
-  title     = {Multimodal Learning with Uncertainty Quantification Based on Discounted Belief Fusion},
-  booktitle = {Proc. Int. Conf. Artificial Intelligence and Statistics (AISTATS)},
-  series    = {PMLR},
-  volume    = {258},
-  pages     = {3142--3150},
-  year      = {2025},
-  note      = {VERIFIED}
-}
-
-@article{vjepa2,
+%% ---------------------------------------------------------------- backbones and adaptation
+@article{assran2025vjepa2,
   author  = {Assran, Mido and others},
-  title   = {V-JEPA 2: Self-Supervised Video Models Enable Understanding, Prediction and Planning},
+  title   = {{V-JEPA} 2: Self-Supervised Video Models Enable Understanding, Prediction and Planning},
   journal = {arXiv preprint arXiv:2506.09985},
   year    = {2025},
-  note    = {VERIFIED arXiv identifier and title; full author list abbreviated, expand before submission}
+  note    = {full author list to be expanded at camera-ready}
 }
 
-@book{shafer,
-  author    = {Shafer, Glenn},
-  title     = {A Mathematical Theory of Evidence},
-  publisher = {Princeton University Press},
-  year      = {1976},
-  note      = {VERIFIED}
+@inproceedings{hu2022lora,
+  author    = {Hu, Edward J. and Shen, Yelong and Wallis, Phillip and Allen-Zhu, Zeyuan and Li, Yuanzhi and Wang, Shean and Wang, Lu and Chen, Weizhu},
+  title     = {{LoRA}: Low-Rank Adaptation of Large Language Models},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2022}
 }
 
-%% ---------------------------------------------------------------- FILL before submission
-@inproceedings{discern,
-  author    = {Farooq, Muhammad Umar and Uddin, Kutub and Khan, Awais and Malik, Khalid},
-  title     = {Uncertainty-Aware Deepfake Detection via Multi-View Structural Learning},
-  booktitle = {Proc. IEEE Int. Joint Conf. Biometrics (IJCB)},
-  year      = {2026},
-  note      = {Authors and title VERIFIED from the paper PDF. FILL: pages and DOI once available.}
+@inproceedings{higgins2017betavae,
+  author    = {Higgins, Irina and Matthey, Loic and Pal, Arka and Burgess, Christopher and Glorot, Xavier and Botvinick, Matthew and Mohamed, Shakir and Lerchner, Alexander},
+  title     = {beta-{VAE}: Learning Basic Visual Concepts with a Constrained Variational Framework},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2017}
 }
 
-@inproceedings{dicome,
-  author    = {Kang, Xiaolu and Wang, Zhongyuan and Cheng, Jikang and Huang, Baojin and Lei, Zhanhe and
-               Wu, Gang and Zou, Qin and Wang, Qian},
-  title     = {Divide and Conquer: Reliable Multi-View Evidential Learning for Deepfake Detection},
-  booktitle = {Proc. Int. Conf. Machine Learning (ICML)},
-  series    = {PMLR},
-  volume    = {306},
-  year      = {2026},
-  address   = {Seoul, South Korea},
-  note      = {VERIFIED from the paper PDF. FILL: page range.}
-}
-
-@inproceedings{gend,
-  title     = {Deepfake detection that generalizes across benchmarks},
-  author    = {Yermakov, Andrii and Cech, Jan and Matas, Jiri and Fritz, Mario},
-  booktitle = {Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision},
-  pages     = {773--783},
-  year      = {2026},
-  note      = {supplied by the authors (alt. key yermakov2026deepfake)}
-}
-
-@inproceedings{effort,
-  title     = {Orthogonal Subspace Decomposition for Generalizable {AI}-Generated Image Detection},
-  author    = {Yan, Zhiyuan and Wang, Jiangming and Jin, Peng and Zhang, Ke-Yue and Liu, Chengchun and Chen, Shen and Yao, Taiping and Ding, Shouhong and Wu, Baoyuan and Yuan, Li},
-  booktitle = {Proceedings of the International Conference on Machine Learning (ICML)},
-  year      = {2025},
-  note      = {supplied by the authors (alt. key yan2025effort)}
-}
-
-@inproceedings{forada,
-  author    = {Cui, Xinjie and Li, Yuezun and Luo, Delong and Zhou, Jiaran and Dong, Jiwu},
-  title     = {Forensics Adapter: Adapting {CLIP} for Generalizable Face Forgery Detection},
-  booktitle = {Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)},
-  year      = {2025},
-  note      = {VERIFIED from the reference list of~\cite{discern}. FILL: pages}
-}
-
-@inproceedings{fsfm,
-  title     = {{FSFM}: A Generalizable Face Security Foundation Model via Self-Supervised Facial Representation Learning},
-  author    = {Wang, Gaojian and Lin, Feng and Wu, Tong and Liu, Zhenguang and Ba, Zhongjie and Ren, Kui},
-  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-  pages     = {24364--24376},
-  year      = {2025},
-  note      = {supplied by the authors; key kept short as it is wired into main.tex (alt. key wang2025fsfm)}
-}
-
-@inproceedings{edl,
-  author    = {Sensoy, Murat and Kaplan, Lance and Kandemir, Melih},
-  title     = {Evidential Deep Learning to Quantify Classification Uncertainty},
-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
-  volume    = {31},
-  pages     = {3179--3189},
-  year      = {2018},
-  note      = {volume and pages recovered from the reference list of~\cite{discern}}
-}
-
-@article{pcr,
-  author  = {Smarandache, Florentin and Dezert, Jean},
-  title   = {Proportional Conflict Redistribution Rules for Information Fusion},
-  journal = {Advances and Applications of DSmT for Information Fusion},
-  volume  = {2},
-  year    = {2006},
-  note    = {FILL: exact volume/pages for the PCR5/PCR6 source; PCR6 is due to Martin and Osswald in the same series}
-}
-
-%% ---------------------------------------------------------------- datasets and tooling
-%% Recovered from the reference list of our own conference paper (tbiom/docs/DISCERN.pdf), so the records match
-%% what we cited there. VERIFIED in that sense; page ranges as printed.
-@inproceedings{ffpp,
-  author    = {R{\"o}ssler, Andreas and Cozzolino, Davide and Verdoliva, Luisa and Riess, Christian and
-               Thies, Justus and Nie{\ss}ner, Matthias},
+%% ---------------------------------------------------------------- datasets and benchmarks
+@inproceedings{rossler2019ffpp,
+  author    = {R{\"o}ssler, Andreas and Cozzolino, Davide and Verdoliva, Luisa and Riess, Christian and Thies, Justus and Nie{\ss}ner, Matthias},
   title     = {{FaceForensics++}: Learning to Detect Manipulated Facial Images},
-  booktitle = {Proc. IEEE/CVF Int. Conf. Computer Vision (ICCV)},
+  booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
   pages     = {1--11},
   year      = {2019}
 }
 
-@inproceedings{celebdf,
+@inproceedings{li2020celebdf,
   author    = {Li, Yuezun and Yang, Xin and Sun, Pu and Qi, Honggang and Lyu, Siwei},
   title     = {{Celeb-DF}: A Large-Scale Challenging Dataset for {DeepFake} Forensics},
-  booktitle = {Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
   pages     = {3207--3216},
   year      = {2020}
 }
 
-@article{dfdc,
-  author  = {Dolhansky, Brian and Bitton, Joanna and Pflaum, Ben and Lu, Jikuo and Howes, Russ and
-             Wang, Menglin and Ferrer, Cristian Canton},
+@article{dolhansky2020dfdc,
+  author  = {Dolhansky, Brian and Bitton, Joanna and Pflaum, Ben and Lu, Jikuo and Howes, Russ and Wang, Menglin and Ferrer, Cristian Canton},
   title   = {The {DeepFake} Detection Challenge {(DFDC)} Dataset},
   journal = {arXiv preprint arXiv:2006.07397},
   year    = {2020}
 }
 
-@article{dfdcp,
+@article{dolhansky2019dfdcp,
   author  = {Dolhansky, Brian and Howes, Russ and Pflaum, Ben and Baram, Nicole and Ferrer, Cristian Canton},
   title   = {The {DeepFake} Detection Challenge {(DFDC)} Preview Dataset},
   journal = {arXiv preprint arXiv:1910.08854},
   year    = {2019}
 }
 
-@misc{dfd,
+@misc{dufour2019dfd,
   author = {Dufour, Nick and Gully, Andrew},
   title  = {Contributing Data to Deepfake Detection Research},
   year   = {2019},
@@ -171,72 +198,54 @@
   url    = {https://research.google/blog/contributing-data-to-deepfake-detection-research/}
 }
 
-@inproceedings{df40,
-  author    = {Yan, Zhiyuan and Yao, Taiping and Chen, Shen and Zhao, Yandan and Fu, Xinghe and Zhu, Junwei and
-               Luo, Donghao and Wang, Chengjie and Ding, Shouhong and Wu, Yunsheng and Yuan, Li},
+@inproceedings{yan2024df40,
+  author    = {Yan, Zhiyuan and Yao, Taiping and Chen, Shen and Zhao, Yandan and Fu, Xinghe and Zhu, Junwei and Luo, Donghao and Wang, Chengjie and Ding, Shouhong and Wu, Yunsheng and Yuan, Li},
   title     = {{DF40}: Toward Next-Generation Deepfake Detection},
   booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
   year      = {2024}
 }
 
-%% ---------------------------------------------------------------- FILL: still needed, see README
-@inproceedings{kodf,
-  author    = {FILL},
+@inproceedings{kwon2021kodf,
+  author    = {Kwon, Patrick and You, Jaeseong and Nam, Gyuhyeon and Park, Sungwoo and Chae, Gyeongsu},
   title     = {{KoDF}: A Large-Scale {Korean} {DeepFake} Detection Dataset},
-  booktitle = {FILL: venue},
-  year      = {FILL},
-  note      = {FILL -- not cited in~\cite{discern}, record must be supplied}
+  booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
+  pages     = {10744--10753},
+  year      = {2021},
+  doi       = {10.1109/ICCV48922.2021.01057}
 }
 
-@inproceedings{ffiw,
-  author    = {FILL},
-  title     = {{FFIW}: Face Forgery in the Wild},
-  booktitle = {FILL: venue},
-  year      = {FILL},
-  note      = {FILL -- not cited in~\cite{discern}, record must be supplied}
+@inproceedings{zhou2021ffiw,
+  author    = {Zhou, Tianfei and Wang, Wenguan and Liang, Zhiyuan and Shen, Jianbing},
+  title     = {Face Forensics in the Wild},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pages     = {5778--5788},
+  year      = {2021},
+  doi       = {10.1109/CVPR46437.2021.00572}
 }
 
-@misc{idforge,
-  author = {FILL},
-  title  = {{IDForge}},
-  year   = {FILL},
-  note   = {FILL -- record must be supplied}
+@inproceedings{xu2024idforge,
+  author    = {Xu, Junhao and Chen, Jingjing and Song, Xue and Han, Feng and Shan, Haijun and Jiang, Yu-Gang},
+  title     = {Identity-Driven Multimedia Forgery Detection via Reference Assistance},
+  booktitle = {Proceedings of the 32nd ACM International Conference on Multimedia (MM '24)},
+  year      = {2024},
+  doi       = {10.1145/3664647.3680622}
 }
 
-@misc{dfdm,
-  author = {FILL},
-  title  = {{DFDM}},
-  year   = {FILL},
-  note   = {FILL -- record must be supplied}
-}
-
-@misc{dfeval24,
-  author = {FILL},
-  title  = {{DeepfakeEval-2024}},
-  year   = {FILL},
-  note   = {FILL -- record must be supplied}
-}
-
-@inproceedings{lora,
-  author    = {FILL Hu, Edward J. and others},
-  title     = {{LoRA}: Low-Rank Adaptation of Large Language Models},
-  booktitle = {Int. Conf. Learning Representations (ICLR)},
+@inproceedings{jia2022dfdm,
+  author    = {Jia, Shan and Li, Xin and Lyu, Siwei},
+  title     = {Model Attribution of Face-Swap Deepfake Videos},
+  booktitle = {Proceedings of the IEEE International Conference on Image Processing (ICIP)},
+  pages     = {2356--2360},
   year      = {2022},
-  note      = {FILL -- verify full author list and pages}
+  eprint    = {2202.12951},
+  archivePrefix = {arXiv}
 }
 
-@inproceedings{betavae,
-  author    = {FILL Higgins, Irina and others},
-  title     = {{beta-VAE}: Learning Basic Visual Concepts with a Constrained Variational Framework},
-  booktitle = {Int. Conf. Learning Representations (ICLR)},
-  year      = {2017},
-  note      = {FILL -- verify full author list}
-}
-
-@inproceedings{aurc,
-  author    = {FILL Geifman, Yonatan and others},
-  title     = {FILL: the selective-prediction / risk-coverage reference used for the AURC and E-AURC convention},
-  booktitle = {FILL: venue},
-  year      = {FILL},
-  note      = {FILL -- needed for Sec. Metrics}
+@misc{chandra2025deepfakeeval,
+  author    = {Chandra, Nuria Alina and Murtfeldt, Ryan and Qiu, Lin and Karmakar, Arnab and Lee, Hannah and Tanumihardja, Emmanuel and Farhat, Kevin and Caffee, Ben and Paik, Sejin and Lee, Changyeon and Choi, Jongwook and Kim, Aerin and Etzioni, Oren},
+  title     = {{Deepfake-Eval-2024}: A Multi-Modal In-the-Wild Benchmark of Deepfakes Circulated in 2024},
+  year      = {2025},
+  eprint    = {2503.02857},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV}
 }
