@@ -20,8 +20,14 @@ import matplotlib.pyplot as plt
 
 R, OUT = Path("tbiom/reports"), Path("tbiom/paper/figures")
 CFG, OURS = "42", "PCR6P-R"
+# IEEE requires embedded fonts in PDF figures and suggests Times New Roman, Helvetica, Arial, Cambria or Symbol
+# (Transactions-instructions, Sec. H). matplotlib's default PDF export uses Type 3 fonts, which the IEEE Graphics
+# Analyzer flags; fonttype 42 embeds TrueType instead.
 plt.rcParams.update({"font.size": 8, "axes.linewidth": 0.6, "figure.dpi": 200,
-                     "axes.spines.top": False, "axes.spines.right": False})
+                     "axes.spines.top": False, "axes.spines.right": False,
+                     "pdf.fonttype": 42, "ps.fonttype": 42,
+                     "font.family": "sans-serif",
+                     "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans"]})
 
 
 def main():

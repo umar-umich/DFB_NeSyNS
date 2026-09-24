@@ -67,6 +67,22 @@ identical. It is excluded, and the method section says so and why.
 | T+F | 0.8383 | 0.8997 | 0.8801 | 0.9539 | — |
 | F only | 0.7688 | 0.7605 | 0.8521 | 0.8855 | — |
 
+## Template compliance
+
+The class and bibliography style in this folder are **byte-identical** to
+`tbiom/docs/IEEE_TBIOM/IEEEtran/IEEEtran.cls` (V1.8b, 2015/08/26) and
+`tbiom/docs/IEEE_TBIOM/Transactions-Bibliography/IEEEtran.bst`. Nothing needs copying between the two folders; the
+template directory is the pristine reference, this one is the working project. Because both files sit next to
+`main.tex`, the project compiles standalone and uploads to Overleaf as-is.
+
+Checked against `Transactions-instructions-only.pdf`:
+
+- figures are referenced as `Fig.~\ref{}` including at the start of a sentence, and tables as `Table~\ref{}` never
+  abbreviated, with IEEEtran supplying Roman numerals automatically (Sec. K);
+- figure fonts are embedded as CID TrueType, not Type 3 — `build_figures.py` sets `pdf.fonttype: 42` for this
+  reason, since matplotlib's default would be flagged by the IEEE Graphics Analyzer (Sec. H);
+- figures are vector PDF.
+
 ## Open items before submission
 
 The bibliography is **complete**: 28 entries, author-year keys, no `FILL` fields. The PCR family is cited as two
