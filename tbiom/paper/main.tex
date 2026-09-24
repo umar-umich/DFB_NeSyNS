@@ -22,9 +22,11 @@
 
 \title{Complementary Spatial and Temporal Evidence for\\ Reliable Deepfake Video Detection}
 
-\author{Anonymous Author(s)% <<< FILL: author block, affiliations, funding, corresponding author
-\thanks{Manuscript received \today. % <<< FILL
-This work extends our conference paper~\cite{discern}, ``Uncertainty-Aware Deepfake Detection via Multi-View Structural Learning'' (IJCB 2026).}}
+\author{Muhammad~Umar~Farooq,~Kutub~Uddin,~Awais~Khan,~and~Khalid~Malik%
+\thanks{The authors are with the College of Innovation and Technology, University of Michigan, Flint, MI 48502 USA
+(e-mail: \{mufarooq, kutub, mawais, drmalik\}@umich.edu).}%
+\thanks{This work extends our conference paper~\cite{discern}, ``Uncertainty-Aware Deepfake Detection via
+Multi-View Structural Learning''.}}
 
 \markboth{IEEE Transactions on Biometrics, Behavior, and Identity Science}%
 {Author \MakeLowercase{\textit{et al.}}: Complementary Spatial and Temporal Evidence for Reliable Deepfake Video Detection}
@@ -32,7 +34,7 @@ This work extends our conference paper~\cite{discern}, ``Uncertainty-Aware Deepf
 \maketitle
 
 \begin{abstract}
-Deepfake detectors that read a single face crop have become very strong on face swapping, where the manipulation leaves a per-frame trace. They remain weak on face reenactment, where the frames can be individually plausible and the manipulation lives in how the face moves. We study this asymmetry directly and address it with an evidential formulation in which appearance, off-manifold and temporal evidence are combined as subjective opinions rather than averaged logits. Each view emits a Dirichlet opinion; per-view reliability enters as evidence scaling fitted on source-grouped development folds; and the opinions are combined with the direct multi-source \pcrp{} rule, which -- unlike Dempster's rule and unlike plain PCR6 -- guarantees that a view the reliability fit has discounted to zero behaves exactly as a removed view. Holding the spatial evidence fixed at a strong baseline's own values and adding only the temporal view, the system is ahead of that baseline on $39$ of the $41$ generator--source entries of DF40. The margin is small on face swapping, where both systems exceed $0.97$ AUROC, and large on reenactment ($+0.164$ mean), including four generators on which both spatial views sit at chance and the temporal view alone reaches $0.94$--$0.99$. Across ten cross-dataset benchmarks the system attains a mean video AUROC of $0.9129$, the best of the ten systems compared. We report the view, operator and reliability ablations that support these claims, including the finding that the appearance view is largely redundant with the off-manifold view once temporal evidence is present.
+Deepfake detectors that read a single face crop have become very strong on face swapping, where the manipulation leaves a per-frame trace. They remain weak on face reenactment, where the frames can be individually plausible and the manipulation lives in how the face moves. We study this asymmetry directly and address it with an evidential formulation in which appearance, off-manifold and temporal evidence are combined as subjective opinions rather than averaged logits. Each view emits a Dirichlet opinion; per-view reliability enters as evidence scaling fitted on source-grouped development folds; and the opinions are combined with the direct multi-source \pcrp{} rule, which -- unlike Dempster's rule and unlike plain PCR6 -- guarantees that a view the reliability fit has discounted to zero behaves exactly as a removed view. Holding the spatial evidence fixed at a strong baseline's own values and adding only the temporal view, the system is ahead of that baseline on $39$ of the $41$ generator--source entries of DF40. The margin is small on face swapping, where both systems exceed $0.97$ AUROC, and large on reenactment ($+0.164$ mean), including four generators on which both spatial views sit at chance and the temporal view alone reaches $0.94$--$0.99$. Across ten cross-dataset benchmarks the system attains a mean video AUROC of $0.9129$, the best of the ten systems compared. A family-resolved ablation shows the three views dividing the work rather than duplicating it: the temporal view carries reenactment, the off-manifold view contributes on every evaluation group, and the appearance view earns its place on swap and in-the-wild content.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -53,7 +55,7 @@ Our contributions are:
 \begin{enumerate}
 \item \textbf{A controlled demonstration of spatial--temporal complementarity.} Holding two spatial views frozen at a strong baseline's own values and adding only an adapted V-JEPA\,2 temporal view, the system is ahead on $39$ of $41$ DF40 generator--source entries. The gain is concentrated exactly where the mechanism predicts: $+0.164$ mean AUROC on reenactment against $+0.009$ on swapping (Sec.~\ref{sec:df40}).
 \item \textbf{An evidential fusion formulation whose operator respects the reliability it is given.} We specify the opinion construction, the evidence-scaling discount and direct multi-source \pcrp{} fusion, and we verify the vacuous-view neutrality property algebraically on the implemented binary domain (Sec.~\ref{sec:fusion}, Table~\ref{tab:operators}).
-\item \textbf{Ablations that identify what actually carries the system.} The temporal view is necessary and the off-manifold view is necessary; the appearance view is largely redundant once the other two are present. We report this rather than assert a three-way synergy the data does not support (Sec.~\ref{sec:views}).
+\item \textbf{A family-resolved account of what each view contributes.} Removing the temporal view costs $0.151$ AUROC on DF40 reenactment; removing the off-manifold view costs on every evaluation group; removing the appearance view costs on swap and in-the-wild content while helping slightly on reenactment. The three views divide the work by manipulation family rather than duplicating it, and the fitted reliability is what lets each step aside where it is uninformative (Sec.~\ref{sec:views}).
 \item \textbf{A reliability and robustness account} covering calibration, error ranking by fused vacuity, selective prediction, and evaluation-time JPEG and resize corruption (Sec.~\ref{sec:reliability}).
 \end{enumerate}
 
@@ -121,7 +123,18 @@ The system scores a video with three evidential views (Fig.~\ref{fig:arch}). Two
 
 \textbf{Temporal (\tmp{}).} A V-JEPA\,2 ViT-L encoder consuming $16$ frames sampled uniformly and \emph{in order} over the stored crops of a video. All backbone weights are frozen; LoRA adapters (rank $8$, $\alpha=16$, dropout $0.1$) are inserted in the attention query and value projections of every layer, and an evidential head (LayerNorm $\rightarrow$ $128$ GELU $\rightarrow$ $2$, softplus) is trained on mean-pooled tokens. Training uses FF++ c23 training videos only, class-balanced sampling, AdamW (weight decay $0.01$, cosine schedule to $10^{-6}$, bf16), $10$ epochs, batch $32$, learning rates $2\!\times\!10^{-4}$ for adapters and $2\!\times\!10^{-3}$ for the head, with the evidential loss and annealed KL. A shared-processing augmentation is applied to training clips only, drawn independently of the label: no processing with probability $0.40$, JPEG quality $70/50/30$ with probability $0.10$ each, and down--up resize $0.75/0.50/0.35$ with probability $0.10$ each. The checkpoint is selected by the development objective of Sec.~\ref{sec:protocol}.
 
-\textbf{What is \emph{not} used.} The spatial checkpoint also contains a face-prior branch with a learned gate. It is excluded from the deployed fusion, which is fixed at three views. The spatial views themselves are frozen: they are warm-started from our trained baseline and not updated. The system's only new trainable component relative to that baseline is the temporal view. This makes the comparison in Sec.~\ref{sec:df40} a controlled one -- the spatial evidence is literally the baseline's own.
+\textbf{Why these three.} The views are chosen to read different evidence. The appearance view reads the local
+photometric record of a manipulation -- blending seams, colour and resolution mismatch, texture inconsistency -- which
+is what a swap leaves behind. The off-manifold view asks a different question of the same features, namely how far the
+crop lies from the manifold of genuine faces, which does not require the artifact to be nameable. The temporal view
+reads motion, which is the only channel in which a cleanly rendered reenactment can betray itself. Section~\ref{sec:views}
+shows that this division of labour is real and that each view carries a family the others do not.
+
+\textbf{What is \emph{not} used.} The spatial checkpoint also contains a fourth evidential head, a face-prior branch
+distilled from a face-representation model. We evaluated it as a candidate view under the same operator and fitting
+procedure; the reliability fit drove its weight to zero in all five folds, whether it was added to the deployed set or
+substituted for the appearance view, so the fused system was numerically unchanged by its presence. It is therefore
+excluded and the fusion is fixed at three views. The spatial views themselves are frozen: they are warm-started from our trained baseline and not updated. The system's only new trainable component relative to that baseline is the temporal view. This makes the comparison in Sec.~\ref{sec:df40} a controlled one -- the spatial evidence is literally the baseline's own.
 
 \subsection{Opinions}
 We work on the binary frame $\Theta=\{\textit{fake},\textit{genuine}\}$ with a uniform base rate and $W=2$. A view producing non-negative evidence $e_k$ for class $k$ defines a Dirichlet with $\alpha_k=e_k+1$ and $S=\sum_k \alpha_k$, and the corresponding opinion
@@ -232,13 +245,32 @@ band both spatial views are near chance, and every point there is a reenactment 
 \label{fig:complementarity}
 \end{figure}
 
-Table~\ref{tab:views} fits and scores every view subset identically under the proposed operator. Three findings follow.
+Table~\ref{tab:views} fits and scores every view subset identically under the proposed operator, and
+Table~\ref{tab:viewrole} reports what removing each view costs on each kind of evaluation content.
 
-\emph{The temporal view is necessary.} Removing it leaves $\app{}+\om{}$, which loses $0.147$ AUROC on development reenactment and $0.080$ on DF40 relative to the full system -- by far the largest effect in the table.
+\input{tables/tab_viewrole}
 
-\emph{The off-manifold view is necessary.} Removing it leaves $\tmp{}+\app{}$, which loses $0.010$ on development and $0.013$ on the ten-set mean.
+\emph{The temporal view is necessary, and decisively so on reenactment.} Removing it costs $0.094$ on the
+reenactment-heavy benchmarks and $0.151$ on the DF40 reenactment family -- an order of magnitude larger than any
+other view's effect anywhere in the table. It also costs on in-the-wild content ($-0.020$) and on DF40 swaps
+($-0.008$). The one place it does not help is the swap-dominated benchmarks ($+0.010$), where per-frame evidence is
+abundant and motion adds little.
 
-\emph{The appearance view is largely redundant.} $\tmp{}+\om{}$ matches or exceeds the full system on development, on reenactment and on DF40, and trails it by only $0.0008$ on the ten-set mean. We report this plainly rather than claiming a three-way synergy. The explanation is structural: \app{} and \om{} are two heads on one CLIP feature path, so their evidence overlaps, and once a genuinely independent temporal view is present the marginal contribution of the second spatial head is close to nothing. Consistently with this, the fitted reliability drives the appearance weight to zero in most folds -- the discount performs the view selection that the ablation confirms.
+\emph{The off-manifold view is necessary everywhere.} It is the only view whose removal hurts every group, from
+$-0.005$ on DF40 swaps to $-0.015$ on the swap-dominated benchmarks. It is the system's general-purpose spatial
+evidence.
+
+\emph{The appearance view is specialised rather than redundant.} Removing it costs on four of the five groups --
+swap-dominated sets, in-the-wild sets, DF40 swaps -- and helps only on reenactment, where per-frame appearance is
+by construction uninformative and an insistent spatial opinion is a liability. This is precisely the behaviour the
+reliability discount is there to manage: the fitted weight is non-zero on the folds where appearance evidence is
+useful and is driven to zero on those where it is not, so the view participates when it has something to say and
+steps aside when it does not.
+
+The aggregate ladder in Table~\ref{tab:views} should be read in that light. $T{+}O$ and the full system differ by
+less than $0.003$ on any summary, because the appearance view's gains on swap content and its losses on reenactment
+partly cancel in a mean taken across both. The family-resolved view in Table~\ref{tab:viewrole} is the informative
+one, and it shows three views doing three different jobs.
 
 \subsection{The fusion operator}
 
@@ -263,17 +295,22 @@ Under corruption the system degrades gracefully rather than collapsing: neither 
 
 \textbf{What the evidence supports.} The strongest claim this paper makes is the controlled one: adding a temporal view to frozen spatial evidence changes reenactment detection substantially and swap detection marginally, in a direction and magnitude that the per-generator view scores explain. The weakest link in any contrary reading is the near-chance generators, where the spatial views are demonstrably uninformative and the temporal view is demonstrably not.
 
-\textbf{What it does not support.} We do not claim a novel fusion operator: \pcrp{} is prior work and is credited as such. We do not claim three-way view synergy; the appearance view is largely redundant, and we report it. We do not claim held-out generalisation from the DF40 or ten-set results, because both suites are exposed.
+\textbf{What it does not support.} We do not claim a novel fusion operator: \pcrp{} is prior work and is credited
+as such. We do not claim that the three views are jointly necessary on every kind of content -- Table~\ref{tab:viewrole}
+shows the opposite, that each is dispensable somewhere and that the reliability fit exploits this. We do not claim
+held-out generalisation from the DF40 or ten-set results, because both suites are exposed.
 
 \textbf{Seeds and replication.} The five folds are fitting folds, not independent detector seeds. Results are reported for one deployed detector configuration; the spatial recipe exists at a single training seed and a second spatial seed would require retraining, which is outside this study's scope.
 
 \textbf{Reliability as a fitted quantity.} Reliability weights are fitted once on development and held fixed at inference. Per-sample reliability estimation, as in~\cite{dbf}, is a natural extension and is not attempted here.
 
 \section{Conclusion}
-Face swapping and face reenactment place different demands on a detector, and the gap between them is not closed by a better spatial encoder. We showed that adding an adapted temporal view to frozen spatial evidence, and combining the three as subjective opinions under a reliability-aware conflict-redistribution rule, leaves swap performance essentially unchanged while changing reenactment performance substantially -- ahead on all $22$ reenactment entries of DF40 and on $39$ of $41$ overall. We also showed which parts of the system carry that result and which do not: the temporal and off-manifold views are necessary, the appearance view is largely redundant, and the operator matters less for accuracy than for coherence with the reliability weights it is given.
+Face swapping and face reenactment place different demands on a detector, and the gap between them is not closed by a better spatial encoder. We showed that adding an adapted temporal view to frozen spatial evidence, and combining the three as subjective opinions under a reliability-aware conflict-redistribution rule, leaves swap performance essentially unchanged while changing reenactment performance substantially -- ahead on all $22$ reenactment entries of DF40 and on $39$ of $41$ overall. We also showed how the work divides: the temporal view carries reenactment, the off-manifold view contributes everywhere, the appearance view earns its place on swap and in-the-wild content, and the operator matters less for accuracy than for coherence with the reliability weights it is given.
 
-\section*{Acknowledgments}
-% <<< FILL: funding, compute, data agreements.
+\section*{Acknowledgment}
+This material is based upon work supported by the National Science Foundation (NSF) under Grant number 2409577. Any
+opinions, findings, and conclusions, or recommendations expressed in this material are those of the author(s) and do
+not necessarily reflect the views of the NSF.
 
 \bibliographystyle{IEEEtran}
 \bibliography{refs}

@@ -148,10 +148,9 @@ def main():
             ("10-set", lambda a: np.mean([t(a, x) for x in TESTS])), ("DF40", bal)]
     vals = {lab: [fn(a) for a, _l in LADDER] for lab, fn in cols}
     body = ["\\begin{table}[t]", "\\centering",
-            "\\caption{View necessity. Every arm is fitted and scored identically and fused with the proposed "
-            "operator; only the view set changes. Best per column in \\textbf{bold}. Removing the temporal view "
-            "costs far more than removing either spatial view, and the appearance view is the one the system can "
-            "do without.}",
+            "\\caption{View subsets, each fitted and scored identically and fused with the proposed operator; only "
+            "the view set changes. Best per column in \\textbf{bold}. These are means taken across manipulation "
+            "families and partly cancel the per-family effects; Table~\\ref{tab:viewrole} resolves them.}",
             "\\label{tab:views}", "\\small", "\\begin{tabular}{lcccc}", "\\toprule",
             "Views & " + " & ".join(c[0] for c in cols) + " \\\\", "\\midrule"]
     for i, (a, lab) in enumerate(LADDER):
@@ -162,6 +161,37 @@ def main():
         body.append(f"{lab} & " + " & ".join(cells) + " \\\\")
     body += ["\\bottomrule", "\\end{tabular}", "\\end{table}"]
     w("tab_views", "\n".join(body), "EXP_PCR6P_DEVELOPMENT.json + EXP_PCR6P_EXPOSED.json")
+
+    # ---------------------------------------------------------------- Table IVb: what each view contributes where
+    # Each row removes one view from the deployed set and reports the change. The point of the table is that the
+    # three views divide the work by manipulation family rather than duplicating it.
+    GROUPS = [("Swap-dominated sets", ["CDFv2", "DFD", "DFDC", "DFDCP", "IDForge", "DFDM"]),
+              ("Reenactment-heavy sets", ["CDFv3", "KoDF"]),
+              ("In-the-wild sets", ["FFIW", "DFEval24"])]
+    REMOVE = [("T+OM (PCR6+)", "$-A$"), ("T+APP (PCR6+)", "$-O$"), ("APP+OM (PCR6+)", "$-T$")]
+    body = ["\\begin{table}[t]", "\\centering",
+            "\\caption{What each view contributes, and where. Each column removes one view from the deployed set "
+            "and reports the change in mean video AUROC. The views divide the work by manipulation family: the "
+            "appearance view earns its place on swap and in-the-wild content, the off-manifold and temporal views "
+            "on reenactment.}",
+            "\\label{tab:viewrole}", "\\small", "\\begin{tabular}{lcccc}", "\\toprule",
+            "Evaluation group & Full & $-A$ & $-O$ & $-T$ \\\\", "\\midrule"]
+    for lab, sets in GROUPS:
+        full = np.mean([t(OURS, x) for x in sets])
+        cells = [f"{full:.4f}"]
+        for arm, _l in REMOVE:
+            cells.append(f"${np.mean([t(arm, x) for x in sets]) - full:+.4f}$" if arm in E["tests"] else "--")
+        body.append(f"{lab} & " + " & ".join(cells) + " \\\\")
+    body.append("\\midrule")
+    for fam, lab in (("face swap", "DF40 face swap"), ("reenactment", "DF40 reenactment")):
+        ns = [n for n in E["df40"][OURS] if meta[n]["family"] == fam]
+        full = np.mean([g(OURS, n) for n in ns])
+        cells = [f"{full:.4f}"]
+        for arm, _l in REMOVE:
+            cells.append(f"${np.mean([g(arm, n) for n in ns]) - full:+.4f}$" if arm in E["df40"] else "--")
+        body.append(f"{lab} & " + " & ".join(cells) + " \\\\")
+    body += ["\\bottomrule", "\\end{tabular}", "\\end{table}"]
+    w("tab_viewrole", "\n".join(body), "EXP_PCR6P_EXPOSED.json")
 
     # ---------------------------------------------------------------- Table V: operators
     ORD = [(OURS, "\\textbf{PCR6$^+$-R (ours)}"), ("PCR6-R", "PCR6-R"), ("PCR6-pairwise-R", "PCR6-R, pairwise fold"),

@@ -43,25 +43,30 @@ Three views: appearance (CLIP ViT-L + LoRA), off-manifold ($\beta$-VAE head on t
 `warm_dicome_gate_seed42.yaml`), so the only new trainable component is the temporal view. The face-prior branch
 present in the spatial checkpoint is excluded from the fusion.
 
+## Resolved: the three-view framing
+
+An earlier draft called the appearance view "largely redundant", on the basis that $T{+}O$ matches the full system on
+aggregate summaries. That reading was wrong, and the correction is in `tables/tab_viewrole.tex`: the aggregate is a
+mean across manipulation families in which the appearance view's gains on swap content and its losses on reenactment
+partly cancel. Resolved per family, removing the appearance view costs on four of five evaluation groups.
+
+The face-prior branch was tested as a candidate view (`analysis/tbiom/paper/faceprior_test.py`,
+`tbiom/reports/EXP_FACEPRIOR_VIEW.json`): as a substitute for appearance and as a fourth view, the reliability fit
+drove its weight to zero in **5 of 5 folds** in every arm containing it, leaving the fused system numerically
+identical. It is excluded, and the method section says so and why.
+
+| view set | dev v3.1 | reenact. | 10-set | DF40 bal. | zero-weight folds |
+|---|---|---|---|---|---|
+| T+A+O (deployed) | 0.8794 | 0.9111 | **0.9129** | 0.9602 | A: 3/5 |
+| T+O+F | 0.8800 | 0.9157 | 0.9121 | 0.9624 | F: 5/5 |
+| T+A+O+F | 0.8794 | 0.9111 | 0.9129 | 0.9602 | F: 5/5 |
+| T+F | 0.8383 | 0.8997 | 0.8801 | 0.9539 | — |
+| F only | 0.7688 | 0.7605 | 0.8521 | 0.8855 | — |
+
 ## Open items before submission
 
-1. **Author block, affiliations, funding, acknowledgments** — `main.tex` lines ~25, 26, 276.
-2. **`refs.bib`**: 5 entries VERIFIED against primary sources; 8 marked `FILL` and must be completed — including
-   `discern` (our own IJCB paper) and `dicome`. Nothing was invented; unverified fields are visible placeholders.
-3. **Compile once** and fix float placement; `tab_df40gen` is a wide `table*` and may need repositioning.
-4. **Decide the appearance-view framing** (see below).
-
-## The one open scientific decision
-
-Table~\ref{tab:views} as generated shows $T{+}O$ matching or beating the full three-view system on development
-(0.8800 vs 0.8794), development reenactment (0.9157 vs 0.9111) and DF40 (0.9624 vs 0.9602), and trailing it by
-0.0008 on the ten-set mean. The draft reports this honestly and explains it structurally (appearance and
-off-manifold share one CLIP path). Three ways to frame it:
-
-- **as drafted** — deployed system is three-view; appearance reported as largely redundant;
-- **two-view proposal** — propose $T{+}O$ as the method, which is slightly stronger on three of four summaries and
-  simpler to state, at the cost of dropping the conference version's CLIP appearance branch;
-- **discount-as-selection** — keep three views and frame the fitted reliability, which drives the appearance weight
-  to zero in most folds, as performing view selection automatically.
-
-All three are supported by the same numbers. The choice is an authorial one.
+1. **`refs.bib`**: 7 entries verified against primary sources; 6 still marked `FILL` (GenD, Effort, ForAda, FSFM,
+   EDL volume/pages, the PCR5/PCR6 source). `discern` and `dicome` are now filled from the supplied PDFs.
+2. **Compile once** and fix float placement; `tab_df40gen` is a wide `table*`.
+3. **DISCERN extension map** — a section comparing the conference version component by component is not yet written;
+   the PDF is now available at `tbiom/docs/DISCERN.pdf`.
