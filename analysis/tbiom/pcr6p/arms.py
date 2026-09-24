@@ -15,8 +15,11 @@ VIEWS = ("T", "APP", "OM")
 GRID = (0.0, 0.25, 0.5, 0.75, 1.0)
 WGRID = [w for w in itertools.product(GRID, repeat=3) if max(w) == 1.0]
 ARMS = ["PCR6P-R", "PCR6-R", "PCR6-pairwise-R", "Yager-R", "Averaging-R", "Dempster-R",
-        "T+OM (PCR6+)", "T+APP (PCR6+)"]
-SUBSET = {"T+OM (PCR6+)": ("T", "OM"), "T+APP (PCR6+)": ("T", "APP")}
+        "T+OM (PCR6+)", "T+APP (PCR6+)", "APP+OM (PCR6+)", "T only"]
+# Two- and one-view ablations under the proposed operator. For a single view no combination takes place, so the
+# `T only` arm is operator-independent; it is carried here so every ablation is fitted and scored identically.
+SUBSET = {"T+OM (PCR6+)": ("T", "OM"), "T+APP (PCR6+)": ("T", "APP"),
+          "APP+OM (PCR6+)": ("APP", "OM"), "T only": ("T",)}
 
 
 def fuse(t, arm, w, attribute=False):
@@ -25,6 +28,12 @@ def fuse(t, arm, w, attribute=False):
         vs = SUBSET[arm]
         idx = [VIEWS.index(v) for v in vs]
         m = P.masses_of(t, vs, [w[i] for i in idx])
+        if len(vs) == 1:                                   # a single view is its own fused opinion
+            f = m[:, 0, :]
+            if attribute:
+                n = len(f)
+                return f, {"K": np.zeros(n), "K_TS": np.zeros(n), "K_AO": np.zeros(n), "K_all": np.zeros(n)}
+            return f
         return P.fuse(m, True, attribute)
     m = P.masses_of(t, VIEWS, w)
     if arm == "PCR6P-R":
