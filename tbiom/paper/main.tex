@@ -73,6 +73,19 @@ Evidential deep learning~\cite{edl} places a Dirichlet over the class simplex so
 \subsection{Conflict redistribution}
 Dempster's rule normalises conflicting mass away, which is what produces its well-known counter-intuitive behaviour under strong disagreement. Proportional conflict redistribution rules instead return conflicting mass to the sources that produced it~\cite{pcr}. PCR6 is the standard multi-source form; Dezert \emph{et al.}~\cite{pcr6plus} show that PCR5 and PCR6 can still assign conflicting mass to an ignorant source, and restore neutrality of the vacuous belief assignment through binary keeping indexes, giving PCR5\textsuperscript{+} and \pcrp{}. We use the direct multi-source \pcrp{} rule and credit it as theirs; our contribution here is its application to a reliability-discounted three-view detector and the demonstration that the property it restores is one our system actually exercises.
 
+\subsection{Relation to the conference version}
+This paper extends~\cite{discern}, which combined visual, semantic-predicate and structural streams under a
+Dirichlet evidential framework with confidence-modulated fusion, inter-branch disagreement calibration and
+per-stream auxiliary supervision, evaluated on five cross-dataset benchmarks. Table~\ref{tab:extension} states what
+is retained, modified, replaced, removed and new. In short: the evidential treatment of heterogeneous streams is
+retained; the semantic-predicate stream is removed and the structural stream replaced by a single off-manifold
+deviation score; a temporal view is added; the two fusion mechanisms are replaced by a fitted reliability discount and
+a conflict-redistribution rule; and the evaluation is extended from five benchmarks to ten plus $41$ DF40
+generator--source entries. The reenactment failure this paper addresses is not visible at five swap-dominated
+benchmarks, which is why it was not identified in the conference version.
+
+\input{tables/tab_extension}
+
 \section{Method}
 \label{sec:method}
 
@@ -134,7 +147,14 @@ shows that this division of labour is real and that each view carries a family t
 distilled from a face-representation model. We evaluated it as a candidate view under the same operator and fitting
 procedure; the reliability fit drove its weight to zero in all five folds, whether it was added to the deployed set or
 substituted for the appearance view, so the fused system was numerically unchanged by its presence. It is therefore
-excluded and the fusion is fixed at three views. The spatial views themselves are frozen: they are warm-started from our trained baseline and not updated. The system's only new trainable component relative to that baseline is the temporal view. This makes the comparison in Sec.~\ref{sec:df40} a controlled one -- the spatial evidence is literally the baseline's own.
+excluded and the fusion is fixed at three views. The spatial views themselves are frozen: they are warm-started from our trained baseline and not updated. The system's only new trainable component relative to that baseline is the temporal view.
+
+Freezing the spatial views is a deliberate choice, not a convenience. Retraining the spatial encoder alongside a new
+temporal branch would confound two changes, and any gain could then be attributed to either. By holding the spatial
+evidence at the baseline's own values we make Sec.~\ref{sec:df40} a controlled contrast in which the only difference
+between the two systems is the presence of the temporal view and the rule used to combine the evidence. The cost of
+this choice is that the system inherits whatever the baseline's spatial views cannot see; the benefit is that the
+attribution of the result is unambiguous.
 
 \subsection{Opinions}
 We work on the binary frame $\Theta=\{\textit{fake},\textit{genuine}\}$ with a uniform base rate and $W=2$. A view producing non-negative evidence $e_k$ for class $k$ defines a Dirichlet with $\alpha_k=e_k+1$ and $S=\sum_k \alpha_k$, and the corresponding opinion
