@@ -252,5 +252,171 @@ def main():
           len(chance), "near-chance reenactment generators")
 
 
+# ===================================================================================================================
+# Additional tables (expansion pass). Kept in a separate entry point so the core tables above stay readable.
+# ===================================================================================================================
+def extras():
+    OUT.mkdir(parents=True, exist_ok=True)
+    EX = js("EXP_PCR6P_EXPOSED")
+    E = EX[CFG]
+    Dv = js("EXP_PCR6P_DEVELOPMENT")[CFG]
+    F = js("PAPER_EXTRA_FACTS")
+    meta = json.load(open("logs/tbiom/df40/meta.json"))
+    t = lambda arm, tn, k="auroc": float(np.mean([r[k] for r in E["tests"][arm][tn]]))
+    g = lambda cfg, arm, n: float(np.mean(EX[cfg]["df40"][arm][n]))
+    cellc = lambda cfg, arm, f, s: float(np.mean([g(cfg, arm, n) for n in EX[cfg]["df40"][arm]
+                                                  if meta[n]["family"] == f and meta[n]["source"] == s]))
+    balc = lambda cfg, arm: float(np.mean([cellc(cfg, arm, f, s) for f, s, _ in CELLS]))
+
+    # ---------------------------------------------------------------- per-view evidence on the test sets
+    pv = F["per_view_test"]
+    body = ["\\begin{table}[t]", "\\centering",
+            "\\caption{What each view sees on its own, video AUROC. A single view needs no combination, so these "
+            "numbers are operator-independent. The last two rows isolate reenactment inside sets that are otherwise "
+            "swap-dominated, and are where the temporal and spatial views separate most sharply.}",
+            "\\label{tab:perview}", "\\small", "\\begin{tabular}{lrrccc}", "\\toprule",
+            "Test set & real & fake & $T$ & $A$ & $O$ \\\\", "\\midrule"]
+    for tn in TESTS:
+        d = pv.get(tn)
+        if d:
+            best = max(d["T"], d["APP"], d["OM"])
+            c = [("\\textbf{%.4f}" % d[k]) if abs(d[k] - best) < 1e-12 else f"{d[k]:.4f}" for k in ("T", "APP", "OM")]
+            body.append(f"{SHORT[tn]} & {d['n_real']} & {d['n_fake']} & " + " & ".join(c) + " \\\\")
+    body.append("\\midrule")
+    for tn, lab in (("CDFv3 reenactment", "CDF-v3, reenactment only"),
+                    ("KoDF first-order motion", "KoDF, first-order motion")):
+        d = pv.get(tn)
+        if d:
+            best = max(d["T"], d["APP"], d["OM"])
+            c = [("\\textbf{%.4f}" % d[k]) if abs(d[k] - best) < 1e-12 else f"{d[k]:.4f}" for k in ("T", "APP", "OM")]
+            body.append(f"{lab} & {d['n_real']} & {d['n_fake']} & " + " & ".join(c) + " \\\\")
+    body += ["\\bottomrule", "\\end{tabular}", "\\end{table}"]
+    w("tab_perview", "\n".join(body), "PAPER_EXTRA_FACTS.json")
+
+    # ---------------------------------------------------------------- reenactment slices, fused
+    body = ["\\begin{table}[t]", "\\centering",
+            "\\caption{Reenactment isolated inside two benchmarks that are otherwise dominated by other "
+            "manipulations. The fused system tracks the temporal view rather than the spatial majority.}",
+            "\\label{tab:slices}", "\\small", "\\begin{tabular}{lccccc}", "\\toprule",
+            "Slice & \\textbf{Ours} & $T{+}O$ & $A{+}O$ & $T$ alone & best spatial \\\\", "\\midrule"]
+    for tn, lab in (("CDFv3 reenactment", "CDF-v3 reenactment"), ("KoDF first-order motion", "KoDF FOM")):
+        if tn in E["tests"][OURS]:
+            d = pv.get(tn, {})
+            body.append(f"{lab} & \\textbf{{{t(OURS, tn):.4f}}} & {t('T+OM (PCR6+)', tn):.4f} & "
+                        f"{t('APP+OM (PCR6+)', tn):.4f} & {t('T only', tn):.4f} & "
+                        f"{max(d.get('APP', float('nan')), d.get('OM', float('nan'))):.4f} \\\\")
+    body += ["\\bottomrule", "\\end{tabular}", "\\end{table}"]
+    w("tab_slices", "\n".join(body), "EXP_PCR6P_EXPOSED.json + PAPER_EXTRA_FACTS.json")
+
+    # ---------------------------------------------------------------- cross-configuration robustness on DF40
+    NAMES = {"42": "warm+gate spatial, V-JEPA seed 42 (deployed)",
+             "T1337": "warm+gate spatial, V-JEPA seed 1337",
+             "armB42": "SBI arm B spatial seed 42, V-JEPA seed 42",
+             "armB1337": "SBI arm B spatial seed 1337, V-JEPA seed 1337"}
+    body = ["\\begin{table}[t]", "\\centering",
+            "\\caption{DF40 under four detector configurations. The first two share a spatial recipe and differ in "
+            "the temporal seed; the last two are a different spatial training recipe, so the four differ in more "
+            "than a seed. Family-balanced means.}",
+            "\\label{tab:configs}", "\\small", "\\begin{tabular}{lcccc}", "\\toprule",
+            "Configuration & \\textbf{Ours} & Dempster-R & Averaging-R & swap / reenact. \\\\", "\\midrule"]
+    for c, lab in NAMES.items():
+        if c not in EX or OURS not in EX[c]["df40"]:
+            continue
+        sw = np.mean([cellc(c, OURS, "face swap", s) for s in ("cdf", "ff")])
+        re_ = np.mean([cellc(c, OURS, "reenactment", s) for s in ("cdf", "ff")])
+        vals = [balc(c, OURS), balc(c, "Dempster-R"), balc(c, "Averaging-R")]
+        best = max(vals)
+        cells = " & ".join(("\\textbf{%.4f}" % v) if abs(v - best) < 1e-12 else f"{v:.4f}" for v in vals)
+        body.append(f"{lab} & {cells} & {sw:.4f} / {re_:.4f} \\\\")
+    body += ["\\bottomrule", "\\end{tabular}", "\\end{table}"]
+    w("tab_configs", "\n".join(body), "EXP_PCR6P_EXPOSED.json, all four configurations")
+
+    # ---------------------------------------------------------------- uncertainty scores, all sets
+    SC = [("vacuity", "fused vacuity"), ("conflict_K", "conflict $K$"), ("entropy", "entropy"), ("margin", "margin")]
+    body = ["\\begin{table}[t]", "\\centering",
+            "\\caption{Error-detection AUROC of each uncertainty score for the proposed system, per benchmark. "
+            "Higher is better; the score ranks the system's own mistakes at the frozen threshold. Entropy and "
+            "margin coincide on a binary frame, both being monotone in $|p-0.5|$.}",
+            "\\label{tab:uncertainty}", "\\small", "\\begin{tabular}{lcccc}", "\\toprule",
+            "Test set & " + " & ".join(l for _k, l in SC) + " \\\\", "\\midrule"]
+    for tn in TESTS:
+        vals = [t(OURS, tn, f"err_auroc_{k}") for k, _l in SC]
+        best = max(vals)
+        body.append(f"{SHORT[tn]} & " + " & ".join(
+            ("\\textbf{%.3f}" % v) if abs(v - best) < 1e-12 else f"{v:.3f}" for v in vals) + " \\\\")
+    body.append("\\midrule")
+    means = [float(np.mean([t(OURS, tn, f"err_auroc_{k}") for tn in TESTS])) for k, _l in SC]
+    body.append("Mean & " + " & ".join(f"{v:.3f}" for v in means) + " \\\\")
+    body += ["\\bottomrule", "\\end{tabular}", "\\end{table}"]
+    w("tab_uncertainty", "\n".join(body), "EXP_PCR6P_EXPOSED.json")
+
+    # ---------------------------------------------------------------- fitted reliability weights
+    body = ["\\begin{table}[t]", "\\centering",
+            "\\caption{Reliability weights fitted per fold for the proposed system, and how often each view is "
+            "discounted away entirely. The temporal and off-manifold views are always retained; the appearance view "
+            "is switched off on the folds where its evidence does not help, which is the behaviour "
+            "Table~\\ref{tab:viewrole} resolves by manipulation family.}",
+            "\\label{tab:weights}", "\\small", "\\begin{tabular}{lccccc c}", "\\toprule",
+            "View & fold 1 & fold 2 & fold 3 & fold 4 & fold 5 & zero in \\\\", "\\midrule"]
+    W = E["w"][OURS]
+    for i, v in enumerate(("T", "A", "O")):
+        cells = " & ".join(f"{w_[i]:g}" for w_ in W)
+        z = sum(1 for w_ in W if w_[i] == 0.0)
+        body.append(f"${v}$ & {cells} & {z}/{len(W)} \\\\")
+    body += ["\\bottomrule", "\\end{tabular}", "\\end{table}"]
+    w("tab_weights", "\n".join(body), "EXP_PCR6P_EXPOSED.json")
+
+    # ---------------------------------------------------------------- operators, per test set
+    ORD = [(OURS, "\\textbf{PCR6$^+$-R}"), ("PCR6-R", "PCR6-R"), ("PCR6-pairwise-R", "PCR6-R pairwise"),
+           ("Yager-R", "Yager-R"), ("Averaging-R", "Averaging-R"), ("Dempster-R", "Dempster-R")]
+    body = ["\\begin{table*}[t]", "\\centering",
+            "\\caption{Every combination rule on every benchmark, over the same view opinions with the same fitted "
+            "reliabilities. The spread across rules is small on all ten sets; the rules are separated by the "
+            "property in Table~\\ref{tab:operators}, not by accuracy.}",
+            "\\label{tab:operatorsfull}", "\\setlength{\\tabcolsep}{4pt}", "\\small",
+            "\\begin{tabular}{l" + "c" * len(TESTS) + "c}", "\\toprule",
+            "Operator & " + " & ".join(SHORT[x] for x in TESTS) + " & Mean \\\\", "\\midrule"]
+    for arm, lab in ORD:
+        if arm not in E["tests"]:
+            continue
+        row = [t(arm, x) for x in TESTS]
+        body.append(f"{lab} & " + " & ".join(f"{v:.4f}" for v in row) + f" & {np.mean(row):.4f} \\\\")
+    body += ["\\bottomrule", "\\end{tabular}", "\\end{table*}"]
+    w("tab_operatorsfull", "\n".join(body), "EXP_PCR6P_EXPOSED.json")
+
+    # ---------------------------------------------------------------- conflict structure on development
+    cases = Dv[0]["cases"]
+    cg = lambda nm, k: float(np.nanmean([r["cases"][nm][k] for r in Dv]))
+    body = ["\\begin{table}[t]", "\\centering",
+            "\\caption{Conflict structure on the development selection folds. $K_{TS}$ is conflict between the "
+            "temporal view and a spatial view, $K_{AO}$ between the two spatial views, $K_{\\mathrm{all}}$ the "
+            "three-way term. Conflict is concentrated on the temporal--spatial axis and is high whenever the views "
+            "disagree, whichever of them is right.}",
+            "\\label{tab:conflict}", "\\small", "\\begin{tabular}{lrcccc}", "\\toprule",
+            "Case & videos & $K_{TS}$ & $K_{AO}$ & $K_{\\mathrm{all}}$ & fused correct \\\\", "\\midrule"]
+    for nm in cases:
+        body.append(f"{nm.capitalize()} & {cg(nm, 'n'):.0f} & {cg(nm, 'K_TS'):.4f} & {cg(nm, 'K_AO'):.4f} & "
+                    f"{cg(nm, 'K_all'):.4f} & {cg(nm, 'fused_correct'):.4f} \\\\")
+    body += ["\\bottomrule", "\\end{tabular}", "\\end{table}"]
+    w("tab_conflict", "\n".join(body), "EXP_PCR6P_DEVELOPMENT.json")
+
+    # ---------------------------------------------------------------- efficiency
+    P = F.get("params", {})
+    body = ["\\begin{table}[t]", "\\centering",
+            "\\caption{Trainable parameters added by this work. The spatial views are frozen, so the entire "
+            "trainable footprint of the extension is the temporal view's adapters and evidential head; the fusion "
+            "itself has three fitted scalars.}",
+            "\\label{tab:efficiency}", "\\small", "\\begin{tabular}{lr}", "\\toprule",
+            "Component & Trainable parameters \\\\", "\\midrule",
+            f"Temporal LoRA adapters ({P.get('temporal_adapted_modules', '--')} attention projections) & "
+            f"{P.get('temporal_adapters', 0):,} \\\\",
+            f"Temporal evidential head & {P.get('temporal_head', 0):,} \\\\",
+            "Appearance and off-manifold views (frozen) & 0 \\\\",
+            "Reliability weights (three scalars, grid-fitted) & 3 \\\\", "\\midrule",
+            f"\\textbf{{Total}} & \\textbf{{{P.get('temporal_trainable', 0):,}}} \\\\",
+            "\\bottomrule", "\\end{tabular}", "\\end{table}"]
+    w("tab_efficiency", "\n".join(body), "PAPER_EXTRA_FACTS.json (read from the branch checkpoint)")
+
+
 if __name__ == "__main__":
-    main()
+    extras()
