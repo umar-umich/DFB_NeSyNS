@@ -1,0 +1,123 @@
+# Joint IBDC report
+
+Brief: `tbiom/docs/discern-v2-joint-ibdc-brief.md`. Code in `training/joint_ibdc/`, outputs in
+`analysis/joint_ibdc/`. The deployed configuration under test is **`42`**: warm+gate epoch 19 spatial
+views with `vjepa2_lora_B_seed42`, held in **DISCERN_Ext** (`eval_adaptation/configs/warm_dicome_gate_seed42.yaml`);
+the temporal branch and the fusion live in **DFB_NeSyNS**. No deployed config or checkpoint was modified.
+
+`u = K/S` is called **evidential vacuity** throughout, never epistemic uncertainty.
+
+## Verdicts
+
+| item | verdict | evidence | one line |
+|---|---|---|---|
+| Fallback check | **three views** | `tbiom/reports/EXP_PCR6P_DEVELOPMENT.json` | Only one of the two required conditions holds, so the two-view fallback does not trigger. |
+| Task 1, fusion equivalence | **PASS** | `analysis/joint_ibdc/task1_fusion_equivalence.json` | The torch fusion reproduces the deployed one exactly, 0.0 maximum absolute difference against a 1e-6 tolerance. |
+| Task 1, unit tests | **PASS** | `analysis/joint_ibdc/task1_tests.txt` | 11 of 11 assertions, including the original IBDC's shared-ignorance failure reproduced by driving a gradient step. |
+| Task 2, feature cache | TODO(run) | -- | Needs GPU; sequenced behind the I-JEPA extraction. |
+| G0a, premise | **PASS** | `analysis/joint_ibdc/gate_g0a.json` | Conflict adds to vacuity when predicting the fused system's errors: +0.0312, 95% CI [+0.0201, +0.0424]. |
+| G0b, activity | TODO(run) | -- | Blocked on Task 2. |
+| Two-case diagnostic | **done** | `analysis/joint_ibdc/two_case_diagnostic.json` | Both directions of complementarity are large, and they split by forgery family. |
+| Collapse check after J1 | TODO(run) | -- | Blocked on Task 2. |
+| J2b pass rule | TODO(run) | -- | Blocked on Task 2. |
+
+## The fallback check, and why the system identity mattered
+
+The brief says to run two views if the PCR6+ "video plus one spatial view" row is within −0.005 of
+the three-view system **and** Appearance has zero trust weight in at least 4 of 5 folds. On the
+deployed configuration only the first holds.
+
+| condition | deployed `42` | armB42 (NOT deployed) |
+|---|---|---|
+| T+OM minus three-view, development v3.1 | +0.0005 | +0.0000 |
+| folds with Appearance weight 0 | **3 of 5** | 5 of 5 |
+| fallback | **does not trigger** | would trigger |
+
+`PCR6P_REFERENCE_MANIFEST.md` section 3 states that `42` is the deployed warm+gate epoch 19 spatial
+path and that the armB tags are a different **training recipe**, not another seed of it. Reading
+armB42 as the deployed system would have built this entire study on two views.
+
+## Task 1
+
+The torch fusion in `training/joint_ibdc/fusion_torch.py` is written independently of the deployed
+numpy implementation rather than wrapping it, so the comparison is a cross-check and not a function
+compared with itself. `test_ibdc.py` additionally asserts that the independently derived tuple
+enumeration and keeping indexes agree element-for-element with the deployed spec.
+
+| trust triple | max abs diff, mass | p | u |
+|---|---|---|---|
+| (0.25, 0.25, 1.0) | 0.0 | 0.0 | 0.0 |
+| (0.25, 0.0, 1.0) | 0.0 | 0.0 | 0.0 |
+| (1.0, 1.0, 1.0) | 0.0 | 0.0 | 0.0 |
+| discount recomputed in torch from (p, u) | 2.2e-16 | -- | -- |
+
+1,000 development videos, all five fitted per-fold triples plus the undiscounted case. Tolerance 1e-6.
+
+## G0a, premise
+
+Error AUROC on out-of-fold development opinions, 5-fold source-grouped cross-validation, mean over
+the five fitted splits.
+
+| feature set | error AUROC | pooled |
+|---|---|---|
+| 1. u_f alone | 0.7278 ± 0.0120 | 0.7232 |
+| 2. kappa alone | 0.6283 ± 0.0653 | 0.6416 |
+| 3. u_f and kappa | 0.7482 ± 0.0279 | 0.7545 |
+| 4. u_f and the three kappa_ij | 0.7584 ± 0.0341 | 0.7648 |
+
+**set 3 − set 1 = +0.0312, 95% CI [+0.0201, +0.0424]** over 1,000 source-grouped bootstrap draws.
+The interval is above zero, so **G0a passes**.
+
+### The finding the headline hides
+
+The gain is not uniform across folds. It tracks whether Appearance survives the discount.
+
+| split | Appearance weight | kappa alone | set 3 − set 1 |
+|---|---|---|---|
+| 0 | 0.25 | 0.6780 | +0.036 |
+| 1 | 0.25 | 0.6800 | +0.035 |
+| 2 | 0 | 0.5286 | −0.009 |
+| 3 | 0 | 0.5714 | −0.013 |
+| 4 | 0 | 0.6832 | +0.054 |
+
+When Appearance is discounted to zero it is vacuous, so every kappa_ij containing it is identically
+zero; sets 3 and 4 then collapse to the same two features and kappa alone falls towards chance. In
+splits 2 and 3 conflict adds nothing at all. Since IBDC acts on kappa, this bounds how much the loss
+can do in the folds where the discount has already removed a view, and it is the same 3-of-5 fact
+that decided the fallback. It should be read alongside G0b, which measures how often the hinge is
+active at all.
+
+## Two-case diagnostic
+
+Development pool, each view at its own FF++ validation EER threshold.
+
+| view | tau | accuracy |
+|---|---|---|
+| T (video) | 0.5430 | 0.7098 |
+| APP | 0.6395 | 0.7571 |
+| OM | 0.3842 | 0.7613 |
+
+- Video view right while **both** spatial views are wrong: **771 videos, 13.26%**
+- Both spatial views right while the video view is wrong: **1,103 videos, 18.97%**
+
+| source | n | video only | spatial only |
+|---|---|---|---|
+| CDFv3valG | 1664 | 245 | 389 |
+| DF40train | 704 | **244** | 80 |
+| FFpp_val | 700 | 8 | 14 |
+| FFIWval | 500 | 30 | 96 |
+| CDFv2val | 450 | 21 | **168** |
+| DFDCPval | 450 | 30 | 148 |
+| DFEval24val | 450 | 75 | 70 |
+| DS11val | 448 | 47 | 69 |
+| DS20val | 448 | 71 | 69 |
+
+The two directions are not symmetric by family. On DF40train, which is reenactment-heavy, the video
+view uniquely rescues 244 videos against 80 the other way, about 3 to 1 in its favour. On CDFv2val,
+which is face swap, it is 21 against 168, about 8 to 1 the other way. Neither view dominates; they
+fail on different forgery families, which is the complementarity the fusion exists to exploit.
+
+## Still to run
+
+Task 2's feature cache needs GPU and is sequenced behind the I-JEPA extraction. G0b, the collapse
+check, all four runs (J0, J1, J2a, J2b), the λ sweep and every metric table depend on it.

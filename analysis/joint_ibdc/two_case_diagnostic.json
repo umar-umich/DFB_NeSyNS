@@ -1,0 +1,64 @@
+{
+ "n": 5814,
+ "tau": {
+  "T": 0.5429997821543219,
+  "APP": 0.639454008125,
+  "OM": 0.3841521259375
+ },
+ "accuracy": {
+  "T": 0.7098383212934296,
+  "APP": 0.7571379428964569,
+  "OM": 0.761265909872721
+ },
+ "video_right_both_spatial_wrong": 771,
+ "both_spatial_right_video_wrong": 1103,
+ "video_right_both_spatial_wrong_frac": 0.13261093911248711,
+ "both_spatial_right_video_wrong_frac": 0.18971448228414173,
+ "by_source": {
+  "CDFv2val": {
+   "n": 450,
+   "video_only": 21,
+   "spatial_only": 168
+  },
+  "CDFv3valG": {
+   "n": 1664,
+   "video_only": 245,
+   "spatial_only": 389
+  },
+  "DF40train": {
+   "n": 704,
+   "video_only": 244,
+   "spatial_only": 80
+  },
+  "DFDCPval": {
+   "n": 450,
+   "video_only": 30,
+   "spatial_only": 148
+  },
+  "DFEval24val": {
+   "n": 450,
+   "video_only": 75,
+   "spatial_only": 70
+  },
+  "DS11val": {
+   "n": 448,
+   "video_only": 47,
+   "spatial_only": 69
+  },
+  "DS20val": {
+   "n": 448,
+   "video_only": 71,
+   "spatial_only": 69
+  },
+  "FFIWval": {
+   "n": 500,
+   "video_only": 30,
+   "spatial_only": 96
+  },
+  "FFpp_val": {
+   "n": 700,
+   "video_only": 8,
+   "spatial_only": 14
+  }
+ }
+}

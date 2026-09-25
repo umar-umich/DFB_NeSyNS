@@ -1,0 +1,20 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /data/umar/miniconda3/envs/discern_ext/bin/python
+cachedir: .pytest_cache
+rootdir: /data/umar/Repos/DFB_NeSyNS
+plugins: anyio-4.14.2
+collecting ... collected 11 items
+
+training/joint_ibdc/test_ibdc.py::test_combinatorics_match_deployed_spec PASSED [  9%]
+training/joint_ibdc/test_ibdc.py::test_theta_keeping_index_is_zero_in_conflict PASSED [ 18%]
+training/joint_ibdc/test_ibdc.py::test_shared_ignorance_is_inert PASSED  [ 27%]
+training/joint_ibdc/test_ibdc.py::test_confident_disagreement_raises_vacuity PASSED [ 36%]
+training/joint_ibdc/test_ibdc.py::test_confident_agreement_is_inert PASSED [ 45%]
+training/joint_ibdc/test_ibdc.py::test_zero_trust_branch_contributes_no_conflict PASSED [ 54%]
+training/joint_ibdc/test_ibdc.py::test_gradient_flows_only_through_vacuity PASSED [ 63%]
+training/joint_ibdc/test_ibdc.py::test_original_ibdc_lowers_vacuity_under_shared_ignorance PASSED [ 72%]
+training/joint_ibdc/test_ibdc.py::test_opinion_evidence_roundtrip PASSED [ 81%]
+training/joint_ibdc/test_ibdc.py::test_discount_endpoints PASSED         [ 90%]
+training/joint_ibdc/test_ibdc.py::test_fused_masses_are_a_distribution PASSED [100%]
+
+============================== 11 passed in 1.85s ==============================
