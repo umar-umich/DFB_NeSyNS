@@ -54,10 +54,16 @@ def main():
         print("G1 needs FFpp_train_B for the frozen standardiser; not cached yet")
         return 2
 
-    tr = D.load("FFpp_train_B", arrays=("eps", "q"))
+    # The standardiser is fitted on FFpp_train_B224: the same per-clip arm-B draw, applied AFTER the
+    # 224 resize, where the evaluation severities are applied. Fitted at the native-256 placement its
+    # blockiness never exceeds 1.37 while evaluation JPEG reaches 1.62, so the quadratic extrapolated
+    # 8 to 13 sd out of range and d_comp on a_k exploded to 1.0-2.7. At the matched placement the
+    # evaluation cells sit within 2.3 sd and the fit interpolates.
+    STD_STEM = "FFpp_train_B224" if D.shard_files("FFpp_train_B224") else "FFpp_train_B"
+    tr = D.load(STD_STEM, arrays=("eps", "q"))
     real = tr["y"] == 0
     st = FX.fit_standardizer(tr["eps"][real], tr["q"][real])
-    print(f"standardiser fitted on {int(real.sum())} real FF++ train frames (B mixture)")
+    print(f"standardiser fitted on {int(real.sum())} real FF++ train frames from {STD_STEM}")
 
     per_level, frame_level = {}, {}
     for lvl, stem in LEVELS.items():
@@ -65,6 +71,7 @@ def main():
         _, m, yv = video_mean_log_eps(d)
         a = FX.apply_standardizer(d["eps"], d["q"], st)
         _, av = D.video_mean(a, d["video"])
+        per_level.setdefault("_a", {})[lvl] = (av, yv)
         per_level[lvl] = {
             "n_videos": int(len(yv)), "n_real": int((yv == 0).sum()), "n_fake": int((yv == 1).sum()),
             "mean_log_eps_real": m[yv == 0].mean(0).tolist(),
@@ -74,8 +81,16 @@ def main():
         le = np.log(d["eps"].astype(np.float64))
         frame_level[lvl] = {"mean_log_eps_real": le[d["y"] == 0].mean(0).tolist()}
 
-    clean = np.array(per_level["clean"]["mean_log_eps_real"])
-    d_fake = np.array(per_level["clean"]["mean_log_eps_fake"]) - clean
+    # PRIMARY: measured on the standardised a_k, which is the quantity R4 actually consumes and the
+    # one the brief's "standardized against what real faces of the same quality produce" refers to.
+    A = per_level.pop("_a")
+    ac, ay = A["clean"]
+    clean = ac[ay == 0].mean(0)
+    d_fake = ac[ay == 1].mean(0) - clean
+    for lvl in LEVELS:
+        av, yv = A[lvl]
+        per_level[lvl]["mean_a_real"] = av[yv == 0].mean(0).tolist()
+        per_level[lvl]["mean_a_fake"] = av[yv == 1].mean(0).tolist()
     # THE RULE IS AMBIGUOUS AND THE TWO READINGS DISAGREE, so both are computed and reported.
     #   signed:    d_comp < d_fake, the brief's literal wording
     #   magnitude: |d_comp| < |d_fake|, "is the quality effect smaller than the manipulation effect"
@@ -85,7 +100,7 @@ def main():
     # shift, which is why the magnitude reading is reported as the primary one.
     verdicts = {}
     for lvl in ("jpeg50", "rs050"):
-        d_comp = np.array(per_level[lvl]["mean_log_eps_real"]) - clean
+        d_comp = np.array(per_level[lvl]["mean_a_real"]) - clean
         magn = [bool(abs(c) < abs(f)) for c, f in zip(d_comp, d_fake)]
         sign = [bool(c < f) for c, f in zip(d_comp, d_fake)]
         verdicts[lvl] = {"d_comp": d_comp.tolist(),
@@ -100,6 +115,8 @@ def main():
            "reading": "primary is |d_comp| < |d_fake|; the signed reading is reported beside it",
            "premise_check": "every resize-0.50 shift is NEGATIVE, so resizing LOWERS the prediction "
                             "error; the brief assumes compression and blur raise it",
+           "measured_on": "standardised a_k (the quantity R4 consumes); raw log eps reported per level",
+           "standardiser": STD_STEM,
            "rule":
            "d_comp < d_fake for >= 3 of 5 blocks, for both JPEG q50 and resize 0.50",
            "d_fake": d_fake.tolist(), "blocks": BLOCKS, "verdicts": verdicts,

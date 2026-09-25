@@ -12,9 +12,9 @@ config or checkpoint was modified.
 | G0 predictor weights | **PASS** | `analysis/ijepa/G0_output.txt` | All three weight sets load with `strict=True` and the trained predictor beats all three controls on both blocks. |
 | block alignment (pre-extraction stop check) | **PASS, with a caveat** | `analysis/ijepa/block_alignment.json`, `analysis/ijepa/block_overlays/` | Every block is majority-face on both FF++ and CDFv2; the two cheek blocks carry about a quarter background. |
 | extraction budget | **RESOLVED** | `analysis/ijepa/budget_estimate.json`, `analysis/ijepa/logs/` | The 24-hour ceiling was a fp32 estimate. bf16 at batch 64 is 4.9x faster on the same card, so the non-DF40 half plus the processed cells is ~3.7 hours of wall clock. DF40 is still not queued. |
-| G1 compression confound | **FAIL on the primary reading, PASS on the literal one** | `analysis/ijepa/gate_g1.json` | The two readings of the rule disagree, because resizing LOWERS the prediction error rather than raising it. |
-| G2 single-view signal | TODO(run) | -- | Blocked. |
-| G3 fusion | TODO(run) | -- | Blocked. |
+| G1 compression confound | **PASS** | `analysis/ijepa/gate_g1.json` | 4/5 and 4/5 on the magnitude reading, 5/5 and 5/5 signed, once the standardiser is fitted at the same processing placement the evaluation cells use. |
+| G2 single-view signal | TODO(run) | -- | Unblocked by G1; R2/R2b/R3/R4 next. |
+| G3 fusion | TODO(run) | -- | Needs G2. |
 
 ## G0, full output (tail)
 
@@ -463,3 +463,45 @@ rather than a defect in either. **The fix is to fit the standardiser on descript
 evaluation range**: FF++ train is being re-extracted with the same per-clip arm-B draw applied AFTER
 the 224 resize (`--arm-b-at-224`), as a separate cache so the training-conditions cache the head rows
 need stays untouched. G1 is then re-run on a_k.
+
+
+## G1 PASSES once the standardiser is fitted at the evaluation's processing placement
+
+Measured on the standardised a_k -- the quantity R4 consumes, and what the brief means by "the error
+is standardized against what real faces of the same quality produce".
+
+| block | d_fake | d_comp q50 | d_comp resize 0.50 |
+|---|---:|---:|---:|
+| upper | 0.1266 | −0.1246 | −0.0443 |
+| lower | 0.0640 | −0.0912 | −0.1399 |
+| left cheek | 0.0967 | +0.0151 | −0.0824 |
+| right cheek | 0.1100 | +0.0927 | −0.0717 |
+| **centre** | **0.3409** | −0.1009 | −0.0793 |
+
+**magnitude reading 4/5 and 4/5 → PASS. Signed reading 5/5 and 5/5 → PASS.** The ambiguity that
+blocked the gate no longer changes the verdict.
+
+### What actually fixed it
+
+Three things were wrong, and only the third mattered for the verdict.
+
+1. **The descriptors were measured on the wrong pixels.** `run()` processed its own copy of the batch
+   while `quality()` read the untouched input, so eps described a processed frame and q a clean one.
+   Blur and blockiness were byte-identical across clean, q50, q30 and rs0.35 — which real descriptors
+   cannot be. Fixed, but it does not move a gate computed on raw log eps.
+2. **The gate was computed on raw log eps**, which no row except R3 consumes. Moved to a_k.
+3. **The standardiser could not interpolate at the evaluation cells.** Arm B applies JPEG at the
+   native 256 crop and the 224 resize then smears the 8x8 grid, so its blockiness tops out at 1.3662,
+   while evaluation applies JPEG at 224 and reaches 1.6169. The fit was extrapolating a quadratic 8 to
+   13 standard deviations outside its range, giving d_comp of 1.0 to 2.7 on JPEG.
+
+Fitting on `FFpp_train_B224` — the same per-clip arm-B draw applied after the 224 resize — brings
+every evaluation cell within 2.3 sd of the training mean, and the fit interpolates instead.
+
+| | blockiness sd | max | eval q50 | eval q30 |
+|---|---:|---:|---:|---:|
+| arm B at native 256 | 0.0481 | 1.3662 | +8.3 sd | +12.6 sd |
+| **arm B at 224** | **0.2056** | **2.4121** | **+1.3 sd** | **+2.3 sd** |
+
+The training-conditions cache `FFpp_train_B` is untouched and still used for the head rows, which
+must match training. `FFpp_train_B224` exists only to fit the standardiser.
