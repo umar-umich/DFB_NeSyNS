@@ -63,8 +63,15 @@ def design(q):
 
 
 def fit_standardizer(eps, q):
-    """Fit mu_k(q) and sigma_k on REAL FF++ train frames only. eps (N,5), q (N,D)."""
+    """Fit mu_k(q) and sigma_k on REAL FF++ train frames only. eps (N,5), q (N,D).
+
+    q is cast to float64 BEFORE any reduction. The cache stores it as fp16, and numpy reduces in the
+    input dtype: summing 115,198 fp16 values overflows the accumulator well before the true total,
+    which silently shifts the frozen mu_q the whole study then applies. No cached value is anywhere
+    near the fp16 ceiling -- the accumulator is the problem, not the data.
+    """
     eps = np.asarray(eps, dtype=np.float64)
+    q = np.asarray(q, dtype=np.float64)
     if eps.min() <= 0:
         raise ValueError("eps must be positive to take a log")
     mu_q, sd_q = q.mean(0), q.std(0)                  # z-scored for conditioning; frozen with the fit
@@ -88,6 +95,14 @@ def apply_standardizer(eps, q, st):
 
 
 # --------------------------------------------------------------------- R5 cross-block agreement
+# NOTE ON THE THIRD QUALITY DESCRIPTOR. The brief asks for blur, a blockiness score and the face box
+# size. Every stored crop in this corpus is 256x256 -- checked on FFpp_train, CDFv2 and IDForge -- so
+# the size descriptor is CONSTANT and carries no information, whether measured before or after the
+# 224 resize. Its z-scored column and its square are identically zero and the least-squares fit
+# simply ignores them. Standardisation therefore runs on blur and blockiness, which are the two that
+# bear on the compression confound G1 tests. Recorded rather than quietly dropped.
+
+
 def fit_tau(rbar_real_train, pct=5.0):
     """tau_k = the 5th percentile of ||r_bar_k|| over real FF++ c23 train frames, B mixture. Frozen."""
     n = np.linalg.norm(np.asarray(rbar_real_train, dtype=np.float32), axis=2)   # (N,5)
@@ -180,12 +195,16 @@ def _selftest():
     C4, _ = frame_agreement(r4, np.zeros(B, dtype=np.float32))
     assert abs(C4[0, 0] - 1.0) < 1e-4 and abs(C4[1, 0] + 1.0) < 1e-4
 
-    # video aggregation averages the right frames
-    keys = [f"ds/vid{n // 10}/frame{n}.png" for n in range(N)]
+    # video aggregation averages the right frames, under THE video rule (full directory path)
+    import sys as _sys
+    _sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
+    from data import video_of
+    keys = [f"ds/src/vid{n // 10}/frame{n}.png" for n in range(N)]
     order, X = video_agreement(r, keys, tau)
-    assert X.shape == (len(order), 4) and len(order) == N // 10
-    m = np.array([C[[i for i in range(N) if f"vid{i // 10}" == order[0]], 0].mean()])
-    assert abs(X[0, 0] - m[0]) < 1e-5
+    assert X.shape == (len(order), 4) and len(order) == N // 10, (X.shape, len(order))
+    sel = [i for i, k in enumerate(keys) if video_of(k) == order[0]]
+    assert sel, "the aggregation key must match the video rule"
+    assert abs(X[0, 0] - C[sel, 0].mean()) < 1e-5
 
     # standardiser removes a planted quality effect and its frozen coefficients transfer
     q = rng.normal(size=(N, 3))

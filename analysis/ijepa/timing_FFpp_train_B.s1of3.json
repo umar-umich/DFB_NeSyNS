@@ -1,0 +1,24 @@
+{
+ "dataset": "FFpp_train",
+ "stem": "FFpp_train_B.s1of3",
+ "amp": "bf16",
+ "arm_b": true,
+ "process": "clean",
+ "videos": 1200,
+ "frames": 38400,
+ "frames_per_video": 32.0,
+ "seconds": {
+  "model_load": 34.8,
+  "h5_read": 143.3,
+  "gpu": 1487.4
+ },
+ "frames_per_second_gpu": 25.82,
+ "eps_mean_per_block": {
+  "upper": 0.22675788402557373,
+  "lower": 0.31197795271873474,
+  "left_cheek": 0.3381757438182831,
+  "right_cheek": 0.35080477595329285,
+  "centre": 0.20730626583099365
+ },
+ "bytes_per_frame_cached": 28176
+}

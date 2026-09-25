@@ -1,0 +1,24 @@
+{
+ "dataset": "DFEval24",
+ "stem": "DFEval24",
+ "amp": "bf16",
+ "arm_b": false,
+ "process": "clean",
+ "videos": 814,
+ "frames": 23209,
+ "frames_per_video": 28.51,
+ "seconds": {
+  "model_load": 30.9,
+  "h5_read": 72.2,
+  "gpu": 905.4
+ },
+ "frames_per_second_gpu": 25.63,
+ "eps_mean_per_block": {
+  "upper": 0.27076804637908936,
+  "lower": 0.35968875885009766,
+  "left_cheek": 0.3662478029727936,
+  "right_cheek": 0.3689973056316376,
+  "centre": 0.2597399652004242
+ },
+ "bytes_per_frame_cached": 28176
+}

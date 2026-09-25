@@ -1,0 +1,24 @@
+{
+ "dataset": "VALmixV2",
+ "stem": "VALmixV2.s0of2",
+ "amp": "bf16",
+ "arm_b": false,
+ "process": "clean",
+ "videos": 1335,
+ "frames": 39004,
+ "frames_per_video": 29.22,
+ "seconds": {
+  "model_load": 28.2,
+  "h5_read": 147.6,
+  "gpu": 1548.7
+ },
+ "frames_per_second_gpu": 25.19,
+ "eps_mean_per_block": {
+  "upper": 0.23106274008750916,
+  "lower": 0.32249215245246887,
+  "left_cheek": 0.3443235158920288,
+  "right_cheek": 0.3502142131328583,
+  "centre": 0.21569344401359558
+ },
+ "bytes_per_frame_cached": 28176
+}

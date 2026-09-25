@@ -1,0 +1,24 @@
+{
+ "dataset": "FFIW",
+ "stem": "FFIW.s2of3",
+ "amp": "bf16",
+ "arm_b": false,
+ "process": "clean",
+ "videos": 578,
+ "frames": 36992,
+ "frames_per_video": 64.0,
+ "seconds": {
+  "model_load": 32.6,
+  "h5_read": 115.2,
+  "gpu": 1423.1
+ },
+ "frames_per_second_gpu": 25.99,
+ "eps_mean_per_block": {
+  "upper": 0.26201242208480835,
+  "lower": 0.3501521646976471,
+  "left_cheek": 0.35754117369651794,
+  "right_cheek": 0.3682069480419159,
+  "centre": 0.2519734799861908
+ },
+ "bytes_per_frame_cached": 28176
+}

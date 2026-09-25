@@ -274,3 +274,37 @@ it needs the family-resolved form before any claim is attached to it, and the ea
 Appearance helping on most source groups once resolved that way.
 
 The video view is the steadiest contributor, +0.058 to +0.069 in every fold.
+
+### The frozen standardiser, fitted on the completed FF++ train cache
+
+`analysis/ijepa/standardizer_FFpp_train_B.json`, fitted on **23,039 real** FF++ c23 training frames
+under the B mixture (115,198 frames, 3,600 videos, 92,159 fake).
+
+| block | sigma_k | tau_k | mean a_k, real | mean a_k, fake |
+|---|---:|---:|---:|---:|
+| upper | 0.1669 | 4.64 | 0.0000 | **+0.1215** |
+| lower | 0.1411 | 4.82 | 0.0000 | +0.0846 |
+| left cheek | 0.1235 | 4.02 | 0.0000 | +0.0942 |
+| right cheek | 0.1108 | 4.12 | 0.0000 | +0.0960 |
+| centre | 0.1623 | 4.49 | 0.0000 | **+0.3098** |
+
+Real frames sit at mean 0 and sd 1 by construction, so the fake column is the whole of the signal
+before any head is trained: the predictor is measurably worse at reconstructing every hidden block of
+a manipulated face, and worst by a factor of three at the CENTRE block, which is the one covering the
+region most manipulations actually edit. The R5 validity flag fires on 7.59% of (frame, pair) cells,
+and the cross-block cosine separates real from fake by +0.0053 (upper/lower) and +0.0033 (cheeks).
+
+**Two defects found while fitting this, both fixed.**
+
+*The fp16 accumulator.* `q` is cached as fp16 and numpy reduces in the input dtype, so summing
+115,198 values overflowed the accumulator and shifted the frozen `mu_q` that the whole study then
+applies. No cached value is near the fp16 ceiling -- the maximum blur is 1,737 against a limit of
+65,504 -- so the data was never the problem, only the reduction. Reductions now run in float64. It
+was not cosmetic: the fake-side means moved by about 10% relative, centre from +0.291 to +0.3098.
+
+*The third quality descriptor is inert.* The brief asks for blur, blockiness and the face box size.
+**Every stored crop in this corpus is 256x256** -- checked on FFpp_train, CDFv2 and IDForge -- so the
+size descriptor is constant whether measured before or after the 224 resize. Its z-scored column and
+its square are identically zero and the least-squares fit ignores them. Standardisation therefore
+runs on blur and blockiness alone, which are the two that bear on the compression confound G1 tests.
+Recorded rather than quietly dropped, and no re-extraction would change it.

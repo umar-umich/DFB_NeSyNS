@@ -1,0 +1,24 @@
+{
+ "dataset": "DFD",
+ "stem": "DFD.s1of3",
+ "amp": "bf16",
+ "arm_b": false,
+ "process": "clean",
+ "videos": 1144,
+ "frames": 36460,
+ "frames_per_video": 31.87,
+ "seconds": {
+  "model_load": 35.1,
+  "h5_read": 119.9,
+  "gpu": 1415.6
+ },
+ "frames_per_second_gpu": 25.76,
+ "eps_mean_per_block": {
+  "upper": 0.2437257319688797,
+  "lower": 0.3341998755931854,
+  "left_cheek": 0.35491108894348145,
+  "right_cheek": 0.3548336923122406,
+  "centre": 0.2309374213218689
+ },
+ "bytes_per_frame_cached": 28176
+}

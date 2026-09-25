@@ -1,21 +1,24 @@
 {
  "dataset": "FFpp_val",
  "stem": "FFpp_val",
- "videos": 6,
- "frames": 192,
- "frames_per_video": 32.0,
+ "amp": "bf16",
+ "arm_b": false,
+ "process": "clean",
+ "videos": 700,
+ "frames": 22396,
+ "frames_per_video": 31.99,
  "seconds": {
-  "model_load": 27.3,
-  "h5_read": 0.7,
-  "gpu": 8.7
+  "model_load": 34.0,
+  "h5_read": 73.4,
+  "gpu": 902.1
  },
- "frames_per_second_gpu": 21.96,
+ "frames_per_second_gpu": 24.83,
  "eps_mean_per_block": {
-  "upper": 0.21911175549030304,
-  "lower": 0.288159042596817,
-  "left_cheek": 0.3437741696834564,
-  "right_cheek": 0.3505287170410156,
-  "centre": 0.19258181750774384
+  "upper": 0.22471559047698975,
+  "lower": 0.3061855733394623,
+  "left_cheek": 0.34066125750541687,
+  "right_cheek": 0.3489433526992798,
+  "centre": 0.20594118535518646
  },
- "bytes_per_frame_cached": 15376
+ "bytes_per_frame_cached": 28176
 }

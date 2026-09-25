@@ -1,0 +1,24 @@
+{
+ "dataset": "KoDF",
+ "stem": "KoDF.s0of2",
+ "amp": "bf16",
+ "arm_b": false,
+ "process": "clean",
+ "videos": 1116,
+ "frames": 35936,
+ "frames_per_video": 32.2,
+ "seconds": {
+  "model_load": 31.6,
+  "h5_read": 118.2,
+  "gpu": 1367.0
+ },
+ "frames_per_second_gpu": 26.29,
+ "eps_mean_per_block": {
+  "upper": 0.2305852770805359,
+  "lower": 0.30679887533187866,
+  "left_cheek": 0.31301066279411316,
+  "right_cheek": 0.33009788393974304,
+  "centre": 0.20848876237869263
+ },
+ "bytes_per_frame_cached": 28176
+}
