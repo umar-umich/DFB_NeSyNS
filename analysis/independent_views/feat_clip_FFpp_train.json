@@ -1,0 +1,10 @@
+{
+ "backbone": "clip",
+ "hf_or_timm_id": "openai/clip-vit-large-patch14",
+ "input_size": 224,
+ "readout": "cls_pre_proj",
+ "dataset": "FFpp_train",
+ "frames": 115198,
+ "dim": 1024,
+ "seconds": 576.1
+}

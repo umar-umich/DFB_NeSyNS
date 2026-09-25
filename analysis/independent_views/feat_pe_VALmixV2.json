@@ -1,0 +1,10 @@
+{
+ "backbone": "pe",
+ "hf_or_timm_id": "vit_pe_core_base_patch16_224",
+ "input_size": 224,
+ "readout": "pooled",
+ "dataset": "VALmixV2",
+ "frames": 77394,
+ "dim": 768,
+ "seconds": 317.2
+}

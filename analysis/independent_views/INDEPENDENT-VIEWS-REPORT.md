@@ -8,9 +8,9 @@ Brief: `tbiom/docs/discern-v2-independent-views-brief.md`. Outputs in `analysis/
 |---|---|---|---|
 | 1. Finish joint IBDC | in progress | `analysis/joint_ibdc/` | J1 seeds 1-2 and both λ sweeps running; see the blocker below. |
 | 2. Close or reopen the residual line | **CLOSED** | `part2_fixA.json` | Every orthogonalised variant is *worse* than the backbone-alone probe. |
-| 3. Frozen backbone screen | blocked | -- | The brief forbids upsampling, and every stored crop is 256 px. See below. |
-| 4. Adapt the winner | not started | -- | Needs Part 3. |
-| 5. Cross-backbone mapping | not started | -- | Needs Part 3's winner. |
+| 3. Frozen backbone screen | **no candidate beats frozen CLIP** | `screen_*.json` | CLIP wins on fused AUROC; the most *independent* candidate fuses worst. |
+| 4. Adapt the winner | **stopped** | -- | The pre-set rule stops Parts 4 and 5 when no candidate beats frozen CLIP. |
+| 5. Cross-backbone mapping | **stopped** | -- | Same rule. |
 | 6. Perturbation stability | not started | -- | Needs Part 3 backbones. |
 
 ---
@@ -104,3 +104,63 @@ measured with **J0 heads**, which is what the joint IBDC brief itself specifies
 is not here.
 
 Everything else in Part 1 is running. J1s and the G0b re-check are held until the addition arrives.
+
+
+## Part 3 — the screen, and why Parts 4 and 5 stop
+
+Three seeds per candidate. The head, recipe and selection are identical across candidates; only the
+frozen backbone differs.
+
+### Standalone
+
+| backbone | dim | FF++ val AUROC | VALmix-v2 | dev v3.1 | best epoch |
+|---|---:|---:|---:|---:|---:|
+| **CLIP ViT-L/14, frozen** | 1024 | **0.9123** ±0.0014 | **0.7723** ±0.0003 | **0.7541** ±0.0007 | 9.7 |
+| DINOv3 ViT-L/16 | 1024 | 0.8140 ±0.0004 | 0.7314 ±0.0011 | 0.7026 ±0.0011 | 1.0 |
+| PE-Core B16/224 | 768 | 0.8418 ±0.0005 | 0.6983 ±0.0013 | 0.6761 ±0.0008 | 18.0 |
+
+### Fused, with the candidate in the Appearance slot
+
+| backbone | fused dev AUROC | real FPR | LOO(APP) | folds APP zeroed | phi(APP, OM) |
+|---|---:|---:|---:|---:|---:|
+| **CLIP, frozen** | **0.9126** ±0.0003 | **0.0750** | **+0.0033** | 2.00 / 5 | +0.2501 |
+| DINOv3 | 0.9090 ±0.0002 | 0.1071 | −0.0003 | 3.67 / 5 | **+0.1768** |
+| PE-Core B16 | 0.9093 ±0.0000 | 0.1131 | +0.0000 | **5.00 / 5** | +0.2906 |
+
+**Pre-set rule:** the winner needs the highest fused out-of-fold development AUROC and must beat
+frozen CLIP. CLIP is highest. **No candidate beats it, so Parts 4 and 5 stop.**
+
+### The finding that matters: independence did not buy complementarity
+
+This brief exists because Appearance and Off-manifold share a CLIP trunk, and the hypothesis was that
+an independent backbone would supply the complementarity four fusion studies could not find.
+
+DINOv3 **is** measurably more independent. Its error correlation with Off-manifold is the lowest of
+the three, phi +0.1768 against CLIP's +0.2501 and PE's +0.2906. That is the quantity the brief's own
+tie-break uses as a proxy for independence, and DINOv3 wins it clearly.
+
+It fuses **worse**. Its Appearance-slot contribution is −0.0003, its weight is discarded in 3.67 of 5
+folds, and the fused system lands 0.0036 below CLIP's with a real-video FPR 3.2 points higher.
+
+So lower error correlation did not produce a better fusion. Being wrong on *different* videos is not
+the same as being right on videos the others miss, and the reliability fit — which sees the
+development objective, not the correlation — discards the more independent view anyway. This is a
+direct negative for the premise, measured rather than argued, and it is the fourth distinct route to
+improving this fusion that has failed.
+
+### An unexpected result about the deployed Appearance view
+
+The deployed system, with its LoRA-adapted Appearance view in the same slot, scores fused AUROC
+**0.9070** with real FPR **0.1035**, LOO(APP) **−0.0023**, and Appearance retained in 2 of 5 folds
+(`analysis/ijepa/fusion_eval_selfcheck.json`).
+
+Frozen CLIP with a 20-epoch EDL head beats it on every one of those: **0.9126** fused, **0.0750** FPR,
+**+0.0033** LOO. A 0.0056 gain in fused AUROC and a 2.9-point drop in real-video FPR, from *removing*
+the adaptation.
+
+This is not a clean frozen-versus-adapted contrast — the deployed view was trained end to end inside
+DiCoME's full multi-task objective, with the β-VAE and alignment terms, while this head sees only the
+EDL loss on a frozen embedding. But the direction is consistent with everything else measured here:
+whatever the adaptation and the shared trunk do for the Appearance view alone, they cost the fusion.
+That is worth a controlled follow-up, and it is a more promising lead than any of the six parts of
+this brief.
