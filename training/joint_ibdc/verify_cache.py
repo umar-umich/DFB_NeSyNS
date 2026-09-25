@@ -40,7 +40,12 @@ import confirm as C          # noqa: E402
 from video_id import video_id  # noqa: E402  THE video rule, never a local shortcut
 
 CKPT = EXT / "runs/discern_ext_train/warm_dicome_gate_seed42/checkpoints/discern_ext-best-epoch=19-val_auroc_video=0.9956.ckpt"
-FEAT = ROOT / "logs/tsne/ours_FFpp_val.npz"
+# every cached split that the development table also covers, so the gate is not a one-off
+SOURCES = {
+    "FFpp_val": ROOT / "logs/tsne/ours_FFpp_val.npz",
+    "VALmix": ROOT / "logs/joint_ibdc/cache/VALmix.npz",
+    "VALmixV2": ROOT / "logs/joint_ibdc/cache/VALmixV2.npz",
+}
 SPATIAL, BRANCH = "warmgate_e19", "vjepa2_lora_B_seed42"
 TOL = 1e-5
 OUT = ROOT / "analysis/joint_ibdc"
@@ -61,51 +66,54 @@ def head_opinions(x, sd, norm_p, head_p):
 
 
 def main():
-    if not FEAT.exists():
-        print(f"no cached features at {FEAT}"); return 2
-    z = np.load(FEAT, allow_pickle=True)
-    import pandas as pd
-    keys = np.array([str(k) for k in z["key"]])
-    # the video is the full directory path, not its basename: analysis/tbiom/video_id.py
-    vids = video_id(pd.Series(keys)).to_numpy()
-    print(f"cached features: {FEAT.name}, {len(keys)} frames, {len(set(vids))} videos")
-
     sd = torch.load(CKPT, map_location="cpu", weights_only=False)["state_dict"]
     dev = C.dev_table(SPATIAL, BRANCH)
-    ff = dev[dev.source == "FFpp_val"].reset_index(drop=True)
-    print(f"deployed development table: {len(ff)} FF++ val videos")
+    print(f"deployed development table: {len(dev)} videos")
+    import pandas as pd
 
-    order = np.unique(vids)
-    res, worst = {}, 0.0
-    for block, (norm_p, head_p, col) in VIEWMAP.items():
-        p, u = head_opinions(z[block], sd, norm_p, head_p)
-        inv = {v: i for i, v in enumerate(order)}
-        idx = np.array([inv[v] for v in vids])
-        cnt = np.bincount(idx, minlength=len(order)).astype(float)
-        pv = np.bincount(idx, weights=p, minlength=len(order)) / cnt      # mean opinion per video
-        uv = np.bincount(idx, weights=u, minlength=len(order)) / cnt
+    allres, worst_all, checked = {}, 0.0, 0
+    for name, feat in SOURCES.items():
+        if not feat.exists():
+            print(f"  {name:9s} not cached yet, skipped")
+            continue
+        z = np.load(feat, allow_pickle=True)
+        keys = np.array([str(k) for k in z["key"]])
+        vids = video_id(pd.Series(keys)).to_numpy()
+        order = np.unique(vids)
+        res, worst = {}, 0.0
+        for block, (norm_p, head_p, col) in VIEWMAP.items():
+            p, u = head_opinions(z[block], sd, norm_p, head_p)
+            inv = {v: i for i, v in enumerate(order)}
+            idx = np.array([inv[v] for v in vids])
+            cnt = np.bincount(idx, minlength=len(order)).astype(float)
+            pv = np.bincount(idx, weights=p, minlength=len(order)) / cnt
+            uv = np.bincount(idx, weights=u, minlength=len(order)) / cnt
+            m = {v: i for i, v in enumerate(order)}
+            keep = [i for i, v in enumerate(dev.v) if v in m]
+            if not keep:
+                print(f"  {name}/{block}: no overlap with the development table"); continue
+            j = np.array([m[dev.v[i]] for i in keep])
+            dp = float(np.abs(pv[j] - dev[f"p_{col}"].to_numpy()[keep]).max())
+            du = float(np.abs(uv[j] - dev[f"u_{col}"].to_numpy()[keep]).max())
+            worst = max(worst, dp, du)
+            res[block] = {"view": col, "n_videos_matched": len(keep),
+                          "max_abs_diff_p": dp, "max_abs_diff_u": du}
+            print(f"  {name:9s} {block:9s} -> {col:3s}  {len(keep):5d} videos   "
+                  f"p {dp:.3e}   u {du:.3e}")
+        allres[name] = {"features": str(feat), "worst": worst, "per_block": res}
+        worst_all = max(worst_all, worst)
+        checked += 1
 
-        m = {v: i for i, v in enumerate(order)}
-        keep = [i for i, v in enumerate(ff.v) if v in m]
-        if not keep:
-            print(f"  {block}: no video id overlap with the development table"); return 2
-        j = np.array([m[ff.v[i]] for i in keep])
-        dp = float(np.abs(pv[j] - ff[f"p_{col}"].to_numpy()[keep]).max())
-        du = float(np.abs(uv[j] - ff[f"u_{col}"].to_numpy()[keep]).max())
-        worst = max(worst, dp, du)
-        res[block] = {"view": col, "n_videos_matched": len(keep),
-                      "max_abs_diff_p": dp, "max_abs_diff_u": du}
-        print(f"  {block:9s} -> {col:3s}  {len(keep):4d} videos matched   p {dp:.3e}   u {du:.3e}")
-
-    ok = worst <= TOL
-    out = {"gate": "Task 2 cache equivalence (on the existing export)", "verdict": "PASS" if ok else "FAIL",
-           "tolerance": TOL, "worst": worst, "features": str(FEAT), "checkpoint": str(CKPT),
+    ok = checked > 0 and worst_all <= TOL
+    out = {"gate": "Task 2 cache equivalence", "verdict": "PASS" if ok else "FAIL",
+           "tolerance": TOL, "worst": worst_all, "splits_checked": checked,
+           "checkpoint": str(CKPT),
            "aggregation": "mean of frame opinions (p and u separately), then fuse "
                           "[analysis/tbiom/exp1_fusion_audit.py:104]",
-           "per_block": res}
+           "per_split": allres}
     OUT.mkdir(parents=True, exist_ok=True)
     json.dump(out, open(OUT / "task2_cache_equivalence.json", "w"), indent=1)
-    print(f"\nworst {worst:.3e} against tolerance {TOL}")
+    print(f"\n{checked} split(s) checked, worst {worst_all:.3e} against tolerance {TOL}")
     print(f"Task 2 cache equivalence: {out['verdict']}")
     return 0 if ok else 1
 

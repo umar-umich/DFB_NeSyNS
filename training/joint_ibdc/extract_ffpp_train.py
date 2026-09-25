@@ -52,11 +52,35 @@ OUT = ROOT / "logs/joint_ibdc/cache"
 SEED = 42
 
 
+CLASS_DIRS = {"real", "fake", "frames", "images"}
+
+
+def video_of(key: str) -> str:
+    """THE video rule (analysis/tbiom/video_id.py): the full directory path, and the frame itself
+    when the parent is a bare class name."""
+    import re
+    k = str(key).split("::", 1)[-1].rstrip("/")
+    directory, _, _frame = k.rpartition("/")
+    if directory.rsplit("/", 1)[-1].lower() in CLASS_DIRS:
+        return re.sub(r"\.[A-Za-z0-9]+$", "", k)
+    return directory
+
+
 def setting_for(key: str, draw: int, arm: str, proc: SharedProcessing, seed: int = SEED):
-    """One processing setting per (sample, draw). Reproducible from the key alone."""
+    """One processing setting per (VIDEO, draw), shared by every view -- option B, matched draws.
+
+    Keyed on the VIDEO, not the frame. The temporal view applies one arm-B setting per CLIP, so a
+    per-frame spatial draw could never align with it and a sample would have no single "augmentation
+    level" for G0b to report against. Drawing per video makes the level well defined and lets the
+    spatial frames of a video and its temporal clip see the same processing.
+
+    Deployment itself is not matched this way -- its spatial arm B draws per sample and its temporal
+    arm B per clip -- so this is a deliberate, recorded choice for the joint study, not a
+    reproduction of deployed training.
+    """
     if arm != "B":
         return ("none", None)
-    rng = np.random.default_rng([seed, draw, zlib.crc32(str(key).encode())])
+    rng = np.random.default_rng([seed, draw, zlib.crc32(video_of(key).encode())])
     return proc.sample(rng)
 
 
@@ -136,6 +160,15 @@ def verify(base):
         c = Counter(f"{a}:{b}" for a, b in d)
         tot = sum(c.values())
         print(f"  draw {i} mix: " + ", ".join(f"{k} {v / tot:.2f}" for k, v in sorted(c.items())))
+    # option B: every frame of a video must carry the SAME setting within a draw
+    from collections import defaultdict
+    byvid = defaultdict(set)
+    for k in [base.files[i] for i in range(min(len(base.files), 20000))]:
+        byvid[video_of(k)].add(setting_for(k, 0, "B", proc))
+    bad = {v: s_ for v, s_ in byvid.items() if len(s_) != 1}
+    print(f"  per-video constancy over {len(byvid)} videos: "
+          f"{'OK' if not bad else f'{len(bad)} videos disagree'}")
+    assert not bad, list(bad.items())[:3]
     none_draws = [setting_for(k, j, "none", proc) for k in keys for j in range(3)]
     print(f"  --arm none gives a single realisation: {set(none_draws) == {('none', None)}}")
     # the expected arm-B mix is 40% none and 10% each of six severities
@@ -177,6 +210,7 @@ def main():
             "checkpoint": str(CKPT), "config": str(CONFIG),
             "realizations": ("several cached variants" if a.arm == "B" and a.draws > 1
                              else "one fixed realization"),
+            "draw_granularity": "per video (option B: matched across views)",
             "deployed_spatial_training_augmentation": "none",
             "note": ("arm B is NOT the deployed spatial training augmentation; "
                      "warm_dicome_gate_seed42.yaml has no training_arm key"),

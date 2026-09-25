@@ -1,23 +1,47 @@
 {
- "gate": "Task 2 cache equivalence (on the existing export)",
+ "gate": "Task 2 cache equivalence",
  "verdict": "PASS",
  "tolerance": 1e-05,
- "worst": 1.433207030832051e-08,
- "features": "/data/umar/Repos/DFB_NeSyNS/logs/tsne/ours_FFpp_val.npz",
+ "worst": 7.204437257879448e-08,
+ "splits_checked": 2,
  "checkpoint": "/data/umar/Repos/DISCERN_Ext/runs/discern_ext_train/warm_dicome_gate_seed42/checkpoints/discern_ext-best-epoch=19-val_auroc_video=0.9956.ckpt",
  "aggregation": "mean of frame opinions (p and u separately), then fuse [analysis/tbiom/exp1_fusion_audit.py:104]",
- "per_block": {
-  "semantic": {
-   "view": "APP",
-   "n_videos_matched": 700,
-   "max_abs_diff_p": 1.433207030832051e-08,
-   "max_abs_diff_u": 1.01346802616753e-08
+ "per_split": {
+  "FFpp_val": {
+   "features": "/data/umar/Repos/DFB_NeSyNS/logs/tsne/ours_FFpp_val.npz",
+   "worst": 1.433207030832051e-08,
+   "per_block": {
+    "semantic": {
+     "view": "APP",
+     "n_videos_matched": 700,
+     "max_abs_diff_p": 1.433207030832051e-08,
+     "max_abs_diff_u": 1.01346802616753e-08
+    },
+    "artifact": {
+     "view": "OM",
+     "n_videos_matched": 700,
+     "max_abs_diff_p": 1.0467677169501144e-08,
+     "max_abs_diff_u": 1.173591013259312e-08
+    }
+   }
   },
-  "artifact": {
-   "view": "OM",
-   "n_videos_matched": 700,
-   "max_abs_diff_p": 1.0467677169501144e-08,
-   "max_abs_diff_u": 1.173591013259312e-08
+  "VALmix": {
+   "features": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/cache/VALmix.npz",
+   "worst": 7.204437257879448e-08,
+   "per_block": {
+    "semantic": {
+     "view": "APP",
+     "n_videos_matched": 1350,
+     "max_abs_diff_p": 7.204437257879448e-08,
+     "max_abs_diff_u": 3.427377703868473e-08
+    },
+    "artifact": {
+     "view": "OM",
+     "n_videos_matched": 1350,
+     "max_abs_diff_p": 1.8694038372846222e-08,
+     "max_abs_diff_u": 3.8482208253309835e-08
+    }
+   }
   }
  }
 }
