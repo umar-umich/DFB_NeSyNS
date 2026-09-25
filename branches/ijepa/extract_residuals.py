@@ -130,18 +130,26 @@ def quality(arr):
 
 @torch.no_grad()
 def run(frames, enc, pred, tgt, dev, bs, amp="bf16", process=""):
-    """frames: uint8 (N,224,224,3). Returns eps (N,5), rbar (N,5,1280), pooled (N,1280), sbar (N,5,1280).
+    """frames: uint8 (N,224,224,3). Returns eps (N,5), rbar (N,5,1280), pooled (N,1280),
+    sbar (N,5,1280) and q (N,3) -- the quality descriptors of the PROCESSED pixels.
 
     The forward runs under bf16 autocast by default. Everything is cached fp16 regardless, so
     fp16 storage, not bf16 compute, sets the precision of what is kept.
     """
-    E, R, PL, S = [], [], [], []
+    E, R, PL, S, Q = [], [], [], [], []
     ctxm = (torch.autocast("cuda", dtype=torch.bfloat16) if amp == "bf16" and dev == "cuda"
             else torch.autocast("cuda", enabled=False))
     for i in range(0, len(frames), bs):
         x = torch.from_numpy(frames[i:i + bs]).permute(0, 3, 1, 2).float().div_(255)
         if process:
             x = apply_eval_process(x, process)
+        # The quality descriptors MUST come from the pixels the residual is computed from. They used
+        # to be taken from the pre-processing array, so eps described a processed frame while q
+        # described a clean one, and the standardiser was asked to predict a shift from descriptors
+        # that could not see it. Nothing failed; mu_k(q) simply returned the same value at every
+        # processing level and absorbed none of the confound.
+        Q.append(np.stack([quality(f) for f in
+                           (x * 255).clamp(0, 255).permute(0, 2, 3, 1).numpy()]).astype(np.float16))
         x = ((x - MEAN) / STD).to(dev, non_blocking=True)
         B = x.shape[0]
         with ctxm:
@@ -163,7 +171,8 @@ def run(frames, enc, pred, tgt, dev, bs, amp="bf16", process=""):
                 # so this costs nothing and is guaranteed to share the frame's processing draw.
                 s_b.append(y.mean(1).half().cpu().numpy())
         E.append(np.stack(e_b, 1)); R.append(np.stack(r_b, 1)); S.append(np.stack(s_b, 1))
-    return np.concatenate(E), np.concatenate(R), np.concatenate(PL), np.concatenate(S)
+    return (np.concatenate(E), np.concatenate(R), np.concatenate(PL), np.concatenate(S),
+            np.concatenate(Q))
 
 
 def stream_frames(dataset, limit_videos, chunk, shard, nshards, arm_b=False):
@@ -256,10 +265,10 @@ def main():
                                           a.num_shards, a.arm_b):
         t_read += time.time() - tc
         t1 = time.time()
-        eps, rbar, pooled, sbar = run(arrs, enc, pred, tgt, dev, a.batch_size, a.amp, a.process)
+        eps, rbar, pooled, sbar, qc = run(arrs, enc, pred, tgt, dev, a.batch_size, a.amp, a.process)
         t_gpu += time.time() - t1
         E.append(eps); R.append(rbar); PL.append(pooled); SB.append(sbar)
-        Q.append(np.stack([quality(x) for x in arrs]).astype(np.float16))
+        Q.append(qc)
         K += keys
         print(f"  {stem}: {len(K)} frames, {t_gpu:.0f}s gpu, {len(K) / max(t_gpu, 1e-9):.1f} f/s", flush=True)
         if a.time_only:
