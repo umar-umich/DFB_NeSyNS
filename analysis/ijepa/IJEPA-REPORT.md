@@ -238,3 +238,39 @@ sequences unchanged.
 
 Single-view, fusion, shuffle-check and keep-rule tables: TODO(run). They follow G2 and the R5
 decision, as the amendment directs.
+
+### The fused-system harness (shared by G3 and both keep rules)
+
+`branches/ijepa/fusion_eval.py`. A candidate row is substituted into the ARTIFACT slot beside the
+deployed Appearance and V-JEPA 2 views, trust weights are refitted on the five source-grouped
+development folds and the threshold at FF++ validation EER, exactly as deployed. Leave-one-out uses
+PCR6+'s neutrality property: a view at r = 0 is vacuous and a vacuous view is exactly a removed one,
+so a contribution is the fused AUROC minus the fused AUROC with that view's weight zeroed, with no
+refitting in between.
+
+**Self-check PASS.** Substituting the deployed Off-manifold view back into its own slot reproduces
+the deployed PCR6+-R development mean AUROC to **0.00e+00** (0.907002 both ways) with all five
+per-fold weight triples identical (`analysis/ijepa/fusion_eval_selfcheck.json`). Any candidate
+measured through this harness is measured on the same instrument as the reference.
+
+Baseline leave-one-out on the deployed system, per fold:
+
+| split | APP weight | LOO(T) | LOO(APP) | LOO(OM) |
+|---|---:|---:|---:|---:|
+| 0 | 0.25 | +0.0653 | −0.0051 | +0.0128 |
+| 1 | 0.25 | +0.0691 | −0.0063 | +0.0134 |
+| 2 | 0 | +0.0614 | 0 | +0.0691 |
+| 3 | 0 | +0.0659 | 0 | +0.0621 |
+| 4 | 0 | +0.0576 | 0 | +0.0634 |
+
+**Read the Appearance row carefully.** Its five-fold mean of −0.0023 is not a measurement of
+Appearance: three of the five folds contribute an exact zero because the discount had already set its
+weight to zero, so removing it there cannot change anything. Over the two folds where it actually
+participates the mean is −0.0057. Note also that Off-manifold's own contribution is four to five
+times larger in the folds where Appearance is absent (+0.062 to +0.069) than where it is present
+(+0.013), which says the two spatial views overlap and each looks smaller while the other is there —
+not that either is idle. An aggregate mean of this quantity has misled once in this project already;
+it needs the family-resolved form before any claim is attached to it, and the earlier study found
+Appearance helping on most source groups once resolved that way.
+
+The video view is the steadiest contributor, +0.058 to +0.069 in every fold.
