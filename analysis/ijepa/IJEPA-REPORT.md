@@ -201,3 +201,40 @@ must not move.
 per clip**, so each training frame has exactly **one fixed augmented realisation**, not several cached
 variants. The heads apply no image augmentation, so no result here may be described as having fresh
 augmentation during head training.
+
+### Amendment 2: heads built, parameter counts and the padding test
+
+Code: `branches/ijepa/seq_heads.py` (heads), `branches/ijepa/train_seq.py` (training and shuffle
+check), `branches/ijepa/test_seq_heads.py` (unit tests). Backend for T3:
+**`reference_pytorch_selective_scan`**.
+
+| head | sequence + aggregation | input | classifier | total trainable |
+|---|---:|---:|---:|---:|
+| T0 masked mean | **0** | 102,464 | 17,538 | 120,002 |
+| T1 residual MLP + attention pooling | 64,661 | 102,464 | 17,538 | 184,663 |
+| T2 two residual 1-D convolutions | 64,808 | 102,464 | 17,538 | 184,810 |
+| T3 two Mamba layers, d_state 16 | 65,536 | 102,464 | 17,538 | 185,538 |
+
+T1/T2/T3 sequence-module spread is **1.35%** against the amendment's 15% limit. Widths were solved
+against T3, whose shapes are fixed by d_model and d_state: T1 hidden 468 with a 64-wide attention
+scorer, T2 84 channels, T3 expand 2. T0 has no sequence parameters by construction.
+
+Padding unit test output: `analysis/ijepa/amendment2_padding_tests.txt`, **15 passed**.
+
+| check | result |
+|---|---|
+| padding equivalence, video alone vs in a padded batch | T0 5.96e-08, T1/T2/T3 exactly 0.0 (limit 1e-5) |
+| overwriting the padded tail with garbage | no change, all four heads |
+| T0, T1 order-invariant | exact, 0.0 |
+| T2, T3 order-sensitive | 1.1e-03, 1.2e-03 |
+
+T2 zeroes padded positions before each convolution, so a padded column cannot reach a valid one
+through its symmetric kernel. T3's depthwise convolution is causal and its scan runs strictly
+forward from a zero state per video, so a right-padded tail cannot reach an earlier position.
+
+Frames are ordered by the ORIGINAL frame index recovered from the crop filename, not by their order
+in the cache; `train_seq.py --dry-run` asserts that shuffling the cache rows leaves the built
+sequences unchanged.
+
+Single-view, fusion, shuffle-check and keep-rule tables: TODO(run). They follow G2 and the R5
+decision, as the amendment directs.

@@ -1,0 +1,277 @@
+{
+ "check": "Amendment 2 precondition",
+ "verdict": {
+  "per_frame_cache": false,
+  "frame_index_recoverable": false,
+  "a_k": "derived, not cached: log eps_k standardised by the frozen training-fitted mu_k, sigma_k",
+  "consecutive_at_native_rate": false,
+  "wording_constraint": "Cached frames are NOT consecutive at the native frame rate. Every T0-T3 result is aggregation over SAMPLED frames and must never be described as motion or temporal dynamics.",
+  "fps_assumed_for_seconds": [
+   25.0,
+   30.0
+  ],
+  "fps_source": "ASSUMED. No native frame rate is recorded in the preprocessing metadata."
+ },
+ "per_dataset": {
+  "FFpp_train": {
+   "videos": 3600,
+   "frames": 115198,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 31,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 13.0,
+   "stride_source_frames_p05": 10.0,
+   "stride_source_frames_p95": 27.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.433,
+    0.52
+   ]
+  },
+  "FFpp_val": {
+   "videos": 700,
+   "frames": 22396,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 31,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 13.0,
+   "stride_source_frames_p05": 10.0,
+   "stride_source_frames_p95": 23.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.433,
+    0.52
+   ]
+  },
+  "VALmix": {
+   "videos": 1350,
+   "frames": 40142,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 1,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 15.0,
+   "stride_source_frames_p05": 9.0,
+   "stride_source_frames_p95": 99.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.5,
+    0.6
+   ]
+  },
+  "VALmixV2": {
+   "videos": 4852,
+   "frames": 77394,
+   "frames_per_video_median": 16.0,
+   "frames_per_video_min": 1,
+   "frames_per_video_max": 16,
+   "stride_source_frames_median": 21.0,
+   "stride_source_frames_p05": 6.0,
+   "stride_source_frames_p95": 988.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.7,
+    0.84
+   ]
+  },
+  "CDFv2": {
+   "videos": 518,
+   "frames": 16572,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 30,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 12.0,
+   "stride_source_frames_p05": 8.0,
+   "stride_source_frames_p95": 16.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.4,
+    0.48
+   ]
+  },
+  "CDFv3": {
+   "videos": 5418,
+   "frames": 173295,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 17,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 10.0,
+   "stride_source_frames_p05": 4.0,
+   "stride_source_frames_p95": 16.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.333,
+    0.4
+   ]
+  },
+  "DFD": {
+   "videos": 3431,
+   "frames": 109298,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 5,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 24.0,
+   "stride_source_frames_p05": 9.0,
+   "stride_source_frames_p95": 44.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.8,
+    0.96
+   ]
+  },
+  "DFDC": {
+   "videos": 4704,
+   "frames": 132116,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 1,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 10.0,
+   "stride_source_frames_p05": 6.0,
+   "stride_source_frames_p95": 10.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.333,
+    0.4
+   ]
+  },
+  "DFDCP": {
+   "videos": 654,
+   "frames": 17222,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 1,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 14.0,
+   "stride_source_frames_p05": 7.0,
+   "stride_source_frames_p95": 15.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.467,
+    0.56
+   ]
+  },
+  "DFDM": {
+   "videos": 1896,
+   "frames": 59754,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 1,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 12.0,
+   "stride_source_frames_p05": 9.0,
+   "stride_source_frames_p95": 17.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.4,
+    0.48
+   ]
+  },
+  "DFEval24": {
+   "videos": 814,
+   "frames": 23209,
+   "frames_per_video_median": 31.0,
+   "frames_per_video_min": 1,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 37.0,
+   "stride_source_frames_p05": 5.0,
+   "stride_source_frames_p95": 251.29999999999927,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    1.233,
+    1.48
+   ]
+  },
+  "FaceShifter": {
+   "videos": 280,
+   "frames": 8958,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 31,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 15.0,
+   "stride_source_frames_p05": 10.0,
+   "stride_source_frames_p95": 33.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.5,
+    0.6
+   ]
+  },
+  "FFIW": {
+   "videos": 3470,
+   "frames": 110800,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 1,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 7.0,
+   "stride_source_frames_p05": 4.0,
+   "stride_source_frames_p95": 17.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.233,
+    0.28
+   ]
+  },
+  "IDForge": {
+   "videos": 5974,
+   "frames": 190761,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 14,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 5.0,
+   "stride_source_frames_p05": 2.0,
+   "stride_source_frames_p95": 14.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.167,
+    0.2
+   ]
+  },
+  "KoDF": {
+   "videos": 2239,
+   "frames": 71648,
+   "frames_per_video_median": 32.0,
+   "frames_per_video_min": 32,
+   "frames_per_video_max": 32,
+   "stride_source_frames_median": 19.0,
+   "stride_source_frames_p05": 14.0,
+   "stride_source_frames_p95": 94.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.633,
+    0.76
+   ]
+  },
+  "DF40": {
+   "videos": 62156,
+   "frames": 858166,
+   "frames_per_video_median": 1.0,
+   "frames_per_video_min": 1,
+   "frames_per_video_max": 290,
+   "stride_source_frames_median": 17.0,
+   "stride_source_frames_p05": 5.0,
+   "stride_source_frames_p95": 1342.0,
+   "consecutive": false,
+   "spacing_seconds_assumed_range": [
+    0.567,
+    0.68
+   ]
+  }
+ },
+ "cached_so_far": {
+  "DFDC": {
+   "error": "FileNotFoundError: DFDC: shards [1, 2] of 3 are not cached yet"
+  },
+  "IDForge": {
+   "frames": 190761,
+   "videos": 5974,
+   "eps_shape": [
+    190761,
+    5
+   ],
+   "rbar_shape": [
+    190761,
+    5,
+    1280
+   ],
+   "per_frame": true,
+   "frame_index_recoverable": true
+  }
+ }
+}

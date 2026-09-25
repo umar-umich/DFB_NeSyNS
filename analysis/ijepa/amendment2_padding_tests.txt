@@ -1,0 +1,24 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /data/umar/miniconda3/envs/discern_ext/bin/python
+cachedir: .pytest_cache
+rootdir: /data/umar/Repos/DFB_NeSyNS
+plugins: anyio-4.14.2
+collecting ... collected 15 items
+
+branches/ijepa/test_seq_heads.py::test_padding_equivalence[T0] PASSED    [  6%]
+branches/ijepa/test_seq_heads.py::test_padding_equivalence[T1] PASSED    [ 13%]
+branches/ijepa/test_seq_heads.py::test_padding_equivalence[T2] PASSED    [ 20%]
+branches/ijepa/test_seq_heads.py::test_padding_equivalence[T3] PASSED    [ 26%]
+branches/ijepa/test_seq_heads.py::test_padded_tail_cannot_change_a_valid_prediction[T0] PASSED [ 33%]
+branches/ijepa/test_seq_heads.py::test_padded_tail_cannot_change_a_valid_prediction[T1] PASSED [ 40%]
+branches/ijepa/test_seq_heads.py::test_padded_tail_cannot_change_a_valid_prediction[T2] PASSED [ 46%]
+branches/ijepa/test_seq_heads.py::test_padded_tail_cannot_change_a_valid_prediction[T3] PASSED [ 53%]
+branches/ijepa/test_seq_heads.py::test_order_invariant_heads_are_invariant[T0] PASSED [ 60%]
+branches/ijepa/test_seq_heads.py::test_order_invariant_heads_are_invariant[T1] PASSED [ 66%]
+branches/ijepa/test_seq_heads.py::test_order_sensitive_heads_depend_on_order[T2] PASSED [ 73%]
+branches/ijepa/test_seq_heads.py::test_order_sensitive_heads_depend_on_order[T3] PASSED [ 80%]
+branches/ijepa/test_seq_heads.py::test_parameter_matching_within_15_percent PASSED [ 86%]
+branches/ijepa/test_seq_heads.py::test_t3_backend_is_recorded PASSED     [ 93%]
+branches/ijepa/test_seq_heads.py::test_evidence_is_non_negative PASSED   [100%]
+
+============================== 15 passed in 1.22s ==============================

@@ -1,0 +1,24 @@
+{
+ "dataset": "IDForge",
+ "stem": "IDForge.s1of4",
+ "amp": "bf16",
+ "arm_b": false,
+ "process": "clean",
+ "videos": 1494,
+ "frames": 47683,
+ "frames_per_video": 31.92,
+ "seconds": {
+  "model_load": 24.1,
+  "h5_read": 149.5,
+  "gpu": 1985.8
+ },
+ "frames_per_second_gpu": 24.01,
+ "eps_mean_per_block": {
+  "upper": 0.24233378469944,
+  "lower": 0.3414621949195862,
+  "left_cheek": 0.3541419506072998,
+  "right_cheek": 0.35498082637786865,
+  "centre": 0.23418086767196655
+ },
+ "bytes_per_frame_cached": 28176
+}
