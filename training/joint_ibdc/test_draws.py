@@ -54,3 +54,27 @@ def test_mix_matches_arm_b():
 
 def test_arm_none_is_inert():
     assert {setting_for(k, d, arm="none") for k in keys(300) for d in range(3)} == {("none", None)}
+
+
+def test_temporal_cache_settings_match_the_shared_rule():
+    """If the temporal cache exists, what it RECORDED must equal what the rule gives.
+
+    This is the end-to-end statement of option B: the spatial extractor draws from the same rule, so
+    agreement here means the two caches cannot disagree about a video's augmentation.
+    """
+    import numpy as np
+    C = Path("/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/cache")
+    proc = SharedProcessing(enabled=True)
+    checked = 0
+    for d in range(3):
+        f = C / f"FFpp_train_T_B_d{d}.npz"
+        if not f.exists():
+            continue
+        z = np.load(f, allow_pickle=True)
+        for v, rec in zip(z["video"], z["setting"]):
+            a, b = setting_for(str(v), d, proc=proc)
+            assert str(rec) == (f"{a}:{b}" if b is not None else "none"), (v, rec, a, b)
+            checked += 1
+    if checked == 0:
+        pytest.skip("temporal cache not extracted yet")
+    assert checked >= 3600
