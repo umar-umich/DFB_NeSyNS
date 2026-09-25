@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Gate G1: is the regional prediction error driven by compression rather than by manipulation?
+
+    python branches/ijepa/gate_g1.py
+
+On FF++ c23 validation, per block k:
+  d_comp  the shift in mean log eps_k of REAL videos from clean to JPEG q50, and again to resize 0.50
+  d_fake  the difference in mean log eps_k between fake and real videos, both clean
+  AUROC   real against fake on the standardised a_k, within each quality level
+
+PASS if d_comp < d_fake for at least 3 of the 5 blocks, for BOTH JPEG q50 and resize 0.50.
+All numbers are reported whether it passes or not, as the brief requires.
+
+The unit is the video: frames are averaged within a video first, then across videos, because the
+video is the unit of analysis everywhere else in this system. Frame-level figures are reported
+alongside so the choice is visible rather than buried.
+
+The standardiser is the frozen one fitted on REAL FF++ c23 TRAINING frames under the B mixture. It is
+never refitted here -- refitting on validation would hide exactly the confound this gate looks for.
+"""
+from __future__ import annotations
+
+import json, sys
+from pathlib import Path
+
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import data as D          # noqa: E402
+import features as FX     # noqa: E402
+from v31 import fast_auc  # noqa: E402
+
+OUT = Path("/data/umar/Repos/DFB_NeSyNS/analysis/ijepa")
+BLOCKS = FX.BLOCK_NAMES
+LEVELS = {"clean": "FFpp_val", "jpeg50": "FFpp_val_jpeg50", "jpeg30": "FFpp_val_jpeg30",
+          "rs050": "FFpp_val_rs050", "rs035": "FFpp_val_rs035"}
+
+
+def video_mean_log_eps(d):
+    """(videos, 5) mean of log eps_k within each video, plus the video labels."""
+    le = np.log(d["eps"].astype(np.float64))
+    order, m = D.video_mean(le, d["video"])
+    _, yv = D.video_mean(d["y"].astype(float), d["video"])
+    return order, m, (yv > 0.5).astype(int)
+
+
+def main():
+    missing = [s for s in LEVELS.values() if not D.shard_files(s)]
+    if missing:
+        print(f"G1 cannot run yet; not cached: {missing}")
+        return 2
+    if not D.shard_files("FFpp_train_B"):
+        print("G1 needs FFpp_train_B for the frozen standardiser; not cached yet")
+        return 2
+
+    tr = D.load("FFpp_train_B", arrays=("eps", "q"))
+    real = tr["y"] == 0
+    st = FX.fit_standardizer(tr["eps"][real], tr["q"][real])
+    print(f"standardiser fitted on {int(real.sum())} real FF++ train frames (B mixture)")
+
+    per_level, frame_level = {}, {}
+    for lvl, stem in LEVELS.items():
+        d = D.load(stem, arrays=("eps", "q"))
+        _, m, yv = video_mean_log_eps(d)
+        a = FX.apply_standardizer(d["eps"], d["q"], st)
+        _, av = D.video_mean(a, d["video"])
+        per_level[lvl] = {
+            "n_videos": int(len(yv)), "n_real": int((yv == 0).sum()), "n_fake": int((yv == 1).sum()),
+            "mean_log_eps_real": m[yv == 0].mean(0).tolist(),
+            "mean_log_eps_fake": m[yv == 1].mean(0).tolist(),
+            "auroc_a": [fast_auc(av[yv == 0, k], av[yv == 1, k]) for k in range(len(BLOCKS))],
+        }
+        le = np.log(d["eps"].astype(np.float64))
+        frame_level[lvl] = {"mean_log_eps_real": le[d["y"] == 0].mean(0).tolist()}
+
+    clean = np.array(per_level["clean"]["mean_log_eps_real"])
+    d_fake = np.array(per_level["clean"]["mean_log_eps_fake"]) - clean
+    verdicts = {}
+    for lvl in ("jpeg50", "rs050"):
+        d_comp = np.array(per_level[lvl]["mean_log_eps_real"]) - clean
+        wins = [bool(abs(c) < abs(f)) for c, f in zip(d_comp, d_fake)]
+        verdicts[lvl] = {"d_comp": d_comp.tolist(), "n_blocks_passing": int(sum(wins)),
+                         "blocks_passing": [b for b, w in zip(BLOCKS, wins) if w], "per_block": wins}
+    ok = all(v["n_blocks_passing"] >= 3 for v in verdicts.values())
+
+    res = {"gate": "G1", "verdict": "PASS" if ok else "FAIL", "rule":
+           "d_comp < d_fake for >= 3 of 5 blocks, for both JPEG q50 and resize 0.50",
+           "d_fake": d_fake.tolist(), "blocks": BLOCKS, "verdicts": verdicts,
+           "per_level": per_level, "frame_level_real_mean_log_eps": frame_level}
+    OUT.mkdir(parents=True, exist_ok=True)
+    json.dump(res, open(OUT / "gate_g1.json", "w"), indent=1)
+
+    w = max(len(b) for b in BLOCKS)
+    print(f"\n{'block':{w}}  {'d_fake':>8} {'d_comp q50':>11} {'d_comp rs.50':>13}   pass")
+    for k, b in enumerate(BLOCKS):
+        j, r = verdicts["jpeg50"]["d_comp"][k], verdicts["rs050"]["d_comp"][k]
+        mark = ("y" if verdicts["jpeg50"]["per_block"][k] else "n") + \
+               ("y" if verdicts["rs050"]["per_block"][k] else "n")
+        print(f"{b:{w}}  {d_fake[k]:8.4f} {j:11.4f} {r:13.4f}   {mark}")
+    print(f"\nblocks passing: JPEG q50 {verdicts['jpeg50']['n_blocks_passing']}/5, "
+          f"resize 0.50 {verdicts['rs050']['n_blocks_passing']}/5")
+    print(f"\n{'block':{w}}  " + "  ".join(f"{l:>7}" for l in LEVELS))
+    for k, b in enumerate(BLOCKS):
+        print(f"{b:{w}}  " + "  ".join(f"{per_level[l]['auroc_a'][k]:7.4f}" for l in LEVELS))
+    print(f"\nG1 {res['verdict']} -> {OUT / 'gate_g1.json'}")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
