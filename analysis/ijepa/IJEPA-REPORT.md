@@ -308,3 +308,30 @@ size descriptor is constant whether measured before or after the 224 resize. Its
 its square are identically zero and the least-squares fit ignores them. Standardisation therefore
 runs on blur and blockiness alone, which are the two that bear on the compression confound G1 tests.
 Recorded rather than quietly dropped, and no re-extraction would change it.
+
+### Early read on FF++ validation, before any head is trained
+
+Video-level AUROC on FF++ c23 validation, clean, using the frozen training-fitted standardiser.
+
+| block | AUROC of a_k | AUROC of log eps_k |
+|---|---:|---:|
+| upper | 0.5431 | 0.5400 |
+| lower | 0.5243 | 0.5193 |
+| left cheek | 0.5373 | 0.5371 |
+| right cheek | 0.5391 | 0.5357 |
+| **centre** | **0.6142** | 0.6102 |
+| five a_k together, 5-fold logistic | **0.6190** | |
+
+Two things follow.
+
+**The standardiser behaves as intended.** a_k and log eps_k rank almost identically on clean data,
+which is what should happen: standardisation exists to remove a quality confound, not to manufacture
+separation. G1 is the test of whether it removes that confound under compression; this only confirms
+it does not distort the clean ranking.
+
+**G2 looks demanding, and this is a floor rather than a forecast.** G2 requires R4 to reach
+AUROC >= .80 on FF++ validation. The five scalars alone reach 0.619. The R4 head additionally
+receives the five 1280-dimensional residual DIRECTIONS through a shared 1280->64 projection, which is
+where most of its capacity is, so the trained row can land well above this. But the gap from 0.62 to
+0.80 has to come almost entirely from those directions, and that is worth knowing before the run
+rather than after it. Reported as `TODO(run)` until R4 is actually trained.
