@@ -432,3 +432,63 @@ as a view's contribution crossing zero. The formal check does not fire, and the 
 anyway; both are reported.
 
 Seeds 1 and 2 are still to run; the brief specifies three per run.
+
+## The J2b pass rule — FAIL
+
+Pre-set, four parts, against J1, on the development pool, three-seed mean.
+
+| # | criterion | J1 | J2b | verdict |
+|---|---|---:|---:|---|
+| 1 | fused vacuity error AUROC higher, interval above zero | 0.7184 | 0.7188 | **FAIL** — diff +0.0004, 95% CI [−0.0003, +0.0018] |
+| 2 | development AUROC within −0.005 | 0.8911 | 0.8912 | PASS |
+| 3 | every nonzero-weight view has positive leave-one-out | — | T +0.0712, APP **−0.0014**, OM +0.0097 | **FAIL** |
+| 4 | mean u_f on shared ignorance not lower | — | — | **UNDECIDABLE** |
+
+**J2b FAILS.** Criteria 1 and 3 decide it; criterion 4 is undecidable and does not change the outcome.
+
+### Criterion 4 is undecidable, and that is a finding about the definition
+
+The shared-ignorance subset is **empty**, for every run.
+
+| | development videos |
+|---|---:|
+| mean branch vacuity at or above its 80th percentile | 4,193 |
+| kappa at or below its 20th percentile | 265 |
+| **both** | **0** |
+
+The definition assumes ignorance implies agreement: everyone uncertain, so nobody in conflict. In this
+system the two are **positively** correlated, +0.178, and the lowest kappa among high-vacuity videos
+is 0.0016 against a threshold of 0.0002 — eight times too large to ever qualify.
+
+The cause is that branch vacuity is a **mean over three views**. One very vacuous view beside two
+confident, disagreeing ones produces high mean vacuity *and* high conflict, which is the opposite of
+the state the construct is meant to name. An undecidable criterion is recorded as undecidable rather
+than as a failure; treating `nan >= nan` as False would have manufactured a third failure out of a
+definition that does not apply here.
+
+### Reviewer 3's prediction could not be tested
+
+The brief asks separately whether J2a lowers mean u_f on the shared-ignorance subset relative to J1 —
+the failure Reviewer 3 predicted for the original loss. With that subset empty, the question has no
+answer on this data. It is reported as untestable, not as absent.
+
+### The wider picture: the correction does not beat the loss it corrects
+
+| run | dev AUROC | vacuity error AUROC | ten-set mean AUROC | LOO(OM) |
+|---|---:|---:|---:|---:|
+| J0 (no training) | 0.8965 | 0.6947 | **0.9086** | +0.0441 |
+| J1 | 0.8911 | 0.7184 | 0.9020 | +0.0097 |
+| **J2a** (original IJCB loss) | **0.8939** | **0.7308** | **0.9043** | **+0.0276** |
+| J2b (corrected loss) | 0.8912 | 0.7188 | 0.9020 | +0.0097 |
+
+J2a beats J2b on every column. It ranks errors better (0.7308 against 0.7188), generalises better to
+the test sets (0.9043 against 0.9020), and preserves nearly three times as much of Off-manifold's
+contribution (+0.0276 against +0.0097). The corrected loss is, on this system, indistinguishable from
+J1 — its effect on every measured quantity is within 0.0004 of doing nothing.
+
+The test-set criterion, reported and not used for selection, asked for J2b's ten-set mean AUROC to be
+within −0.005 of J0's. It is **0.9020 against 0.9086, a shortfall of 0.0066**, so that is not met
+either.
+
+**Training does not help this system at all.** J0, which trains nothing, has the best ten-set mean
+AUROC of the four. Every trained run selected **epoch 0** — none improved on its own first epoch.

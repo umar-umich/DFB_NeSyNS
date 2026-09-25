@@ -1,0 +1,284 @@
+{
+ "frozen": {
+  "tau": 0.5793045163154602,
+  "branch_u_p20": 0.07076650808254878,
+  "branch_u_p80": 0.1574225870271524,
+  "kappa_p20": 0.0002006512222578749
+ },
+ "runs": {
+  "J0": {
+   "per_seed": [
+    {
+     "auroc": 0.8964519547501477,
+     "vacuity_error_auroc": 0.695045570107909,
+     "error_rate": 0.23426212590299278,
+     "si_n": 0,
+     "ia_n": 40,
+     "si_mean_uf": NaN,
+     "si_error_rate": NaN,
+     "inversion_rate": NaN,
+     "loo": {
+      "T": 0.06385592608235399,
+      "APP": -0.0022863471106779887,
+      "OM": 0.04414967723348495
+     },
+     "fused_auroc_folds": 0.9070031168212417
+    }
+   ],
+   "mean": {
+    "auroc": 0.8964519547501477,
+    "vacuity_error_auroc": 0.695045570107909,
+    "error_rate": 0.23426212590299278,
+    "si_mean_uf": NaN,
+    "si_error_rate": NaN,
+    "inversion_rate": NaN,
+    "fused_auroc_folds": 0.9070031168212417,
+    "loo": {
+     "T": 0.06385592608235399,
+     "APP": -0.0022863471106779887,
+     "OM": 0.04414967723348495
+    },
+    "si_n": 0,
+    "ia_n": 40
+   }
+  },
+  "J1": {
+   "per_seed": [
+    {
+     "auroc": 0.8911626461370725,
+     "vacuity_error_auroc": 0.7186646205222219,
+     "error_rate": 0.2108703130374957,
+     "si_n": 0,
+     "ia_n": 0,
+     "si_mean_uf": NaN,
+     "si_error_rate": NaN,
+     "inversion_rate": NaN,
+     "loo": {
+      "T": 0.07137345314131478,
+      "APP": -0.001385722163827996,
+      "OM": 0.009713599184783095
+     },
+     "fused_auroc_folds": 0.8967039591842407
+    },
+    {
+     "auroc": 0.8913240099967481,
+     "vacuity_error_auroc": 0.7182626323000688,
+     "error_rate": 0.21035431716546268,
+     "si_n": 0,
+     "ia_n": 0,
+     "si_mean_uf": NaN,
+     "si_error_rate": NaN,
+     "inversion_rate": NaN,
+     "loo": {
+      "T": 0.07134131836370294,
+      "APP": -0.0013021393668207093,
+      "OM": 0.00982020247646409
+     },
+     "fused_auroc_folds": 0.8968384598098325
+    },
+    {
+     "auroc": 0.8908473185437703,
+     "vacuity_error_auroc": 0.7182392562030601,
+     "error_rate": 0.21018231854145167,
+     "si_n": 0,
+     "ia_n": 0,
+     "si_mean_uf": NaN,
+     "si_error_rate": NaN,
+     "inversion_rate": NaN,
+     "loo": {
+      "T": 0.07101092724165355,
+      "APP": -0.0015351643283783244,
+      "OM": 0.009593280555437688
+     },
+     "fused_auroc_folds": 0.8964179742884412
+    }
+   ],
+   "mean": {
+    "auroc": 0.8911113248925303,
+    "vacuity_error_auroc": 0.7183888363417835,
+    "error_rate": 0.21046898291480334,
+    "si_mean_uf": NaN,
+    "si_error_rate": NaN,
+    "inversion_rate": NaN,
+    "fused_auroc_folds": 0.8966534644275047,
+    "loo": {
+     "T": 0.07124189958222375,
+     "APP": -0.0014076752863423434,
+     "OM": 0.009709027405561624
+    },
+    "si_n": 0,
+    "ia_n": 0
+   }
+  },
+  "J2a": {
+   "per_seed": [
+    {
+     "auroc": 0.893773520238591,
+     "vacuity_error_auroc": 0.7307240571579627,
+     "error_rate": 0.20192638458892329,
+     "si_n": 0,
+     "ia_n": 340,
+     "si_mean_uf": NaN,
+     "si_error_rate": NaN,
+     "inversion_rate": NaN,
+     "loo": {
+      "T": 0.06977930913675848,
+      "APP": -0.001835310506433685,
+      "OM": 0.027487080878587977
+     },
+     "fused_auroc_folds": 0.9010940206720969
+    },
+    {
+     "auroc": 0.8939784626183318,
+     "vacuity_error_auroc": 0.7317368361217955,
+     "error_rate": 0.2039903680770554,
+     "si_n": 0,
+     "ia_n": 316,
+     "si_mean_uf": NaN,
+     "si_error_rate": NaN,
+     "inversion_rate": NaN,
+     "loo": {
+      "T": 0.06951431255496088,
+      "APP": -0.0018680251519987978,
+      "OM": 0.028054267321363912
+     },
+     "fused_auroc_folds": 0.9012960016539553
+    },
+    {
+     "auroc": 0.8939412564290308,
+     "vacuity_error_auroc": 0.7300888605224465,
+     "error_rate": 0.20295837633298933,
+     "si_n": 0,
+     "ia_n": 316,
+     "si_mean_uf": NaN,
+     "si_error_rate": NaN,
+     "inversion_rate": NaN,
+     "loo": {
+      "T": 0.06983637928507073,
+      "APP": -0.0019248205259941198,
+      "OM": 0.027395713240630438
+     },
+     "fused_auroc_folds": 0.9012192040215281
+    }
+   ],
+   "mean": {
+    "auroc": 0.8938977464286513,
+    "vacuity_error_auroc": 0.7308499179340683,
+    "error_rate": 0.20295837633298933,
+    "si_mean_uf": NaN,
+    "si_error_rate": NaN,
+    "inversion_rate": NaN,
+    "fused_auroc_folds": 0.9012030754491933,
+    "loo": {
+     "T": 0.0697100003255967,
+     "APP": -0.0018760520614755343,
+     "OM": 0.027645687146860776
+    },
+    "si_n": 0,
+    "ia_n": 324
+   }
+  },
+  "J2b": {
+   "per_seed": [
+    {
+     "auroc": 0.8912030727515985,
+     "vacuity_error_auroc": 0.7192048979464124,
+     "error_rate": 0.2108703130374957,
+     "si_n": 0,
+     "ia_n": 0,
+     "si_mean_uf": NaN,
+     "si_error_rate": NaN,
+     "inversion_rate": NaN,
+     "loo": {
+      "T": 0.0713665031802891,
+      "APP": -0.0013770255456238,
+      "OM": 0.0097443234552953
+     },
+     "fused_auroc_folds": 0.8967866425511438
+    },
+    {
+     "auroc": 0.891390679650873,
+     "vacuity_error_auroc": 0.7181940634320803,
+     "error_rate": 0.21035431716546268,
+     "si_n": 0,
+     "ia_n": 0,
+     "si_mean_uf": NaN,
+     "si_error_rate": NaN,
+     "inversion_rate": NaN,
+     "loo": {
+      "T": 0.0713529835244234,
+      "APP": -0.0012984270675689968,
+      "OM": 0.00986847484088007
+     },
+     "fused_auroc_folds": 0.8969174006504517
+    },
+    {
+     "auroc": 0.8908911026228925,
+     "vacuity_error_auroc": 0.7189253243054665,
+     "error_rate": 0.21052631578947367,
+     "si_n": 0,
+     "ia_n": 0,
+     "si_mean_uf": NaN,
+     "si_error_rate": NaN,
+     "inversion_rate": NaN,
+     "loo": {
+      "T": 0.07100214022693244,
+      "APP": -0.0015303478076359011,
+      "OM": 0.009621590495933719
+     },
+     "fused_auroc_folds": 0.8964836688944343
+    }
+   ],
+   "mean": {
+    "auroc": 0.891161618341788,
+    "vacuity_error_auroc": 0.7187747618946531,
+    "error_rate": 0.21058364866414403,
+    "si_mean_uf": NaN,
+    "si_error_rate": NaN,
+    "inversion_rate": NaN,
+    "fused_auroc_folds": 0.8967292373653434,
+    "loo": {
+     "T": 0.07124054231054831,
+     "APP": -0.001401933473609566,
+     "OM": 0.009744796264036362
+    },
+    "si_n": 0,
+    "ia_n": 0
+   }
+  }
+ },
+ "j2b_rule": {
+  "1_vacuity_error_auroc_higher": {
+   "J1": 0.7183888363417835,
+   "J2b": 0.7187747618946531,
+   "ci95": [
+    -0.00033744165003239126,
+    0.0017603562912179263
+   ],
+   "pass": false
+  },
+  "2_dev_auroc_within_0.005": {
+   "J1": 0.8911113248925303,
+   "J2b": 0.891161618341788,
+   "pass": true
+  },
+  "3_all_nonzero_views_positive_loo": {
+   "loo": {
+    "T": 0.07124054231054831,
+    "APP": -0.001401933473609566,
+    "OM": 0.009744796264036362
+   },
+   "pass": false
+  },
+  "4_si_mean_uf_not_lower": {
+   "J1": NaN,
+   "J2b": NaN,
+   "si_subset_size": 0,
+   "pass": null,
+   "note": "UNDECIDABLE: the shared-ignorance subset is empty. High mean branch vacuity and low kappa do not co-occur in this system -- they are positively correlated at +0.178, because branch vacuity is a MEAN over three views, so one vacuous view beside two confident disagreeing ones gives high vacuity AND high conflict."
+  },
+  "verdict": "FAIL",
+  "verdict_basis": "criteria 1 and 3 decide it; criterion 4 is undecidable and does not change the outcome"
+ },
+ "j2a_lowers_si_uf_vs_j1": false
+}
