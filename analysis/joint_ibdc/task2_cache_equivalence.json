@@ -2,8 +2,8 @@
  "gate": "Task 2 cache equivalence",
  "verdict": "PASS",
  "tolerance": 1e-05,
- "worst": 7.204437257879448e-08,
- "splits_checked": 2,
+ "worst": 7.946548463699799e-08,
+ "splits_checked": 3,
  "checkpoint": "/data/umar/Repos/DISCERN_Ext/runs/discern_ext_train/warm_dicome_gate_seed42/checkpoints/discern_ext-best-epoch=19-val_auroc_video=0.9956.ckpt",
  "aggregation": "mean of frame opinions (p and u separately), then fuse [analysis/tbiom/exp1_fusion_audit.py:104]",
  "per_split": {
@@ -40,6 +40,24 @@
      "n_videos_matched": 1350,
      "max_abs_diff_p": 1.8694038372846222e-08,
      "max_abs_diff_u": 3.8482208253309835e-08
+    }
+   }
+  },
+  "VALmixV2": {
+   "features": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/cache/VALmixV2.npz",
+   "worst": 7.946548463699799e-08,
+   "per_block": {
+    "semantic": {
+     "view": "APP",
+     "n_videos_matched": 3764,
+     "max_abs_diff_p": 3.7581252998464265e-08,
+     "max_abs_diff_u": 3.0212020885045376e-08
+    },
+    "artifact": {
+     "view": "OM",
+     "n_videos_matched": 3764,
+     "max_abs_diff_p": 7.946548463699799e-08,
+     "max_abs_diff_u": 2.7276420566657578e-08
     }
    }
   }

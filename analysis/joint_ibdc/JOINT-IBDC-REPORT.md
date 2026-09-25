@@ -225,3 +225,41 @@ Identical to four decimals, with the same fitted weights in every fold and thres
 **Scope of this change.** It applies to the joint-IBDC study only. The I-JEPA branch study continues
 to use the deployed temporal opinions, since it does not rebuild that cache, and the two must not be
 quietly mixed.
+
+## Prior art: joint training has already collapsed the views once here
+
+`tbiom/reports/EXP_JOINT_ABLATION.md` (Experiment 6) fine-tuned the whole staged system together and
+measured exactly the quantity the collapse check watches.
+
+| arm | Δ drop APP | Δ drop OM |
+|---|---:|---:|
+| staged (this study's J0) | +0.0013 | **+0.0102** |
+| joint, seed 42 | **−0.0004** | **+0.0003** |
+| joint, seed 1337 | **−0.0005** | **−0.0004** |
+
+The brief stops the study after J1 if a view with nonzero trust weight has a leave-one-out
+contribution at most zero in J1 but positive in J0. On this precedent Appearance triggers that at
+both seeds and Off-manifold triggers at seed 1337, with seed 42's +0.0003 barely above zero.
+`DECISIONS_AND_OPTIONS.md` records the outcome already: *"not adopted: no gain, and it removes the
+disagreement DS-R exploits."*
+
+**It is a strong prior, not a foregone conclusion.** Experiment 6 trained CLIP LoRA, the β-VAE
+projector, the temporal LoRA and every head. J1 here trains ONLY the evidential heads on frozen
+cached features, which is far more constrained, so the collapse may not reproduce. It is recorded
+here so that a J1 collapse is read as a reproduction of a known effect rather than a surprise, and so
+that the absence of one is recognised as the more interesting result.
+
+### The same document settles the trust-weight ambiguity
+
+The brief says trust weights are "fixed at the deployed staged values during training", but those
+values are fitted on DEVELOPMENT and differ per fold, so there is no single deployed value to fix
+them at without importing development information into training. Experiment 6 met the same fork and
+resolved it explicitly: it trained against the **equal-trust** fusion, "since DS-R's weights are
+fitted on development, so they are kept out of the training objective".
+
+This study follows that. **Equal trust in the training objective; weights refit out of fold on the
+five development folds for evaluation**, which is what the brief's next sentence prescribes anyway.
+G0b reports the per-fold deployed triples alongside equal trust, because the choice is not cosmetic:
+discounting a view towards zero makes it vacuous, and a vacuous view contributes no conflict at all,
+so kappa depends on which reading is taken. This is recorded as a reading of an ambiguous
+instruction, not as the instruction.
