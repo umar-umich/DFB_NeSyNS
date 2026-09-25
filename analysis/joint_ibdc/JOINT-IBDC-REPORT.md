@@ -167,3 +167,19 @@ not proceed past it on my judgement alone. The options are to accept the toleran
 view with this evidence attached, to re-export the deployed temporal opinions from the cache so the
 whole study is internally consistent at the cost of no longer matching the historical file, or to
 investigate the 2026-09-17 environment further.
+
+### The matched draws behave as designed
+
+FF++ c23 train, V-JEPA 2 view, 3,600 videos, three draws. Where two draws happened to pick the same
+setting for a video, the cached features are **bit-identical**; where they differ, the features move.
+
+| pair | videos with the same setting | max feature diff there | videos with different settings | median diff there |
+|---|---:|---:|---:|---:|
+| 0 vs 1 | 783 | **0.000e+00** | 2817 | 0.186 |
+| 0 vs 2 | 820 | **0.000e+00** | 2780 | 0.184 |
+| 1 vs 2 | 797 | **0.000e+00** | 2803 | 0.184 |
+
+The agreement rate, 21.8%, is what arm B's grid predicts: 0.4^2 + 6*0.1^2 = 0.22. So the forward is
+deterministic, the drawn setting is the only thing varying between draws, and the augmentation is
+doing real work rather than perturbing the features at the noise floor. Video order and labels are
+identical across all three draws.
