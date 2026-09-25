@@ -140,3 +140,64 @@ frames, matching the budget line exactly.
 - The checkpoint is CC BY-NC 4.0, non-commercial.
 - The cheek blocks carry roughly a quarter background, as measured above.
 
+
+## Amendment 2 precondition (2026-09-25)
+
+`tbiom/docs/discern-v2-ijepa-branch-amendment2.md`. Sequence heads T0-T3 on the frozen residual cache,
+to run after G2 and the R5 decision. Evidence: `analysis/ijepa/amendment2_cache_check.json`.
+
+**The cache is per frame.** eps_k and r_bar_k are stored per frame with the key, from which the video
+id and the original frame index both recover. a_k is derived rather than cached, deliberately: it is
+log eps_k standardised by the frozen mu_k, sigma_k fitted on real FF++ training frames, and caching it
+would freeze a fit the gates are entitled to refit.
+
+**The cached frames are NOT consecutive.** The stored crop filenames carry the original video frame
+index, so the stride is exact.
+
+| dataset | videos | frames/video | median stride (source frames) | approx. seconds |
+|---|---:|---:|---:|---|
+| FFpp_train | 3600 | 32 | 13 | 0.43-0.52 |
+| FFpp_val | 700 | 32 | 13 | 0.43-0.52 |
+| VALmix | 1350 | 32 | 15 | 0.50-0.60 |
+| **VALmixV2** | 4852 | **16** | 21 | 0.70-0.84 |
+| CDFv2 | 518 | 32 | 12 | 0.40-0.48 |
+| CDFv3 | 5418 | 32 | 10 | 0.33-0.40 |
+| DFD | 3431 | 32 | 24 | 0.80-0.96 |
+| DFDC | 4704 | 32 | 10 | 0.33-0.40 |
+| DFDCP | 654 | 32 | 14 | 0.47-0.56 |
+| DFDM | 1896 | 32 | 12 | 0.40-0.48 |
+| DFEval24 | 814 | 31 | 37 | 1.23-1.48 |
+| FaceShifter | 280 | 32 | 15 | 0.50-0.60 |
+| FFIW | 3470 | 32 | 7 | 0.23-0.28 |
+| IDForge | 5974 | 32 | 5 | 0.17-0.20 |
+| KoDF | 2239 | 32 | 19 | 0.63-0.76 |
+
+Seconds are **assumed**, at 25-30 fps. No native frame rate is recorded anywhere in the preprocessing
+metadata, which holds resolutions only, so the stride in source frames is the measured quantity and
+the seconds column is a stated conversion.
+
+> **Wording constraint, binding.** Consecutive cached frames are 0.17 to 1.48 seconds apart. Every
+> T0-T3 result is **aggregation over sampled frames** and must never be described as motion or as
+> temporal dynamics.
+
+**Two further consequences the amendment's tables have to carry.**
+
+- **VALmix-v2 holds 16 frames per video, not 32.** Checkpoint selection therefore runs on sequences
+  half the length of the training sequences, for every head.
+- **DF40 is 13 manifests of single-frame entries.** 36,316 of its 62,156 videos are flat whole-image
+  generators (CollabDiff, MidJourney, e4e, stargan, starganv2, styleclip, whichisr3al) where the
+  canonical video rule makes each frame its own video, so a sequence head sees length 1 and T0-T3 are
+  degenerate by construction. The remaining 67 manifests carry 25,840 videos at a median of 32 frames.
+  Sequence results on DF40 must be reported over the multi-frame subset, with the single-frame subset
+  named and excluded rather than silently averaged in.
+
+**T3 will use the reference implementation.** `mamba_ssm` is not installed in any environment on this
+machine (`discern_ext`, `discern_ext_timm`, `temporal_vjepa2` all fail to import it). The amendment
+permits the reference PyTorch selective scan in that case, and it is recorded here as the one used.
+Installing the package would require building CUDA kernels in an environment whose peft/diffusers pins
+must not move.
+
+**Training realisations.** FF++ c23 training residuals are extracted with the B mixture drawn **once
+per clip**, so each training frame has exactly **one fixed augmented realisation**, not several cached
+variants. The heads apply no image augmentation, so no result here may be described as having fresh
+augmentation during head training.
