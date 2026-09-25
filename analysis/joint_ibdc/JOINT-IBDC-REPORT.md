@@ -383,3 +383,52 @@ The equal-trust row is the right comparator, and J0 sits 0.0030 from it, with ev
 within 0.011. The residual difference is accounted for by PCR6+ against DS and by the temporal view
 being cache-derived. The pipeline therefore reproduces a number this project produced by a different
 route, which is what J0 exists to establish before any run is trained against it.
+
+## J1 and the collapse check
+
+J1 trains the three heads with EDL on the fused opinion plus 0.5 x EDL on each branch before
+discounting. Seed 0, 20 epochs, one of the three matched draws per epoch.
+
+**Training never improved on its own first epoch.** Development v3.1 fell monotonically from 0.8680
+at epoch 0 to 0.8507 at epoch 19, and the selected checkpoint is **epoch 0**. J1's best, 0.8680, is
+below J0's 0.8741, and the fused development AUROC falls from 0.9070 to 0.8967.
+
+### The collapse check does not fire
+
+| view | J0 leave-one-out | J1 leave-one-out | folds with nonzero weight in J1 | collapsed |
+|---|---:|---:|---:|---|
+| T | +0.0639 | **+0.0714** | 5 | no |
+| APP | −0.0023 | −0.0014 | 5 | no |
+| OM | +0.0441 | +0.0097 | 5 | no |
+
+The rule fires when a view with nonzero trust weight is positive in J0 and at most zero in J1. T rises,
+APP is negative in both so cannot qualify, and OM stays positive. **The study continues to J2a and J2b.**
+
+### The 78% drop in OM is mostly a regime change, not a collapse
+
+Taken at face value OM falls 78%, which looks like the effect `EXP_JOINT_ABLATION.md` reported. It
+is largely an artefact of averaging two different regimes.
+
+| | J0 | J1 |
+|---|---:|---:|
+| fitted APP weight per fold | 0.25, 0.25, **0, 0, 0** | 0.25 x 5 |
+| OM leave-one-out where APP is PRESENT | +0.0131 (folds 0, 1) | +0.0097 (all folds) |
+| OM leave-one-out where APP is ABSENT | **+0.0649** (folds 2, 3, 4) | -- |
+
+OM contributes five times more in the folds where the discount has already removed APP, because it is
+then the only spatial view. J0's +0.0441 mixes both regimes; J1's +0.0097 is measured entirely in the
+APP-present regime, because J1 retains APP in every fold. Like for like the fall is **26%, not 78%**.
+
+An aggregate mean of this exact quantity has now misled twice in this project, in the same direction,
+so the like-for-like figure is the one to quote.
+
+### What did change is that the views became interchangeable
+
+The fitted weights moved from (0.25, 0.25, 0, 0, 0) for APP in J0 to 0.25 in all five folds in J1.
+The reliability fit no longer finds a reason to discard Appearance. Together with a lower fused AUROC
+and a smaller OM contribution, that is the flattening `DECISIONS_AND_OPTIONS.md` described as "it
+removes the disagreement DS-R exploits" -- visible here as the discount losing its grip rather than
+as a view's contribution crossing zero. The formal check does not fire, and the effect is real
+anyway; both are reported.
+
+Seeds 1 and 2 are still to run; the brief specifies three per run.
