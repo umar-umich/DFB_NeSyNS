@@ -1,0 +1,45 @@
+{
+ "action": "temporal development opinions re-exported from the feature cache",
+ "branch": "/data/umar/Repos/DFB_NeSyNS/logs/tbiom/temporal/branches/vjepa2_lora_B_seed42",
+ "epoch": 6,
+ "dev_videos": 5814,
+ "written_to": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/opinions",
+ "deployed_csvs_overwritten": false,
+ "gate_note": "The original 1e-5 equivalence check is CIRCULAR once the reference is cache-derived, so it is replaced by this measured delta against the historical 2026-09-17 export.",
+ "delta_vs_historical": {
+  "VALmix": {
+   "n": 1350,
+   "file": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/opinions/VALmix.csv",
+   "matched": 1350,
+   "max_abs_dp": 0.0008724219704545622,
+   "median_abs_dp": 4.261224973011596e-05,
+   "max_abs_du": 0.0013232375116030148,
+   "auroc_cache": 0.7421388203017832,
+   "auroc_historical": 0.741996159122085,
+   "spearman": 0.9999935753646895
+  },
+  "VALmixV2": {
+   "n": 3764,
+   "file": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/opinions/VALmixV2.csv",
+   "matched": 3764,
+   "max_abs_dp": 0.0008754401192774264,
+   "median_abs_dp": 4.1499033203051816e-05,
+   "max_abs_du": 0.0013880842090666645,
+   "auroc_cache": 0.8214663371762749,
+   "auroc_historical": 0.8214409385611077,
+   "spearman": 0.9999981743651322
+  },
+  "FFpp_val": {
+   "n": 700,
+   "file": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/opinions/FFpp_val.csv",
+   "matched": 700,
+   "max_abs_dp": 0.0005302600724098605,
+   "median_abs_dp": 1.883082261439073e-05,
+   "max_abs_du": 0.0010454371548849206,
+   "auroc_cache": 0.9903954081632653,
+   "auroc_historical": 0.9904017857142857,
+   "spearman": 0.9999467782223213
+  }
+ },
+ "worst_max_abs_dp": 0.0008754401192774264
+}

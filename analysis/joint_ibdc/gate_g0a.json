@@ -1,5 +1,6 @@
 {
  "gate": "G0a",
+ "temporal_opinions": "historical export",
  "verdict": "PASS",
  "rule": "source-grouped bootstrap 95% interval for (set 3 - set 1) above zero",
  "system": "42",

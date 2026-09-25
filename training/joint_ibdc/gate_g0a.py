@@ -44,6 +44,7 @@ import dsr_system as D           # noqa: E402
 import exp1_fusion_audit as A    # noqa: E402
 import score as S                # noqa: E402
 import fusion_torch as FT        # noqa: E402
+import devtable as DT            # noqa: E402
 from sklearn.linear_model import LogisticRegression  # noqa: E402
 from sklearn.model_selection import GroupKFold       # noqa: E402
 from sklearn.preprocessing import StandardScaler     # noqa: E402
@@ -73,8 +74,15 @@ def cv_predict(X, y, groups):
 
 
 def main():
-    dev = C.dev_table(SPATIAL, BRANCH)
-    print(f"development pool: {len(dev)} videos (system {TAG}: {SPATIAL} + {BRANCH})")
+    import argparse as _ap
+    a = _ap.ArgumentParser()
+    a.add_argument("--cached", action="store_true",
+                   help="take the video view's opinions from the feature cache (Task 2, option 2)")
+    args = a.parse_args()
+    dev = DT.dev_table_cached() if args.cached else C.dev_table(SPATIAL, BRANCH)
+    src = "cache-derived" if args.cached else "historical export"
+    print(f"development pool: {len(dev)} videos (system {TAG}: {SPATIAL} + {BRANCH}), "
+          f"video view from the {src}")
 
     rows, pooled = [], {k: [] for k in SETS}
     pooled_err, pooled_grp = [], []
@@ -124,18 +132,19 @@ def main():
     pooled_auc = {n: float(C.auc_weighted(P_[n], E, one)[0]) for n in SETS}
     means = {n: float(np.mean([r["aurocs"][n] for r in rows])) for n in SETS}
     sds = {n: float(np.std([r["aurocs"][n] for r in rows])) for n in SETS}
-    res = {"gate": "G0a", "verdict": "PASS" if ok else "FAIL",
+    res = {"gate": "G0a", "temporal_opinions": src, "verdict": "PASS" if ok else "FAIL",
            "rule": "source-grouped bootstrap 95% interval for (set 3 - set 1) above zero",
            "system": TAG, "n_boot": N_BOOT, "mean_auroc": means, "sd_auroc": sds,
            "pooled_auroc": pooled_auc, "set3_minus_set1": {"point": point, "ci95": [lo, hi]}, "per_split": rows}
     OUT.mkdir(parents=True, exist_ok=True)
-    json.dump(res, open(OUT / "gate_g0a.json", "w"), indent=1)
+    json.dump(res, open(OUT / ("gate_g0a_cached.json" if args.cached else "gate_g0a.json"), "w"), indent=1)
 
     print()
     for n in SETS:
         print(f"  {n:12s} error AUROC {means[n]:.4f} +-{sds[n]:.4f}  (pooled {pooled_auc[n]:.4f})")
     print(f"\n  set 3 - set 1 = {point:+.4f}  95% CI [{lo:+.4f}, {hi:+.4f}]")
-    print(f"G0a {res['verdict']} -> {OUT / 'gate_g0a.json'}")
+    print(f"G0a {res['verdict']} ({src}) -> "
+          f"{OUT / ('gate_g0a_cached.json' if args.cached else 'gate_g0a.json')}")
     return 0 if ok else 1
 
 

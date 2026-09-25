@@ -183,3 +183,45 @@ The agreement rate, 21.8%, is what arm B's grid predicts: 0.4^2 + 6*0.1^2 = 0.22
 deterministic, the drawn setting is the only thing varying between draws, and the augmentation is
 doing real work rather than perturbing the features at the noise floor. Video order and labels are
 identical across all three draws.
+
+
+## Resolution: the temporal opinions are re-exported from the cache
+
+The decision on the failed gate was **option 2**. The video view's development opinions are now
+derived from the feature cache by applying the frozen head, so all three views in this study come
+from one object. The deployed CSVs were **not** overwritten; they remain the reference of record for
+the studies that already used them. New files live in `logs/joint_ibdc/opinions/`.
+
+**The original check is now circular, and is replaced rather than re-passed.** Once the reference is
+cache-derived, "the cache reproduces the reference" is true by construction and says nothing. What
+can still be measured is the distance from the historical 2026-09-17 export, so that is what is
+reported.
+
+| set | videos | max abs dp | median abs dp | AUROC cache | AUROC historical | Spearman |
+|---|---:|---:|---:|---:|---:|---:|
+| VALmix | 1350 | 8.724e-04 | 4.261e-05 | 0.742139 | 0.741996 | 0.999994 |
+| VALmix-v2 | 3764 | 8.754e-04 | 4.150e-05 | 0.821466 | 0.821441 | 0.999998 |
+| FF++ val | 700 | 5.303e-04 | 1.883e-05 | 0.990395 | 0.990402 | 0.999947 |
+
+VALmix-v2 contributes 3,764 videos rather than its 4,852 manifest videos because the protocol's
+out-of-scope subsets are filtered; 1350 + 3764 + 700 = 5814, which is the development pool exactly.
+
+### What the substitution changes
+
+In the development table the spatial columns are **bit-identical** and only the video view moves:
+`p_T` by at most 8.754e-04 (median 3.704e-05) and `u_T` by at most 1.388e-03 (median 7.329e-05).
+
+G0a was re-run on the substituted table, because its verdict had been computed on the historical one
+and a conclusion carried over without rechecking is a conclusion nobody has tested.
+
+| G0a | video view | verdict | set 3 − set 1 | 95% CI |
+|---|---|---|---:|---|
+| `gate_g0a.json` | historical export | PASS | +0.0312 | [+0.0201, +0.0424] |
+| `gate_g0a_cached.json` | cache-derived | PASS | +0.0312 | [+0.0201, +0.0424] |
+
+Identical to four decimals, with the same fitted weights in every fold and thresholds moving by about
+3e-04. The premise gate does not depend on which temporal opinions are used.
+
+**Scope of this change.** It applies to the joint-IBDC study only. The I-JEPA branch study continues
+to use the deployed temporal opinions, since it does not rebuild that cache, and the two must not be
+quietly mixed.
