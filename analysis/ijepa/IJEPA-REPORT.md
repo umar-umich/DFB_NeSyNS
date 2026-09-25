@@ -13,8 +13,8 @@ config or checkpoint was modified.
 | block alignment (pre-extraction stop check) | **PASS, with a caveat** | `analysis/ijepa/block_alignment.json`, `analysis/ijepa/block_overlays/` | Every block is majority-face on both FF++ and CDFv2; the two cheek blocks carry about a quarter background. |
 | extraction budget | **RESOLVED** | `analysis/ijepa/budget_estimate.json`, `analysis/ijepa/logs/` | The 24-hour ceiling was a fp32 estimate. bf16 at batch 64 is 4.9x faster on the same card, so the non-DF40 half plus the processed cells is ~3.7 hours of wall clock. DF40 is still not queued. |
 | G1 compression confound | **PASS** | `analysis/ijepa/gate_g1.json` | 4/5 and 4/5 on the magnitude reading, 5/5 and 5/5 signed, once the standardiser is fitted at the same processing placement the evaluation cells use. |
-| G2 single-view signal | TODO(run) | -- | Unblocked by G1; R2/R2b/R3/R4 next. |
-| G3 fusion | TODO(run) | -- | Needs G2. |
+| G2 single-view signal | **FAIL** | `analysis/ijepa/gate_g2.json` | R4 clears the .80 bar at 0.8942, but R3 loses to both R2 and R2b on the development score, so the signal is the backbone's rather than the prediction's. |
+| G3 fusion | not run | -- | G2 failed and the brief stops the study there. R5 and T0-T3 are also not run. R6 is explicitly exempt. |
 
 ## G0, full output (tail)
 
@@ -505,3 +505,46 @@ every evaluation cell within 2.3 sd of the training mean, and the fit interpolat
 
 The training-conditions cache `FFpp_train_B` is untouched and still used for the head rows, which
 must match training. `FFpp_train_B224` exists only to fit the standardiser.
+
+
+## Gate G2 — FAIL
+
+All four rows on the brief's recipe, seed 42, standardiser from the matched-placement cache.
+
+| row | what the head sees | FF++ val AUROC | dev v3.1 | swap | reenactment | in-the-wild |
+|---|---|---:|---:|---:|---:|---:|
+| R2 | mean-pooled I-JEPA feature, **no prediction** | 0.7842 | **0.6812** | 0.7139 | **0.7749** | 0.5548 |
+| R2b | per-block target features, **no prediction** | 0.8132 | 0.6701 | 0.7106 | 0.7463 | 0.5534 |
+| R3 | prediction residuals, unstandardised | 0.8955 | 0.6622 | 0.6900 | 0.6884 | **0.6082** |
+| R4 | prediction residuals, standardised | 0.8942 | 0.6658 | 0.7005 | 0.6834 | 0.6136 |
+
+- **Condition 1 passes.** R4 reaches 0.8942 against the .80 bar, comfortably.
+- **Condition 2 fails.** R3 at 0.6622 loses to R2 at 0.6812 and to R2b at 0.6701.
+
+The brief fixed the reading in advance: if R3 does not beat R2, the gain comes from the backbone
+rather than from the prediction. That is what happened. A plain mean-pooled I-JEPA feature, with no
+hiding and no predictor, generalises better across datasets than the regional prediction residuals
+the branch is built on.
+
+### The failure has a clear shape
+
+The residual rows are far better **in domain** and worse **out of it**: R3 beats R2 by +0.111 on FF++
+validation, the same corpus the heads trained on, and loses by −0.019 on the cross-dataset
+development score. The residuals are learning something specific to FF++ manipulations.
+
+The per-type split says where it goes wrong. On reenactment the prediction rows lose heavily, 0.688
+against 0.775, and reenactment is this project's headline result. They gain on in-the-wild, 0.608
+against 0.555. So the prediction residual is not uniformly weaker — it trades the family the paper
+most depends on for the one it depends on least.
+
+### What is and is not stopped
+
+The brief stops the study on a failed gate, so **R5 and T0-T3 are not run**. Their code is complete
+and tested and can run unchanged if the verdict ever changes.
+
+**R6 is explicitly exempt.** Amendment 1 orders it run "if G0 passed, whatever the frozen rows scored
+at G1 and G2". That exemption now matters more than when it was written: G2's finding is precisely
+that the FROZEN ImageNet predictor's residuals do not generalise, and R6 is the row that adapts the
+predictor to real faces. It is the one remaining thing that could change the branch's verdict, and it
+is the version of this branch with the stronger novelty claim -- self-supervised, no fake data in
+adaptation or selection.

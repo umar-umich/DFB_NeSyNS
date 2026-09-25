@@ -42,6 +42,10 @@ torch.set_num_threads(4)
 OUT = Path("/data/umar/Repos/DFB_NeSyNS/analysis/ijepa")
 EPOCHS, BATCH, LR, WD, MIN_LR = 20, 128, 1e-4, 0.01, 1e-6
 TRAIN_STEM, VAL_STEM = "FFpp_train_B", "FFpp_val"
+# G1 established that the standardiser has to be fitted where the evaluation severities are applied,
+# or it extrapolates on the JPEG cells. The head rows still TRAIN on FFpp_train_B, which matches
+# training conditions; only mu_k, sigma_k and tau_k come from the matched-placement cache.
+STD_STEM = "FFpp_train_B224"
 DEV_STEMS = ("VALmix", "VALmixV2")
 
 
@@ -124,8 +128,13 @@ def main():
     tr = D.load(TRAIN_STEM, arrays=tuple(set(arrays) | {"eps", "q", "rbar"}))
     real = tr["y"] == 0
     print(f"  train {len(tr['keys'])} frames, {real.sum()} real, {(~real).sum()} fake", flush=True)
-    st = FX.fit_standardizer(tr["eps"][real], tr["q"][real])       # real training frames only
-    tau = FX.fit_tau(tr["rbar"][real])
+    std_stem = STD_STEM if D.shard_files(STD_STEM) else TRAIN_STEM
+    sd_ = D.load(std_stem, arrays=("eps", "q", "rbar"))
+    sr = sd_["y"] == 0
+    st = FX.fit_standardizer(sd_["eps"][sr], sd_["q"][sr])         # real training frames only
+    tau = FX.fit_tau(sd_["rbar"][sr])
+    print(f"  standardiser and tau from {std_stem} ({int(sr.sum())} real frames)", flush=True)
+    del sd_
     json.dump({"sigma": st["sigma"].tolist(), "tau": tau.tolist(),
                "n_real_train_frames": int(real.sum())},
               open(OUT / f"standardizer_{a.row}.json", "w"), indent=1)
