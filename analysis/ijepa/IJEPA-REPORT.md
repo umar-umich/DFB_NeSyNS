@@ -358,3 +358,17 @@ Both rows concern the Off-manifold view, not the I-JEPA view, so neither blocks 
 fair comparator the brief wants for R1 ("so that R1 is compared against a head retrained in the same
 way, not against the deployed head"), which means running R0h without R1 answers no question the
 brief asked. Status: **R0h TODO(run)**, **R1 blocked on an extraction not yet performed**.
+
+### Test-set subsets that must be excluded at analysis time
+
+The deployed test tables drop three kinds of subset before scoring (`dsr_system.py:77`):
+
+```python
+keep = ~d.subset.str.contains("IP_LAP") & (d.subset != "fake-audio-driven") & ~d.subset.str.startswith("adv-")
+```
+
+IP_LAP is lip-sync-only, `fake-audio-driven` is KoDF's audio-driven split, and `adv-` are KoDF's
+adversarial variants. The I-JEPA cache deliberately holds every frame of KoDF and CDFv3, including
+these, because the exclusion belongs at analysis time rather than extraction time -- but every
+test-set number this study reports must apply the same filter, or it will not be comparable to the
+deployed numbers it is meant to sit beside, however self-consistent it looks.

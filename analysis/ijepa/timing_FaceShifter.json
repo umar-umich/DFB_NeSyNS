@@ -4,21 +4,21 @@
  "amp": "bf16",
  "arm_b": false,
  "process": "clean",
- "videos": 24,
- "frames": 384,
- "frames_per_video": 16.0,
+ "videos": 280,
+ "frames": 8958,
+ "frames_per_video": 31.99,
  "seconds": {
-  "model_load": 37.1,
-  "h5_read": 1.5,
-  "gpu": 20.5
+  "model_load": 34.0,
+  "h5_read": 29.1,
+  "gpu": 486.3
  },
- "frames_per_second_gpu": 18.76,
+ "frames_per_second_gpu": 18.42,
  "eps_mean_per_block": {
-  "upper": 0.24810218811035156,
-  "lower": 0.31327661871910095,
-  "left_cheek": 0.34085845947265625,
-  "right_cheek": 0.3346525728702545,
-  "centre": 0.21796512603759766
+  "upper": 0.22878031432628632,
+  "lower": 0.315311074256897,
+  "left_cheek": 0.34665337204933167,
+  "right_cheek": 0.3454042673110962,
+  "centre": 0.20937591791152954
  },
  "bytes_per_frame_cached": 28176
 }

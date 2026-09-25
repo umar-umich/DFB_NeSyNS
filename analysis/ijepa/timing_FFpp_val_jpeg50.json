@@ -1,0 +1,24 @@
+{
+ "dataset": "FFpp_val",
+ "stem": "FFpp_val_jpeg50",
+ "amp": "bf16",
+ "arm_b": false,
+ "process": "jpeg:50",
+ "videos": 700,
+ "frames": 22396,
+ "frames_per_video": 31.99,
+ "seconds": {
+  "model_load": 36.6,
+  "h5_read": 72.4,
+  "gpu": 1265.4
+ },
+ "frames_per_second_gpu": 17.7,
+ "eps_mean_per_block": {
+  "upper": 0.22262297570705414,
+  "lower": 0.3107105493545532,
+  "left_cheek": 0.3368094265460968,
+  "right_cheek": 0.34937286376953125,
+  "centre": 0.20284493267536163
+ },
+ "bytes_per_frame_cached": 28176
+}

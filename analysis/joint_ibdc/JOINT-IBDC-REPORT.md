@@ -279,3 +279,30 @@ the rule.
 
 So a video's frames and its clip see the same processing, which is what makes "per augmentation
 level" in G0b a well-defined breakdown. Pinned by `test_draws.py`.
+
+### The cache gate extends to test sets, and a subset rule both studies must apply
+
+The equivalence check was run on development sets first, but the test-set caches are where the
+reported numbers come from, so it is run there too against the deployed per-frame exports in
+`logs/tbiom/stage23/warmgate_sel_<set>.csv`.
+
+| set | videos matched | worst abs diff | verdict |
+|---|---:|---:|---|
+| DFD | 3,431 / 3,431 | 2.830e-08 | PASS |
+| DFDM | 1,896 / 1,896 | 2.642e-08 | PASS |
+| DFDCP | 654 / 654 | 8.529e-08 | PASS |
+
+**The deployed test tables drop three kinds of subset**, from `dsr_system.py:77`:
+
+```python
+keep = ~d.subset.str.contains("IP_LAP") & (d.subset != "fake-audio-driven") & ~d.subset.str.startswith("adv-")
+```
+
+IP_LAP is lip-sync-only, `fake-audio-driven` is KoDF's audio-driven split, and the `adv-` subsets are
+KoDF's adversarial variants. Any test-set number computed WITHOUT this filter is not comparable to
+the deployed one, however correct it looks on its own. Full coverage above (3431/3431, 1896/1896,
+654/654) is what confirms the filter was applied to the reference and the cache consistently.
+
+This applies to the I-JEPA study too: its cache holds every frame of KoDF and CDFv3 including these
+subsets, because the exclusion belongs at analysis time rather than extraction time. Its test tables
+must apply the same rule.
