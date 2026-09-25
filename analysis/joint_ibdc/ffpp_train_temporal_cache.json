@@ -1,0 +1,18 @@
+{
+ "view": "T (V-JEPA 2)",
+ "branch": "/data/umar/Repos/DFB_NeSyNS/logs/tbiom/temporal/branches/vjepa2_lora_B_seed42",
+ "arm": "none",
+ "draws": 1,
+ "feature": "backbone last_hidden_state.mean(1), 1024-d, before the head LayerNorm",
+ "draw_granularity": "per video, matched to the spatial cache (option B)",
+ "deviation": "the deployed temporal loader draws arm B from a per-worker RNG; that is replaced by the shared per-video draw so the views match",
+ "per_draw": [
+  {
+   "draw": 0,
+   "clips": 700,
+   "seconds": 40.0,
+   "file": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/cache/FFpp_val_T_clean.npz",
+   "size_bytes": 2678883
+  }
+ ]
+}

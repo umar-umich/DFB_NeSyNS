@@ -121,3 +121,49 @@ fail on different forgery families, which is the complementarity the fusion exis
 
 Task 2's feature cache needs GPU and is sequenced behind the I-JEPA extraction. G0b, the collapse
 check, all four runs (J0, J1, J2a, J2b), the λ sweep and every metric table depend on it.
+
+## Task 2, cache equivalence: two views PASS, the temporal view FAILS
+
+The brief says to stop if the deployed heads on the cache do not reproduce the deployed per-view
+opinions to 1e-5. Two of the three views meet it; the third does not.
+
+| view | reference | videos | max abs diff p | max abs diff u | verdict |
+|---|---|---:|---:|---:|---|
+| Appearance | development table | 700 (FF++ val) | 1.433e-08 | 1.013e-08 | **PASS** |
+| Off-manifold | development table | 700 (FF++ val) | 1.047e-08 | 1.174e-08 | **PASS** |
+| Appearance | development table | 1350 (VALmix) | 7.204e-08 | 3.427e-08 | **PASS** |
+| Off-manifold | development table | 1350 (VALmix) | 1.869e-08 | 3.848e-08 | **PASS** |
+| **V-JEPA 2 video** | `opinions/FFpp_val.csv` | 700 | **5.303e-04** | **1.045e-03** | **FAIL** |
+
+### What it is not
+
+- **Not instability in the re-extraction.** Two separate processes at batch 8 and batch 32 produce
+  features differing by 3.815e-06, and both differ from the stored reference by the same 5.303e-04.
+- **Not batch size.** Matching the deployed `BATCH = 32` changes nothing.
+- **Not the autocast boundary.** Applying the head under bf16 autocast, as the deployed export does,
+  makes it worse (1.074e-03), not better.
+- **Not a stale checkpoint.** `opinions/FFpp_val.csv` was written 2026-09-17 11:49 and `best.pt` at
+  11:24 the same morning, epoch 6.
+- **Not the cache design.** The same kind of path reproduces the two spatial views to 1e-08.
+
+The most likely explanation is bf16 kernel or library drift between the 2026-09-17 export and today,
+through a frozen ViT-L encoder. That is consistent with everything above but it is an inference, not
+something measured, and it is recorded as such.
+
+### What it costs
+
+| quantity | cached | deployed | difference |
+|---|---:|---:|---:|
+| FF++ val AUROC | 0.990395 | 0.990402 | −6.4e-06 |
+| Spearman of the two rankings | | | 0.99994678 |
+| decisions differing at tau 0.3 / 0.5 / 0.7 | | | 0 / 0 / 0 of 700 |
+
+The median absolute difference is 1.9e-05, so the 5.3e-04 is a tail rather than the typical case, and
+no video changes side at any threshold tried.
+
+**This is reported as a gate failure rather than absorbed.** The numbers say the practical cost is
+nil, but the brief set 1e-5 and the temporal view misses it by a factor of fifty, so the study does
+not proceed past it on my judgement alone. The options are to accept the tolerance for the temporal
+view with this evidence attached, to re-export the deployed temporal opinions from the cache so the
+whole study is internally consistent at the cost of no longer matching the historical file, or to
+investigate the 2026-09-17 environment further.

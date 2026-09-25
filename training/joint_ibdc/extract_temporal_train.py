@@ -80,8 +80,8 @@ def load_model(dev):
 
 
 @torch.no_grad()
-def extract(model, draw, dev, bs=8, workers=6):
-    ds = MatchedClips(DATASET, model.preprocess, draw)
+def extract(model, draw, dev, bs=8, workers=6, dataset=DATASET, arm="B"):
+    ds = MatchedClips(dataset, model.preprocess, draw, arm)
     dl = torch.utils.data.DataLoader(ds, batch_size=bs, num_workers=workers, shuffle=False,
                                      worker_init_fn=lambda _: torch.set_num_threads(1))
     Z, Y, V, S = [], [], [], []
@@ -124,6 +124,8 @@ def main():
     ap.add_argument("--arm", default="B", choices=["B", "none"])
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--dataset", default=DATASET, help="any name dataset_spec resolves")
+    ap.add_argument("--tag", default="", help="cache stem; defaults to the dataset")
     ap.add_argument("--verify", action="store_true")
     a = ap.parse_args()
     torch.set_num_threads(4)
@@ -139,10 +141,11 @@ def main():
                          "replaced by the shared per-video draw so the views match",
             "per_draw": []}
     for d in range(a.draws):
-        f = OUT / f"FFpp_train_T_{a.arm}_d{d}.npz"
+        stem = a.tag or (a.dataset if a.arm == "none" else f"{a.dataset}_T_{a.arm}")
+        f = OUT / (f"{stem}_d{d}.npz" if a.arm == "B" else f"{stem}_T_clean.npz")
         if f.exists():
             print(f"  skip draw {d} (exists)"); continue
-        Z, Y, V, S, secs = extract(model, d, dev, a.batch_size, a.workers)
+        Z, Y, V, S, secs = extract(model, d, dev, a.batch_size, a.workers, a.dataset, a.arm)
         tmp = f.with_suffix(".partial.npz")
         np.savez_compressed(tmp, feature=Z, label=Y, video=V, setting=S)
         tmp.replace(f)

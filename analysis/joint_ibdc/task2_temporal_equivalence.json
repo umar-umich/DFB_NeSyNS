@@ -1,0 +1,32 @@
+{
+ "gate": "Task 2 cache equivalence, temporal view",
+ "verdict": "FAIL",
+ "rule": "deployed heads on the cache reproduce the deployed per-view opinions to 1e-5",
+ "n_videos": 700,
+ "dataset": "FFpp_val (clean)",
+ "max_abs_diff_p": 0.0005303,
+ "max_abs_diff_u": 0.001045,
+ "median_abs_diff_p": 1.883e-05,
+ "tolerance": 1e-05,
+ "reference": "logs/tbiom/temporal/branches/vjepa2_lora_B_seed42/opinions/FFpp_val.csv",
+ "diagnosis": {
+  "my_recomputation_is_stable": "batch 8 vs batch 32, separate processes: features differ by 3.815e-06",
+  "batch_size_excluded": "both batch sizes differ from the reference by the SAME 5.303e-04",
+  "autocast_excluded": "applying the head under bf16 autocast makes it worse (1.074e-03), not better",
+  "stale_checkpoint_excluded": "opinions exported 2026-09-17 11:49, best.pt written 11:24 the same day, epoch 6",
+  "spatial_views_pass": "the same kind of path reproduces APP and OM to 1.4e-08 and 7.2e-08",
+  "most_likely": "bf16 kernel or library differences between the 2026-09-17 export and today, through a frozen ViT-L"
+ },
+ "material_impact": {
+  "auroc_cached": 0.990395,
+  "auroc_deployed": 0.990402,
+  "auroc_diff": -6.38e-06,
+  "spearman": 0.99994678,
+  "decision_flips_at_tau_0.3_0.5_0.7": [
+   0,
+   0,
+   0
+  ],
+  "note": "no video changes side at any threshold tried; the 5.3e-04 is a tail, the median is 1.9e-05"
+ }
+}
