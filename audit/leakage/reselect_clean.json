@@ -1,0 +1,59 @@
+{
+ "rows": [
+  {
+   "epoch": "e13",
+   "n_full": 5814,
+   "n_clean": 2823,
+   "v31_full": 0.8187723887686126,
+   "v31_clean": 0.7645984737438072,
+   "types_full": {
+    "swap": 0.925207826575762,
+    "reenactment": 0.7631623767671131,
+    "in_the_wild": 0.7679469629629629
+   },
+   "types_clean": {
+    "swap": 0.9161748219682355,
+    "reenactment": 0.6096736363002232,
+    "in_the_wild": 0.7679469629629629
+   }
+  },
+  {
+   "epoch": "e17",
+   "n_full": 5814,
+   "n_clean": 2823,
+   "v31_full": 0.8187723887686126,
+   "v31_clean": 0.7645984737438072,
+   "types_full": {
+    "swap": 0.925207826575762,
+    "reenactment": 0.7631623767671131,
+    "in_the_wild": 0.7679469629629629
+   },
+   "types_clean": {
+    "swap": 0.9161748219682355,
+    "reenactment": 0.6096736363002232,
+    "in_the_wild": 0.7679469629629629
+   }
+  },
+  {
+   "epoch": "e19",
+   "n_full": 5814,
+   "n_clean": 2823,
+   "v31_full": 0.8187723887686126,
+   "v31_clean": 0.7645984737438072,
+   "types_full": {
+    "swap": 0.925207826575762,
+    "reenactment": 0.7631623767671131,
+    "in_the_wild": 0.7679469629629629
+   },
+   "types_clean": {
+    "swap": 0.9161748219682355,
+    "reenactment": 0.6096736363002232,
+    "in_the_wild": 0.7679469629629629
+   }
+  }
+ ],
+ "winner_full": "e13",
+ "winner_clean": "e13",
+ "temporal_selected_epoch": 6,
+ "temporal_margin": 0.0003501349214046767
+}
