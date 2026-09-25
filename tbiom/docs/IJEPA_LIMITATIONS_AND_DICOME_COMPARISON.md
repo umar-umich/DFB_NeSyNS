@@ -116,12 +116,80 @@ start — which is Fix A taken seriously rather than applied as a post-hoc proje
 
 ---
 
+## 3b. The option none of the above covers: I-JEPA as the APPEARANCE branch
+
+Everything above treats I-JEPA as a *residual* branch. It can instead replace CLIP as the
+**appearance** branch, with LoRA on the encoder over facial regions. That is a different proposal and
+the evidence for it is better than the evidence for the residual.
+
+### Why the frozen numbers understate it
+
+| | backbone | trained? | dev v3.1 |
+|---|---|---|---:|
+| deployed APP | CLIP ViT-L/14 | **LoRA r8/α16, end to end** | **0.8174** |
+| deployed OM | same CLIP trunk | trained | 0.8241 |
+| deployed T | V-JEPA 2 ViT-L | LoRA | 0.8094 |
+| our R2 | I-JEPA ViT-H | **frozen; small head only** | 0.6812 |
+| our R2b | I-JEPA ViT-H, per-block | **frozen; small head only** | 0.6701 |
+
+The 0.136 gap between APP and R2 is **not a capability comparison**. It is a fine-tuned backbone
+against a frozen one read by a 500k-parameter head. Nothing here has ever trained I-JEPA's encoder,
+and the branch cannot be judged as an appearance view until something does. *We cannot analyse this
+without training it.*
+
+Two things suggest it would respond well. R2b, using only per-block regional features, reaches 0.6701
+against R2's 0.6812 with far fewer dimensions — the regional read is nearly as good as the global one
+while frozen, which is the form LoRA-on-facial-regions would adapt. And I-JEPA's representation was
+learned by predicting masked regions from context, so region-level structure is what it encodes
+natively.
+
+### The structural reason this is the most interesting option
+
+**Appearance and Off-manifold are not independent views. They share the CLIP trunk.**
+`core_model.py:194-204`: `semantic_feature` comes out of the CLIP encoder, and
+`artifact_feature = _geometric_view_purification(semantic_feature, manifold_feature)` is built *from
+that same vector*. OM is a projection of APP's own feature. The orthogonalisation makes them
+geometrically orthogonal, but they see identical pixels through identical weights.
+
+That is the best available explanation for every fusion result in this project:
+
+- Appearance is discounted to **zero in 3 of 5 folds**.
+- Off-manifold contributes **five times more** when Appearance is absent (+0.065) than when it is
+  present (+0.013).
+- Four fusion studies have failed — grouped t-norm, PCR6+ direct, quality-conditioned reliability,
+  conflict-conditioned reliability — and the conflict study's shuffled control matched the real one,
+  meaning there was no conflict signal to exploit in the first place.
+
+No operator can manufacture complementarity between two views of the same trunk. **Replacing APP with
+an I-JEPA-based appearance branch would give the system two genuinely independent visual backbones**
+for the first time — different pretraining objective, different architecture, different weights — and
+that, not a fifth fusion rule, is what would give a conflict-conditioned mechanism something to act
+on.
+
+### What it would cost
+
+LoRA r8/α16 on the attention projections of I-JEPA ViT-H is roughly 1.3M trainable parameters over
+32 layers. Forward and backward at bf16 on FF++ c23 train (115,198 frames) is on the order of 25
+minutes per epoch on one free card, so about four hours for ten epochs — the same budget class as the
+V-JEPA 2 temporal branch that is already deployed.
+
+The comparison that decides it is direct: **this branch's standalone development v3.1 against the
+deployed APP's 0.8174**, with the same folds and the same selection rule. If it lands near that, the
+follow-up question is the one that matters — does a fused system with two independent backbones show
+the complementarity that four fusion studies could not find between two views of one trunk?
+
 ## 4. The honest caveat
 
 Fix A addresses redundancy and Fix B addresses the prior, and they are independent. If after both the
 orthogonalised, face-adapted residual still fails to add to the backbone, the conclusion is that
 regional predictability under a JEPA prior does not carry face-forgery evidence that survives a
 dataset shift — which is a publishable negative, and one nobody has established.
+
+Note also that section 3b is a different bet from A to D. Those repair the residual branch; 3b
+abandons the residual framing and uses the same backbone as an appearance view. They are not
+alternatives to each other — 3b could succeed while every residual fix fails, and that outcome would
+still be a result worth having, because it would be the first genuinely independent second backbone
+in this system.
 
 Also note what this branch was *good* at: it beat the plain probe on in-the-wild forgeries (0.608
 against 0.555) while losing on reenactment (0.684 against 0.775). If it is retained at all, that
