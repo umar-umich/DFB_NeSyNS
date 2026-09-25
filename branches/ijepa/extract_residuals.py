@@ -241,6 +241,12 @@ def main():
     ap.add_argument("--out", default="", help="cache stem; defaults to the dataset (plus the shard suffix)")
     ap.add_argument("--amp", default="bf16", choices=["bf16", "fp32"])
     ap.add_argument("--arm-b", action="store_true", help="B mixture, one draw per clip (FF++ train)")
+    ap.add_argument("--arm-b-at-224", action="store_true",
+                    help="draw the B setting per clip but apply it AFTER the 224 resize, where the "
+                         "evaluation severities are applied. Used only to fit a standardiser whose "
+                         "descriptor range covers the evaluation cells: arm B applied at native 256 "
+                         "and then resized smears the 8x8 JPEG grid, so its blockiness never reaches "
+                         "the values the evaluation cells produce and the fit extrapolates there.")
     ap.add_argument("--process", default="", help="eval-side processing, e.g. jpeg:40 or resize:0.60")
     ap.add_argument("--time-only", action="store_true")
     ap.add_argument("--overwrite", action="store_true")
@@ -262,10 +268,26 @@ def main():
     nvid = 0
     tc = time.time()
     for arrs, keys, nvid in stream_frames(a.dataset, a.limit_videos, a.chunk_frames, a.shard,
-                                          a.num_shards, a.arm_b):
+                                          a.num_shards, a.arm_b and not a.arm_b_at_224):
         t_read += time.time() - tc
         t1 = time.time()
-        eps, rbar, pooled, sbar, qc = run(arrs, enc, pred, tgt, dev, a.batch_size, a.amp, a.process)
+        proc = a.process
+        if a.arm_b_at_224:
+            # one setting per clip, same draw rule, applied where evaluation applies it
+            vids = [k.split("/")[-2] for k in keys]
+            eps_l, rb_l, pl_l, sb_l, q_l = [], [], [], [], []
+            import itertools as _it
+            for v, grp in _it.groupby(range(len(keys)), key=lambda i: vids[i]):
+                idx = list(grp)
+                st_ = draw_arm_b(v)
+                spec = "" if st_[0] == "none" else (f"jpeg:{st_[1]}" if st_[0] == "jpeg"
+                                                    else f"resize:{st_[1]}")
+                e_, r_, p_, s_, q_ = run(arrs[idx], enc, pred, tgt, dev, a.batch_size, a.amp, spec)
+                eps_l.append(e_); rb_l.append(r_); pl_l.append(p_); sb_l.append(s_); q_l.append(q_)
+            eps, rbar, pooled = np.concatenate(eps_l), np.concatenate(rb_l), np.concatenate(pl_l)
+            sbar, qc = np.concatenate(sb_l), np.concatenate(q_l)
+        else:
+            eps, rbar, pooled, sbar, qc = run(arrs, enc, pred, tgt, dev, a.batch_size, a.amp, proc)
         t_gpu += time.time() - t1
         E.append(eps); R.append(rbar); PL.append(pooled); SB.append(sbar)
         Q.append(qc)

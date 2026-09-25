@@ -428,3 +428,38 @@ The confound shifts the whole distribution rather than reordering real against f
 The brief says a failed gate stops the study. **Nothing downstream of G1 has been run**: G2, R2, R2b,
 R3, R4, R5 and T0-T3 are all built and tested but unexecuted, pending a decision on which reading of
 the rule governs.
+
+### G1 after the descriptor fix: the verdict is unchanged, and why
+
+Correcting the descriptors did **not** move G1, and the reason matters. `d_comp` and `d_fake` are
+computed on **raw log eps**, which never touches q, so no descriptor fix can change them. The fix
+changes what the standardiser can absorb -- a quantity the gate as written does not measure.
+
+Measured on the standardised a_k instead, with corrected descriptors, the picture inverts:
+
+| measured on | JPEG q50 | resize 0.50 |
+|---|---|---|
+| raw log eps (the gate as written) | 4/5 | **2/5** |
+| standardised a_k | **0/5** | **4/5** |
+
+**Resize is now absorbed** -- 2/5 becomes 4/5, which is the standardiser doing its job once it can
+see the blur change. **JPEG breaks**, with d_comp reaching 1.0 to 2.7, and that is not the branch:
+
+| | blockiness | distance from the training mean |
+|---|---:|---|
+| training (arm B at native 256, then resized to 224) | 1.0086, sd 0.0481, max 1.3662 | -- |
+| evaluation JPEG q50 (applied at 224) | 1.4102 | **+8.3 sd, above the training maximum** |
+| evaluation JPEG q30 | 1.6169 | **+12.6 sd** |
+| evaluation resize 0.50 | 1.0514 | +0.9 sd |
+
+Arm B applies JPEG at the native 256 crop and the 224 resize then smears the 8x8 blocking grid;
+the evaluation severities are applied at 224, where the grid stays crisp. Same nominal quality,
+incomparable blockiness. The standardiser is therefore extrapolating a quadratic 8 to 13 standard
+deviations outside its fitted range on every JPEG cell, which is where the 1.0-2.7 comes from.
+
+Both placements are correct for their own purpose -- arm B reproduces training, the evaluation
+severities reproduce `export_views` -- so this is a structural consequence of the brief's design
+rather than a defect in either. **The fix is to fit the standardiser on descriptors that span the
+evaluation range**: FF++ train is being re-extracted with the same per-clip arm-B draw applied AFTER
+the 224 resize (`--arm-b-at-224`), as a separate cache so the training-conditions cache the head rows
+need stays untouched. G1 is then re-run on a_k.

@@ -1,0 +1,24 @@
+{
+ "dataset": "DF40",
+ "stem": "DF40.s17of18",
+ "amp": "bf16",
+ "arm_b": false,
+ "process": "clean",
+ "videos": 900,
+ "frames": 28311,
+ "frames_per_video": 31.46,
+ "seconds": {
+  "model_load": 23.6,
+  "h5_read": 88.9,
+  "gpu": 486.5
+ },
+ "frames_per_second_gpu": 58.2,
+ "eps_mean_per_block": {
+  "upper": 0.22444000840187073,
+  "lower": 0.3125201463699341,
+  "left_cheek": 0.33748623728752136,
+  "right_cheek": 0.3487660586833954,
+  "centre": 0.2002819925546646
+ },
+ "bytes_per_frame_cached": 28176
+}

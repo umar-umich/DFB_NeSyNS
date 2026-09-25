@@ -8,11 +8,11 @@
  "frames": 17222,
  "frames_per_video": 26.33,
  "seconds": {
-  "model_load": 38.7,
-  "h5_read": 54.1,
-  "gpu": 994.2
+  "model_load": 27.8,
+  "h5_read": 54.3,
+  "gpu": 520.4
  },
- "frames_per_second_gpu": 17.32,
+ "frames_per_second_gpu": 33.1,
  "eps_mean_per_block": {
   "upper": 0.24614118039608002,
   "lower": 0.34428852796554565,
