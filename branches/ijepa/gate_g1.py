@@ -76,15 +76,31 @@ def main():
 
     clean = np.array(per_level["clean"]["mean_log_eps_real"])
     d_fake = np.array(per_level["clean"]["mean_log_eps_fake"]) - clean
+    # THE RULE IS AMBIGUOUS AND THE TWO READINGS DISAGREE, so both are computed and reported.
+    #   signed:    d_comp < d_fake, the brief's literal wording
+    #   magnitude: |d_comp| < |d_fake|, "is the quality effect smaller than the manipulation effect"
+    # They differ here because every resize-0.50 shift is NEGATIVE -- downsample-then-upsample makes a
+    # face MORE predictable, against the brief's premise that "compression and blur also raise the
+    # error". A signed test passes automatically whenever processing lowers eps, however large the
+    # shift, which is why the magnitude reading is reported as the primary one.
     verdicts = {}
     for lvl in ("jpeg50", "rs050"):
         d_comp = np.array(per_level[lvl]["mean_log_eps_real"]) - clean
-        wins = [bool(abs(c) < abs(f)) for c, f in zip(d_comp, d_fake)]
-        verdicts[lvl] = {"d_comp": d_comp.tolist(), "n_blocks_passing": int(sum(wins)),
-                         "blocks_passing": [b for b, w in zip(BLOCKS, wins) if w], "per_block": wins}
+        magn = [bool(abs(c) < abs(f)) for c, f in zip(d_comp, d_fake)]
+        sign = [bool(c < f) for c, f in zip(d_comp, d_fake)]
+        verdicts[lvl] = {"d_comp": d_comp.tolist(),
+                         "n_blocks_passing": int(sum(magn)), "per_block": magn,
+                         "blocks_passing": [b for b, w in zip(BLOCKS, magn) if w],
+                         "n_blocks_passing_signed": int(sum(sign)), "per_block_signed": sign}
     ok = all(v["n_blocks_passing"] >= 3 for v in verdicts.values())
+    ok_signed = all(v["n_blocks_passing_signed"] >= 3 for v in verdicts.values())
 
-    res = {"gate": "G1", "verdict": "PASS" if ok else "FAIL", "rule":
+    res = {"gate": "G1", "verdict": "PASS" if ok else "FAIL",
+           "verdict_signed_reading": "PASS" if ok_signed else "FAIL",
+           "reading": "primary is |d_comp| < |d_fake|; the signed reading is reported beside it",
+           "premise_check": "every resize-0.50 shift is NEGATIVE, so resizing LOWERS the prediction "
+                            "error; the brief assumes compression and blur raise it",
+           "rule":
            "d_comp < d_fake for >= 3 of 5 blocks, for both JPEG q50 and resize 0.50",
            "d_fake": d_fake.tolist(), "blocks": BLOCKS, "verdicts": verdicts,
            "per_level": per_level, "frame_level_real_mean_log_eps": frame_level}
@@ -98,8 +114,11 @@ def main():
         mark = ("y" if verdicts["jpeg50"]["per_block"][k] else "n") + \
                ("y" if verdicts["rs050"]["per_block"][k] else "n")
         print(f"{b:{w}}  {d_fake[k]:8.4f} {j:11.4f} {r:13.4f}   {mark}")
-    print(f"\nblocks passing: JPEG q50 {verdicts['jpeg50']['n_blocks_passing']}/5, "
-          f"resize 0.50 {verdicts['rs050']['n_blocks_passing']}/5")
+    print(f"\nmagnitude reading: JPEG q50 {verdicts['jpeg50']['n_blocks_passing']}/5, "
+          f"resize 0.50 {verdicts['rs050']['n_blocks_passing']}/5 -> {'PASS' if ok else 'FAIL'}")
+    print(f"signed reading   : JPEG q50 {verdicts['jpeg50']['n_blocks_passing_signed']}/5, "
+          f"resize 0.50 {verdicts['rs050']['n_blocks_passing_signed']}/5 -> "
+          f"{'PASS' if ok_signed else 'FAIL'}")
     print(f"\n{'block':{w}}  " + "  ".join(f"{l:>7}" for l in LEVELS))
     for k, b in enumerate(BLOCKS):
         print(f"{b:{w}}  " + "  ".join(f"{per_level[l]['auroc_a'][k]:7.4f}" for l in LEVELS))

@@ -12,7 +12,7 @@ config or checkpoint was modified.
 | G0 predictor weights | **PASS** | `analysis/ijepa/G0_output.txt` | All three weight sets load with `strict=True` and the trained predictor beats all three controls on both blocks. |
 | block alignment (pre-extraction stop check) | **PASS, with a caveat** | `analysis/ijepa/block_alignment.json`, `analysis/ijepa/block_overlays/` | Every block is majority-face on both FF++ and CDFv2; the two cheek blocks carry about a quarter background. |
 | extraction budget | **RESOLVED** | `analysis/ijepa/budget_estimate.json`, `analysis/ijepa/logs/` | The 24-hour ceiling was a fp32 estimate. bf16 at batch 64 is 4.9x faster on the same card, so the non-DF40 half plus the processed cells is ~3.7 hours of wall clock. DF40 is still not queued. |
-| G1 compression confound | TODO(run) | -- | Blocked by the budget stop. |
+| G1 compression confound | **FAIL on the primary reading, PASS on the literal one** | `analysis/ijepa/gate_g1.json` | The two readings of the rule disagree, because resizing LOWERS the prediction error rather than raising it. |
 | G2 single-view signal | TODO(run) | -- | Blocked. |
 | G3 fusion | TODO(run) | -- | Blocked. |
 
@@ -372,3 +372,59 @@ adversarial variants. The I-JEPA cache deliberately holds every frame of KoDF an
 these, because the exclusion belongs at analysis time rather than extraction time -- but every
 test-set number this study reports must apply the same filter, or it will not be comparable to the
 deployed numbers it is meant to sit beside, however self-consistent it looks.
+
+
+## Gate G1
+
+Run on all five FF++ c23 validation cells with the frozen training-fitted standardiser.
+
+| block | d_fake | d_comp q50 | d_comp resize 0.50 |
+|---|---:|---:|---:|
+| upper | 0.0196 | −0.0043 | −0.0146 |
+| lower | 0.0075 | +0.0099 | **−0.0288** |
+| left cheek | 0.0110 | −0.0109 | −0.0134 |
+| right cheek | 0.0108 | +0.0004 | −0.0165 |
+| centre | 0.0529 | −0.0093 | −0.0259 |
+
+### The rule is ambiguous and the two readings disagree
+
+The brief says *"Pass if d_comp < d_fake for at least 3 of the 5 blocks, for both JPEG q50 and
+resize 0.50."*
+
+| reading | JPEG q50 | resize 0.50 | verdict |
+|---|---|---|---|
+| signed, `d_comp < d_fake` (literal wording) | 4/5 | **5/5** | **PASS** |
+| magnitude, `|d_comp| < |d_fake|` | 4/5 | **2/5** | **FAIL** |
+
+They diverge because **every resize-0.50 shift is negative**. Downsampling and upsampling makes a
+face MORE predictable, not less: the blur it introduces removes exactly the high-frequency detail the
+predictor finds hardest. The brief's premise is the opposite -- *"Compression and blur also raise the
+error"* -- and on this data, for resize, it does not hold.
+
+That matters because a signed test passes automatically whenever processing lowers eps, no matter how
+large the shift. On the lower block, resizing moves log eps by −0.0288 against a manipulation effect
+of +0.0075: the nuisance is nearly four times the signal, and the signed reading still scores it a
+pass. The magnitude reading is therefore reported as primary, since it is the one that asks the
+question the gate exists to ask.
+
+### What survives either way
+
+Real-versus-fake AUROC of the standardised a_k, within each quality level:
+
+| block | clean | jpeg50 | jpeg30 | rs050 | rs035 |
+|---|---:|---:|---:|---:|---:|
+| upper | 0.5431 | 0.5269 | 0.5259 | 0.5393 | 0.5250 |
+| lower | 0.5243 | 0.5403 | 0.5342 | 0.5312 | 0.5215 |
+| left cheek | 0.5373 | 0.5396 | 0.5398 | 0.5330 | 0.5199 |
+| right cheek | 0.5391 | 0.5428 | 0.5395 | 0.5326 | 0.5313 |
+| **centre** | **0.6142** | 0.6032 | 0.5974 | 0.6073 | 0.5930 |
+
+The discriminative power barely moves across quality levels -- centre loses 0.021 AUROC from clean to
+the harshest resize -- which says the standardisation is doing its job even where d_comp is large.
+The confound shifts the whole distribution rather than reordering real against fake.
+
+### Status
+
+The brief says a failed gate stops the study. **Nothing downstream of G1 has been run**: G2, R2, R2b,
+R3, R4, R5 and T0-T3 are all built and tested but unexecuted, pending a decision on which reading of
+the rule governs.
