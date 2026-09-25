@@ -12,11 +12,16 @@ plus the mean-pooled target feature of the whole face (1280-d) for the R2 contro
 descriptors. Everything is cached fp16.
 """
 from __future__ import annotations
+import os
+for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_v, "4")   # shared box: fill the GPU, not the CPU
 import argparse, io, json, sys, time
 from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+torch.set_num_threads(4)
 
 ROOT = Path("/data/umar/Repos/DFB_NeSyNS")
 IJ = ROOT / "branches/ijepa"
@@ -91,30 +96,42 @@ def run(frames, enc, pred, tgt, dev, bs):
     return np.concatenate(E), np.concatenate(R), np.concatenate(PL)
 
 
-def frames_of(dataset, limit_videos):
+def stream_frames(dataset, limit_videos, chunk, shard, nshards):
+    """Yield (uint8 (n,224,224,3), keys) in chunks, so a 200k-frame set never sits in memory at once."""
     import h5py
+    from PIL import Image
     man_dir = EXT / "splits" / dataset
-    h5p = EXT / "h5" / f"{dataset}.h5"
     lines = []
     for m in sorted(man_dir.glob("*.txt")):
         lines += [l.strip() for l in m.read_text().splitlines() if l.strip()]
     byvid = {}
     for l in lines:
         byvid.setdefault(l.split("/")[-2], []).append(l)
-    vids = sorted(byvid)[:limit_videos] if limit_videos else sorted(byvid)
+    vids = sorted(byvid)
+    if limit_videos:
+        vids = vids[:limit_videos]
+    if nshards > 1:
+        vids = vids[shard::nshards]          # shard by video, so a video is never split across shards
     keys = [k for v in vids for k in byvid[v]]
     arrs, kept = [], []
-    with h5py.File(h5p, "r") as f:
+    with h5py.File(h5p_of(dataset), "r") as f:
         for k in keys:
             if k not in f:
                 continue
             a = f[k][()]
-            from PIL import Image
             im = Image.open(io.BytesIO(a.tobytes())) if a.dtype == np.uint8 and a.ndim == 1 \
                 else Image.fromarray(np.asarray(a).astype(np.uint8))
             arrs.append(np.asarray(im.convert("RGB").resize((224, 224), Image.BICUBIC)))
             kept.append(k)
-    return np.stack(arrs), kept, len(vids)
+            if len(arrs) >= chunk:
+                yield np.stack(arrs), kept, len(vids)
+                arrs, kept = [], []
+    if arrs:
+        yield np.stack(arrs), kept, len(vids)
+
+
+def h5p_of(dataset):
+    return EXT / "h5" / f"{dataset}.h5"
 
 
 def main():
@@ -122,32 +139,60 @@ def main():
     ap.add_argument("--dataset", default="FFpp_train")
     ap.add_argument("--limit-videos", type=int, default=0)
     ap.add_argument("--batch-size", type=int, default=16)
+    ap.add_argument("--chunk-frames", type=int, default=8192,
+                    help="frames decoded into memory at a time; the GPU pass runs per chunk")
+    ap.add_argument("--shard", type=int, default=0)
+    ap.add_argument("--num-shards", type=int, default=1)
+    ap.add_argument("--out", default="", help="cache stem; defaults to the dataset (plus the shard suffix)")
     ap.add_argument("--time-only", action="store_true")
+    ap.add_argument("--overwrite", action="store_true")
     a = ap.parse_args()
+
+    stem = a.out or (a.dataset if a.num_shards == 1 else f"{a.dataset}.s{a.shard}of{a.num_shards}")
+    cache = Path("analysis/ijepa/cache") / f"{stem}.npz"
+    if cache.exists() and not a.overwrite and not a.time_only:
+        print(f"{cache} exists, nothing to do")           # resume: a finished shard is never redone
+        return
+
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     t0 = time.time()
     enc, pred, tgt = load_models(dev)
     t_load = time.time() - t0
-    arrs, keys, nvid = frames_of(a.dataset, a.limit_videos)
-    t_read = time.time() - t0 - t_load
-    t1 = time.time()
-    eps, rbar, pooled = run(arrs, enc, pred, tgt, dev, a.batch_size)
-    t_gpu = time.time() - t1
-    q = np.stack([quality(x) for x in arrs]).astype(np.float16)
-    out = {"dataset": a.dataset, "videos": nvid, "frames": len(arrs),
-           "frames_per_video": round(len(arrs) / max(nvid, 1), 2),
+
+    E, R, PL, Q, K = [], [], [], [], []
+    t_read = t_gpu = 0.0
+    nvid = 0
+    tc = time.time()
+    for arrs, keys, nvid in stream_frames(a.dataset, a.limit_videos, a.chunk_frames, a.shard, a.num_shards):
+        t_read += time.time() - tc
+        t1 = time.time()
+        eps, rbar, pooled = run(arrs, enc, pred, tgt, dev, a.batch_size)
+        t_gpu += time.time() - t1
+        E.append(eps); R.append(rbar); PL.append(pooled)
+        Q.append(np.stack([quality(x) for x in arrs]).astype(np.float16))
+        K += keys
+        print(f"  {stem}: {len(K)} frames, {t_gpu:.0f}s gpu, {len(K) / max(t_gpu, 1e-9):.1f} f/s", flush=True)
+        if a.time_only:
+            break
+        tc = time.time()
+
+    eps = np.concatenate(E); rbar = np.concatenate(R); pooled = np.concatenate(PL); q = np.concatenate(Q)
+    out = {"dataset": a.dataset, "stem": stem, "videos": nvid, "frames": len(K),
+           "frames_per_video": round(len(K) / max(nvid, 1), 2),
            "seconds": {"model_load": round(t_load, 1), "h5_read": round(t_read, 1), "gpu": round(t_gpu, 1)},
-           "frames_per_second_gpu": round(len(arrs) / t_gpu, 2),
+           "frames_per_second_gpu": round(len(K) / max(t_gpu, 1e-9), 2),
            "eps_mean_per_block": {b: float(eps[:, i].astype(np.float32).mean())
                                   for i, b in enumerate(BLOCKS)},
            "bytes_per_frame_cached": int(eps[0].nbytes + rbar[0].nbytes + pooled[0].nbytes + q[0].nbytes)}
     print(json.dumps(out, indent=1))
     Path("analysis/ijepa").mkdir(parents=True, exist_ok=True)
-    json.dump(out, open(f"analysis/ijepa/timing_{a.dataset}.json", "w"), indent=1)
+    json.dump(out, open(f"analysis/ijepa/timing_{stem}.json", "w"), indent=1)
     if not a.time_only:
-        c = Path("analysis/ijepa/cache"); c.mkdir(parents=True, exist_ok=True)
-        np.savez(c / f"{a.dataset}.npz", eps=eps, rbar=rbar, pooled=pooled, q=q, keys=np.array(keys, object))
-        print("cached ->", c / f"{a.dataset}.npz")
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache.with_suffix(".npz.partial")          # a killed job never leaves a half cache behind
+        np.savez(tmp, eps=eps, rbar=rbar, pooled=pooled, q=q, keys=np.array(K, object))
+        tmp.replace(cache)
+        print("cached ->", cache)
 
 
 if __name__ == "__main__":
