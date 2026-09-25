@@ -1,0 +1,10 @@
+{
+ "backbone": "dinov3",
+ "hf_or_timm_id": "vit_large_patch16_dinov3",
+ "input_size": 256,
+ "readout": "cls",
+ "dataset": "FFpp_val",
+ "frames": 22396,
+ "dim": 1024,
+ "seconds": 92.4
+}
