@@ -78,3 +78,24 @@ def test_temporal_cache_settings_match_the_shared_rule():
     if checked == 0:
         pytest.skip("temporal cache not extracted yet")
     assert checked >= 3600
+
+
+def test_spatial_and_temporal_caches_agree_end_to_end():
+    """The premise of option B, checked against both caches rather than against the rule twice."""
+    import numpy as np
+    C = Path("/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/cache")
+    checked = 0
+    for d in range(3):
+        fs, ft = C / f"FFpp_train_B_d{d}.npz", C / f"FFpp_train_T_B_d{d}.npz"
+        if not (fs.exists() and ft.exists()):
+            continue
+        zs, zt = np.load(fs, allow_pickle=True), np.load(ft, allow_pickle=True)
+        tset = {str(v): str(s) for v, s in zip(zt["video"], zt["setting"])}
+        for k, s in zip(zs["key"], zs["setting"]):
+            v = video_of(str(k))
+            assert v in tset, f"draw {d}: {v} has no clip"
+            assert str(s) == tset[v], (d, v, s, tset[v])
+            checked += 1
+    if checked == 0:
+        pytest.skip("FF++ train caches not extracted yet")
+    assert checked >= 115198

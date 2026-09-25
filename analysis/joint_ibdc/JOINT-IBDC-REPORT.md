@@ -263,3 +263,19 @@ G0b reports the per-fold deployed triples alongside equal trust, because the cho
 discounting a view towards zero makes it vacuous, and a vacuous view contributes no conflict at all,
 so kappa depends on which reading is taken. This is recorded as a reading of an ambiguous
 instruction, not as the instruction.
+
+### Option B, verified across both caches
+
+Draw 0 of FF++ c23 train, spatial and temporal caches compared directly rather than each compared to
+the rule.
+
+| check | result |
+|---|---|
+| frames cross-checked against their clip's setting | **115,198 / 115,198 agree** |
+| videos present in the spatial cache but missing a clip | 0 |
+| videos whose frames carry more than one setting | 0 |
+| frames per video | 32.0 over 3,600 videos |
+| mix | 41.1% none, 9.3-10.5% each of six severities |
+
+So a video's frames and its clip see the same processing, which is what makes "per augmentation
+level" in G0b a well-defined breakdown. Pinned by `test_draws.py`.
