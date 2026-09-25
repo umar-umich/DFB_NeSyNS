@@ -6,12 +6,12 @@ Brief: `tbiom/docs/discern-v2-independent-views-brief.md`. Outputs in `analysis/
 
 | part | verdict | evidence | one line |
 |---|---|---|---|
-| 1. Finish joint IBDC | in progress | `analysis/joint_ibdc/` | J1 seeds 1-2 and both λ sweeps running; see the blocker below. |
+| 1. Finish joint IBDC | **J2b FAILS the pass rule** | `analysis/joint_ibdc/j2b_verdict.json` | Criteria 1 and 3 fail; criterion 4 is undecidable because the shared-ignorance subset is empty. |
 | 2. Close or reopen the residual line | **CLOSED** | `part2_fixA.json` | Every orthogonalised variant is *worse* than the backbone-alone probe. |
 | 3. Frozen backbone screen | **no candidate beats frozen CLIP** | `screen_*.json` | CLIP wins on fused AUROC; the most *independent* candidate fuses worst. |
 | 4. Adapt the winner | **stopped** | -- | The pre-set rule stops Parts 4 and 5 when no candidate beats frozen CLIP. |
 | 5. Cross-backbone mapping | **stopped** | -- | Same rule. |
-| 6. Perturbation stability | not started | -- | Needs Part 3 backbones. |
+| 6. Perturbation stability | **REJECTED, all three** | `part6_perturbation.json` | No backbone reaches 0.65, and every one fails the compression check by 3 to 8 times. |
 
 ---
 
@@ -164,3 +164,46 @@ EDL loss on a frozen embedding. But the direction is consistent with everything 
 whatever the adaptation and the shared trunk do for the Appearance view alone, they cost the fusion.
 That is worth a controlled follow-up, and it is a more promising lead than any of the six parts of
 this brief.
+
+
+## Part 6 — perturbation stability, rejected for every backbone
+
+Training-free. Cosine distance between a crop's frozen embedding and a perturbed copy's, following
+RIGID (He et al., 2024) and the face follow-up (Tsai et al., 2024). The perturbation is chosen on
+FF++ c23 validation, then applied unchanged.
+
+| backbone | chosen | FF++ val AUROC | dev v3.1 | d_comp, JPEG q50 | d_fake, clean | compression |
+|---|---|---:|---:|---:|---:|---|
+| CLIP | noise 0.05 | 0.5866 | **0.6266** | **+0.0398** | +0.0096 | FAIL, 4x |
+| DINOv3 | blur 1.0 | 0.5704 | 0.5238 | +0.00051 | +0.00016 | FAIL, 3x |
+| PE-Core B16 | noise 0.05 | 0.5769 | 0.5600 | **+0.0471** | +0.0056 | FAIL, 8x |
+
+**Pre-set rule:** add to fusion only if dev v3.1 is at least 0.65 **and** the compression check passes.
+No backbone meets either condition. **REJECTED.**
+
+Two things are worth separating. The best dev score, CLIP's 0.6266, is short of the 0.65 bar but not
+absurd. The compression failure is not close at all: JPEG q50 moves the perturbation distance three to
+eight times more than manipulation does, which is exactly the failure G1 exists to catch. A score
+whose response to compression dwarfs its response to forgery is measuring compression.
+
+The selection numbers also show there was little to choose between. Every perturbation lands between
+0.4997 and 0.5866 on FF++ validation, so the chosen one is the best of a set that is close to chance.
+The RIGID result does not reproduce on this corpus at these resolutions.
+
+---
+
+## Summary of the brief
+
+| part | outcome |
+|---|---|
+| 1. Joint IBDC | **J2b fails** the four-part rule. J2a, the loss it corrects, beats it on every column. |
+| 2. Residual line | **Closed.** Orthogonalisation makes it worse, monotonically. |
+| 3. Backbone screen | **No candidate beats frozen CLIP.** The most independent candidate fused worst. |
+| 4. Adapt the winner | **Stopped** by Part 3's rule. |
+| 5. Cross-backbone mapping | **Stopped** by Part 3's rule. |
+| 6. Perturbation stability | **Rejected**, all three backbones, on both halves of the rule. |
+
+Six parts, six negatives, each against a rule fixed before its run. The one positive lead is not from
+any of the six: **frozen CLIP in the Appearance slot beats the deployed LoRA-adapted view** in the
+fused system, 0.9126 against 0.9070 with real-video FPR 0.0750 against 0.1035. That was the
+reference arm, not a candidate.
