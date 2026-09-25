@@ -171,8 +171,20 @@ def stream_frames(dataset, limit_videos, chunk, shard, nshards, arm_b=False):
     import h5py
     from PIL import Image
     man_dir = EXT / "splits" / dataset
+    mans = sorted(man_dir.glob("*.txt"))
+    # DF40 ships 80 manifests but the study reports 41 generator sets, whose configs name only 44 of
+    # them. The other 36 -- entire-face-synthesis (DiT, SiT, StyleGAN*, VQGAN, ddim, sd2.1, rddm,
+    # e4e), wav2lip lip-sync and heygen-real -- feed no reported number and are the families the v3.1
+    # protocol excludes anyway. Extracting them would cost 347,947 frames for nothing. The keep list
+    # is DERIVED from the configs (analysis/ijepa/df40_manifests.txt) rather than hardcoded here.
+    keep_file = ROOT / "analysis/ijepa" / f"{dataset.lower()}_manifests.txt"
+    if keep_file.exists():
+        keep = {x.strip() for x in keep_file.read_text().split() if x.strip()}
+        mans = [m for m in mans if m.stem in keep]
+        if not mans:
+            raise ValueError(f"{keep_file.name} matched none of {dataset}'s manifests")
     lines = []
-    for m in sorted(man_dir.glob("*.txt")):
+    for m in mans:
         lines += [l.strip() for l in m.read_text().splitlines() if l.strip()]
     byvid = {}
     for l in lines:
