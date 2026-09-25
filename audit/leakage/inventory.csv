@@ -1,0 +1,16 @@
+split,videos,real,fake,source_videos,identities,total_frames,frames_per_video,manifests,key_type
+TRAIN FFpp c23 (spatial views + video view),3600,720,2880,720,not available,115198,32.0,5,video ID + source video (identity not available)
+THRESHOLD FFpp c23 val,700,140,560,140,not available,22396,31.99,5,video ID + source video (identity not available)
+DEV POOL VALmix,1350,675,675,1254,58,40142,29.73,8,video ID + source video
+DEV POOL VALmixV2,4852,1018,3834,2542,58,77394,15.95,61,video ID + source video
+TEST CDFv2,518,178,340,342,56,16572,31.99,3,video ID + source video
+TEST CDFv3,5418,178,5240,715,58,173295,31.99,24,video ID + source video
+TEST DFD,3431,363,3068,2091,not available,109298,31.86,2,video ID + source video (identity not available)
+TEST DFDC,4704,2315,2389,4704,not available,132116,28.09,2,video ID + source video (identity not available)
+TEST DFDCP,654,230,424,652,not available,17222,26.33,3,video ID + source video (identity not available)
+TEST DFEval24,814,428,386,814,not available,23209,28.51,2,video ID + source video (identity not available)
+TEST FFIW,3470,1735,1735,1735,not available,110800,31.93,2,video ID + source video (identity not available)
+TEST KoDF,2239,806,1433,1954,not available,71648,32.0,8,video ID + source video (identity not available)
+TEST IDForge,5974,2987,2987,2175,54,190761,31.93,4,video ID + source video
+TEST DFDM,1896,178,1718,516,59,59754,31.52,6,video ID + source video
+DF40 evaluation (41 sets),62156,8399,53757,26443,59,858166,13.81,80,video ID + source video

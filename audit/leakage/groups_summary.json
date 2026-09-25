@@ -1,0 +1,322 @@
+{
+ "TRAIN FFpp c23 (spatial views + video view)": {
+  "videos": 3600,
+  "sources": 720,
+  "identities": 0,
+  "manifests": [
+   "eval_adaptation/data/splits/FFpp_train/Deepfakes.txt",
+   "eval_adaptation/data/splits/FFpp_train/FFpp-real.txt",
+   "eval_adaptation/data/splits/FFpp_train/Face2Face.txt",
+   "eval_adaptation/data/splits/FFpp_train/FaceSwap.txt",
+   "eval_adaptation/data/splits/FFpp_train/NeuralTextures.txt"
+  ]
+ },
+ "THRESHOLD FFpp c23 val": {
+  "videos": 700,
+  "sources": 140,
+  "identities": 0,
+  "manifests": [
+   "eval_adaptation/data/splits/FFpp_val/Deepfakes.txt",
+   "eval_adaptation/data/splits/FFpp_val/FFpp-real.txt",
+   "eval_adaptation/data/splits/FFpp_val/Face2Face.txt",
+   "eval_adaptation/data/splits/FFpp_val/FaceSwap.txt",
+   "eval_adaptation/data/splits/FFpp_val/NeuralTextures.txt"
+  ]
+ },
+ "DEV POOL VALmix": {
+  "videos": 1350,
+  "sources": 1254,
+  "identities": 58,
+  "manifests": [
+   "eval_adaptation/data/splits/VALmix/CDFv2val-Celeb-real.txt",
+   "eval_adaptation/data/splits/VALmix/CDFv2val-Celeb-synthesis.txt",
+   "eval_adaptation/data/splits/VALmix/CDFv2val-YouTube-real.txt",
+   "eval_adaptation/data/splits/VALmix/DFDCPval-method_A.txt",
+   "eval_adaptation/data/splits/VALmix/DFDCPval-method_B.txt",
+   "eval_adaptation/data/splits/VALmix/DFDCPval-real.txt",
+   "eval_adaptation/data/splits/VALmix/DFEval24val-fake.txt",
+   "eval_adaptation/data/splits/VALmix/DFEval24val-real.txt"
+  ]
+ },
+ "DEV POOL VALmixV2": {
+  "videos": 4852,
+  "sources": 2542,
+  "identities": 58,
+  "manifests": [
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__AniTalker.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__BlendFace.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__Celeb-DF-v2.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__Celeb-real.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__DaGAN.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__EDTalk.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__EchoMimic.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__FLOAT.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__FSRT.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__GHOST.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__HifiFace.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__HyperReenact.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__IP_LAP.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__InSwapper.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__LIA.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__LivePortrait.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__MCNET.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__MobileFaceSwap.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__R3DPortrait.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__SadTalker.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__SimSwap.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__TPSMM.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__UniFace.txt",
+   "eval_adaptation/data/splits/VALmixV2/CDFv3valG__YouTube-real.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__DiT.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__MRAA.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__RDDM.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__SiT.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__StyleGAN2.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__StyleGAN3.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__StyleGANXL.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__VQGAN.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__danet.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__ddim.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__facevid2vid.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__fomm.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__hyperreenact.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__lia.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__mcnet.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__one_shot_free.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__pirender.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__pixart.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__sadtalker.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__sd2.1.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__tpsm.txt",
+   "eval_adaptation/data/splits/VALmixV2/DF40train__wav2lip.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS11val__facefusion.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS11val__facefusion_gan.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS11val__facefusion_live.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS11val__real.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS11val__retalking.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS11val__wav2lip.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS20val__diff2lip.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS20val__facefusion.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS20val__hellomeme.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS20val__latentsync.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS20val__liveportrait.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS20val__memo.txt",
+   "eval_adaptation/data/splits/VALmixV2/DS20val__real.txt",
+   "eval_adaptation/data/splits/VALmixV2/FFIWval__fake.txt",
+   "eval_adaptation/data/splits/VALmixV2/FFIWval__real.txt"
+  ]
+ },
+ "TEST CDFv2": {
+  "videos": 518,
+  "sources": 342,
+  "identities": 56,
+  "manifests": [
+   "eval_adaptation/data/splits/CDFv2/Celeb-real.txt",
+   "eval_adaptation/data/splits/CDFv2/Celeb-synthesis.txt",
+   "eval_adaptation/data/splits/CDFv2/YouTube-real.txt"
+  ]
+ },
+ "TEST CDFv3": {
+  "videos": 5418,
+  "sources": 715,
+  "identities": 58,
+  "manifests": [
+   "eval_adaptation/data/splits/CDFv3/Celeb-real.txt",
+   "eval_adaptation/data/splits/CDFv3/YouTube-real.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceReenact-DaGAN.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceReenact-FSRT.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceReenact-HyperReenact.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceReenact-LIA.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceReenact-LivePortrait.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceReenact-MCNET.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceReenact-TPSMM.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceSwap-BlendFace.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceSwap-Celeb-DF-v2.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceSwap-GHOST.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceSwap-HifiFace.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceSwap-InSwapper.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceSwap-MobileFaceSwap.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceSwap-SimSwap.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-FaceSwap-UniFace.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-TalkingFace-AniTalker.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-TalkingFace-EDTalk.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-TalkingFace-EchoMimic.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-TalkingFace-FLOAT.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-TalkingFace-IP_LAP.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-TalkingFace-R3DPortrait.txt",
+   "eval_adaptation/data/splits/CDFv3/synthesis-TalkingFace-SadTalker.txt"
+  ]
+ },
+ "TEST DFD": {
+  "videos": 3431,
+  "sources": 2091,
+  "identities": 0,
+  "manifests": [
+   "eval_adaptation/data/splits/DFD/DFD-real.txt",
+   "eval_adaptation/data/splits/DFD/DeepFakeDetection.txt"
+  ]
+ },
+ "TEST DFDC": {
+  "videos": 4704,
+  "sources": 4704,
+  "identities": 0,
+  "manifests": [
+   "eval_adaptation/data/splits/DFDC/DFDC-fake.txt",
+   "eval_adaptation/data/splits/DFDC/DFDC-real.txt"
+  ]
+ },
+ "TEST DFDCP": {
+  "videos": 654,
+  "sources": 652,
+  "identities": 0,
+  "manifests": [
+   "eval_adaptation/data/splits/DFDCP/DFDCP-real.txt",
+   "eval_adaptation/data/splits/DFDCP/method_A.txt",
+   "eval_adaptation/data/splits/DFDCP/method_B.txt"
+  ]
+ },
+ "TEST DFEval24": {
+  "videos": 814,
+  "sources": 814,
+  "identities": 0,
+  "manifests": [
+   "eval_adaptation/data/splits/DFEval24/DFEval24-fake.txt",
+   "eval_adaptation/data/splits/DFEval24/DFEval24-real.txt"
+  ]
+ },
+ "TEST FFIW": {
+  "videos": 3470,
+  "sources": 1735,
+  "identities": 0,
+  "manifests": [
+   "eval_adaptation/data/splits/FFIW/FFIW-fake.txt",
+   "eval_adaptation/data/splits/FFIW/FFIW-real.txt"
+  ]
+ },
+ "TEST KoDF": {
+  "videos": 2239,
+  "sources": 1954,
+  "identities": 0,
+  "manifests": [
+   "eval_adaptation/data/splits/KoDF/adv-fake.txt",
+   "eval_adaptation/data/splits/KoDF/adv-real.txt",
+   "eval_adaptation/data/splits/KoDF/fake-audio-driven.txt",
+   "eval_adaptation/data/splits/KoDF/fake-dffs.txt",
+   "eval_adaptation/data/splits/KoDF/fake-dfl.txt",
+   "eval_adaptation/data/splits/KoDF/fake-fo.txt",
+   "eval_adaptation/data/splits/KoDF/fake-fsgan.txt",
+   "eval_adaptation/data/splits/KoDF/real.txt"
+  ]
+ },
+ "TEST IDForge": {
+  "videos": 5974,
+  "sources": 2175,
+  "identities": 54,
+  "manifests": [
+   "eval_adaptation/data/splits/IDForge/infoswap.txt",
+   "eval_adaptation/data/splits/IDForge/real.txt",
+   "eval_adaptation/data/splits/IDForge/roop.txt",
+   "eval_adaptation/data/splits/IDForge/simswap.txt"
+  ]
+ },
+ "TEST DFDM": {
+  "videos": 1896,
+  "sources": 516,
+  "identities": 59,
+  "manifests": [
+   "eval_adaptation/data/splits/DFDM/Celeb-real.txt",
+   "eval_adaptation/data/splits/DFDM/YouTube-real.txt",
+   "eval_adaptation/data/splits/DFDM/dfaker.txt",
+   "eval_adaptation/data/splits/DFDM/dfl.txt",
+   "eval_adaptation/data/splits/DFDM/iae.txt",
+   "eval_adaptation/data/splits/DFDM/lightweight.txt"
+  ]
+ },
+ "DF40 evaluation (41 sets)": {
+  "videos": 62156,
+  "sources": 26443,
+  "identities": 59,
+  "manifests": [
+   "eval_adaptation/data/splits/DF40/CollabDiff-real.txt",
+   "eval_adaptation/data/splits/DF40/CollabDiff.txt",
+   "eval_adaptation/data/splits/DF40/DF40-cdf-real.txt",
+   "eval_adaptation/data/splits/DF40/DF40-ff-real.txt",
+   "eval_adaptation/data/splits/DF40/DiT-cdf.txt",
+   "eval_adaptation/data/splits/DF40/DiT-ff.txt",
+   "eval_adaptation/data/splits/DF40/MRAA-cdf.txt",
+   "eval_adaptation/data/splits/DF40/MRAA-ff.txt",
+   "eval_adaptation/data/splits/DF40/MidJourney-real.txt",
+   "eval_adaptation/data/splits/DF40/MidJourney.txt",
+   "eval_adaptation/data/splits/DF40/SiT-cdf.txt",
+   "eval_adaptation/data/splits/DF40/SiT-ff.txt",
+   "eval_adaptation/data/splits/DF40/StyleGAN2-cdf.txt",
+   "eval_adaptation/data/splits/DF40/StyleGAN2-ff.txt",
+   "eval_adaptation/data/splits/DF40/StyleGAN3-cdf.txt",
+   "eval_adaptation/data/splits/DF40/StyleGAN3-ff.txt",
+   "eval_adaptation/data/splits/DF40/StyleGANXL-cdf.txt",
+   "eval_adaptation/data/splits/DF40/StyleGANXL-ff.txt",
+   "eval_adaptation/data/splits/DF40/VQGAN-cdf.txt",
+   "eval_adaptation/data/splits/DF40/VQGAN-ff.txt",
+   "eval_adaptation/data/splits/DF40/blendface-cdf.txt",
+   "eval_adaptation/data/splits/DF40/blendface-ff.txt",
+   "eval_adaptation/data/splits/DF40/danet-cdf.txt",
+   "eval_adaptation/data/splits/DF40/danet-ff.txt",
+   "eval_adaptation/data/splits/DF40/ddim-cdf.txt",
+   "eval_adaptation/data/splits/DF40/ddim-ff.txt",
+   "eval_adaptation/data/splits/DF40/deepfacelab-real.txt",
+   "eval_adaptation/data/splits/DF40/deepfacelab.txt",
+   "eval_adaptation/data/splits/DF40/e4e-cdf.txt",
+   "eval_adaptation/data/splits/DF40/e4e-ff.txt",
+   "eval_adaptation/data/splits/DF40/e4s-cdf.txt",
+   "eval_adaptation/data/splits/DF40/e4s-ff.txt",
+   "eval_adaptation/data/splits/DF40/facedancer-cdf.txt",
+   "eval_adaptation/data/splits/DF40/facedancer-ff.txt",
+   "eval_adaptation/data/splits/DF40/faceswap-cdf.txt",
+   "eval_adaptation/data/splits/DF40/faceswap-ff.txt",
+   "eval_adaptation/data/splits/DF40/facevid2vid-cdf.txt",
+   "eval_adaptation/data/splits/DF40/facevid2vid-ff.txt",
+   "eval_adaptation/data/splits/DF40/fomm-cdf.txt",
+   "eval_adaptation/data/splits/DF40/fomm-ff.txt",
+   "eval_adaptation/data/splits/DF40/fsgan-cdf.txt",
+   "eval_adaptation/data/splits/DF40/fsgan-ff.txt",
+   "eval_adaptation/data/splits/DF40/heygen-real.txt",
+   "eval_adaptation/data/splits/DF40/heygen.txt",
+   "eval_adaptation/data/splits/DF40/hyperreenact-cdf.txt",
+   "eval_adaptation/data/splits/DF40/hyperreenact-ff.txt",
+   "eval_adaptation/data/splits/DF40/inswap-cdf.txt",
+   "eval_adaptation/data/splits/DF40/inswap-ff.txt",
+   "eval_adaptation/data/splits/DF40/lia-cdf.txt",
+   "eval_adaptation/data/splits/DF40/lia-ff.txt",
+   "eval_adaptation/data/splits/DF40/mcnet-cdf.txt",
+   "eval_adaptation/data/splits/DF40/mcnet-ff.txt",
+   "eval_adaptation/data/splits/DF40/mobileswap-cdf.txt",
+   "eval_adaptation/data/splits/DF40/mobileswap-ff.txt",
+   "eval_adaptation/data/splits/DF40/one_shot_free-cdf.txt",
+   "eval_adaptation/data/splits/DF40/one_shot_free-ff.txt",
+   "eval_adaptation/data/splits/DF40/pirender-cdf.txt",
+   "eval_adaptation/data/splits/DF40/pirender-ff.txt",
+   "eval_adaptation/data/splits/DF40/rddm-cdf.txt",
+   "eval_adaptation/data/splits/DF40/rddm-ff.txt",
+   "eval_adaptation/data/splits/DF40/sadtalker-cdf.txt",
+   "eval_adaptation/data/splits/DF40/sadtalker-ff.txt",
+   "eval_adaptation/data/splits/DF40/sd2.1-cdf.txt",
+   "eval_adaptation/data/splits/DF40/sd2.1-ff.txt",
+   "eval_adaptation/data/splits/DF40/simswap-cdf.txt",
+   "eval_adaptation/data/splits/DF40/simswap-ff.txt",
+   "eval_adaptation/data/splits/DF40/stargan-real.txt",
+   "eval_adaptation/data/splits/DF40/stargan.txt",
+   "eval_adaptation/data/splits/DF40/starganv2-real.txt",
+   "eval_adaptation/data/splits/DF40/starganv2.txt",
+   "eval_adaptation/data/splits/DF40/styleclip-real.txt",
+   "eval_adaptation/data/splits/DF40/styleclip.txt",
+   "eval_adaptation/data/splits/DF40/tpsm-cdf.txt",
+   "eval_adaptation/data/splits/DF40/tpsm-ff.txt",
+   "eval_adaptation/data/splits/DF40/uniface-cdf.txt",
+   "eval_adaptation/data/splits/DF40/uniface-ff.txt",
+   "eval_adaptation/data/splits/DF40/wav2lip-cdf.txt",
+   "eval_adaptation/data/splits/DF40/wav2lip-ff.txt",
+   "eval_adaptation/data/splits/DF40/whichisr3al-real.txt",
+   "eval_adaptation/data/splits/DF40/whichisr3al.txt"
+  ]
+ }
+}

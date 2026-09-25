@@ -1,0 +1,5 @@
+fitting_split,TEST CDFv2,TEST CDFv3,TEST DFD,TEST DFDC,TEST DFDCP,TEST DFEval24,TEST FFIW,TEST KoDF,TEST IDForge,TEST DFDM,DF40 evaluation (41 sets)
+TRAIN FFpp c23 (spatial views + video view),0,0,0,0,0,0,0,0,0,0,0
+THRESHOLD FFpp c23 val,0,0,0,0,0,0,0,0,0,0,0
+DEV POOL VALmix,0,0,0,0,0,0,0,0,0,0,0
+DEV POOL VALmixV2,0,0,0,0,0,0,0,0,0,0,0
