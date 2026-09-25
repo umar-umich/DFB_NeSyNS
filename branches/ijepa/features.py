@@ -228,3 +228,46 @@ def _selftest():
 
 if __name__ == "__main__":
     _selftest()
+
+
+# --------------------------------------------------------------------- Part 2: orthogonalisation
+# DiCoME guarantees its artifact branch is non-redundant with the semantic branch by REMOVING the
+# component along it (core_model.py:318-336). The I-JEPA residual has no such step, and the measured
+# consequence is that backbone + residual (0.6664) is worse than backbone alone (0.6812). These
+# variants port that step.
+#   A1  project off the pooled I-JEPA feature, one direction
+#   A2  project off the deployed Appearance feature, mapped by ridge if the dimension differs
+#   A3  project off the top-64 PCA subspace of the pooled feature -- the strong version, since A1 and
+#       A2 each remove a single direction out of 1280
+
+def orthogonalise(rbar, g):
+    """Remove from each block residual the component along g. rbar (N,5,D), g (N,D) -> (N,5,D)."""
+    r = np.asarray(rbar, dtype=np.float32)
+    g = np.asarray(g, dtype=np.float32)
+    gn = (g * g).sum(1, keepdims=True) + 1e-8
+    out = np.empty_like(r)
+    for k in range(r.shape[1]):
+        coef = (r[:, k] * g).sum(1, keepdims=True) / gn
+        out[:, k] = r[:, k] - coef * g
+    return out
+
+
+def fit_pca_basis(g_train, n_comp=64):
+    """Top-n principal directions of g, fitted on FF++ train. Returns (mean, basis (n,D))."""
+    g = np.asarray(g_train, dtype=np.float32)
+    mu = g.mean(0)
+    x = g - mu
+    # economy SVD on a subsample keeps this cheap and is exact enough for a projection basis
+    idx = np.random.default_rng(0).choice(len(x), size=min(len(x), 20000), replace=False)
+    _u, _s, vt = np.linalg.svd(x[idx], full_matrices=False)
+    return mu, vt[:n_comp]
+
+
+def orthogonalise_subspace(rbar, basis):
+    """Remove the projection onto a whole subspace. rbar (N,5,D), basis (n,D) orthonormal rows."""
+    r = np.asarray(rbar, dtype=np.float32)
+    B = np.asarray(basis, dtype=np.float32)
+    out = np.empty_like(r)
+    for k in range(r.shape[1]):
+        out[:, k] = r[:, k] - (r[:, k] @ B.T) @ B
+    return out

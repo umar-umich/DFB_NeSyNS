@@ -277,6 +277,7 @@ def main():
         print(f"J0: development v3.1 {sc:.4f}  {types}")
         return 0
 
+    lamtag = f"_lam{a.lam}" if a.run in ("J2a", "J2b") else ""
     TR = load_train()
     n = len(TR[0]["y"])
     print(f"training on {n:,} samples x {N_DRAWS} draws, run {a.run}, seed {a.seed}, "
@@ -315,7 +316,7 @@ def main():
                        OUT / f"run_{a.run}_s{a.seed}.pt")
     json.dump({"run": a.run, "seed": a.seed, "lam": a.lam, "best_epoch": best[1],
                "best_dev_v31": best[0], "trust": "equal (training)", "history": hist},
-              open(OUT / f"run_{a.run}_s{a.seed}.json", "w"), indent=1)
+              open(OUT / f"run_{a.run}_s{a.seed}{lamtag}.json", "w"), indent=1)
     print(f"{a.run} seed {a.seed}: best epoch {best[1]}, development v3.1 {best[0]:.4f}")
     return 0
 

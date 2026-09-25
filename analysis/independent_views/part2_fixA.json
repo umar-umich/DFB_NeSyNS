@@ -1,0 +1,41 @@
+{
+ "part": 2,
+ "verdict": "CLOSED",
+ "reference_R2_dev_v31": 0.6812062738296176,
+ "rule": "best orthogonalised variant must beat R2 with a source-grouped bootstrap 95% interval above zero",
+ "variants": {
+  "R2 backbone alone (reference)": {
+   "mean": 0.6812062738296176,
+   "sd": 0.0,
+   "n_seeds": 1,
+   "delta_vs_R2": 0.0
+  },
+  "R4 residual alone": {
+   "mean": 0.6658233489733645,
+   "sd": 0.0,
+   "n_seeds": 1,
+   "delta_vs_R2": -0.015382924856253144
+  },
+  "both, no orthogonalisation": {
+   "mean": 0.6663573555852162,
+   "sd": 0.0,
+   "n_seeds": 1,
+   "delta_vs_R2": -0.014848918244401377
+  },
+  "A1 both + project off pooled (1 dir)": {
+   "mean": 0.6581538268087205,
+   "sd": 0.0014829079343391827,
+   "n_seeds": 3,
+   "delta_vs_R2": -0.02305244702089715
+  },
+  "A3 both + project off top-64 PCA": {
+   "mean": 0.6618175956024208,
+   "sd": 0.0005907450669983403,
+   "n_seeds": 3,
+   "delta_vs_R2": -0.01938867822719681
+  }
+ },
+ "best_variant": "A3 both + project off top-64 PCA",
+ "margin_vs_R2": -0.01938867822719681,
+ "note": "A2 (project off the deployed Appearance feature) needs a CLIP pass aligned to the I-JEPA cache's own arm-B draws, which differ from the joint-IBDC draws; not run."
+}

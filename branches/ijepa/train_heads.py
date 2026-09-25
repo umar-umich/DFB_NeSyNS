@@ -52,13 +52,24 @@ DEV_STEMS = ("VALmix", "VALmixV2")
 def arrays_for(row):
     """Only load what the row consumes; rbar and sbar are 12.8 KB per frame each."""
     cfg = ROWS[row]
-    need = {"q", "pooled"}
+    need = {"q", "pooled", "rbar"}
     need.add({"pooled": "pooled", "sbar": "sbar", "rbar": "rbar"}[cfg["vec"]])
     if cfg["scal"] in ("logeps", "a") or row == "R5":
         need.add("eps")
     if row == "R5":
         need.add("rbar")
     return tuple(sorted(need))
+
+
+def apply_ortho(d, kind, basis=None):
+    """Fix A. `basis` is fitted on FF++ train and passed unchanged to every other split."""
+    if not kind:
+        return d
+    g = d["pooled"].astype(np.float32)
+    d = dict(d)
+    d["rbar"] = (FX.orthogonalise(d["rbar"], g) if kind == "a1"
+                 else FX.orthogonalise_subspace(d["rbar"], basis))
+    return d
 
 
 def row_inputs(row, d, st, tau):
@@ -119,6 +130,10 @@ def main():
     ap.add_argument("--proj", type=int, default=64, help="shared projection width (capacity knob)")
     ap.add_argument("--dropout", type=float, default=0.1)
     ap.add_argument("--tag", default="", help="output suffix, so variants do not overwrite a row")
+    ap.add_argument("--ortho", default="", choices=["", "a1", "a3"],
+                    help="Part 2 Fix A: orthogonalise each block residual before the head. "
+                         "a1 removes the pooled I-JEPA direction, a3 removes its top-64 PCA subspace, "
+                         "both fitted on FF++ c23 train only.")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
@@ -133,6 +148,12 @@ def main():
     tr = D.load(TRAIN_STEM, arrays=tuple(set(arrays) | {"eps", "q", "rbar"}))
     real = tr["y"] == 0
     print(f"  train {len(tr['keys'])} frames, {real.sum()} real, {(~real).sum()} fake", flush=True)
+    basis = None
+    if a.ortho == "a3":
+        _mu, basis = FX.fit_pca_basis(tr["pooled"], 64)      # fitted on FF++ train only, then frozen
+        print(f"  A3 basis {basis.shape} fitted on FF++ train", flush=True)
+    if a.ortho:
+        tr = apply_ortho(tr, a.ortho, basis)
     std_stem = STD_STEM if D.shard_files(STD_STEM) else TRAIN_STEM
     sd_ = D.load(std_stem, arrays=("eps", "q", "rbar"))
     sr = sd_["y"] == 0
@@ -147,6 +168,8 @@ def main():
     packs = []
     for stem in (VAL_STEM,) + DEV_STEMS:
         d = D.load(stem, arrays=arrays if stem != VAL_STEM else arrays)
+        if a.ortho:
+            d = apply_ortho(d, a.ortho, basis)
         s, v, e = row_inputs(a.row, d, st, tau)
         packs.append((d, s, v, e))
     ffpack, devpacks = packs[0], packs[1:]
