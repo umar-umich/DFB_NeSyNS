@@ -1,0 +1,77 @@
+{
+ "gate": "Task 1 fusion equivalence",
+ "verdict": "PASS",
+ "tolerance": 1e-06,
+ "n_videos": 1000,
+ "system": "42",
+ "spatial": "warmgate_e19",
+ "branch": "vjepa2_lora_B_seed42",
+ "worst": {
+  "mass": 0.0,
+  "p": 0.0,
+  "u": 0.0,
+  "discount": 2.220446049250313e-16
+ },
+ "per_triple": [
+  {
+   "w": [
+    0.25,
+    0.25,
+    1.0
+   ],
+   "max_abs_diff_mass": 0.0,
+   "max_abs_diff_p": 0.0,
+   "max_abs_diff_u": 0.0
+  },
+  {
+   "w": [
+    0.25,
+    0.25,
+    1.0
+   ],
+   "max_abs_diff_mass": 0.0,
+   "max_abs_diff_p": 0.0,
+   "max_abs_diff_u": 0.0
+  },
+  {
+   "w": [
+    0.25,
+    0.0,
+    1.0
+   ],
+   "max_abs_diff_mass": 0.0,
+   "max_abs_diff_p": 0.0,
+   "max_abs_diff_u": 0.0
+  },
+  {
+   "w": [
+    0.25,
+    0.0,
+    1.0
+   ],
+   "max_abs_diff_mass": 0.0,
+   "max_abs_diff_p": 0.0,
+   "max_abs_diff_u": 0.0
+  },
+  {
+   "w": [
+    0.25,
+    0.0,
+    1.0
+   ],
+   "max_abs_diff_mass": 0.0,
+   "max_abs_diff_p": 0.0,
+   "max_abs_diff_u": 0.0
+  },
+  {
+   "w": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "max_abs_diff_mass": 0.0,
+   "max_abs_diff_p": 0.0,
+   "max_abs_diff_u": 0.0
+  }
+ ]
+}
