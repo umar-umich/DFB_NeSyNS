@@ -1,0 +1,125 @@
+{
+ "CDFv3": {
+  "n_videos": 5118,
+  "n_real": 178,
+  "slices": {
+   "all": {
+    "n_fake": 4940,
+    "ours": 0.9643997634535778,
+    "dicome_released": 0.8788768593913479,
+    "dicome_ourtrain": 0.8690965746258472
+   },
+   "reenactment only": {
+    "n_fake": 3200,
+    "ours": 0.968720154494382,
+    "dicome_released": 0.8387148876404494,
+    "dicome_ourtrain": 0.8271436095505618
+   },
+   "swap only": {
+    "n_fake": 1740,
+    "ours": 0.9564542167118688,
+    "dicome_released": 0.9527379568642645,
+    "dicome_ourtrain": 0.9462514529252228
+   }
+  },
+  "per_generator": {
+   "synthesis-FaceReenact-DaGAN": {
+    "n_fake": 200,
+    "ours": 0.9563483146067415,
+    "dicome_released": 0.7844101123595506,
+    "dicome_ourtrain": 0.7557865168539326
+   },
+   "synthesis-FaceReenact-FSRT": {
+    "n_fake": 200,
+    "ours": 0.9698314606741573,
+    "dicome_released": 0.895252808988764,
+    "dicome_ourtrain": 0.8830337078651685
+   },
+   "synthesis-FaceReenact-HyperReenact": {
+    "n_fake": 200,
+    "ours": 0.9401685393258427,
+    "dicome_released": 0.8314325842696629,
+    "dicome_ourtrain": 0.7718539325842697
+   },
+   "synthesis-FaceReenact-LIA": {
+    "n_fake": 200,
+    "ours": 0.9902808988764045,
+    "dicome_released": 0.9426685393258427,
+    "dicome_ourtrain": 0.9342134831460674
+   },
+   "synthesis-FaceReenact-LivePortrait": {
+    "n_fake": 200,
+    "ours": 0.942808988764045,
+    "dicome_released": 0.7516573033707865,
+    "dicome_ourtrain": 0.7534550561797753
+   },
+   "synthesis-FaceReenact-MCNET": {
+    "n_fake": 200,
+    "ours": 0.977752808988764,
+    "dicome_released": 0.9017134831460674,
+    "dicome_ourtrain": 0.886629213483146
+   },
+   "synthesis-FaceReenact-TPSMM": {
+    "n_fake": 200,
+    "ours": 0.9797752808988764,
+    "dicome_released": 0.8978932584269663,
+    "dicome_ourtrain": 0.8782022471910113
+   },
+   "synthesis-TalkingFace-AniTalker": {
+    "n_fake": 300,
+    "ours": 0.9380337078651685,
+    "dicome_released": 0.8701498127340824,
+    "dicome_ourtrain": 0.8595318352059925
+   },
+   "synthesis-TalkingFace-EDTalk": {
+    "n_fake": 300,
+    "ours": 0.9979213483146068,
+    "dicome_released": 0.9877902621722846,
+    "dicome_ourtrain": 0.9879588014981273
+   },
+   "synthesis-TalkingFace-EchoMimic": {
+    "n_fake": 300,
+    "ours": 0.9654681647940075,
+    "dicome_released": 0.7756179775280899,
+    "dicome_ourtrain": 0.7807865168539326
+   },
+   "synthesis-TalkingFace-FLOAT": {
+    "n_fake": 300,
+    "ours": 0.9749250936329588,
+    "dicome_released": 0.8589887640449438,
+    "dicome_ourtrain": 0.8311985018726592
+   },
+   "synthesis-TalkingFace-R3DPortrait": {
+    "n_fake": 300,
+    "ours": 0.9992134831460674,
+    "dicome_released": 0.9177153558052434,
+    "dicome_ourtrain": 0.9340262172284645
+   },
+   "synthesis-TalkingFace-SadTalker": {
+    "n_fake": 300,
+    "ours": 0.952808988764045,
+    "dicome_released": 0.5326779026217229,
+    "dicome_ourtrain": 0.5205805243445693
+   }
+  }
+ },
+ "KoDF": {
+  "n_videos": 1395,
+  "n_real": 403,
+  "slices": {
+   "all": {
+    "n_fake": 992,
+    "ours": 0.9600476266709357,
+    "dicome_released": 0.8514042864003842,
+    "dicome_ourtrain": 0.8509115104458497
+   },
+   "first-order motion only": {
+    "n_fake": 352,
+    "ours": 0.9836876832844574,
+    "dicome_released": 0.7301065869614257,
+    "dicome_ourtrain": 0.7205616963681479
+   }
+  },
+  "per_generator": {}
+ }
+}
