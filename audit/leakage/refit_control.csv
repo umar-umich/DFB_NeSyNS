@@ -1,0 +1,21 @@
+version,dataset,n_dev_videos,auroc,fpr,tpr
+original,CDFv2,5814,0.958308,0.040449,0.685294
+original,CDFv3,5814,0.963882,0.040449,0.796032
+original,DFD,5814,0.930707,0.123416,0.79837
+original,DFDC,5814,0.853036,0.190583,0.742486
+original,DFDCP,5814,0.859686,0.17913,0.71934
+original,DFEval24,5814,0.723473,0.190654,0.481865
+original,FFIW,5814,0.921725,0.115043,0.753084
+original,KoDF,5814,0.96003,0.026303,0.879637
+original,IDForge,5814,0.963063,0.067024,0.820623
+original,DFDM,5814,0.995426,0.037079,0.971013
+refit on clean subset,CDFv2,2823,0.957796,0.0,0.007059
+refit on clean subset,CDFv3,2823,0.963856,0.0,0.030567
+refit on clean subset,DFD,2823,0.929279,0.0,0.05528
+refit on clean subset,DFDC,2823,0.851121,0.000691,0.068732
+refit on clean subset,DFDCP,2823,0.858831,0.0,0.028774
+refit on clean subset,DFEval24,2823,0.722575,0.0,0.002073
+refit on clean subset,FFIW,2823,0.919756,0.0,0.026052
+refit on clean subset,KoDF,2823,0.960114,0.0,0.202016
+refit on clean subset,IDForge,2823,0.962016,0.0,0.047807
+refit on clean subset,DFDM,2823,0.995262,0.0,0.172177

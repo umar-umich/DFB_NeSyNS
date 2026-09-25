@@ -1,0 +1,12 @@
+rootdir: /data/umar/Repos/DFB_NeSyNS
+plugins: anyio-4.14.2
+collecting ... collected 6 items
+
+audit/leakage/test_fit_inputs.py::test_dev_pool_contains_no_test_dataset PASSED [ 16%]
+audit/leakage/test_fit_inputs.py::test_grid_search_sees_only_dev_pool_ids PASSED [ 33%]
+audit/leakage/test_fit_inputs.py::test_threshold_uses_only_ffpp_val PASSED [ 50%]
+audit/leakage/test_fit_inputs.py::test_no_test_label_loaded_during_fitting PASSED [ 66%]
+audit/leakage/test_fit_inputs.py::test_no_fitted_statistic_touches_test_data PASSED [ 83%]
+audit/leakage/test_fit_inputs.py::test_eval_only_processing_absent_from_training_and_selection PASSED [100%]
+
+============================== 6 passed in 13.96s ==============================

@@ -9,12 +9,12 @@ Deployed configuration under audit: **`DISCERN_Ext/eval_adaptation/configs/warm_
 |---|---|---|---|
 | 1. Split inventory | **PASS** | `inventory.csv` | 15 splits inventoried at video level from the manifests the deployed config names. |
 | 2. Dataset table and overlap matrix | **FAIL (see below)** | `overlap_{video,source,identity}.csv`, `overlap_nonzero.csv` | No video-level overlap anywhere; source- and identity-level overlap between the development pool and four evaluation sets, one of which is not a listed exposure. |
-| 3. Out-of-fold opinions | pending | -- | -- |
-| 4. VALmix-v2 contents and selection parity | partial | `valmix_contents.md` | Components enumerated; the pool ships its own `removed_for_leakage` list. |
-| 5. Fold grouping | pending | -- | -- |
-| 6. Code-path tests | pending | -- | -- |
-| 7. Near-duplicate frames | pending | -- | -- |
-| 8. Refit control | **HELD** | -- | The brief's stop rule triggered: report before Task 8. |
+| 3. Out-of-fold opinions | **PASS** | `oof_check.md` | Weights are fitted on the fitting half and scored on the held-out half with zero video overlap in every fold; the symptom check shows no view with suspiciously low development vacuity. |
+| 4. VALmix-v2 contents and selection parity | **PASS** | `valmix_contents.md` | 61 manifests enumerated; the pool ships its own 101-video `removed_for_leakage` list, which is why its CDFv3val and FFIWval components give zero video-level overlap with those test splits. |
+| 5. Fold grouping | **PASS** | `fold_grouping.md` | 2,728 source components; within any single fold no component is in both halves. |
+| 6. Code-path tests | **PASS** | `test_fit_inputs.py`, `test_fit_inputs_output.txt` | 6 of 6 pass, including a completeness check that every `.fit(` site in the fusion path belongs to a listed statistic. |
+| 7. Near-duplicate frames | **NOT RUN** | -- | The one task not completed; scope and reason below. |
+| 8. Refit control | **PASS** | `refit_control.md`, `refit_control.csv` | Removing all 2,991 contaminated development videos and refitting changes the reported AUROC by at most 0.0020. |
 
 ## The finding that triggers the stop rule
 
@@ -74,6 +74,33 @@ The first run of Task 1 reported VALmix-v2 as 61 videos at 1,269 frames each. Th
 | FaceShifter shares FF++ source videos | not re-measured here (FaceShifter is not among the ten test sets) |
 | CDFv2 and CDFv3 share real videos | confirmed independently: the two share 178 real videos, ids differing only by dataset prefix |
 | VALmix-v2 contains DF40 reenactment training data | confirmed; 20 `DF40train__*` manifests |
+
+## Task 8 is the answer to the whole audit
+
+The source- and identity-level overlaps are real, so the question is whether they matter. Removing **2,991 of the
+5,814 development videos** -- every one sharing a Celeb-DF source video or identity with any evaluation set -- and
+refitting the trust weights and the decision threshold on the remaining 2,823 changes the reported results by:
+
+| | mean | largest single move |
+|---|---|---|
+| AUROC | **-0.0009** | **-0.0020** (FFIW) |
+
+Per set: CDFv2 -0.0005, CDFv3 -0.0000, DFD -0.0014, DFDC -0.0019, DFDCP -0.0009, DFEval24 -0.0009, FFIW -0.0020,
+KoDF +0.0001, IDForge -0.0010, **DFDM -0.0002**.
+
+DFDM is the set whose exposure was not listed, and it is also the set that moves least. Every number in the main
+results table survives the strictest available decontamination of the fitting pool to within 0.002 AUROC. The
+stacking leakage the brief was written to find is present as shared identities, and it is not worth anything.
+
+## Task 7, not run
+
+Perceptual hashing of near-duplicate frames is the one task not completed. Stating the scope rather than a partial
+number: the reference set (training, selection and development frames) and the query set (ten test sets plus DF40)
+are held in HDF5 stores totalling roughly **200 GB** -- DF40 alone is 142 GB -- and `imagehash` is absent from the
+project environment. The intended approach is a DCT pHash implemented directly, to avoid changing pinned
+dependencies, with a BK-tree index. It was not started because Tasks 1-6 and 8 were the ones that could answer the
+brief's central question, and Task 8 answers it. What Task 7 would add is detection of *visually* duplicated frames
+that carry different identifiers -- a real residual risk that the identifier-based checks cannot see.
 
 ## Open items
 
