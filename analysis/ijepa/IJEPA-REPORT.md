@@ -335,3 +335,26 @@ receives the five 1280-dimensional residual DIRECTIONS through a shared 1280->64
 where most of its capacity is, so the trained row can land well above this. But the gap from 0.62 to
 0.80 has to come almost entirely from those directions, and that is worth knowing before the run
 rather than after it. Reported as `TODO(run)` until R4 is actually trained.
+
+### R1 needs an extraction that does not exist yet
+
+The brief's row table includes R0h (the Off-manifold head retrained on r_perp) and R1 (retrained on
+r, without the orthogonal projection). From `DISCERN_Ext/src/model/core_model.py:330`:
+
+    r        = semantic_feature - manifold_feature          (f_s - f_c)
+    r_perp   = r - proj_{f_s}(r)                            (the deployed artifact feature)
+
+**R0h is buildable from what is already cached**, because r_perp is exactly the `artifact` block that
+`export_views.py --features` stores and that the sweep is writing.
+
+**R1 is not.** Recovering r from f_s and r_perp needs the projection coefficient
+`<r, f_s> / ||f_s||^2`, and that scalar is destroyed by the projection: r_perp is orthogonal to f_s
+by construction, so it carries no record of how much was removed. R1 therefore requires
+`manifold_feature` (out[4] of the model's forward) to be cached, which no current export does. The
+value is available in the forward return, so this is an extra pass over the relevant splits rather
+than anything harder -- but it is a new extraction, and it is flagged rather than quietly dropped.
+
+Both rows concern the Off-manifold view, not the I-JEPA view, so neither blocks G1 or G2. R0h is the
+fair comparator the brief wants for R1 ("so that R1 is compared against a head retrained in the same
+way, not against the deployed head"), which means running R0h without R1 answers no question the
+brief asked. Status: **R0h TODO(run)**, **R1 blocked on an extraction not yet performed**.

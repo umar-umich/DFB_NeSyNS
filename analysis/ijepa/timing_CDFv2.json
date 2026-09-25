@@ -1,0 +1,24 @@
+{
+ "dataset": "CDFv2",
+ "stem": "CDFv2",
+ "amp": "bf16",
+ "arm_b": false,
+ "process": "clean",
+ "videos": 518,
+ "frames": 16572,
+ "frames_per_video": 31.99,
+ "seconds": {
+  "model_load": 37.1,
+  "h5_read": 52.5,
+  "gpu": 924.4
+ },
+ "frames_per_second_gpu": 17.93,
+ "eps_mean_per_block": {
+  "upper": 0.2160288244485855,
+  "lower": 0.31149202585220337,
+  "left_cheek": 0.3409821391105652,
+  "right_cheek": 0.3568241000175476,
+  "centre": 0.19937936961650848
+ },
+ "bytes_per_frame_cached": 28176
+}
