@@ -25,7 +25,8 @@ NEED = ("eps", "rbar", "pooled", "sbar", "q", "keys")
 
 
 def candidates():
-    return sorted(list(CACHE.glob("*.npz.partial.npz")) + list(CACHE.glob("*.partial.npz")))
+    # the two globs overlap, so dedupe: "X.npz.partial.npz" matches both patterns
+    return sorted({*CACHE.glob("*.npz.partial.npz"), *CACHE.glob("*.partial.npz")})
 
 
 def target_of(p: Path) -> Path:
