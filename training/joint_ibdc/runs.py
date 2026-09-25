@@ -313,7 +313,7 @@ def main():
             torch.save({"app": heads[0].state_dict(), "om": heads[1].state_dict(),
                         "t": heads[2].state_dict(), "epoch": ep, "dev_v31": sc,
                         "run": a.run, "seed": a.seed, "lam": a.lam},
-                       OUT / f"run_{a.run}_s{a.seed}.pt")
+                       OUT / f"run_{a.run}_s{a.seed}{lamtag}.pt")
     json.dump({"run": a.run, "seed": a.seed, "lam": a.lam, "best_epoch": best[1],
                "best_dev_v31": best[0], "trust": "equal (training)", "history": hist},
               open(OUT / f"run_{a.run}_s{a.seed}{lamtag}.json", "w"), indent=1)
