@@ -9,10 +9,10 @@
  "per_draw": [
   {
    "draw": 0,
-   "clips": 3764,
-   "seconds": 168.2,
-   "file": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/cache/VALmixV2_T_clean.npz",
-   "size_bytes": 14411324
+   "clips": 5974,
+   "seconds": 151.4,
+   "file": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/cache/IDForge_T_clean.npz",
+   "size_bytes": 22847958
   }
  ]
 }

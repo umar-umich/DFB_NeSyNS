@@ -1,0 +1,49 @@
+{
+ "run": "J2a",
+ "j1_valmixv2_mean": 0.8977293018265101,
+ "per_lambda": {
+  "0.1": {
+   "valmixv2_score": 0.8984946556357983,
+   "vacuity_error_auroc_v2": 0.6512220652170576,
+   "tau_ffpp_val_eer": 0.6945692896842957,
+   "error_rate_v2": 0.2925079702444208,
+   "full_v31": 0.8949927321611765,
+   "types": {
+    "swap": 0.8984934488932291,
+    "reenactment": 0.9037487475903004,
+    "in_the_wild": 0.882736
+   }
+  },
+  "0.3": {
+   "valmixv2_score": 0.8993013244817636,
+   "vacuity_error_auroc_v2": 0.6586853959157931,
+   "tau_ffpp_val_eer": 0.7189751863479614,
+   "error_rate_v2": 0.29436769394261425,
+   "full_v31": 0.8952788079302607,
+   "types": {
+    "swap": 0.8986909654405383,
+    "reenactment": 0.9059454583502435,
+    "in_the_wild": 0.8812
+   }
+  },
+  "1.0": {
+   "valmixv2_score": 0.9004383087900286,
+   "vacuity_error_auroc_v2": 0.6654835720612787,
+   "tau_ffpp_val_eer": 0.7282552719116211,
+   "error_rate_v2": 0.29383634431455896,
+   "full_v31": 0.896141795725578,
+   "types": {
+    "swap": 0.900175306532118,
+    "reenactment": 0.9071460806446158,
+    "in_the_wild": 0.881104
+   }
+  }
+ },
+ "eligible": [
+  "0.1",
+  "0.3",
+  "1.0"
+ ],
+ "chosen_lambda": 1.0,
+ "rule": "highest fused vacuity error AUROC on VALmix-v2 among lambdas whose VALmix-v2 score is within -0.005 of J1's"
+}
