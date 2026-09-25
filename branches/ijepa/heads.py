@@ -34,27 +34,46 @@ BASE_IN = NBLOCK + NBLOCK * PROJ          # 325
 
 
 class IJepaHead(nn.Module):
-    """One row's head. `mode` is 'blocks' (R2b, R3, R4, R5) or 'pooled' (R2)."""
+    """One row's head.
 
-    def __init__(self, mode: str = "blocks", extra: int = 0, dropout: float = 0.1):
+    `mode` is 'blocks' (R2b, R3, R4, R5), 'pooled' (R2), 'scalars' (no residual directions at all)
+    or 'both' (the pooled backbone feature AND the residual directions, which asks whether the
+    residual ADDS to the backbone rather than whether it BEATS it).
+
+    `proj` sets the shared projection width. G2 showed the head overfits FF++-specific residual
+    directions -- in-domain AUROC climbing for twenty epochs while the cross-dataset score turns over
+    at epoch 2 -- so the width is the capacity knob for that.
+    """
+
+    def __init__(self, mode: str = "blocks", extra: int = 0, dropout: float = 0.1, proj: int = PROJ):
         super().__init__()
-        if mode not in ("blocks", "pooled"):
+        if mode not in ("blocks", "pooled", "scalars", "both"):
             raise ValueError(mode)
-        self.mode, self.extra = mode, extra
-        if mode == "blocks":
-            self.proj = nn.Linear(VEC, PROJ)          # shared across the five blocks
-        else:
-            self.pre = nn.Linear(VEC, BASE_IN)        # R2's capacity match
-        self.fc1 = nn.Linear(BASE_IN + extra, 256)
+        self.mode, self.extra, self.proj_dim = mode, extra, proj
+        if mode in ("blocks", "both"):
+            self.proj = nn.Linear(VEC, proj)          # shared across the five blocks
+        if mode in ("pooled", "both"):
+            self.pre = nn.Linear(VEC, BASE_IN if mode == "pooled" else proj)
+        in_dim = {"blocks": NBLOCK + NBLOCK * proj,
+                  "pooled": BASE_IN,
+                  "scalars": NBLOCK,
+                  "both": NBLOCK + NBLOCK * proj + proj}[mode]
+        self.fc1 = nn.Linear(in_dim + extra, 256)
         self.drop = nn.Dropout(dropout)
         self.fc2 = nn.Linear(256, 2)
 
-    def forward(self, scal, vec, extra=None):
-        """scal (B,5) or None for R2; vec (B,5,1280) or (B,1280) for R2; extra (B,extra) or None."""
+    def forward(self, scal, vec, extra=None, pooled=None):
+        """scal (B,5); vec (B,5,1280) block vectors, or (B,1280) for 'pooled'; pooled (B,1280)."""
         if self.mode == "blocks":
             B = vec.shape[0]
-            z = self.proj(vec.reshape(B * NBLOCK, VEC)).reshape(B, NBLOCK * PROJ)
+            z = self.proj(vec.reshape(B * NBLOCK, VEC)).reshape(B, NBLOCK * self.proj_dim)
             x = torch.cat([scal, z], dim=1)
+        elif self.mode == "scalars":
+            x = scal
+        elif self.mode == "both":
+            B = vec.shape[0]
+            z = self.proj(vec.reshape(B * NBLOCK, VEC)).reshape(B, NBLOCK * self.proj_dim)
+            x = torch.cat([scal, z, self.pre(pooled)], dim=1)
         else:
             x = self.pre(vec)
         if self.extra:

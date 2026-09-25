@@ -52,7 +52,7 @@ DEV_STEMS = ("VALmix", "VALmixV2")
 def arrays_for(row):
     """Only load what the row consumes; rbar and sbar are 12.8 KB per frame each."""
     cfg = ROWS[row]
-    need = {"q"}
+    need = {"q", "pooled"}
     need.add({"pooled": "pooled", "sbar": "sbar", "rbar": "rbar"}[cfg["vec"]])
     if cfg["scal"] in ("logeps", "a") or row == "R5":
         need.add("eps")
@@ -84,14 +84,15 @@ def row_inputs(row, d, st, tau):
 
 
 @torch.no_grad()
-def frame_probs(model, scal, vec, extra, dev, bs=4096):
+def frame_probs(model, scal, vec, extra, dev, bs=4096, pooled=None):
     model.eval()
     out = []
     for i in range(0, len(vec), bs):
         s = torch.from_numpy(scal[i:i + bs]).to(dev) if scal is not None else None
         v = torch.from_numpy(vec[i:i + bs]).to(dev)
         e = torch.from_numpy(extra[i:i + bs]).to(dev) if extra is not None else None
-        p, _ = probs(model(s, v, e))
+        pl = torch.from_numpy(pooled[i:i + bs]).float().to(dev) if pooled is not None else None
+        p, _ = probs(model(s, v, e, pl))
         out.append(p[:, 1].float().cpu().numpy())      # p(fake)
     return np.concatenate(out)
 
@@ -99,7 +100,7 @@ def frame_probs(model, scal, vec, extra, dev, bs=4096):
 def video_scores(model, packs, dev):
     keys, p, y = [], [], []
     for d, s, v, e in packs:
-        fp = frame_probs(model, s, v, e, dev)
+        fp = frame_probs(model, s, v, e, dev, pooled=d.get("pooled"))
         order, m = D.video_mean(fp, d["video"])
         first = {}
         for k, vid in zip(d["keys"], d["video"]):
@@ -114,6 +115,10 @@ def video_scores(model, packs, dev):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--row", default="R4", choices=list(ROWS))
+    ap.add_argument("--mode", default="", help="override the head mode: scalars | both")
+    ap.add_argument("--proj", type=int, default=64, help="shared projection width (capacity knob)")
+    ap.add_argument("--dropout", type=float, default=0.1)
+    ap.add_argument("--tag", default="", help="output suffix, so variants do not overwrite a row")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
@@ -148,7 +153,8 @@ def main():
 
     s_tr, v_tr, e_tr = row_inputs(a.row, tr, st, tau)
     y_tr = torch.from_numpy(tr["y"]).to(dev)
-    model = IJepaHead(ROWS[a.row]["mode"], ROWS[a.row]["extra"]).to(dev)
+    mode = a.mode or ROWS[a.row]["mode"]
+    model = IJepaHead(mode, ROWS[a.row]["extra"], a.dropout, a.proj).to(dev)
     print(f"  trainable {model.n_trainable():,}", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WD, betas=(0.9, 0.999))
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=EPOCHS, eta_min=MIN_LR)
@@ -165,7 +171,8 @@ def main():
             s = torch.from_numpy(s_tr[j]).to(dev) if s_tr is not None else None
             v = torch.from_numpy(v_tr[j]).to(dev)
             e = torch.from_numpy(e_tr[j]).to(dev) if e_tr is not None else None
-            ev = model(s, v, e)
+            pl = torch.from_numpy(tr["pooled"][j]).float().to(dev) if mode == "both" else None
+            ev = model(s, v, e, pl)
             loss = evidential_loss_discern_ext(ev, y_tr[torch.from_numpy(j).to(dev)], 2, ep, EPOCHS)
             opt.zero_grad(set_to_none=True); loss.backward(); opt.step()
             losses.append(float(loss))
@@ -182,11 +189,11 @@ def main():
         if sc > best[0] + 1e-6:                      # ties go to the earliest epoch
             best = (sc, ep)
             torch.save({"state": model.state_dict(), "epoch": ep, "v31": sc,
-                        "row": a.row, "seed": a.seed}, OUT / f"head_{a.row}.pt")
+                        "row": a.row, "seed": a.seed}, OUT / f"head_{a.row}{a.tag}.pt")
 
     json.dump({"row": a.row, "seed": a.seed, "best_epoch": best[1], "best_v31": best[0],
                "rule": V31.RULE_VERSION, "history": hist},
-              open(OUT / f"train_{a.row}.json", "w"), indent=1)
+              open(OUT / f"train_{a.row}{a.tag}.json", "w"), indent=1)
     print(f"row {a.row}: best epoch {best[1]} at v3.1 {best[0]:.4f}", flush=True)
 
 

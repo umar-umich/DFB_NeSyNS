@@ -548,3 +548,45 @@ that the FROZEN ImageNet predictor's residuals do not generalise, and R6 is the 
 predictor to real faces. It is the one remaining thing that could change the branch's verdict, and it
 is the version of this branch with the stronger novelty claim -- self-supervised, no fake data in
 adaptation or selection.
+
+### Is G2's failure just overfitting? Tested, and no
+
+The objection is fair on its face: R3 beats R2 by +0.111 in domain and loses by only -0.019 out of
+it, and the training curves are textbook shortcut learning -- R3's FF++ validation AUROC climbs from
+0.7946 to 0.9126 across twenty epochs while its cross-dataset score peaks at epoch 2 and declines. So
+the residual clearly carries signal; the question is whether a better-regularised head recovers it.
+
+Five variants, all on the same cache, seed 42:
+
+| variant | dev v3.1 | best epoch | vs R4 |
+|---|---:|---:|---:|
+| R4 baseline (projection 64, dropout 0.1) | 0.6658 | 2 | -- |
+| projection 8 (capacity cut 8x) | 0.6655 | 9 | −0.0003 |
+| dropout 0.5 | 0.6648 | 2 | −0.0010 |
+| scalars only, a_k with no directions | **0.5024** | 19 | −0.1634 |
+| **backbone feature + residual directions** | **0.6664** | 9 | +0.0006 |
+| R2, backbone feature alone | **0.6812** | 4 | **+0.0154** |
+
+**Capacity is not the constraint.** Cutting the projection eightfold moves the overfitting turnover
+from epoch 2 to epoch 9 and lands on the same peak. Heavy dropout does nothing. Early stopping
+already captures the peak; the peak itself is the ceiling.
+
+**The residual does not add to the backbone.** Given both the pooled backbone feature and the
+residual directions, the head reaches 0.6664 -- worse than the backbone alone at 0.6812. It is not
+merely that the residual loses a comparison; combining them destroys performance the backbone had on
+its own.
+
+**The signal lives in the directions, not the magnitudes.** a_k alone collapses to 0.5024, near
+chance across datasets, even though those five scalars reach 0.619 AUROC in domain.
+
+So the G2 verdict survives the objection, and survives it more strongly than the gate itself required.
+Every head-side intervention available on this representation has been tried.
+
+### What has NOT been tried is the representation
+
+All of the above keeps the predictor **frozen at ImageNet**. The residual therefore means "this region
+is unpredictable given ImageNet statistics", and that is what fails to transfer. R6 changes the
+meaning of the measurement rather than the head that reads it: LoRA on the predictor, adapted on real
+FF++ faces only, no fake data in adaptation or checkpoint selection. It is the one remaining lever,
+it is a different representation rather than a different regulariser on the same one, and Amendment 1
+exempts it from the G2 stop precisely so it can be run on a result like this.
