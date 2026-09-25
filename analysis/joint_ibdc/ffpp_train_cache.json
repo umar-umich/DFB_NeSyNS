@@ -1,0 +1,62 @@
+{
+ "dataset": "FFpp_train",
+ "arm": "B",
+ "draws": 3,
+ "seed": 42,
+ "checkpoint": "/data/umar/Repos/DISCERN_Ext/runs/discern_ext_train/warm_dicome_gate_seed42/checkpoints/discern_ext-best-epoch=19-val_auroc_video=0.9956.ckpt",
+ "config": "/data/umar/Repos/DISCERN_Ext/eval_adaptation/configs/warmgate_FFpp_train.yaml",
+ "realizations": "several cached variants",
+ "draw_granularity": "per video (option B: matched across views)",
+ "deployed_spatial_training_augmentation": "none",
+ "note": "arm B is NOT the deployed spatial training augmentation; warm_dicome_gate_seed42.yaml has no training_arm key",
+ "per_draw": [
+  {
+   "draw": 0,
+   "frames": 115198,
+   "seconds": 3036.5,
+   "file": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/cache/FFpp_train_B_d0.npz",
+   "size_bytes": 54445590,
+   "mix": {
+    "jpeg:50": 0.09555721453497457,
+    "resize:0.75": 0.09582631642910468,
+    "resize:0.5": 0.10500182294831507,
+    "none": 0.41055400267365755,
+    "jpeg:70": 0.10055730134203719,
+    "jpeg:30": 0.10000173614125245,
+    "resize:0.35": 0.09250160593065852
+   }
+  },
+  {
+   "draw": 1,
+   "frames": 115198,
+   "seconds": 2919.3,
+   "file": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/cache/FFpp_train_B_d1.npz",
+   "size_bytes": 54439192,
+   "mix": {
+    "resize:0.35": 0.1022239969443914,
+    "resize:0.5": 0.10027951874164483,
+    "jpeg:50": 0.10250177954478376,
+    "none": 0.40415632215837083,
+    "resize:0.75": 0.09139047552908905,
+    "jpeg:70": 0.10083508394242956,
+    "jpeg:30": 0.09861282313929061
+   }
+  },
+  {
+   "draw": 2,
+   "frames": 115198,
+   "seconds": 2914.9,
+   "file": "/data/umar/Repos/DFB_NeSyNS/logs/joint_ibdc/cache/FFpp_train_B_d2.npz",
+   "size_bytes": 54447284,
+   "mix": {
+    "resize:0.75": 0.1030573447455685,
+    "jpeg:30": 0.10000173614125245,
+    "none": 0.40110071355405474,
+    "resize:0.5": 0.09416830153301273,
+    "resize:0.35": 0.10444625774753034,
+    "jpeg:70": 0.10000173614125245,
+    "jpeg:50": 0.09722391013732877
+   }
+  }
+ ]
+}

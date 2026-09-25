@@ -306,3 +306,46 @@ the deployed one, however correct it looks on its own. Full coverage above (3431
 This applies to the I-JEPA study too: its cache holds every frame of KoDF and CDFv3 including these
 subsets, because the exclusion belongs at analysis time rather than extraction time. Its test tables
 must apply the same rule.
+
+## Gate G0b: the hinge is active, on either reading of the trust weights
+
+FF++ c23 train, all three matched arm-B draws, 345,594 frame-samples, J0 heads.
+
+| trust weights | fraction of samples with kappa > u_f |
+|---|---:|
+| **equal (primary)** | **0.6523** |
+| deployed fold 0 / fold 1 | 0.1347 |
+| deployed folds 2, 3, 4 | 0.0979 |
+
+The bar is 1%. **G0b passes by a factor of 65 under equal trust and still by a factor of 10 under
+the deployed per-fold triples**, so the verdict does not depend on the trust-weight reading this
+study had to choose. The choice does change the magnitude by five to seven times, exactly because
+discounting a view towards zero makes it vacuous and a vacuous view contributes no conflict -- which
+is why both are reported rather than only the primary.
+
+### Conflict depends strongly on the augmentation, and the direction is informative
+
+| augmentation level | fraction active | n |
+|---|---:|---:|
+| JPEG q30 | **0.9275** | 34,400 |
+| JPEG q50 | 0.8999 | 34,016 |
+| JPEG q70 | 0.8271 | 34,720 |
+| none (clean) | 0.5936 | 140,059 |
+| resize 0.75 | 0.5136 | 33,439 |
+| resize 0.35 | 0.4987 | 34,464 |
+| resize 0.50 | 0.4841 | 34,496 |
+
+JPEG pushes the branches apart -- conflict rises monotonically as quality falls, from 0.83 at q70 to
+0.93 at q30 -- while resizing pulls them together, every scale landing *below* clean.
+
+That asymmetry matches what the I-JEPA branch found independently on the same corpus: resizing
+**lowers** I-JEPA's regional prediction error, against the assumption that blur raises it. Two
+different measurements, on two different backbones, agree that downsample-then-upsample makes these
+faces easier rather than harder -- it removes the high-frequency detail that both a predictor and a
+disagreeing branch key on. JPEG does the opposite, adding blocking artefacts the views read
+differently.
+
+This bears directly on IBDC. The loss acts only where kappa > u_f, so under the B mixture it acts on
+roughly nine of ten JPEG samples and fewer than half of the resized ones. Its effect will not be
+uniform across the training distribution, and the per-level table is the right place to read that
+from rather than the pooled 0.6523.
