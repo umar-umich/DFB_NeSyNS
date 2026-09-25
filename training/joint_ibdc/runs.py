@@ -91,13 +91,30 @@ def load_deployed_heads(dev="cpu", freeze_norms=True):
     return app.to(dev), om.to(dev), t.to(dev)
 
 
+# CLASS ORDER. The deployed heads emit evidence as (class 0 = real, class 1 = fake): DISCERN reads
+# p_fake as index 1, and labels are 0 for real and 1 for fake. fusion_torch's opinion is (b1, b0, u)
+# with b1 = FAKE, so its evidence is (fake, genuine) -- the opposite order. Feeding one to the other
+# inverts every fused probability, which is not a crash and not obviously wrong in a table: it shows
+# up as a v3.1 score of 0.126 where 0.88 was expected, i.e. 1 - 0.874. The two orders are therefore
+# converted explicitly at the boundary and never assumed to agree.
+def to_fusion(e_native):
+    """(.., 2) head evidence in (real, fake) -> (fake, genuine), the fusion's order."""
+    return e_native.flip(-1)
+
+
+def to_native(e_fusion):
+    """The inverse, for feeding a fused opinion back into the EDL loss, which expects class order."""
+    return e_fusion.flip(-1)
+
+
 def fused_evidence(e):
-    """(n,3,2) raw evidence -> fused evidence under equal trust, plus the fused masses."""
-    m = FT.opinion_of_evidence(e)
+    """(n,3,2) raw evidence in the heads' NATIVE (real, fake) order -> fused evidence in the same
+    order, plus the fused masses in the fusion's own order."""
+    m = FT.opinion_of_evidence(to_fusion(e))
     f = FT.fuse(m, plus=True)
     u = f[..., 2].clamp_min(EPS_U)
-    ev = torch.stack([FT.W_FRAME * f[..., 0] / u, FT.W_FRAME * f[..., 1] / u], dim=-1)
-    return ev.clamp_min(0.0), f, m
+    ev_fus = torch.stack([FT.W_FRAME * f[..., 0] / u, FT.W_FRAME * f[..., 1] / u], dim=-1)
+    return to_native(ev_fus).clamp_min(0.0), f, m
 
 
 def loss_of(run, e, y, epoch, lam):
@@ -132,6 +149,69 @@ def load_train():
     n = {len(o["y"]) for o in out}
     assert len(n) == 1, f"draws disagree on sample count: {n}"
     return out
+
+
+DEV_SPATIAL = {"VALmix": CACHE / "VALmix.npz", "VALmixV2": CACHE / "VALmixV2.npz",
+               "FFpp_val": ROOT / "logs/tsne/ours_FFpp_val.npz"}
+DEV_TEMPORAL = {n: CACHE / f"{n}_T_clean.npz" for n in DEV_SPATIAL}
+
+
+def load_dev():
+    """Per-VIDEO features for the three development sets.
+
+    Spatial blocks are per frame and the video view is per clip, so the frames are kept as frames and
+    reduced only after the heads run -- the deployed rule is MEAN OPINION, then fuse
+    (`exp1_fusion_audit.py:104`), so averaging features here would be a different operation.
+    """
+    import pandas as pd
+    sys.path.insert(0, str(ROOT / "analysis/tbiom"))
+    from video_id import video_id
+    out = {}
+    for name, sf in DEV_SPATIAL.items():
+        tf = DEV_TEMPORAL[name]
+        if not (sf.exists() and tf.exists()):
+            raise FileNotFoundError(f"{name}: spatial={sf.exists()} temporal={tf.exists()}")
+        zs, zt = np.load(sf, allow_pickle=True), np.load(tf, allow_pickle=True)
+        keys = np.array([str(k) for k in zs["key"]])
+        vid = video_id(pd.Series(keys)).to_numpy()
+        tv = {str(v): i for i, v in enumerate(zt["video"])}
+        keep = np.array([i for i, v in enumerate(vid) if v in tv])
+        order, inv = np.unique(vid[keep], return_inverse=True)
+        out[name] = {"app": zs["semantic"][keep].astype(np.float32),
+                     "om": zs["artifact"][keep].astype(np.float32),
+                     "t": zt["feature"][[tv[v] for v in order]].astype(np.float32),
+                     "inv": inv, "order": order,
+                     "y": np.array([int(zs["label"][keep][inv == i].max()) for i in range(len(order))]),
+                     "key": np.array([keys[keep][inv == i][0] for i in range(len(order))])}
+    return out
+
+
+@torch.no_grad()
+def dev_opinions(heads, D, dev):
+    """Video-level fused p under EQUAL TRUST, the same fusion the training objective uses."""
+    app, om, t = heads
+    ea = app(torch.from_numpy(D["app"]).to(dev))
+    eo = om(torch.from_numpy(D["om"]).to(dev))
+    oa, oo = FT.opinion_of_evidence(to_fusion(ea)), FT.opinion_of_evidence(to_fusion(eo))
+    inv = torch.from_numpy(D["inv"]).to(dev)
+    n = len(D["order"])
+    cnt = torch.bincount(inv, minlength=n).clamp_min(1).unsqueeze(1).float()
+    va = torch.zeros(n, 3, device=dev).index_add_(0, inv, oa) / cnt      # mean opinion per video
+    vo = torch.zeros(n, 3, device=dev).index_add_(0, inv, oo) / cnt
+    vt = FT.opinion_of_evidence(to_fusion(t(torch.from_numpy(D["t"]).to(dev))))
+    m = torch.stack([vt, va, vo], dim=1)                                  # VIEWS order
+    return FT.p_of(FT.fuse(m, plus=True)).float().cpu().numpy()
+
+
+def dev_v31(heads, DEV, dev):
+    import v31 as V31
+    ff = DEV["FFpp_val"]
+    fp = dev_opinions(heads, ff, dev)
+    dk, dp, dy = [], [], []
+    for n in ("VALmix", "VALmixV2"):
+        D = DEV[n]
+        dp.append(dev_opinions(heads, D, dev)); dk += list(D["key"]); dy.append(D["y"])
+    return V31.score(dk, np.concatenate(dp), np.concatenate(dy), ff["key"], fp, ff["y"])
 
 
 def evidence_of(heads, batch, dev):
@@ -181,9 +261,63 @@ def main():
     a = ap.parse_args()
     if a.dry_run:
         return dry_run()
-    print("the training loop needs the development caches for VALmix-v2 selection; "
-          "run the sweep first. Dry run is available now.")
-    return 2
+    sys.path.insert(0, str(ROOT / "branches/ijepa"))
+    torch.manual_seed(a.seed); np.random.seed(a.seed)
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    DEV = load_dev()
+    print(f"development: " + ", ".join(f"{k} {len(v['order'])} videos" for k, v in DEV.items()),
+          flush=True)
+    heads = load_deployed_heads(dev)
+
+    if a.run == "J0":
+        sc, types, _ = dev_v31(heads, DEV, dev)
+        res = {"run": "J0", "trained": False, "dev_v31": sc, "types": types,
+               "note": "deployed heads read through the Task 1 fusion code, equal trust"}
+        json.dump(res, open(OUT / "run_J0.json", "w"), indent=1)
+        print(f"J0: development v3.1 {sc:.4f}  {types}")
+        return 0
+
+    TR = load_train()
+    n = len(TR[0]["y"])
+    print(f"training on {n:,} samples x {N_DRAWS} draws, run {a.run}, seed {a.seed}, "
+          f"lambda {a.lam if a.run.startswith('J2') else '-'}", flush=True)
+    params = [p for h in heads for p in h.parameters() if p.requires_grad]
+    opt = torch.optim.AdamW(params, lr=LR, weight_decay=WD, betas=(0.9, 0.999))
+    sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=EPOCHS, eta_min=MIN_LR)
+    hist, best = [], (-1.0, -1)
+    for ep in range(EPOCHS):
+        for h in heads:
+            h.train()
+        d = TR[ep % N_DRAWS]                                   # one draw per sample per epoch
+        y = torch.from_numpy(d["y"]).to(dev)
+        perm = np.random.permutation(n)
+        losses, t0 = [], time.time()
+        for i in range(0, n, BATCH):
+            j = perm[i:i + BATCH]
+            b = {k: d[k][j] for k in ("app", "om", "t")}
+            e = evidence_of(heads, b, dev)
+            L = loss_of(a.run, e, y[torch.from_numpy(j).to(dev)], ep, a.lam)
+            opt.zero_grad(set_to_none=True); L.backward(); opt.step()
+            losses.append(float(L))
+        sch.step()
+        for h in heads:
+            h.eval()
+        sc, types, _ = dev_v31(heads, DEV, dev)
+        hist.append({"epoch": ep, "loss": float(np.mean(losses)), "dev_v31": sc, "types": types,
+                     "draw": ep % N_DRAWS})
+        print(f"  epoch {ep:2d} loss {np.mean(losses):.4f} dev v3.1 {sc:.4f} "
+              f"({time.time() - t0:.0f}s)", flush=True)
+        if sc > best[0] + 1e-6:
+            best = (sc, ep)
+            torch.save({"app": heads[0].state_dict(), "om": heads[1].state_dict(),
+                        "t": heads[2].state_dict(), "epoch": ep, "dev_v31": sc,
+                        "run": a.run, "seed": a.seed, "lam": a.lam},
+                       OUT / f"run_{a.run}_s{a.seed}.pt")
+    json.dump({"run": a.run, "seed": a.seed, "lam": a.lam, "best_epoch": best[1],
+               "best_dev_v31": best[0], "trust": "equal (training)", "history": hist},
+              open(OUT / f"run_{a.run}_s{a.seed}.json", "w"), indent=1)
+    print(f"{a.run} seed {a.seed}: best epoch {best[1]}, development v3.1 {best[0]:.4f}")
+    return 0
 
 
 if __name__ == "__main__":

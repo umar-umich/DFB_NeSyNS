@@ -351,3 +351,35 @@ This bears directly on IBDC. The loss acts only where kappa > u_f, so under the 
 roughly nine of ten JPEG samples and fewer than half of the resized ones. Its effect will not be
 uniform across the training distribution, and the per-level table is the right place to read that
 from rather than the pooled 0.6523.
+
+## J0, and the class-order bug it caught
+
+J0 trains nothing: it reads the deployed heads through the Task 1 fusion code under equal trust.
+
+**First attempt: development v3.1 = 0.1259.** Since 1 − 0.874 = 0.126, the ranking was inverted. The
+cause is a convention mismatch at a boundary between two correct pieces of code. The deployed heads
+emit evidence as **(class 0 = real, class 1 = fake)** -- DISCERN reads `p_fake` as index 1, and labels
+are 0 for real, 1 for fake -- while `fusion_torch`'s opinion is (b1, b0, u) with **b1 = fake**, so its
+evidence is (fake, genuine), the opposite order. Feeding one into the other inverts every fused
+probability.
+
+Nothing crashes and nothing looks obviously wrong: the opinions are valid, the masses sum to one, and
+the evidential loss is finite and trains. The only symptom is a number that is exactly wrong. The two
+orders are now converted explicitly at the boundary, with named functions, rather than assumed to
+agree.
+
+**This is why J0 runs first.** It is the one row whose answer is known in advance, so it is the only
+place a defect like this announces itself instead of being absorbed into a trained result.
+
+### J0 against an independently produced number
+
+| | v3.1 | swap | reenactment | in-the-wild |
+|---|---:|---:|---:|---:|
+| **J0 here** (PCR6+, equal trust, cache-derived temporal) | **0.8741** | 0.9264 | 0.8993 | 0.7966 |
+| `staged DS equal`, `EXP_JOINT_ABLATION.md` | 0.8771 | 0.9290 | 0.9099 | 0.7925 |
+| `staged DS-R` (fitted weights), same source | 0.8808 | 0.9345 | 0.9085 | 0.7993 |
+
+The equal-trust row is the right comparator, and J0 sits 0.0030 from it, with every forgery type
+within 0.011. The residual difference is accounted for by PCR6+ against DS and by the temporal view
+being cache-derived. The pipeline therefore reproduces a number this project produced by a different
+route, which is what J0 exists to establish before any run is trained against it.
