@@ -1,0 +1,16 @@
+{
+ "fps": 22.47,
+ "groups": {
+  "FF++ c23 train (B mixture)": 115198,
+  "FF++ c23 val (clean)": 22396,
+  "development pool VALmix": 40142,
+  "development pool VALmix-v2": 77394,
+  "ten test sets (clean)": 904675,
+  "DF40 evaluation, 41 sets": 858166,
+  "processed tests (CDFv2+DFDCP x jpeg40,rs06)": 67588
+ },
+ "total_frames": 2085559,
+ "total_gpu_hours": 25.782017999307723,
+ "cache_gb": 32.067555184,
+ "without_df40_hours": 15.173230974632844
+}

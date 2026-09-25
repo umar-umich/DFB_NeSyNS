@@ -1,0 +1,129 @@
+# DISCERN-v2 leakage audit brief
+
+## Goal
+
+Verify that no test information reached training, checkpoint selection, trust-weight fitting or the decision threshold of the reference system.
+
+The main risk is stacking leakage. Trust weights are fitted on view opinions from the development pool. If any view was trained or selected on development-pool videos, its opinions there are optimistic and its fitted weight is inflated.
+
+This audit is read-only. It changes no training or fusion code and retrains nothing.
+
+## System under audit
+
+- **Appearance and Off-manifold views.** Frozen CLIP ViT-L/14 with LoRA, β-VAE residual view, evidential heads. Warm+gate retraining, epoch 19.
+- **Video view.** Frozen V-JEPA 2 with LoRA (rank 8, alpha 16, dropout 0.1, query and value), evidential head. Trained with the spatial views frozen, using the B processing mixture.
+- **Fusion.** One trust weight r in [0,1] per view, found by grid search over 5 source-grouped development folds, then Dempster-R.
+- **Threshold.** FF++ validation EER, frozen for all tests.
+- **Checkpoint selection.** VALmix-v2 score, the mean of swap, reenactment and in-the-wild AUROC.
+
+Locate the deployed configuration and state which repository holds it (DFB_NeSyNS or DISCERN_Ext). Audit that configuration, not code defaults.
+
+## Rules
+
+- Do not modify training or fusion code. Put audit scripts and tests in a new `audit/leakage/` folder.
+- Every number in the report cites the file and line, or the command, that produced it.
+- A check passes only on the evidence it names. Config names and comments are not evidence.
+- Known exposures (below) go in the exposure log. Do not count them as new findings.
+- If any check finds a test video, test source video or test identity inside training, selection, trust-weight fitting or threshold data beyond the known exposures, finish that check, stop, and report before Task 8.
+
+## Known exposures
+
+- CDFv2 and Deepfake-Eval-2024 informed development.
+- DF40 informed fusion-operator design.
+- FaceShifter shares FF++ source videos.
+- CDFv2 and CDFv3 share real videos.
+- VALmix-v2 contains DF40 reenactment training data.
+
+## Task 1. Split inventory
+
+Find the manifest behind each split.
+
+- FF++ c23 train, recorded separately for each view
+- FF++ c23 validation (threshold data)
+- VALmix-v2, each component separately
+- Fusion development pool, each fold separately
+- Ten test sets after exclusions (CDFv2, CDFv3, DFD, DFDC, DFDCP, Deepfake-Eval-2024, FFIW, KoDF, IDForge, DFDM)
+- DF40 evaluation, all 41 generator sets
+- Processed tests (CDFv2 and DFDCP at JPEG q40 and resize 0.60)
+
+For each view, record its training manifest and its selection manifest separately.
+
+State exactly where the development pool comes from, meaning which datasets and which splits its videos belong to. This is the central question of the audit.
+
+Output `inventory.csv` with columns split, component, manifest path, videos, real, fake, key type (video ID, source video or identity).
+
+## Task 2. Dataset table and overlap matrix
+
+**Dataset table.** One row per test set and per training, selection and development split. Columns are videos, real, fake, frames sampled per video, total frames, exclusions with reason and count, and frames per video used by the image baselines. Record the known exclusions (CDFv3 without IP_LAP, KoDF without audio-driven and adversarial subsets, IDForge restricted to InfoSwap, Roop and SimSwap). Write `dataset_table.csv` and `dataset_table.tex`.
+
+**Overlap matrix.** Build it at three levels.
+
+- Video ID.
+- Source video. An FF++ fake `AAA_BBB` maps to sources AAA and BBB. DF40 fakes map to their FF++ or Celeb-DF source videos. Record the mapping rule used for each dataset.
+- Identity, where the dataset provides it (for example Celeb-DF `idX_idY_NNNN`). Mark "not available" where it does not.
+
+Write `overlap_video.csv`, `overlap_source.csv`, `overlap_identity.csv` and one heatmap. List every nonzero cell outside the known exposures with example IDs.
+
+## Task 3. Out-of-fold opinions
+
+For each view, trace the cached opinions used for trust-weight fitting back to the checkpoint file that produced them. Intersect that checkpoint's training and selection manifests with the development pool at all three levels from Task 2. The check passes only if every intersection is empty.
+
+**Symptom check.** Report each view's AUROC and mean vacuity on the development pool, on FF++ validation and on clean CDFv3. Flag any view whose development-pool vacuity sits far below its FF++ validation vacuity. Report the numbers without setting a threshold.
+
+Confirm that the fused numbers in the development table were computed out of fold, with weights fitted on four folds and scored on the fifth.
+
+## Task 4. VALmix-v2 contents and selection parity
+
+List the exact videos in each VALmix-v2 component.
+
+- For the DF40 reenactment component, state the source domain (FF++ or Celeb-DF). Celeb-DF identities here would count against CDFv2 and CDFv3.
+- For the in-the-wild component, name its source dataset and check its overlap with all ten test sets.
+
+Confirm which selection rule chose the DiCoME (our training) checkpoint. If it differs from VALmix-v2, report both rules and state which checkpoint the main results table uses.
+
+## Task 5. Fold grouping
+
+Build connected components over source videos and identities in the development pool, where a fake links its two sources. Confirm that each component sits in exactly one fold. Report the number of components per fold and list any component split across folds.
+
+## Task 6. Code-path tests
+
+Add `audit/leakage/test_fit_inputs.py` with pytest assertions for the following.
+
+- The trust-weight grid search receives only development-pool IDs and labels.
+- The threshold function receives only FF++ validation scores.
+- No test-set label is loaded during fitting or selection. Instrument the label loader and assert that it is not called for any test set in those code paths.
+- No per-dataset normalization, temperature or calibration is fitted on test data. Search for every fitted statistic and list where each is computed.
+- JPEG q40 and resize 0.60 never appear in training or selection augmentation.
+
+Run the tests and include the full output.
+
+## Task 7. Near-duplicate frames
+
+Compute a 64-bit perceptual hash (`imagehash.phash`) on the face crops the models actually receive.
+
+- Reference set is every frame used in training, selection or development.
+- Query set is every evaluated frame of the ten test sets and DF40 evaluation.
+
+Use a binary index (BK-tree or faiss binary) rather than brute force. Report matches at Hamming distance ≤ 4, ≤ 6 and ≤ 10 for each test set. Confirm matches at ≤ 6 with CLIP cosine similarity above 0.95. Save the 50 closest confirmed pairs per test set as image grids for manual review. Mark pairs already explained by known exposures.
+
+## Task 8. Refit control
+
+Refit the trust weights and the threshold using only development-pool videos that passed Tasks 1, 3, 4 and 5 cleanly. Rerun the ten test sets and DF40 on cached opinions. For every set, report AUROC and FPR and TPR at the threshold for the original and refit versions, plus the difference. This runs on cached outputs and needs no GPU.
+
+If no development-pool video failed, state that the clean subset equals the full pool and skip the refit.
+
+## Verdict rules
+
+- **PASS.** Intersection empty, or fully explained by a known exposure.
+- **FLAG.** The check cannot be completed, for example because identity labels or a manifest are missing. Say what is missing.
+- **FAIL.** Unexpected overlap. Give counts and example IDs.
+
+## Deliverables in `audit/leakage/`
+
+- `LEAKAGE-REPORT.md`. One line per task with verdict, evidence file and one sentence. Then the dataset table, the overlap summary, the exposure log and the open items.
+- `inventory.csv`, `dataset_table.csv`, `dataset_table.tex`
+- `overlap_video.csv`, `overlap_source.csv`, `overlap_identity.csv`, overlap heatmap
+- `oof_check.md`, `valmix_contents.md`, `fold_grouping.md`
+- `test_fit_inputs.py` and its output
+- Perceptual-hash match tables and image grids
+- `refit_control.csv` if Task 8 runs

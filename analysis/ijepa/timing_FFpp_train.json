@@ -1,0 +1,20 @@
+{
+ "dataset": "FFpp_train",
+ "videos": 100,
+ "frames": 3200,
+ "frames_per_video": 32.0,
+ "seconds": {
+  "model_load": 22.9,
+  "h5_read": 10.2,
+  "gpu": 142.4
+ },
+ "frames_per_second_gpu": 22.47,
+ "eps_mean_per_block": {
+  "upper": 0.21957573294639587,
+  "lower": 0.30896511673927307,
+  "left_cheek": 0.34079405665397644,
+  "right_cheek": 0.3436581492424011,
+  "centre": 0.19998203217983246
+ },
+ "bytes_per_frame_cached": 15376
+}

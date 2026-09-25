@@ -19,3 +19,12 @@ cache/
 
 # Model weights — 3.6 GB FSFM fine-tuned checkpoint, fetched from HF, not source
 weights/FS-VFM-FT/
+
+# I-JEPA branch: upstream clone, 10 GB pretrained checkpoint, and the fp16 feature cache
+branches/ijepa/ijepa/
+branches/ijepa/IN1K-vit.h.14-300e.pth.tar
+branches/ijepa/g0_crops/
+analysis/ijepa/cache/
+branches/ijepa/IN1K-vit.h.14-300e.pth.tar
+branches/ijepa/ijepa/
+analysis/ijepa/cache/

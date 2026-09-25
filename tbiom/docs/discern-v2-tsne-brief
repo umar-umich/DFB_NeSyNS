@@ -1,0 +1,84 @@
+# DISCERN-v2 t-SNE brief
+
+## Goal
+
+Visualize how DiCoME and our system separate real and fake videos, alongside a separation measure computed in the original feature space.
+
+Our fusion works on opinions rather than on a joint feature vector. There is no single embedding for our system, and a t-SNE of concatenated view features would show something the decision never uses. So the figures work at two levels, per-view embeddings and fused opinions.
+
+No training and no fitting on labels. This runs on existing checkpoints.
+
+## Methods
+
+- **Ours.** The reference system from the main results table (Appearance, Off-manifold and V-JEPA 2 video views, Dempster-R fusion).
+- **DiCoME (our training).** The checkpoint used in the main results table.
+
+Confirm both checkpoint paths and state them in the report.
+
+## Datasets and sampling
+
+Panels, one row each.
+
+- FF++ c23 validation, as the in-domain reference
+- CDFv2, where DiCoME leads
+- CDFv3, with swap and reenactment shown by marker shape
+- KoDF, where we lead
+- DFDC, where DiCoME leads
+
+Sample up to 500 real and 500 fake videos per dataset, or all videos if fewer, with seed 0. In CDFv3, stratify fakes by swap and reenactment in proportion to the full set. Use the same video IDs for both methods. Save the sampled IDs to `sample_ids.csv`.
+
+## Features
+
+**Per-view embeddings.** Take the vector that enters the final linear layer of each evidential head.
+
+- DiCoME has two views, the semantic view and the artifact view.
+- Ours has three views, Appearance, Off-manifold and Video.
+
+Average frame features to video level over the same frames each method uses in its main-table evaluation. The video view already works on 16-frame clips, so average over its clips. Record each feature dimension in the report.
+
+Standardize each panel's features to zero mean and unit variance. If the dimension exceeds 50, reduce to 50 with PCA fitted on that panel's points. Both steps use no labels.
+
+**Fused opinions.** Take belief real, belief fake and vacuity from each method's fused output. Plot them directly on a ternary diagram. No t-SNE at this level.
+
+## t-SNE settings
+
+- openTSNE or scikit-learn TSNE, perplexity 30, PCA initialization, learning rate "auto", 1000 iterations, seed 0
+- Repeat at perplexity 50 for the appendix
+- Fit each panel separately
+
+## Separation measures
+
+Compute these in the standardized original space, not the t-SNE space.
+
+- Leave-one-out 10-nearest-neighbour accuracy
+- Silhouette score using the real and fake labels
+- 95% intervals from 1000 bootstrap resamples over videos
+
+Label these as descriptive separability on the plotted sample, not as detection results. Next to each panel, report the method's AUROC for that dataset from the main results table so the reader can compare the picture with the actual decision.
+
+## Figures
+
+**Figure 1, per-view t-SNE.** Rows are datasets. Columns are DiCoME semantic, DiCoME artifact, Ours Appearance, Ours Off-manifold and Ours Video.
+
+**Figure 2, fused opinions.** Rows are datasets. Columns are DiCoME and Ours, each a ternary diagram of belief real, belief fake and vacuity.
+
+Styling rules.
+
+- Real in blue, fake in orange, colour-blind safe palette
+- Circle for face swap, triangle for reenactment
+- Plain-language axis and panel labels, with acronyms spelled out
+- Vector PDF plus PNG at 300 dpi
+
+## Caveats to state in the report
+
+- Distances between clusters and cluster sizes in t-SNE are not meaningful. Only local neighbourhoods are.
+- Our Appearance and Off-manifold views follow DiCoME's construction, so those panels are expected to resemble DiCoME's. The Video panel carries the comparison.
+- CDFv2 and CDFv3 share real videos, so their real points overlap.
+
+## Deliverables in `analysis/tsne/`
+
+- `tsne_per_view.pdf` and `.png`, plus the perplexity-50 versions
+- `fused_opinions_ternary.pdf` and `.png`
+- `separation_metrics.csv` with method, view, dataset, kNN accuracy, silhouette and intervals
+- `sample_ids.csv`
+- `TSNE-REPORT.md` with checkpoint paths, feature dimensions, settings, the metrics table and the caveats

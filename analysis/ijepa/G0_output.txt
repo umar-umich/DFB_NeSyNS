@@ -1,0 +1,73 @@
+Top-level keys: ['batch_size', 'encoder', 'epoch', 'loss', 'lr', 'opt', 'predictor', 'scaler', 'target_encoder', 'world_size']
+encoder          389 tensors    630.8 M parameters
+predictor        152 tensors     22.4 M parameters
+target_encoder   389 tensors    630.8 M parameters
+INFO:root:VisionTransformer(
+  (patch_embed): PatchEmbed(
+    (proj): Conv2d(3, 1280, kernel_size=(14, 14), stride=(14, 14))
+  )
+  (blocks): ModuleList(
+    (0-31): 32 x Block(
+      (norm1): LayerNorm((1280,), eps=1e-06, elementwise_affine=True)
+      (attn): Attention(
+        (qkv): Linear(in_features=1280, out_features=3840, bias=True)
+        (attn_drop): Dropout(p=0.0, inplace=False)
+        (proj): Linear(in_features=1280, out_features=1280, bias=True)
+        (proj_drop): Dropout(p=0.0, inplace=False)
+      )
+      (drop_path): Identity()
+      (norm2): LayerNorm((1280,), eps=1e-06, elementwise_affine=True)
+      (mlp): MLP(
+        (fc1): Linear(in_features=1280, out_features=5120, bias=True)
+        (act): GELU(approximate='none')
+        (fc2): Linear(in_features=5120, out_features=1280, bias=True)
+        (drop): Dropout(p=0.0, inplace=False)
+      )
+    )
+  )
+  (norm): LayerNorm((1280,), eps=1e-06, elementwise_affine=True)
+)
+INFO:root:VisionTransformer(
+  (patch_embed): PatchEmbed(
+    (proj): Conv2d(3, 1280, kernel_size=(14, 14), stride=(14, 14))
+  )
+  (blocks): ModuleList(
+    (0-31): 32 x Block(
+      (norm1): LayerNorm((1280,), eps=1e-06, elementwise_affine=True)
+      (attn): Attention(
+        (qkv): Linear(in_features=1280, out_features=3840, bias=True)
+        (attn_drop): Dropout(p=0.0, inplace=False)
+        (proj): Linear(in_features=1280, out_features=1280, bias=True)
+        (proj_drop): Dropout(p=0.0, inplace=False)
+      )
+      (drop_path): Identity()
+      (norm2): LayerNorm((1280,), eps=1e-06, elementwise_affine=True)
+      (mlp): MLP(
+        (fc1): Linear(in_features=1280, out_features=5120, bias=True)
+        (act): GELU(approximate='none')
+        (fc2): Linear(in_features=5120, out_features=1280, bias=True)
+        (drop): Dropout(p=0.0, inplace=False)
+      )
+    )
+  )
+  (norm): LayerNorm((1280,), eps=1e-06, elementwise_affine=True)
+)
+encoder: loaded with strict=True
+predictor: loaded with strict=True
+target_encoder: loaded with strict=True
+
+upper face
+  trained predictor                  0.0928
+  trained, another face's context    0.2238
+  random predictor                   0.3743
+  mean of visible patches            0.2597
+  PASS: trained predictor beats all three controls
+
+lower face
+  trained predictor                  0.1177
+  trained, another face's context    0.2341
+  random predictor                   0.3739
+  mean of visible patches            0.2623
+  PASS: trained predictor beats all three controls
+
+G0 PASSED
