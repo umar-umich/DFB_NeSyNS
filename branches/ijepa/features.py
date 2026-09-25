@@ -123,7 +123,8 @@ def video_agreement(rbar, keys, tau):
     [c_upper_lower, c_left_right, v_upper_lower, v_left_right].
     """
     C, V = frame_agreement(rbar, tau)
-    vid = np.array([str(k).split("/")[-2] for k in keys])
+    from data import video_of                              # THE rule, never a local shortcut
+    vid = np.array([video_of(k) for k in keys])
     order, inv = np.unique(vid, return_inverse=True)
     out = np.zeros((len(order), 2 * len(PAIRS)), dtype=np.float32)
     cnt = np.bincount(inv, minlength=len(order)).astype(np.float32)

@@ -28,8 +28,28 @@ def source_of(key: str) -> str:
     return str(key).split("/")[-3]
 
 
+CLASS_DIRS = {"real", "fake", "frames", "images"}          # mirrors analysis/tbiom/video_id.py:42
+
+
 def video_of(key: str) -> str:
-    return str(key).split("/")[-2]
+    """THE video-identity rule, from `analysis/tbiom/video_id.py`, not a local shortcut.
+
+    The video is the DIRECTORY CONTAINING THE FRAME AS A FULL PATH -- not the directory's
+    basename. DF40 borrows its authentic halves, so a real and a fake video can share the
+    basename `id0_0000`; grouping on the basename silently merges them and `max(label)` then
+    depends on which frames an export happened to sample. That bug has already reversed two
+    conclusions in this project. When the parent directory is a bare class name, the frames are
+    flat whole images and each frame is its own video, or every generated image would collapse
+    into one.
+
+    `test_video_rule.py` asserts this agrees with the canonical implementation on real keys.
+    """
+    k = str(key).split("::", 1)[-1].rstrip("/")
+    directory, _, _frame = k.rpartition("/")
+    parent = directory.rsplit("/", 1)[-1]
+    if parent.lower() in CLASS_DIRS:
+        return re.sub(r"\.[A-Za-z0-9]+$", "", k)          # degenerate: the frame IS the video
+    return directory
 
 
 def label_of(key: str) -> int:
@@ -127,8 +147,12 @@ def _selftest():
     # the rule that the leakage audit paid for: source and video come from the END
     k3 = "CDFv2/Celeb-real/id0_0000/frame_000.png"          # three deep
     k4 = "CDFv3valG/CDFv3valG__Celeb-real/id0/vid1/f.png"   # four deep
-    assert source_of(k3) == "Celeb-real" and video_of(k3) == "id0_0000"
-    assert source_of(k4) == "id0" and video_of(k4) == "vid1"
+    assert source_of(k3) == "Celeb-real" and video_of(k3) == "CDFv2/Celeb-real/id0_0000"
+    assert source_of(k4) == "id0" and video_of(k4) == "CDFv3valG/CDFv3valG__Celeb-real/id0/vid1"
+    # a flat whole-image generator: the parent is a bare class name, so the frame is the video
+    assert video_of("DF40/ddim-cdf/fake/00001.png") == "DF40/ddim-cdf/fake/00001"
+    # the collision the rule exists to prevent: same basename, different videos
+    assert video_of("DF40/x-real/id0_0000/f.png") != video_of("DF40/x-fake/id0_0000/f.png")
     assert label_of(k3) == 0
 
     for s, want in [("Celeb-real", 0), ("Celeb-synthesis", 1), ("YouTube-real", 0),

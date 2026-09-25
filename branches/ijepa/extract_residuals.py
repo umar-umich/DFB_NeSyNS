@@ -270,7 +270,9 @@ def main():
     json.dump(out, open(f"analysis/ijepa/timing_{stem}.json", "w"), indent=1)
     if not a.time_only:
         cache.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cache.with_suffix(".npz.partial")          # a killed job never leaves a half cache behind
+        # NOTE: np.savez APPENDS .npz when the name does not already end in it, so the temp
+        # name must itself end in .npz or the file lands somewhere the rename cannot find.
+        tmp = cache.with_suffix(".partial.npz")          # a killed job never leaves a half cache behind
         np.savez(tmp, eps=eps, rbar=rbar, pooled=pooled, sbar=sbar, q=q, keys=np.array(K, object))
         tmp.replace(cache)
         print("cached ->", cache)
