@@ -61,6 +61,63 @@ def masks(dev, B):
     return out
 
 
+# Arm B's processing grid, copied from DISCERN_Ext/src/dataset/training_arms.py:SharedProcessing.
+# Same severities and same weights; the draw here is per VIDEO, as the brief asks, not per sample.
+ARM_B_GRID = [("none", None), ("jpeg", 70), ("jpeg", 50), ("jpeg", 30),
+              ("resize", 0.75), ("resize", 0.50), ("resize", 0.35)]
+ARM_B_W = np.array([0.40, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10])
+ARM_B_W = ARM_B_W / ARM_B_W.sum()
+
+
+def apply_uint8(img, setting):
+    """Arm B processing on a native-size crop, before the 224 resize, as in training."""
+    from PIL import Image
+    kind, val = setting
+    if kind == "none":
+        return img
+    im = Image.fromarray(img)
+    if kind == "jpeg":
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=int(val))
+        buf.seek(0)
+        return np.array(Image.open(buf).convert("RGB"))
+    w, h = im.size
+    small = im.resize((max(1, int(w * val)), max(1, int(h * val))), Image.BILINEAR)
+    return np.array(small.resize((w, h), Image.BILINEAR).convert("RGB"))
+
+
+def draw_arm_b(video, seed=42):
+    """One setting per clip, reproducible from the video name alone."""
+    import zlib
+    rng = np.random.default_rng([seed, zlib.crc32(video.encode())])
+    return ARM_B_GRID[int(rng.choice(len(ARM_B_GRID), p=ARM_B_W))]
+
+
+def apply_eval_process(x, spec):
+    """Evaluation-side processing on the [0,1] 224 batch, mirroring export_views.apply_processing,
+    which denormalises, processes and renormalises -- so applying here, before normalisation, is
+    the same operation at the same point in the pipeline."""
+    import torchvision.transforms.functional as TF
+    from PIL import Image
+    kind, _, val = spec.partition(":")
+    if kind == "resize":
+        sc = float(val)
+        h, w = x.shape[-2:]
+        return TF.resize(TF.resize(x, [max(1, int(h * sc)), max(1, int(w * sc))], antialias=True),
+                         [h, w], antialias=True)
+    if kind == "jpeg":
+        q = int(val)
+        u8 = (x * 255).round().clamp(0, 255).to(torch.uint8).cpu()
+        out = []
+        for img in u8:
+            buf = io.BytesIO()
+            Image.fromarray(img.permute(1, 2, 0).numpy()).save(buf, format="JPEG", quality=q)
+            buf.seek(0)
+            out.append(TF.pil_to_tensor(Image.open(buf).convert("RGB")))
+        return (torch.stack(out).float() / 255.0).to(x.device)
+    raise ValueError(f"unknown processing spec {spec!r}")
+
+
 def quality(arr):
     """Label-free per-frame descriptors: blur, blockiness, and crop size."""
     g = arr.astype(np.float32).mean(2)
@@ -72,31 +129,44 @@ def quality(arr):
 
 
 @torch.no_grad()
-def run(frames, enc, pred, tgt, dev, bs):
-    """frames: uint8 (N,224,224,3). Returns eps (N,5), rbar (N,5,1280), pooled (N,1280)."""
-    E, R, PL = [], [], []
+def run(frames, enc, pred, tgt, dev, bs, amp="bf16", process=""):
+    """frames: uint8 (N,224,224,3). Returns eps (N,5), rbar (N,5,1280), pooled (N,1280), sbar (N,5,1280).
+
+    The forward runs under bf16 autocast by default. Everything is cached fp16 regardless, so
+    fp16 storage, not bf16 compute, sets the precision of what is kept.
+    """
+    E, R, PL, S = [], [], [], []
+    ctxm = (torch.autocast("cuda", dtype=torch.bfloat16) if amp == "bf16" and dev == "cuda"
+            else torch.autocast("cuda", enabled=False))
     for i in range(0, len(frames), bs):
         x = torch.from_numpy(frames[i:i + bs]).permute(0, 3, 1, 2).float().div_(255)
+        if process:
+            x = apply_eval_process(x, process)
         x = ((x - MEAN) / STD).to(dev, non_blocking=True)
         B = x.shape[0]
-        h = tgt(x)
-        h = F.layer_norm(h, (h.size(-1),))
-        PL.append(h.mean(1).half().cpu().numpy())
-        mk = masks(dev, B)
-        e_b, r_b = [], []
-        for b in BLOCKS:
-            ctx, hid = mk[b]
-            z = enc(x, [ctx])                       # hidden patches never enter the context encoder
-            yh = pred(z, [ctx], [hid])
-            y = apply_masks(h, [hid])
-            r = y - yh
-            e_b.append((r ** 2).mean((1, 2)).half().cpu().numpy())
-            r_b.append(r.mean(1).half().cpu().numpy())
-        E.append(np.stack(e_b, 1)); R.append(np.stack(r_b, 1))
-    return np.concatenate(E), np.concatenate(R), np.concatenate(PL)
+        with ctxm:
+            h = tgt(x)
+            h = F.layer_norm(h.float(), (h.size(-1),))
+            PL.append(h.mean(1).half().cpu().numpy())
+            mk = masks(dev, B)
+            e_b, r_b, s_b = [], [], []
+            for b in BLOCKS:
+                ctx, hid = mk[b]
+                z = enc(x, [ctx])                   # hidden patches never enter the context encoder
+                yh = pred(z, [ctx], [hid]).float()
+                y = apply_masks(h, [hid])
+                r = y - yh
+                e_b.append((r ** 2).mean((1, 2)).half().cpu().numpy())
+                r_b.append(r.mean(1).half().cpu().numpy())
+                # s_bar_k for the R2b regional feature control (amendment 1, section A). y is the
+                # layer-normalised target feature at this block's 56 patches and is already computed,
+                # so this costs nothing and is guaranteed to share the frame's processing draw.
+                s_b.append(y.mean(1).half().cpu().numpy())
+        E.append(np.stack(e_b, 1)); R.append(np.stack(r_b, 1)); S.append(np.stack(s_b, 1))
+    return np.concatenate(E), np.concatenate(R), np.concatenate(PL), np.concatenate(S)
 
 
-def stream_frames(dataset, limit_videos, chunk, shard, nshards):
+def stream_frames(dataset, limit_videos, chunk, shard, nshards, arm_b=False):
     """Yield (uint8 (n,224,224,3), keys) in chunks, so a 200k-frame set never sits in memory at once."""
     import h5py
     from PIL import Image
@@ -114,6 +184,7 @@ def stream_frames(dataset, limit_videos, chunk, shard, nshards):
         vids = vids[shard::nshards]          # shard by video, so a video is never split across shards
     keys = [k for v in vids for k in byvid[v]]
     arrs, kept = [], []
+    setting_of = {v: draw_arm_b(v) for v in vids} if arm_b else {}
     with h5py.File(h5p_of(dataset), "r") as f:
         for k in keys:
             if k not in f:
@@ -121,7 +192,10 @@ def stream_frames(dataset, limit_videos, chunk, shard, nshards):
             a = f[k][()]
             im = Image.open(io.BytesIO(a.tobytes())) if a.dtype == np.uint8 and a.ndim == 1 \
                 else Image.fromarray(np.asarray(a).astype(np.uint8))
-            arrs.append(np.asarray(im.convert("RGB").resize((224, 224), Image.BICUBIC)))
+            u8 = np.asarray(im.convert("RGB"))
+            if arm_b:
+                u8 = apply_uint8(u8, setting_of[k.split("/")[-2]])
+            arrs.append(np.asarray(Image.fromarray(u8).resize((224, 224), Image.BICUBIC)))
             kept.append(k)
             if len(arrs) >= chunk:
                 yield np.stack(arrs), kept, len(vids)
@@ -144,6 +218,9 @@ def main():
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--num-shards", type=int, default=1)
     ap.add_argument("--out", default="", help="cache stem; defaults to the dataset (plus the shard suffix)")
+    ap.add_argument("--amp", default="bf16", choices=["bf16", "fp32"])
+    ap.add_argument("--arm-b", action="store_true", help="B mixture, one draw per clip (FF++ train)")
+    ap.add_argument("--process", default="", help="eval-side processing, e.g. jpeg:40 or resize:0.60")
     ap.add_argument("--time-only", action="store_true")
     ap.add_argument("--overwrite", action="store_true")
     a = ap.parse_args()
@@ -159,16 +236,17 @@ def main():
     enc, pred, tgt = load_models(dev)
     t_load = time.time() - t0
 
-    E, R, PL, Q, K = [], [], [], [], []
+    E, R, PL, SB, Q, K = [], [], [], [], [], []
     t_read = t_gpu = 0.0
     nvid = 0
     tc = time.time()
-    for arrs, keys, nvid in stream_frames(a.dataset, a.limit_videos, a.chunk_frames, a.shard, a.num_shards):
+    for arrs, keys, nvid in stream_frames(a.dataset, a.limit_videos, a.chunk_frames, a.shard,
+                                          a.num_shards, a.arm_b):
         t_read += time.time() - tc
         t1 = time.time()
-        eps, rbar, pooled = run(arrs, enc, pred, tgt, dev, a.batch_size)
+        eps, rbar, pooled, sbar = run(arrs, enc, pred, tgt, dev, a.batch_size, a.amp, a.process)
         t_gpu += time.time() - t1
-        E.append(eps); R.append(rbar); PL.append(pooled)
+        E.append(eps); R.append(rbar); PL.append(pooled); SB.append(sbar)
         Q.append(np.stack([quality(x) for x in arrs]).astype(np.float16))
         K += keys
         print(f"  {stem}: {len(K)} frames, {t_gpu:.0f}s gpu, {len(K) / max(t_gpu, 1e-9):.1f} f/s", flush=True)
@@ -176,21 +254,24 @@ def main():
             break
         tc = time.time()
 
-    eps = np.concatenate(E); rbar = np.concatenate(R); pooled = np.concatenate(PL); q = np.concatenate(Q)
-    out = {"dataset": a.dataset, "stem": stem, "videos": nvid, "frames": len(K),
+    eps = np.concatenate(E); rbar = np.concatenate(R); pooled = np.concatenate(PL)
+    sbar = np.concatenate(SB); q = np.concatenate(Q)
+    out = {"dataset": a.dataset, "stem": stem, "amp": a.amp,
+           "arm_b": bool(a.arm_b), "process": a.process or "clean", "videos": nvid, "frames": len(K),
            "frames_per_video": round(len(K) / max(nvid, 1), 2),
            "seconds": {"model_load": round(t_load, 1), "h5_read": round(t_read, 1), "gpu": round(t_gpu, 1)},
            "frames_per_second_gpu": round(len(K) / max(t_gpu, 1e-9), 2),
            "eps_mean_per_block": {b: float(eps[:, i].astype(np.float32).mean())
                                   for i, b in enumerate(BLOCKS)},
-           "bytes_per_frame_cached": int(eps[0].nbytes + rbar[0].nbytes + pooled[0].nbytes + q[0].nbytes)}
+           "bytes_per_frame_cached": int(eps[0].nbytes + rbar[0].nbytes + pooled[0].nbytes
+                                        + sbar[0].nbytes + q[0].nbytes)}
     print(json.dumps(out, indent=1))
     Path("analysis/ijepa").mkdir(parents=True, exist_ok=True)
     json.dump(out, open(f"analysis/ijepa/timing_{stem}.json", "w"), indent=1)
     if not a.time_only:
         cache.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache.with_suffix(".npz.partial")          # a killed job never leaves a half cache behind
-        np.savez(tmp, eps=eps, rbar=rbar, pooled=pooled, q=q, keys=np.array(K, object))
+        np.savez(tmp, eps=eps, rbar=rbar, pooled=pooled, sbar=sbar, q=q, keys=np.array(K, object))
         tmp.replace(cache)
         print("cached ->", cache)
 

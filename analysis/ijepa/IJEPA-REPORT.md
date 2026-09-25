@@ -11,7 +11,7 @@ config or checkpoint was modified.
 |---|---|---|---|
 | G0 predictor weights | **PASS** | `analysis/ijepa/G0_output.txt` | All three weight sets load with `strict=True` and the trained predictor beats all three controls on both blocks. |
 | block alignment (pre-extraction stop check) | **PASS, with a caveat** | `analysis/ijepa/block_alignment.json`, `analysis/ijepa/block_overlays/` | Every block is majority-face on both FF++ and CDFv2; the two cheek blocks carry about a quarter background. |
-| extraction budget | **STOP** | `analysis/ijepa/budget_estimate.json` | Projected **25.78 GPU hours** against a 24-hour ceiling, so the brief directs a stop and a report. |
+| extraction budget | **RESOLVED** | `analysis/ijepa/budget_estimate.json`, `analysis/ijepa/logs/` | The 24-hour ceiling was a fp32 estimate. bf16 at batch 64 is 4.9x faster on the same card, so the non-DF40 half plus the processed cells is ~3.7 hours of wall clock. DF40 is still not queued. |
 | G1 compression confound | TODO(run) | -- | Blocked by the budget stop. |
 | G2 single-view signal | TODO(run) | -- | Blocked. |
 | G3 fusion | TODO(run) | -- | Blocked. |
@@ -89,6 +89,38 @@ Note that this is a GPU-*hours* figure, not wall clock. I-JEPA ViT-H needs about
 | halve frames per video on the two largest test sets | ~22.5 | CDFv3 and IDForge get 16 frames instead of 32, which breaks the brief's rule that the frames match the Appearance view |
 
 The middle option is the only one that keeps every remaining rule intact, and DF40 is the part of the report that the I-JEPA view is least likely to change, since the question is whether it can replace the Off-manifold view at all.
+
+## Amendment 1 (2026-09-25)
+
+`tbiom/docs/discern-v2-ijepa-branch-amendment1.md`. Adds R2b (regional feature control), R5
+(cross-block cosine with validity gating), R6 (predictor LoRA on real faces), diagnostics D1/D2, and a
+three-part keep rule. **Section D (R7) was truncated in transmission and is not planned.**
+
+R5's features are implemented and unit-tested in `branches/ijepa/features.py`: the two disjoint pairs
+(upper/lower, left/right cheek), the frozen 5th-percentile norm floor tau_k, the suppression-and-flag
+rule, and video-level frame means giving 4 inputs. The centre block is excluded because it overlaps all
+four others; disjointness is asserted in code rather than assumed.
+
+R2b's s_bar_k is now produced by the extraction itself rather than by a second target-encoder pass:
+inside the loop `y = apply_masks(h, [hid])` already is the layer-normalised target feature at the
+block's 56 patches, so the block mean is free and cannot drift from the frame's processing draw.
+
+## Extraction as actually launched
+
+| item | value |
+|---|---|
+| precision | bf16 autocast, batch 64. Measured 18.76 f/s per lane against 3.82 fp32 at batch 16 |
+| bf16 vs fp32 agreement | median relative difference in eps 0.006, max 0.069, Spearman 0.991-0.999 per block |
+| lanes | 5 on GPU 1, each process launch-bound, so aggregate ~94 f/s |
+| FF++ train | **B mixture, one draw per clip**, applied to the native crop before the 224 resize |
+| processed cells | CDFv2 and DFDCP at `jpeg:40` and `resize:0.60`, applied after the 224 resize as in `export_views.apply_processing` |
+| queued | 37 jobs, 1,258,741 frames, ~3.7 hours |
+| not queued | DF40 (858,166 frames), pending the budget decision |
+| cache | 28,176 bytes/frame including `sbar`, ~35 GB total |
+
+An earlier claim in this report that the two processed test cells could not be extracted was wrong.
+They can: the evaluation severities are JPEG q40 and resize 0.60, and CDFv2 + DFDCP at both is 67,588
+frames, matching the budget line exactly.
 
 ## Settings recorded so far
 
