@@ -14,12 +14,12 @@ the temporal branch and the fusion live in **DFB_NeSyNS**. No deployed config or
 | Fallback check | **three views** | `tbiom/reports/EXP_PCR6P_DEVELOPMENT.json` | Only one of the two required conditions holds, so the two-view fallback does not trigger. |
 | Task 1, fusion equivalence | **PASS** | `analysis/joint_ibdc/task1_fusion_equivalence.json` | The torch fusion reproduces the deployed one exactly, 0.0 maximum absolute difference against a 1e-6 tolerance. |
 | Task 1, unit tests | **PASS** | `analysis/joint_ibdc/task1_tests.txt` | 11 of 11 assertions, including the original IBDC's shared-ignorance failure reproduced by driving a gradient step. |
-| Task 2, feature cache | TODO(run) | -- | Needs GPU; sequenced behind the I-JEPA extraction. |
+| Task 2, feature cache | **PASS for the spatial views; the temporal view is cache-derived** | `analysis/joint_ibdc/task2_cache_equivalence.json`, `task2_temporal_equivalence.json`, `temporal_reexport.json` | Appearance and Off-manifold reproduce the deployed opinions to ~1e-08 across all 5,814 development videos and on DFD, DFDM and DFDCP. The temporal view missed 1e-5 at 5.3e-04, so its opinions are re-exported from the cache (option 2) and the delta against the historical export is reported instead. |
 | G0a, premise | **PASS** | `analysis/joint_ibdc/gate_g0a.json` | Conflict adds to vacuity when predicting the fused system's errors: +0.0312, 95% CI [+0.0201, +0.0424]. |
-| G0b, activity | TODO(run) | -- | Blocked on Task 2. |
+| G0b, activity | **PASS** | `analysis/joint_ibdc/gate_g0b.json` | The hinge is active on 65.23% of training samples under equal trust and 9.79-13.47% under the deployed triples, against a 1% bar, so it passes on either reading of the trust weights. |
 | Two-case diagnostic | **done** | `analysis/joint_ibdc/two_case_diagnostic.json` | Both directions of complementarity are large, and they split by forgery family. |
-| Collapse check after J1 | TODO(run) | -- | Blocked on Task 2. |
-| J2b pass rule | TODO(run) | -- | Blocked on Task 2. |
+| Collapse check after J1 | TODO(run) | -- | Needs J1. Experiment 6 is a documented precedent for it firing; see the prior-art section. |
+| J2b pass rule | TODO(run) | -- | Needs the J-runs, which need the last sweep sets (FFIW, IDForge, four processed cells). |
 
 ## The fallback check, and why the system identity mattered
 
@@ -119,8 +119,10 @@ fail on different forgery families, which is the complementarity the fusion exis
 
 ## Still to run
 
-Task 2's feature cache needs GPU and is sequenced behind the I-JEPA extraction. G0b, the collapse
-check, all four runs (J0, J1, J2a, J2b), the λ sweep and every metric table depend on it.
+The four runs (J0, J1, J2a, J2b), the lambda sweep and every metric table. They need the last of the
+spatial sweep -- FFIW, IDForge and the four processed cells -- for evaluation. Everything else the
+study depends on is in place: the FF++ train cache is complete at three matched draws for all three
+views, and Task 1, Task 2, G0a and G0b have all passed.
 
 ## Task 2, cache equivalence: two views PASS, the temporal view FAILS
 
