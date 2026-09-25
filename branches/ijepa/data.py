@@ -125,6 +125,8 @@ def available() -> dict:
     """What is cached right now, as stem -> frame count, for progress reporting."""
     seen = {}
     for p in sorted(CACHE.glob("*.npz")):
+        if ".partial" in p.name:
+            continue                    # a shard still being written is not a cache entry
         stem = re.sub(r"\.s\d+of\d+$", "", p.stem)
         with np.load(p, allow_pickle=True) as z:
             seen[stem] = seen.get(stem, 0) + len(z["keys"])
