@@ -43,21 +43,40 @@ the same frames: the baselines read PNGs dumped from the same h5 files our expor
 recipe, seed and schedule as ours, so the difference is the method rather than the training budget.
 `DiCoME (released weights)` is kept as a reproduction check on our retraining, not as the baseline.
 
+## Sets whose two halves ship at different native resolutions
+
+These are separable on resampling alone, by any detector, independently of the
+manipulation. The confound is DF40's, not a method's -- every row in the table is
+affected equally -- but a number from one of these sets does not measure what the
+column claims to measure, so they are named here and should be read as an upper bound.
+
+| set | fake | real |
+|---|---|---|
+| DF40_e4e_cdf | 1024x1024 | 256x256 |
+| DF40_e4e_ff | 1024x1024 | 256x256 |
+| DF40_rddm_cdf | 259x259 | 256x256 |
+| DF40_rddm_ff | 259x259 | 256x256 |
+| DF40_sd2.1_cdf | 512x512 | 256x256 |
+| DF40_sd2.1_ff | 512x512 | 256x256 |
+| DF40_styleclip | 1024x1024 | 178x218 |
+
+Every other set in the table is matched at 256x256 on both halves.
+
 ### DF40 video-level AUROC — mean ± sd across the generators in each family
 
-| Method | Face swap (18) | Reenactment (22) | Macro |
-|---|---:|---:|---:|
-| DISCERN (ours) | 0.968 ± 0.024 | 0.834 ± 0.143 | 0.901 |
-| DiCoME (our training) | 0.970 ± 0.019 | 0.779 ± 0.164 | 0.875 |
-| DiCoME (released weights) | 0.975 ± 0.017 | 0.809 ± 0.157 | 0.892 |
+| Method | Face swap (18) | Reenactment (24) | Synthesis (18) | Editing (2) | Editing (standalone) (3) | Macro |
+|---|---:|---:|---:|---:|---:|---:|
+| DISCERN (ours) | 0.968 ± 0.024 | 0.837 ± 0.137 | 0.986 ± 0.020 | 0.987 ± 0.006 | 0.888 ± 0.106 | 0.933 |
+| DiCoME (our training) | 0.970 ± 0.019 | 0.787 ± 0.160 | 0.980 ± 0.029 | 0.986 ± 0.006 | 0.869 ± 0.110 | 0.918 |
+| DiCoME (released weights) | 0.975 ± 0.017 | 0.815 ± 0.151 | 0.992 ± 0.015 | 0.995 ± 0.003 | 0.908 ± 0.086 | 0.937 |
 
 ### DF40 frame-level AUROC — mean ± sd across the generators in each family
 
-| Method | Face swap (18) | Reenactment (22) | Macro |
-|---|---:|---:|---:|
-| DISCERN (ours) | 0.939 ± 0.035 | 0.808 ± 0.135 | 0.874 |
-| DiCoME (our training) | 0.938 ± 0.033 | 0.750 ± 0.152 | 0.844 |
-| DiCoME (released weights) | 0.941 ± 0.033 | 0.772 ± 0.143 | 0.856 |
+| Method | Face swap (18) | Reenactment (24) | Synthesis (18) | Editing (2) | Editing (standalone) (3) | Macro |
+|---|---:|---:|---:|---:|---:|---:|
+| DISCERN (ours) | 0.939 ± 0.035 | 0.808 ± 0.129 | 0.941 ± 0.071 | 0.973 ± 0.005 | 0.888 ± 0.106 | 0.910 |
+| DiCoME (our training) | 0.938 ± 0.033 | 0.756 ± 0.147 | 0.936 ± 0.077 | 0.971 ± 0.005 | 0.869 ± 0.110 | 0.894 |
+| DiCoME (released weights) | 0.941 ± 0.033 | 0.775 ± 0.138 | 0.951 ± 0.063 | 0.984 ± 0.002 | 0.908 ± 0.086 | 0.912 |
 
 ### DF40 video-level AUROC per generator
 
@@ -105,17 +124,58 @@ recipe, seed and schedule as ours, so the difference is the method rather than t
 | Reenactment | sadtalker | ff | 0.6391 | 0.6071 | 0.6193 |
 | Reenactment | tpsm | cdf | 0.5409 | 0.5097 | 0.5705 |
 | Reenactment | tpsm | ff | 0.7696 | 0.7458 | 0.7791 |
+| Reenactment | wav2lip* | cdf | 0.8347 | 0.8361 | 0.8414 |
+| Reenactment | wav2lip* | ff | 0.9025 | 0.9127 | 0.9178 |
+| Synthesis | DiT | cdf | 0.9328 | 0.8958 | 0.9498 |
+| Synthesis | DiT | ff | 0.9663 | 0.9546 | 0.9615 |
+| Synthesis | SiT | cdf | 0.9675 | 0.9462 | 0.9827 |
+| Synthesis | SiT | ff | 0.9813 | 0.9680 | 0.9784 |
+| Synthesis | StyleGAN2 | cdf | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | StyleGAN2 | ff | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | StyleGAN3 | cdf | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | StyleGAN3 | ff | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | StyleGANXL | cdf | 1.0000 | 0.9997 | 0.9976 |
+| Synthesis | StyleGANXL | ff | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | VQGAN | cdf | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | VQGAN | ff | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | ddim | cdf | 0.9719 | 0.9418 | 0.9931 |
+| Synthesis | ddim | ff | 0.9903 | 0.9746 | 0.9930 |
+| Synthesis | rddm | cdf | 0.9558 | 0.9682 | 0.9944 |
+| Synthesis | rddm | ff | 0.9873 | 0.9893 | 0.9970 |
+| Synthesis | sd2.1 | cdf | 0.9996 | 1.0000 | 1.0000 |
+| Synthesis | sd2.1 | ff | 1.0000 | 1.0000 | 1.0000 |
+| Editing | e4e | cdf | 0.9826 | 0.9822 | 0.9928 |
+| Editing | e4e | ff | 0.9915 | 0.9903 | 0.9973 |
+| Editing (standalone) | stargan | own | 0.9904 | 0.9902 | 0.9946 |
+| Editing (standalone) | starganv2 | own | 0.7790 | 0.7758 | 0.8229 |
+| Editing (standalone) | styleclip | own | 0.8953 | 0.8395 | 0.9057 |
 
 ### Video counts per set (must agree across methods)
 
 | set | DISCERN (ours) | DiCoME (our training) | DiCoME (released weights) |
 |---|---:|---:|---:|
+| DF40_DiT_cdf | 1066 | 1066 | 1066 |
+| DF40_DiT_ff | 256 | 256 | 256 |
 | DF40_MRAA_cdf | 827 | 827 | 827 |
 | DF40_MRAA_ff | 280 | 280 | 280 |
+| DF40_SiT_cdf | 1066 | 1066 | 1066 |
+| DF40_SiT_ff | 256 | 256 | 256 |
+| DF40_StyleGAN2_cdf | 1066 | 1066 | 1066 |
+| DF40_StyleGAN2_ff | 256 | 256 | 256 |
+| DF40_StyleGAN3_cdf | 1066 | 1066 | 1066 |
+| DF40_StyleGAN3_ff | 256 | 256 | 256 |
+| DF40_StyleGANXL_cdf | 1066 | 1066 | 1066 |
+| DF40_StyleGANXL_ff | 256 | 256 | 256 |
+| DF40_VQGAN_cdf | 1066 | 1066 | 1066 |
+| DF40_VQGAN_ff | 256 | 256 | 256 |
 | DF40_blendface_cdf | 818 | 818 | 818 |
 | DF40_blendface_ff | 280 | 280 | 280 |
 | DF40_danet_cdf | 825 | 825 | 825 |
 | DF40_danet_ff | 280 | 280 | 280 |
+| DF40_ddim_cdf | 1066 | 1066 | 1066 |
+| DF40_ddim_ff | 256 | 256 | 256 |
+| DF40_e4e_cdf | 18828 | 18828 | 18828 |
+| DF40_e4e_ff | 280 | 280 | 280 |
 | DF40_e4s_cdf | 470 | 470 | 470 |
 | DF40_e4s_ff | 255 | 255 | 255 |
 | DF40_facedancer_cdf | 826 | 826 | 826 |
@@ -142,14 +202,23 @@ recipe, seed and schedule as ours, so the difference is the method rather than t
 | DF40_one_shot_free_ff | 280 | 280 | 280 |
 | DF40_pirender_cdf | 814 | 814 | 814 |
 | DF40_pirender_ff | 280 | 280 | 280 |
+| DF40_rddm_cdf | 622 | 622 | 622 |
+| DF40_rddm_ff | 256 | 256 | 256 |
 | DF40_sadtalker_cdf | 838 | 838 | 838 |
 | DF40_sadtalker_ff | 278 | 278 | 278 |
+| DF40_sd2.1_cdf | 1066 | 1066 | 1066 |
+| DF40_sd2.1_ff | 256 | 256 | 256 |
 | DF40_simswap_cdf | 819 | 819 | 819 |
 | DF40_simswap_ff | 280 | 280 | 280 |
+| DF40_stargan | 3968 | 3968 | 3968 |
+| DF40_starganv2 | 3996 | 3996 | 3996 |
+| DF40_styleclip | 3824 | 3824 | 3824 |
 | DF40_tpsm_cdf | 825 | 825 | 825 |
 | DF40_tpsm_ff | 280 | 280 | 280 |
 | DF40_uniface_cdf | 804 | 804 | 804 |
 | DF40_uniface_ff | 280 | 280 | 280 |
+| DF40_wav2lip_cdf | 844 | 844 | 844 |
+| DF40_wav2lip_ff | 280 | 280 | 280 |
 
 **Count mismatches:** none
 

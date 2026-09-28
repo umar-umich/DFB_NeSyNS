@@ -44,3 +44,28 @@
 | Reenactment | sadtalker | ff | 0.6391 | 0.6071 | 0.6193 |
 | Reenactment | tpsm | cdf | 0.5409 | 0.5097 | 0.5705 |
 | Reenactment | tpsm | ff | 0.7696 | 0.7458 | 0.7791 |
+| Reenactment | wav2lip* | cdf | 0.8347 | 0.8361 | 0.8414 |
+| Reenactment | wav2lip* | ff | 0.9025 | 0.9127 | 0.9178 |
+| Synthesis | DiT | cdf | 0.9328 | 0.8958 | 0.9498 |
+| Synthesis | DiT | ff | 0.9663 | 0.9546 | 0.9615 |
+| Synthesis | SiT | cdf | 0.9675 | 0.9462 | 0.9827 |
+| Synthesis | SiT | ff | 0.9813 | 0.9680 | 0.9784 |
+| Synthesis | StyleGAN2 | cdf | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | StyleGAN2 | ff | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | StyleGAN3 | cdf | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | StyleGAN3 | ff | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | StyleGANXL | cdf | 1.0000 | 0.9997 | 0.9976 |
+| Synthesis | StyleGANXL | ff | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | VQGAN | cdf | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | VQGAN | ff | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | ddim | cdf | 0.9719 | 0.9418 | 0.9931 |
+| Synthesis | ddim | ff | 0.9903 | 0.9746 | 0.9930 |
+| Synthesis | rddm | cdf | 0.9558 | 0.9682 | 0.9944 |
+| Synthesis | rddm | ff | 0.9873 | 0.9893 | 0.9970 |
+| Synthesis | sd2.1 | cdf | 0.9996 | 1.0000 | 1.0000 |
+| Synthesis | sd2.1 | ff | 1.0000 | 1.0000 | 1.0000 |
+| Editing | e4e | cdf | 0.9826 | 0.9822 | 0.9928 |
+| Editing | e4e | ff | 0.9915 | 0.9903 | 0.9973 |
+| Editing (standalone) | stargan | own | 0.9904 | 0.9902 | 0.9946 |
+| Editing (standalone) | starganv2 | own | 0.7790 | 0.7758 | 0.8229 |
+| Editing (standalone) | styleclip | own | 0.8953 | 0.8395 | 0.9057 |

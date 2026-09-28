@@ -174,6 +174,39 @@ def render(df: pd.DataFrame, out_dir: Path):
         print(f"  wrote {out_dir}/table_{level}.{{md,tex}}")
 
 
+def resolutions(out_dir: Path) -> dict:
+    """Native image size of each set's real and fake halves.
+
+    A set whose two halves ship at different native resolutions is separable on resampling alone,
+    by any detector, before anything about the manipulation is considered. That is a property of
+    how DF40 distributes the set, not of a method, so it is measured and printed next to the
+    numbers rather than left for a reader to discover."""
+    import json
+    from PIL import Image
+    cache = out_dir / "resolution_audit.json"
+    if cache.is_file():
+        return json.loads(cache.read_text())
+
+    def size_of(subset: str):
+        d = Path(FRAMES_ROOT) / subset
+        if not d.is_dir():
+            return None
+        seen = set()
+        for i, q in enumerate(p for p in d.rglob("*") if p.is_file()):
+            seen.add(Image.open(q).size)
+            if i >= 40:
+                break
+        return sorted(seen)
+
+    out = {}
+    for fam, gen, var, name, fake_split, real_split in T.cells():
+        f, r = size_of(fake_split), size_of(real_split)
+        if f and r:
+            out[name] = {"fake": f, "real": r, "mismatch": f != r}
+    cache.write_text(json.dumps(out, indent=1))
+    return out
+
+
 def coverage(df: pd.DataFrame, out_dir: Path) -> list[str]:
     """Every method must score the SAME videos in a set. A disagreement means the rows are not
     comparable, and a silently different denominator is exactly how a table lies."""
@@ -259,6 +292,21 @@ def report(df: pd.DataFrame, out_dir: Path):
              "",
              "Generated from `analysis/tables/per_generator.csv`; edit the builder, not this file.",
              METHODS.strip(), ""]
+    res = resolutions(out_dir)
+    bad = {k: v for k, v in res.items() if v["mismatch"]}
+    parts += ["## Sets whose two halves ship at different native resolutions", ""]
+    if bad:
+        parts += ["These are separable on resampling alone, by any detector, independently of the",
+                  "manipulation. The confound is DF40's, not a method's -- every row in the table is",
+                  "affected equally -- but a number from one of these sets does not measure what the",
+                  "column claims to measure, so they are named here and should be read as an upper bound.",
+                  "", "| set | fake | real |", "|---|---|---|"]
+        for k, v in sorted(bad.items()):
+            parts.append(f"| {k} | {v['fake'][0][0]}x{v['fake'][0][1]} | {v['real'][0][0]}x{v['real'][0][1]} |")
+        parts += ["", f"Every other set in the table is matched at {res['DF40_blendface_cdf']['fake'][0][0]}"
+                  f"x{res['DF40_blendface_cdf']['fake'][0][1]} on both halves.", ""]
+    else:
+        parts += ["None: every set is matched on both halves.", ""]
     for f in ("table_video.md", "table_frame.md", "per_generator.md", "coverage.md"):
         parts += [(out_dir / f).read_text().strip(), ""]
     REPORT.parent.mkdir(parents=True, exist_ok=True)

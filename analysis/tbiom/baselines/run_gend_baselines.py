@@ -30,6 +30,13 @@ def main_cli():
     ap.add_argument("--batch_size", type=int, default=128)
     ap.add_argument("--num_workers", type=int, default=12)
     ap.add_argument("--limit_test_batches", type=int, default=None)
+    ap.add_argument("--zoom_image_size", type=int, default=None,
+                    help="pin the size the zoom preprocessing emits, e.g. 224. FSFM's transform is "
+                         "T.Resize(224), which scales the SHORTER side and so hands a non-square "
+                         "image to a ViT that asserts 224x224. DF40 ships two non-square subsets "
+                         "(CollabDiff-real, styleclip-real at 178x218), which the square test sets "
+                         "never exercised. For a square input this only removes one intermediate "
+                         "resample; the crop geometry is unchanged.")
     a = ap.parse_args()
     for model in a.models:
         for ds in a.datasets:
@@ -38,9 +45,14 @@ def main_cli():
                 print(f"skip {name}", flush=True); continue
             files = sorted(str(p) for p in (a.lists_root / ds).glob("*.txt"))
             assert files, f"no lists for {ds}"
+            kw = dict(EVAL_MODELS[model])
+            if a.zoom_image_size and kw.get("custom_preprocessing") is not None:
+                cp = kw["custom_preprocessing"]
+                kw["custom_preprocessing"] = cp.model_copy(
+                    update={"image_size": (a.zoom_image_size, a.zoom_image_size)})
             mod = Config(run_name=name, run_dir=str(a.run_dir), tst_files=files, batch_size=a.batch_size,
                          mini_batch_size=a.batch_size, max_epochs=1, wandb=False, devices=[0],
-                         num_workers=a.num_workers, throw_exception_if_run_exists=False, **EVAL_MODELS[model])
+                         num_workers=a.num_workers, throw_exception_if_run_exists=False, **kw)
             cfg = Config(**C.Config().model_copy(update=mod.model_dump(exclude_unset=True)).model_dump())
             if a.limit_test_batches:
                 cfg.limit_test_batches = a.limit_test_batches
