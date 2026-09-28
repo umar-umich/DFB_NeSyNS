@@ -2,70 +2,70 @@
 
 `*` marks audio-driven lip-sync, which DF40 files under reenactment and our v3.1 objective excludes; it is kept here because the taxonomy is DF40's.
 
-| family | generator | real | DISCERN (ours) | DiCoME (our training) | DiCoME (released weights) |
-|---|---|---|---:|---:|---:|
-| Face swap | blendface | cdf | 0.9599 | 0.9502 | 0.9552 |
-| Face swap | blendface | ff | 0.9576 | 0.9505 | 0.9573 |
-| Face swap | e4s | cdf | 0.9936 | 0.9949 | 0.9953 |
-| Face swap | e4s | ff | 0.9891 | 0.9891 | 0.9922 |
-| Face swap | facedancer | cdf | 0.9551 | 0.9657 | 0.9781 |
-| Face swap | facedancer | ff | 0.9720 | 0.9632 | 0.9720 |
-| Face swap | faceswap | cdf | 0.9995 | 0.9991 | 0.9998 |
-| Face swap | faceswap | ff | 0.9823 | 0.9795 | 0.9807 |
-| Face swap | fsgan | cdf | 0.9935 | 0.9892 | 0.9947 |
-| Face swap | fsgan | ff | 0.9878 | 0.9879 | 0.9902 |
-| Face swap | inswap | cdf | 0.9358 | 0.9433 | 0.9529 |
-| Face swap | inswap | ff | 0.9502 | 0.9696 | 0.9709 |
-| Face swap | mobileswap | cdf | 0.9624 | 0.9571 | 0.9582 |
-| Face swap | mobileswap | ff | 0.9832 | 0.9745 | 0.9785 |
-| Face swap | simswap | cdf | 0.9103 | 0.9339 | 0.9392 |
-| Face swap | simswap | ff | 0.9368 | 0.9539 | 0.9659 |
-| Face swap | uniface | cdf | 0.9676 | 0.9758 | 0.9810 |
-| Face swap | uniface | ff | 0.9792 | 0.9803 | 0.9831 |
-| Reenactment | MRAA | cdf | 0.9887 | 0.9770 | 0.9857 |
-| Reenactment | MRAA | ff | 0.9972 | 0.9937 | 0.9949 |
-| Reenactment | danet | cdf | 0.6467 | 0.4821 | 0.5131 |
-| Reenactment | danet | ff | 0.7469 | 0.6764 | 0.7183 |
-| Reenactment | facevid2vid | cdf | 0.7885 | 0.6748 | 0.7410 |
-| Reenactment | facevid2vid | ff | 0.7971 | 0.7776 | 0.8264 |
-| Reenactment | fomm | cdf | 0.9393 | 0.8793 | 0.9086 |
-| Reenactment | fomm | ff | 0.9670 | 0.9609 | 0.9684 |
-| Reenactment | hyperreenact | cdf | 0.8690 | 0.7421 | 0.8123 |
-| Reenactment | hyperreenact | ff | 0.9279 | 0.8483 | 0.8899 |
-| Reenactment | lia | cdf | 0.9789 | 0.9854 | 0.9823 |
-| Reenactment | lia | ff | 0.9920 | 0.9921 | 0.9894 |
-| Reenactment | mcnet | cdf | 0.6951 | 0.5594 | 0.6049 |
-| Reenactment | mcnet | ff | 0.8045 | 0.7680 | 0.8026 |
-| Reenactment | one_shot_free | cdf | 0.9354 | 0.8506 | 0.8889 |
-| Reenactment | one_shot_free | ff | 0.9179 | 0.8815 | 0.9080 |
-| Reenactment | pirender | cdf | 0.9120 | 0.8066 | 0.8574 |
-| Reenactment | pirender | ff | 0.9204 | 0.8833 | 0.9057 |
-| Reenactment | sadtalker | cdf | 0.5707 | 0.5402 | 0.5251 |
-| Reenactment | sadtalker | ff | 0.6391 | 0.6071 | 0.6193 |
-| Reenactment | tpsm | cdf | 0.5409 | 0.5097 | 0.5705 |
-| Reenactment | tpsm | ff | 0.7696 | 0.7458 | 0.7791 |
-| Reenactment | wav2lip* | cdf | 0.8347 | 0.8361 | 0.8414 |
-| Reenactment | wav2lip* | ff | 0.9025 | 0.9127 | 0.9178 |
-| Synthesis | DiT | cdf | 0.9328 | 0.8958 | 0.9498 |
-| Synthesis | DiT | ff | 0.9663 | 0.9546 | 0.9615 |
-| Synthesis | SiT | cdf | 0.9675 | 0.9462 | 0.9827 |
-| Synthesis | SiT | ff | 0.9813 | 0.9680 | 0.9784 |
-| Synthesis | StyleGAN2 | cdf | 1.0000 | 1.0000 | 1.0000 |
-| Synthesis | StyleGAN2 | ff | 1.0000 | 1.0000 | 1.0000 |
-| Synthesis | StyleGAN3 | cdf | 1.0000 | 1.0000 | 1.0000 |
-| Synthesis | StyleGAN3 | ff | 1.0000 | 1.0000 | 1.0000 |
-| Synthesis | StyleGANXL | cdf | 1.0000 | 0.9997 | 0.9976 |
-| Synthesis | StyleGANXL | ff | 1.0000 | 1.0000 | 1.0000 |
-| Synthesis | VQGAN | cdf | 1.0000 | 1.0000 | 1.0000 |
-| Synthesis | VQGAN | ff | 1.0000 | 1.0000 | 1.0000 |
-| Synthesis | ddim | cdf | 0.9719 | 0.9418 | 0.9931 |
-| Synthesis | ddim | ff | 0.9903 | 0.9746 | 0.9930 |
-| Synthesis | rddm | cdf | 0.9558 | 0.9682 | 0.9944 |
-| Synthesis | rddm | ff | 0.9873 | 0.9893 | 0.9970 |
-| Synthesis | sd2.1 | cdf | 0.9996 | 1.0000 | 1.0000 |
-| Synthesis | sd2.1 | ff | 1.0000 | 1.0000 | 1.0000 |
-| Editing | e4e | cdf | 0.9826 | 0.9822 | 0.9928 |
-| Editing | e4e | ff | 0.9915 | 0.9903 | 0.9973 |
-| Editing (standalone) | stargan | own | 0.9904 | 0.9902 | 0.9946 |
-| Editing (standalone) | starganv2 | own | 0.7790 | 0.7758 | 0.8229 |
-| Editing (standalone) | styleclip | own | 0.8953 | 0.8395 | 0.9057 |
+| family | generator | real | DISCERN (ours, DS-R) | DISCERN (ours, PCR6+-R) | DiCoME (our training) | DiCoME (released weights) | GenD-CLIP | Effort | ForAda | FSFM |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Face swap | blendface | cdf | 0.9801 | 0.9790 | 0.9502 | 0.9552 | 0.9260 | 0.8925 | 0.8278 | 0.9676 |
+| Face swap | blendface | ff | 0.9858 | 0.9846 | 0.9505 | 0.9573 | 0.9281 | 0.8777 | 0.8809 | 0.9652 |
+| Face swap | e4s | cdf | 0.9892 | 0.9841 | 0.9949 | 0.9953 | 0.9937 | 0.9952 | 0.8864 | 0.9350 |
+| Face swap | e4s | ff | 0.9927 | 0.9910 | 0.9891 | 0.9922 | 0.9883 | 0.9837 | 0.9687 | 0.9822 |
+| Face swap | facedancer | cdf | 0.9714 | 0.9710 | 0.9657 | 0.9781 | 0.9740 | 0.9803 | 0.8957 | 0.9126 |
+| Face swap | facedancer | ff | 0.9713 | 0.9690 | 0.9632 | 0.9720 | 0.9518 | 0.9287 | 0.9462 | 0.9726 |
+| Face swap | faceswap | cdf | 0.9995 | 0.9993 | 0.9991 | 0.9998 | 0.9986 | 0.9962 | 0.9962 | 0.9855 |
+| Face swap | faceswap | ff | 0.9948 | 0.9949 | 0.9795 | 0.9807 | 0.9761 | 0.9772 | 0.9737 | 0.9782 |
+| Face swap | fsgan | cdf | 0.9906 | 0.9912 | 0.9892 | 0.9947 | 0.9804 | 0.9786 | 0.9781 | 0.9857 |
+| Face swap | fsgan | ff | 0.9935 | 0.9934 | 0.9879 | 0.9902 | 0.9814 | 0.9642 | 0.9748 | 0.9790 |
+| Face swap | inswap | cdf | 0.9551 | 0.9523 | 0.9433 | 0.9529 | 0.8791 | 0.8618 | 0.8927 | 0.9530 |
+| Face swap | inswap | ff | 0.9783 | 0.9739 | 0.9696 | 0.9709 | 0.9625 | 0.9381 | 0.9492 | 0.9648 |
+| Face swap | mobileswap | cdf | 0.9584 | 0.9571 | 0.9571 | 0.9582 | 0.9322 | 0.9114 | 0.9027 | 0.9192 |
+| Face swap | mobileswap | ff | 0.9848 | 0.9824 | 0.9745 | 0.9785 | 0.9792 | 0.9550 | 0.9791 | 0.9682 |
+| Face swap | simswap | cdf | 0.9416 | 0.9396 | 0.9339 | 0.9392 | 0.8849 | 0.8486 | 0.7588 | 0.9222 |
+| Face swap | simswap | ff | 0.9749 | 0.9708 | 0.9539 | 0.9659 | 0.9522 | 0.9210 | 0.9131 | 0.9504 |
+| Face swap | uniface | cdf | 0.9837 | 0.9813 | 0.9758 | 0.9810 | 0.9655 | 0.9229 | 0.8604 | 0.9872 |
+| Face swap | uniface | ff | 0.9928 | 0.9911 | 0.9803 | 0.9831 | 0.9817 | 0.9653 | 0.9515 | 0.9819 |
+| Reenactment | MRAA | cdf | 0.9934 | 0.9927 | 0.9770 | 0.9857 | 0.9563 | 0.8530 | 0.8945 | 0.9903 |
+| Reenactment | MRAA | ff | 0.9993 | 0.9987 | 0.9937 | 0.9949 | 0.9936 | 0.9483 | 0.9654 | 0.9983 |
+| Reenactment | danet | cdf | 0.8645 | 0.8852 | 0.4821 | 0.5131 | 0.7352 | 0.6344 | 0.4993 | 0.6032 |
+| Reenactment | danet | ff | 0.9546 | 0.9592 | 0.6764 | 0.7183 | 0.9096 | 0.7490 | 0.7453 | 0.7460 |
+| Reenactment | facevid2vid | cdf | 0.8403 | 0.8512 | 0.6748 | 0.7410 | 0.8482 | 0.7368 | 0.6272 | 0.7771 |
+| Reenactment | facevid2vid | ff | 0.9058 | 0.9071 | 0.7776 | 0.8264 | 0.9259 | 0.8092 | 0.7784 | 0.8402 |
+| Reenactment | fomm | cdf | 0.9341 | 0.9337 | 0.8793 | 0.9086 | 0.9352 | 0.8211 | 0.7342 | 0.9214 |
+| Reenactment | fomm | ff | 0.9792 | 0.9756 | 0.9609 | 0.9684 | 0.9838 | 0.9124 | 0.8844 | 0.9613 |
+| Reenactment | hyperreenact | cdf | 0.9708 | 0.9759 | 0.7421 | 0.8123 | 0.9141 | 0.8665 | 0.7456 | 0.9671 |
+| Reenactment | hyperreenact | ff | 0.9827 | 0.9839 | 0.8483 | 0.8899 | 0.9765 | 0.9452 | 0.8955 | 0.9875 |
+| Reenactment | lia | cdf | 0.9977 | 0.9974 | 0.9854 | 0.9823 | 0.8970 | 0.7910 | 0.7966 | 0.9343 |
+| Reenactment | lia | ff | 0.9999 | 0.9998 | 0.9921 | 0.9894 | 0.9898 | 0.9146 | 0.9272 | 0.9666 |
+| Reenactment | mcnet | cdf | 0.8662 | 0.8819 | 0.5594 | 0.6049 | 0.8042 | 0.6649 | 0.5405 | 0.6529 |
+| Reenactment | mcnet | ff | 0.9566 | 0.9602 | 0.7680 | 0.8026 | 0.9430 | 0.7752 | 0.7785 | 0.8077 |
+| Reenactment | one_shot_free | cdf | 0.9102 | 0.9096 | 0.8506 | 0.8889 | 0.9029 | 0.7677 | 0.6739 | 0.8822 |
+| Reenactment | one_shot_free | ff | 0.9442 | 0.9438 | 0.8815 | 0.9080 | 0.9448 | 0.8222 | 0.8143 | 0.9069 |
+| Reenactment | pirender | cdf | 0.8626 | 0.8652 | 0.8066 | 0.8574 | 0.8672 | 0.7412 | 0.6198 | 0.9070 |
+| Reenactment | pirender | ff | 0.9274 | 0.9222 | 0.8833 | 0.9057 | 0.9436 | 0.8172 | 0.8274 | 0.9286 |
+| Reenactment | sadtalker | cdf | 0.8857 | 0.9020 | 0.5402 | 0.5251 | 0.5788 | 0.5437 | 0.5035 | 0.4851 |
+| Reenactment | sadtalker | ff | 0.9503 | 0.9570 | 0.6071 | 0.6193 | 0.7584 | 0.6064 | 0.7304 | 0.6653 |
+| Reenactment | tpsm | cdf | 0.9661 | 0.9751 | 0.5097 | 0.5705 | 0.6980 | 0.6508 | 0.6267 | 0.4812 |
+| Reenactment | tpsm | ff | 0.9677 | 0.9705 | 0.7458 | 0.7791 | 0.9333 | 0.7652 | 0.7748 | 0.7757 |
+| Reenactment | wav2lip* | cdf | 0.8104 | 0.8056 | 0.8361 | 0.8414 | 0.7772 | 0.6370 | 0.5757 | 0.7578 |
+| Reenactment | wav2lip* | ff | 0.8910 | 0.8786 | 0.9127 | 0.9178 | 0.9216 | 0.7271 | 0.8231 | 0.8776 |
+| Synthesis | DiT | cdf | 0.8735 | 0.8759 | 0.8958 | 0.9498 | 0.7230 | 0.8926 | 0.7490 | 0.8898 |
+| Synthesis | DiT | ff | 0.9442 | 0.9370 | 0.9546 | 0.9615 | 0.9384 | 0.9766 | 0.9302 | 0.9610 |
+| Synthesis | SiT | cdf | 0.9231 | 0.9235 | 0.9462 | 0.9827 | 0.8383 | 0.9452 | 0.8260 | 0.9241 |
+| Synthesis | SiT | ff | 0.9693 | 0.9646 | 0.9680 | 0.9784 | 0.9652 | 0.9841 | 0.9558 | 0.9732 |
+| Synthesis | StyleGAN2 | cdf | 1.0000 | 0.9977 | 1.0000 | 1.0000 | 1.0000 | 0.9971 | 1.0000 | 0.9957 |
+| Synthesis | StyleGAN2 | ff | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.9991 | 1.0000 | 1.0000 |
+| Synthesis | StyleGAN3 | cdf | 0.9999 | 0.9866 | 1.0000 | 1.0000 | 1.0000 | 0.9965 | 0.9932 | 0.9925 |
+| Synthesis | StyleGAN3 | ff | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.9991 | 1.0000 | 1.0000 |
+| Synthesis | StyleGANXL | cdf | 0.9859 | 0.9782 | 0.9997 | 0.9976 | 0.9992 | 0.9973 | 0.9819 | 0.9957 |
+| Synthesis | StyleGANXL | ff | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| Synthesis | VQGAN | cdf | 0.9999 | 0.9929 | 1.0000 | 1.0000 | 0.9999 | 0.9999 | 0.9594 | 0.9887 |
+| Synthesis | VQGAN | ff | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 0.9981 | 1.0000 |
+| Synthesis | ddim | cdf | 0.9348 | 0.9373 | 0.9418 | 0.9931 | 0.8813 | 0.9711 | 0.6062 | 0.8629 |
+| Synthesis | ddim | ff | 0.9741 | 0.9701 | 0.9746 | 0.9930 | 0.9746 | 0.9857 | 0.8807 | 0.9361 |
+| Synthesis | rddm | cdf | 0.9437 | 0.9252 | 0.9682 | 0.9944 | 0.9090 | 0.8815 | 0.6510 | 0.6399 |
+| Synthesis | rddm | ff | 0.9984 | 0.9954 | 0.9893 | 0.9970 | 0.9925 | 0.9858 | 0.9825 | 0.8299 |
+| Synthesis | sd2.1 | cdf | 0.9997 | 0.9865 | 1.0000 | 1.0000 | 0.9983 | 0.9949 | 0.9740 | 0.9974 |
+| Synthesis | sd2.1 | ff | 1.0000 | 0.9998 | 1.0000 | 1.0000 | 1.0000 | 0.9989 | 0.9982 | 1.0000 |
+| Editing | e4e | cdf | 0.9991 | 0.9993 | 0.9822 | 0.9928 | 0.9858 | 0.9894 | 0.5987 | 0.9719 |
+| Editing | e4e | ff | 0.9958 | 0.9942 | 0.9903 | 0.9973 | 0.9945 | 0.9918 | 0.8111 | 0.9797 |
+| Editing (standalone) | stargan | own | 0.9882 | 0.9825 | 0.9902 | 0.9946 | 0.9712 | 0.9851 | 0.9525 | 0.9031 |
+| Editing (standalone) | starganv2 | own | 0.7300 | 0.7024 | 0.7758 | 0.8229 | 0.7842 | 0.8747 | 0.7298 | 0.6734 |
+| Editing (standalone) | styleclip | own | 0.9525 | 0.9656 | 0.8395 | 0.9057 | 0.9244 | 0.9133 | 0.6992 | 0.8834 |

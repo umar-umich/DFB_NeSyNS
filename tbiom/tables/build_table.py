@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import symbolic_overlay as SO           # noqa: E402  (imported for the two-view DiCoME replay)
 import taxonomy as T                    # noqa: E402
+from taxonomy import OPERATOR_ARMS       # noqa: E402
 from health import auroc                # noqa: E402
 from video_id import video_id           # noqa: E402
 
@@ -78,6 +79,42 @@ def dsr_scorer():
         rules = [F.rules_for(Fd, DA.VIEWS)[0] for _k, Fd, _S in D.splits(dev)]
         _DSR = (DA, rules)
     return _DSR
+
+
+_OPS = None
+
+
+def op_scorer():
+    """Per-split reliability weights for the PCR6+ arm family, fitted exactly as DS-R's are.
+
+    Same development folds, same grid search, same three views -- only the combination rule
+    changes, so a difference between the rows is the operator and nothing else."""
+    global _OPS
+    if _OPS is None:
+        sys.path.insert(0, str(ROOT / "analysis/tbiom/pcr6p"))
+        sys.path.insert(0, str(ROOT / "analysis/tbiom/temporal"))
+        import arms as ARMS_MOD
+        import ops_pcr6p as P
+        import dsr_system as D
+        dev = D.load("vjepa2_lora_B_seed42")[0]
+        w = {}
+        for arm in OPERATOR_ARMS.values():
+            w[arm] = [ARMS_MOD.fit_w(Fd, arm) for _k, Fd, _S in D.splits(dev)]
+        _OPS = (ARMS_MOD, P, w)
+    return _OPS
+
+
+def score_operator(name: str, arm: str) -> dict | None:
+    """Video AUROC for one combination rule over the three deployed views, averaged over splits."""
+    DA, _ = dsr_scorer()
+    if not (S23 / f"ours_{name}.csv").is_file() or not (DA.BR / f"{name}.csv").is_file():
+        return None
+    ARMS_MOD, P, ws = op_scorer()
+    t = DA.ours_table(name)
+    y = t["y"].to_numpy()
+    vals = [auroc(y, P.p_of(ARMS_MOD.fuse(t, arm, w))) for w in ws[arm]]
+    return {"frame": float("nan"), "video": float(np.mean(vals)),
+            "n_frames": 0, "n_videos": len(t), "views": f"T+APP+OM, {arm}"}
 
 
 def score_dsr(name: str) -> dict | None:
@@ -153,6 +190,8 @@ def collect() -> pd.DataFrame:
         for fam, gen, var, name, fake_split, real_split in T.cells():
             if kind == "dsr":
                 r = score_dsr(name)
+            elif kind == "operator":
+                r = score_operator(name, OPERATOR_ARMS[label])
             elif kind == "views":
                 r = score_views(S23 / f"{tag}_{name}.csv")
             else:

@@ -51,8 +51,13 @@ def cells():
 
 
 # method rows: label -> (stage23 output prefix, kind).  kind picks the scorer in build_table.py.
+# The second operator row is the SAME three views and the same per-split fitting; only the
+# combination rule differs, so the two rows isolate the operator.
+OPERATOR_ARMS = {"DISCERN (ours, PCR6+-R)": "PCR6P-R"}
+
 OURS_ROWS = {
-    "DISCERN (ours)":            ("ours", "dsr"),
+    "DISCERN (ours, DS-R)":      ("ours", "dsr"),
+    "DISCERN (ours, PCR6+-R)":   ("ours", "operator"),
     "DiCoME (our training)":     ("dicome", "views"),
     "DiCoME (released weights)": ("dicomerel", "views"),
 }
