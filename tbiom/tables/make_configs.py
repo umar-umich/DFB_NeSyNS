@@ -38,8 +38,12 @@ STANDALONE = {"stargan": "stargan-real", "starganv2": "starganv2-real", "stylecl
 REAL = {"cdf": "DF40-cdf-real", "ff": "DF40-ff-real"}
 
 # one template per arm; each already exists for blendface_cdf and differs only in checkpoint wiring
-ARMS = {"warmgate": "warmgate_DF40_blendface_cdf.yaml",     # ours
-        "dicome":   "dicome_DF40_blendface_cdf.yaml"}        # DiCoME, our trained weights
+# `run1auxedl` is not an eval arm here: the temporal branch's `dataset_spec` resolves a dataset
+# NAME through `run1auxedl_<name>.yaml`, reading only `tst_h5_path` and `tst_files`. Without one,
+# a set simply cannot be named to the V-JEPA 2 exporter.
+ARMS = {"warmgate":   "warmgate_DF40_blendface_cdf.yaml",     # ours
+        "dicome":     "dicome_DF40_blendface_cdf.yaml",       # DiCoME, our trained weights
+        "run1auxedl": "run1auxedl_DF40_blendface_cdf.yaml"}   # name resolution for the temporal branch
 
 
 def write_one(tmpl_text, arm, name, real_split, fake_split, write):

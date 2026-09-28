@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "analysis/tbiom"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import symbolic_overlay as SO           # noqa: E402
+import symbolic_overlay as SO           # noqa: E402  (imported for the two-view DiCoME replay)
 import taxonomy as T                    # noqa: E402
 from health import auroc                # noqa: E402
 from video_id import video_id           # noqa: E402
@@ -53,6 +53,50 @@ def branches(bs):
         yield
     finally:
         SO.BRANCHES[:] = old
+
+
+_DSR = None
+
+
+def dsr_scorer():
+    """The DEPLOYED decision rule, loaded once.
+
+    Our system of record is not a plain DS replay of the export's columns. It fuses three views --
+    APP and OM from the export, and T, the V-JEPA 2 LoRA temporal branch whose opinions live in
+    their OWN directory -- with DS-R, whose reliabilities are fitted per split on the development
+    folds. Scoring our row any other way silently reports a different system: on the 22 reenactment
+    sets the plain replay gives 0.8338 where the deployed rule gives 0.9391, because the plain
+    replay never sees the view that carries reenactment at all.
+    """
+    global _DSR
+    if _DSR is None:
+        sys.path.insert(0, str(ROOT / "analysis/tbiom/temporal"))
+        import df40_analysis as DA
+        import dsr_system as D
+        import finish_line as F
+        dev = D.load("vjepa2_lora_B_seed42")[0]
+        rules = [F.rules_for(Fd, DA.VIEWS)[0] for _k, Fd, _S in D.splits(dev)]
+        _DSR = (DA, rules)
+    return _DSR
+
+
+def score_dsr(name: str) -> dict | None:
+    """Video-level AUROC under DS-R, averaged over the five development splits.
+
+    Frame level is not defined for this row: the temporal view emits one opinion per video, so
+    there is no per-framethree-view opinion to score. The frame table simply omits the row rather
+    than quietly substituting a different rule for it.
+    """
+    DA, rules_per_split = dsr_scorer()
+    if not (S23 / f"ours_{name}.csv").is_file():
+        return None
+    if not (DA.BR / f"{name}.csv").is_file():
+        return None
+    t = DA.ours_table(name)
+    y = t["y"].to_numpy()
+    vals = [auroc(y, r["DS-R"](t)) for r in rules_per_split]
+    return {"frame": float("nan"), "video": float(np.mean(vals)),
+            "n_frames": 0, "n_videos": len(t), "views": "T+APP+OM, DS-R"}
 
 
 def views_of(d: pd.DataFrame) -> list[str]:
@@ -107,17 +151,24 @@ def collect() -> pd.DataFrame:
     methods = {**T.OURS_ROWS, **T.BASELINE_ROWS}
     for label, (tag, kind) in methods.items():
         for fam, gen, var, name, fake_split, real_split in T.cells():
-            r = (score_views(S23 / f"{tag}_{name}.csv") if kind == "views"
-                 else score_gend(gend_cache[tag], fake_split, real_split))
+            if kind == "dsr":
+                r = score_dsr(name)
+            elif kind == "views":
+                r = score_views(S23 / f"{tag}_{name}.csv")
+            else:
+                r = score_gend(gend_cache[tag], fake_split, real_split)
             if r is None:
                 missing.append(f"{label}/{name}")
                 continue
             for lvl in ("frame", "video"):
+                if lvl == "frame" and pd.isna(r["frame"]):
+                    continue
                 rows.append({"method": label, "kind": kind, "family": fam, "generator": gen,
                              "variant": var or "own", "set": name, "level": lvl,
                              "auroc": r[lvl], "n_frames": r["n_frames"], "n_videos": r["n_videos"],
                              "views": r["views"]})
-            print(f"  {label:26s} {name:26s} frame {r['frame']:.4f}  video {r['video']:.4f}", flush=True)
+            fr = "  n/a " if pd.isna(r["frame"]) else f"{r['frame']:.4f}"
+            print(f"  {label:26s} {name:26s} frame {fr}  video {r['video']:.4f}", flush=True)
     if missing:
         print(f"\n  {len(missing)} cells not yet on disk:")
         for m in missing[:12]:

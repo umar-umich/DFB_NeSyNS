@@ -52,7 +52,7 @@ def cells():
 
 # method rows: label -> (stage23 output prefix, kind).  kind picks the scorer in build_table.py.
 OURS_ROWS = {
-    "DISCERN (ours)":            ("ours", "views"),
+    "DISCERN (ours)":            ("ours", "dsr"),
     "DiCoME (our training)":     ("dicome", "views"),
     "DiCoME (released weights)": ("dicomerel", "views"),
 }
