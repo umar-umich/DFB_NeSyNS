@@ -41,6 +41,7 @@ from video_id import video_id           # noqa: E402
 S23 = ROOT / "logs/tbiom/stage23"
 GEND_RUNS = ROOT / "logs/tbiom/baselines/gend_runs_ours"
 OUT_CSV = ROOT / "analysis/tables/per_generator.csv"
+REPORT = ROOT / "tbiom/reports/DF40_FAMILY_TABLE.md"
 FRAMES_ROOT = "/data/umar/Datasets/tbiom_frames/DF40"
 
 
@@ -209,6 +210,62 @@ def appendix(df: pd.DataFrame, out_dir: Path):
     (out_dir / "per_generator.md").write_text("\n".join(L) + "\n")
 
 
+METHODS = """
+## What the numbers are
+
+**Protocol.** Every detector is trained on FaceForensics++ c23 and evaluated, without adaptation, on
+DF40's test sets. A generator is scored on its own against the real set of its own domain --
+`DF40-cdf-real` for a `-cdf` variant, `DF40-ff-real` for `-ff` -- so a family column is the mean and
+standard deviation ACROSS the generators in that family, never a single pooled AUROC. The spread is
+part of the result: it separates a family a method actually handles from a family carried by one
+easy generator.
+
+**Families.** FS / FR / EFS / FE are DF40's own published taxonomy, used unchanged so the columns
+line up with published DF40 tables. Two consequences are ours to disclose rather than to fix.
+DF40 files `wav2lip` under reenactment while our v3.1 objective excludes it as audio-driven
+lip-sync; it is included here and flagged in the per-generator appendix. And the three standalone
+editors (`stargan`, `starganv2`, `styleclip`) ship their own paired reals instead of DF40's shared
+real sets, so they are reported as their own column and are never averaged into FE.
+
+**The `-ff` half is included.** DF40's FF++-domain sets are built over the 1000 FaceForensics++
+source videos, 720 of which are in our training split. Those halves are therefore not
+identity-disjoint from training for ANY method in the table -- every row here trains on FF++ c23, so
+the advantage is shared rather than ours. They are included because excluding them would drop half
+of DF40 and break comparability with published DF40 numbers; `-cdf` and `-ff` are reported
+separately in the appendix so the two can always be read apart.
+
+**Image-level sets.** DF40's EFS, FE and standalone sets are image collections rather than videos:
+one image is one "video", and video level equals frame level for them by construction. Our temporal
+view still runs on those sets -- it receives the single frame repeated across its clip window -- so
+it contributes a real but uninformative opinion rather than being switched off. No row is given a
+different fusion on those sets than on the video sets.
+
+**Scoring.** Our rows and both DiCoME rows replay the model's own Dempster-Shafer fusion over the
+views their export carries: two for DiCoME (semantic, artifact), three for ours (semantic,
+artifact, temporal). Video level means aggregating frames to videos first and then scoring, with
+video identity from the rule in `analysis/tbiom/video_id.py`. Third-party rows use their own
+`prob_class_1` with GenD's reduction (mean over the frames of a video). Every method sees exactly
+the same frames: the baselines read PNGs dumped from the same h5 files our exports read.
+
+**DiCoME appears twice.** `DiCoME (our training)` is the comparison of record -- the same FF++ c23
+recipe, seed and schedule as ours, so the difference is the method rather than the training budget.
+`DiCoME (released weights)` is kept as a reproduction check on our retraining, not as the baseline.
+"""
+
+
+def report(df: pd.DataFrame, out_dir: Path):
+    parts = ["# DF40 four-family results table", "",
+             "    python tbiom/tables/build_table.py --render",
+             "",
+             "Generated from `analysis/tables/per_generator.csv`; edit the builder, not this file.",
+             METHODS.strip(), ""]
+    for f in ("table_video.md", "table_frame.md", "per_generator.md", "coverage.md"):
+        parts += [(out_dir / f).read_text().strip(), ""]
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text("\n".join(parts) + "\n")
+    print(f"  wrote {REPORT}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--render", action="store_true", help="also render Markdown and LaTeX")
@@ -229,6 +286,7 @@ def main():
         appendix(df, OUT_CSV.parent)
         bad = coverage(df, OUT_CSV.parent)
         print(f"  wrote {OUT_CSV.parent}/per_generator.md, coverage.md")
+        report(df, OUT_CSV.parent)
         if bad:
             print(f"  !! video-count mismatch in {len(bad)} set(s): {', '.join(bad[:6])}")
     return 0
