@@ -55,13 +55,23 @@ def cells():
 
 
 # method rows: label -> (stage23 output prefix, kind).  kind picks the scorer in build_table.py.
-# The second operator row is the SAME three views and the same per-split fitting; only the
-# combination rule differs, so the two rows isolate the operator.
-OPERATOR_ARMS = {"DISCERN (ours, PCR6+-R)": "PCR6P-R"}
+# Operator rows: same three views, same opinions. `fit` means the reliability triple is grid-searched
+# on each split's fitting fold; `None` means no discounting at all (reliability pinned to 1), which is
+# what "Dempster, no R" means.
+#
+# NOTE FOR READING THE TABLE: PCR6+-R against plain Dempster changes TWO things at once -- the
+# combination rule AND the reliability discounting. The published operator study separates them over
+# the 41 FS/FR sets: Dempster 0.9555, Dempster-R 0.9575, PCR6+-R 0.9588. So of the gain over plain
+# Dempster, the larger part is reliability rather than the operator. Dempster-R is kept in the table
+# for exactly that reason; dropping it would attribute the discounting's gain to PCR6+.
+OPERATOR_ARMS = {"DISCERN (ours, PCR6+-R)": ("PCR6P-R", "fit"),
+                 "DISCERN (ours, Dempster-R)": ("Dempster-R", "fit"),
+                 "DISCERN (ours, Dempster)": ("Dempster-R", None)}
 
 OURS_ROWS = {
-    "DISCERN (ours, DS-R)":      ("ours", "dsr"),
     "DISCERN (ours, PCR6+-R)":   ("ours", "operator"),
+    "DISCERN (ours, Dempster-R)": ("ours", "operator"),
+    "DISCERN (ours, Dempster)":  ("ours", "operator"),
     "DiCoME (our training)":     ("dicome", "views"),
     "DiCoME (released weights)": ("dicomerel", "views"),
 }

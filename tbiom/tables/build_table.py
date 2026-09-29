@@ -97,24 +97,28 @@ def op_scorer():
         import ops_pcr6p as P
         import dsr_system as D
         dev = D.load("vjepa2_lora_B_seed42")[0]
+        folds = [Fd for _k, Fd, _S in D.splits(dev)]
         w = {}
-        for arm in OPERATOR_ARMS.values():
-            w[arm] = [ARMS_MOD.fit_w(Fd, arm) for _k, Fd, _S in D.splits(dev)]
+        for arm, how in set(OPERATOR_ARMS.values()):
+            w[(arm, how)] = ([ARMS_MOD.fit_w(Fd, arm) for Fd in folds] if how == "fit"
+                             else [(1.0, 1.0, 1.0)])
         _OPS = (ARMS_MOD, P, w)
     return _OPS
 
 
-def score_operator(name: str, arm: str) -> dict | None:
+def score_operator(name: str, spec: tuple) -> dict | None:
     """Video AUROC for one combination rule over the three deployed views, averaged over splits."""
     DA, _ = dsr_scorer()
     if not (S23 / f"ours_{name}.csv").is_file() or not (DA.BR / f"{name}.csv").is_file():
         return None
     ARMS_MOD, P, ws = op_scorer()
+    arm, how = spec
     t = DA.ours_table(name)
     y = t["y"].to_numpy()
-    vals = [auroc(y, P.p_of(ARMS_MOD.fuse(t, arm, w))) for w in ws[arm]]
+    vals = [auroc(y, P.p_of(ARMS_MOD.fuse(t, arm, w))) for w in ws[spec]]
+    tag = arm if how == "fit" else arm.removesuffix("-R")
     return {"frame": float("nan"), "video": float(np.mean(vals)),
-            "n_frames": 0, "n_videos": len(t), "views": f"T+APP+OM, {arm}"}
+            "n_frames": 0, "n_videos": len(t), "views": f"T+APP+OM, {tag}"}
 
 
 def score_dsr(name: str) -> dict | None:
