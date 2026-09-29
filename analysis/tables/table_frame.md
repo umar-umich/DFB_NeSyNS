@@ -3,7 +3,6 @@
 | Method | Face swap (18) | Reenactment (24) | Synthesis (18) | Editing (5) | Macro |
 |---|---:|---:|---:|---:|---:|
 | DISCERN (ours, PCR6+-R) | — | — | — | — | — |
-| DISCERN (ours, Dempster-R) | — | — | — | — | — |
 | DISCERN (ours, Dempster) | — | — | — | — | — |
 | DiCoME (our training) | 0.938 ± 0.033 | 0.756 ± 0.147 | 0.936 ± 0.077 | 0.909 ± 0.096 | 0.885 |
 | DiCoME (released weights) | 0.941 ± 0.033 | 0.775 ± 0.138 | 0.951 ± 0.063 | 0.938 ± 0.074 | 0.901 |

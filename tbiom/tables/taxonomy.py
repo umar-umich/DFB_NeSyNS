@@ -60,17 +60,18 @@ def cells():
 # what "Dempster, no R" means.
 #
 # NOTE FOR READING THE TABLE: PCR6+-R against plain Dempster changes TWO things at once -- the
-# combination rule AND the reliability discounting. The published operator study separates them over
-# the 41 FS/FR sets: Dempster 0.9555, Dempster-R 0.9575, PCR6+-R 0.9588. So of the gain over plain
-# Dempster, the larger part is reliability rather than the operator. Dempster-R is kept in the table
-# for exactly that reason; dropping it would attribute the discounting's gain to PCR6+.
+# combination rule AND the reliability discounting, so the difference between the two rows is not
+# the operator on its own. Measured over these 65 sets: Dempster 0.9535, Dempster-R 0.9571,
+# PCR6+-R 0.9562 -- the discounting accounts for the movement, and the operator held at fixed
+# discounting is -0.0009 (ahead on 20 of 65 sets). Where PCR6+ does win on its own is reenactment:
+# 0.9347 against Dempster-R's 0.9317 and Dempster's 0.9305, ahead on 13 of 24 sets.
+# Dempster-R was dropped from the printed table on UMAR's instruction (2026-09-29) after this was
+# put to him. Re-adding it is one line: ("Dempster-R", "fit") here and in OURS_ROWS.
 OPERATOR_ARMS = {"DISCERN (ours, PCR6+-R)": ("PCR6P-R", "fit"),
-                 "DISCERN (ours, Dempster-R)": ("Dempster-R", "fit"),
                  "DISCERN (ours, Dempster)": ("Dempster-R", None)}
 
 OURS_ROWS = {
     "DISCERN (ours, PCR6+-R)":   ("ours", "operator"),
-    "DISCERN (ours, Dempster-R)": ("ours", "operator"),
     "DISCERN (ours, Dempster)":  ("ours", "operator"),
     "DiCoME (our training)":     ("dicome", "views"),
     "DiCoME (released weights)": ("dicomerel", "views"),
