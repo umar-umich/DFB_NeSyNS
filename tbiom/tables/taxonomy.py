@@ -65,14 +65,16 @@ def cells():
 # PCR6+-R 0.9562 -- the discounting accounts for the movement, and the operator held at fixed
 # discounting is -0.0009 (ahead on 20 of 65 sets). Where PCR6+ does win on its own is reenactment:
 # 0.9347 against Dempster-R's 0.9317 and Dempster's 0.9305, ahead on 13 of 24 sets.
-# Dempster-R was dropped from the printed table on UMAR's instruction (2026-09-29) after this was
-# put to him. Re-adding it is one line: ("Dempster-R", "fit") here and in OURS_ROWS.
-OPERATOR_ARMS = {"DISCERN (ours, PCR6+-R)": ("PCR6P-R", "fit"),
-                 "DISCERN (ours, Dempster)": ("Dempster-R", None)}
+# Dempster-R and plain Dempster were both dropped from the printed table on UMAR's instruction
+# (2026-09-29) after this was put to him, and the single row is now labelled just "DISCERN (ours)".
+# The operator it uses is PCR6+ with reliability; the label no longer says so, so the report's
+# Scoring paragraph has to. Re-adding either row is one line here and in OURS_ROWS:
+#   ("Dempster-R", "fit")  -> reliability, Dempster's rule
+#   ("Dempster-R", None)   -> no discounting at all
+OPERATOR_ARMS = {"DISCERN (ours)": ("PCR6P-R", "fit")}
 
 OURS_ROWS = {
-    "DISCERN (ours, PCR6+-R)":   ("ours", "operator"),
-    "DISCERN (ours, Dempster)":  ("ours", "operator"),
+    "DISCERN (ours)":            ("ours", "operator"),   # three views, PCR6+ with reliability
     "DiCoME":                    ("dicome", "views"),   # OUR retraining, not the release
     # `dicomerel` (the authors' released DiCoME weights) was dropped from the printed table on
     # UMAR's instruction (2026-09-29). Its 65 exports are on disk as logs/tbiom/stage23/dicomerel_*
@@ -95,7 +97,7 @@ BASELINE_ROWS = {
 # our three-view replay, so grouping by scorer floated it below us. Third-party first, then DiCoME,
 # then ours last, with the proposed operator on the final line.
 ROW_ORDER = ["ForAda", "Effort", "FSFM", "FSFM-Adapter", "GenD-DINO", "GenD-PE", "GenD-CLIP",
-             "DiCoME", "DISCERN (ours, Dempster)", "DISCERN (ours, PCR6+-R)"]
+             "DiCoME", "DISCERN (ours)"]
 
 
 def row_order(present) -> list:

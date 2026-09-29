@@ -415,7 +415,7 @@ def appendix(df: pd.DataFrame, out_dir: Path):
 METHODS = """
 ## What the numbers are
 
-**Protocol.** Our rows and both DiCoME rows are trained on FaceForensics++ c23 by us, on the same
+**Protocol.** Our row and the DiCoME row are trained on FaceForensics++ c23 by us, on the same
 recipe, seed and schedule. The four third-party rows are the authors' RELEASED weights, and their
 training data is taken on the authors' word rather than verified here: Effort ships as
 `effort_clip_L14_trainOn_FaceForensic`, ForAda and FSFM are the published checkpoints, and
@@ -453,9 +453,14 @@ view still runs on those sets -- it receives the single frame repeated across it
 it contributes a real but uninformative opinion rather than being switched off. No row is given a
 different fusion on those sets than on the video sets.
 
-**Scoring.** Our rows and both DiCoME rows replay the model's own Dempster-Shafer fusion over the
-views their export carries: two for DiCoME (semantic, artifact), three for ours (semantic,
-artifact, temporal). Video level means aggregating frames to videos first and then scoring, with
+**Scoring.** `DISCERN (ours)` is the three-view system -- appearance and off-manifold from the
+export, plus the V-JEPA 2 LoRA temporal branch -- combined with **PCR6+ under reliability
+discounting (PCR6+-R)**, whose reliability triple is grid-searched on each split's fitting fold and
+the result averaged over the five development splits. The row label does not carry the operator, so
+it is stated here: swapping it is one line in `tbiom/tables/taxonomy.py`, which also records what
+Dempster-R and undiscounted Dempster score on these same sets. DiCoME replays its own two-view
+Dempster-Shafer fusion (semantic, artifact). Video level means aggregating frames to videos first
+and then scoring, with
 video identity from the rule in `analysis/tbiom/video_id.py`. Third-party rows use their own
 `prob_class_1` with GenD's reduction (mean over the frames of a video). Every method sees exactly
 the same frames: the baselines read PNGs dumped from the same h5 files our exports read.

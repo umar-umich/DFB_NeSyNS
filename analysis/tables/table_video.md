@@ -11,7 +11,6 @@
 | FSFM | 0.962 ± 0.024 | 0.826 ± 0.154 | 0.944 ± 0.092 | 0.882 ± 0.124 | 0.903 |
 | GenD-CLIP | 0.958 ± 0.035 | 0.881 ± 0.105 | 0.957 ± 0.076 | 0.932 ± 0.087 | 0.932 |
 | DiCoME | 0.970 ± 0.019 | 0.787 ± 0.160 | 0.980 ± 0.029 | 0.916 ± 0.101 | 0.913 |
-| DISCERN (ours, Dempster) | 0.977 ± 0.018 | 0.930 ± 0.057 | 0.967 ± 0.041 | 0.931 ± 0.113 | 0.951 |
-| DISCERN (ours, PCR6+-R) | 0.978 ± 0.016 | 0.935 ± 0.053 | 0.971 ± 0.036 | 0.929 ± 0.127 | 0.953 |
+| DISCERN (ours) | 0.978 ± 0.016 | 0.935 ± 0.053 | 0.971 ± 0.036 | 0.929 ± 0.127 | 0.953 |
 
 † published number, transcribed as printed and not re-measured here; the protocol behind it (generator membership per family, real pool, frame or video level) is not recorded, so it is context rather than a matched comparison.
