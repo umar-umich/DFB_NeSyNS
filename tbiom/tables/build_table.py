@@ -385,9 +385,10 @@ video identity from the rule in `analysis/tbiom/video_id.py`. Third-party rows u
 `prob_class_1` with GenD's reduction (mean over the frames of a video). Every method sees exactly
 the same frames: the baselines read PNGs dumped from the same h5 files our exports read.
 
-**DiCoME appears twice.** `DiCoME (our training)` is the comparison of record -- the same FF++ c23
-recipe, seed and schedule as ours, so the difference is the method rather than the training budget.
-`DiCoME (released weights)` is kept as a reproduction check on our retraining, not as the baseline.
+**DiCoME is our own retraining.** `DiCoME (our training)` is the comparison of record -- the same
+FF++ c23 recipe, seed and schedule as ours, so the difference is the method rather than the training
+budget. The authors' released DiCoME checkpoint was also exported over all 65 sets and is not
+printed here; it remains on disk as a reproduction check on that retraining.
 """
 
 

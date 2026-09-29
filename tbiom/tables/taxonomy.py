@@ -74,7 +74,9 @@ OURS_ROWS = {
     "DISCERN (ours, PCR6+-R)":   ("ours", "operator"),
     "DISCERN (ours, Dempster)":  ("ours", "operator"),
     "DiCoME (our training)":     ("dicome", "views"),
-    "DiCoME (released weights)": ("dicomerel", "views"),
+    # `dicomerel` (the authors' released DiCoME weights) was dropped from the printed table on
+    # UMAR's instruction (2026-09-29). Its 65 exports are on disk as logs/tbiom/stage23/dicomerel_*
+    # and it re-enters with one line here; it stays useful as a reproduction check on our retraining.
 }
 # third-party rows read the GenD-repo runner's test_predictions.csv
 BASELINE_ROWS = {
