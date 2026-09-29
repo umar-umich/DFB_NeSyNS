@@ -5,7 +5,15 @@
 Generated from `analysis/tables/per_generator.csv`; edit the builder, not this file.
 ## What the numbers are
 
-**Protocol.** Every detector is trained on FaceForensics++ c23 and evaluated, without adaptation, on
+**Protocol.** Our rows and both DiCoME rows are trained on FaceForensics++ c23 by us, on the same
+recipe, seed and schedule. The four third-party rows are the authors' RELEASED weights, and their
+training data is taken on the authors' word rather than verified here: Effort ships as
+`effort_clip_L14_trainOn_FaceForensic`, ForAda and FSFM are the published checkpoints, and
+`yermandy/GenD_CLIP_L_14` carries only an architecture config, so nothing on this machine records
+what it saw. FSFM in particular is a self-supervised face model pretrained well beyond FF++ before
+any detection fine-tuning. Treat the third-party rows as "published detector, our evaluation", not
+as a matched-training comparison; `DiCoME (our training)` is the row where training is matched.
+Every detector is evaluated, without adaptation, on
 DF40's test sets. A generator is scored on its own against the real set of its own domain --
 `DF40-cdf-real` for a `-cdf` variant, `DF40-ff-real` for `-ff` -- so a family column is the mean and
 standard deviation ACROSS the generators in that family, never a single pooled AUROC. The spread is
