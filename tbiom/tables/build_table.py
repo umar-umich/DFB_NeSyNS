@@ -242,6 +242,14 @@ def cell(g: pd.DataFrame, method: str, fam: str, tex: bool = False) -> str:
 def render(df: pd.DataFrame, out_dir: Path):
     order = T.row_order(set(df["method"]))
     fams = [f for f in T.FAMILY_ORDER if f in set(df["family"])]
+    pub = published_rows()
+
+    def pub_cell(r, fam, tex=False):
+        if fam not in r:
+            return "--" if tex else "—"
+        m, s = r[fam]
+        return f"{m:.3f} {'$\\pm$' if tex else '±'} {s:.3f}"
+
     for level in ("video", "frame"):
         g = aggregate(df, level)
         cov = df[df["level"] == level].groupby("family")["set"].nunique()
@@ -249,16 +257,33 @@ def render(df: pd.DataFrame, out_dir: Path):
 
         L = [f"### DF40 {level}-level AUROC — mean ± sd across the generators in each family", "",
              "| Method | " + " | ".join(head) + " | Macro |", "|---|" + "---:|" * (len(fams) + 1)]
+        if level == "video":
+            for r in pub:
+                vals = [pub_cell(r, f) for f in fams]
+                ms = [r[f][0] for f in fams if f in r]
+                mac = f"{np.mean(ms):.3f}" if len(ms) == len(fams) else "—"
+                L.append(f"| {r['method']} | " + " | ".join(vals) + f" | {mac} |")
         for m in order:
             vals = [cell(g, m, f) for f in fams]
             fm = g[g["method"] == m]["mean"]
             macro = f"{fm.mean():.3f}" if len(fm) == len(fams) else "—"
             L.append(f"| {m} | " + " | ".join(vals) + f" | {macro} |")
+        if level == "video" and pub:
+            L += ["", "† published number, transcribed as printed and not re-measured here; the "
+                  "protocol behind it (generator membership per family, real pool, frame or video "
+                  "level) is not recorded, so it is context rather than a matched comparison."]
         (out_dir / f"table_{level}.md").write_text("\n".join(L) + "\n")
 
         X = [r"\begin{tabular}{l" + "c" * (len(fams) + 1) + "}", r"\toprule",
              "Method & " + " & ".join(f"{T.FAMILY_NAME[f]} ({cov.get(f,0)})" for f in fams) + r" & Macro \\",
              r"\midrule"]
+        if level == "video":
+            for r in pub:
+                ms = [r[f][0] for f in fams if f in r]
+                mac = f"{np.mean(ms):.3f}" if len(ms) == len(fams) else "--"
+                X.append(f"{r['method'].replace(chr(8224), r'$\dagger$')} & "
+                         + " & ".join(pub_cell(r, f, tex=True) for f in fams) + f" & {mac} " + r"\\")
+            X.append(r"\midrule")
         for m in order:
             fm = g[g["method"] == m]["mean"]
             macro = f"{fm.mean():.3f}" if len(fm) == len(fams) else "--"
@@ -300,6 +325,25 @@ def resolutions(out_dir: Path) -> dict:
             out[name] = {"fake": f, "real": r, "mismatch": f != r}
     cache.write_text(json.dumps(out, indent=1))
     return out
+
+
+def published_rows() -> list[dict]:
+    """The four published four-family rows, rescaled to our 0-1 AUROCs.
+
+    They are printed at the TOP of the main table (UMAR, 2026-09-29): they are older methods and a
+    lower number is the expected result, not a red flag. They keep a dagger because they were
+    transcribed from a paper rather than measured here -- their protocol (generator membership per
+    family, real pool, frame or video level) is not recorded, so the dagger is what tells a reader
+    the row is a citation and not a run of ours.
+    """
+    import json
+    src = Path(__file__).resolve().parent / "published.json"
+    if not src.is_file():
+        return []
+    d = json.loads(src.read_text())
+    return [{"method": r["method"] + " †",
+             **{f: (r[f] / 100.0, r[f + "_sd"] / 100.0) for f in ("FS", "FR", "EFS", "FE")}}
+            for r in d["rows"]]
 
 
 def published(out_dir: Path) -> list[str]:
@@ -447,9 +491,6 @@ def report(df: pd.DataFrame, out_dir: Path):
         parts += ["None: every set is matched on both halves.", ""]
     for f in ("table_video.md", "table_frame.md"):
         parts += [(out_dir / f).read_text().strip(), ""]
-    pub = published(out_dir)
-    if pub:
-        parts += ["\n".join(pub).strip(), ""]
     for f in ("per_generator.md", "coverage.md"):
         parts += [(out_dir / f).read_text().strip(), ""]
     REPORT.parent.mkdir(parents=True, exist_ok=True)
