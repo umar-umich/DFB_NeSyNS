@@ -10,8 +10,12 @@ our v3.1 objective excludes it as lip-sync-only; the taxonomy is followed and th
 recorded in the report.
 
 REAL SIDE. Every generator is scored against the real set of its own domain -- `DF40-cdf-real` for
-a `-cdf` variant, `DF40-ff-real` for `-ff`. The three standalone editors ship their OWN paired reals
-and are wired to those, so they are reported as their own column and never averaged into FE.
+a `-cdf` variant, `DF40-ff-real` for `-ff`. `stargan`, `starganv2` and `styleclip` ship their OWN
+paired reals and are wired to those, which is DF40's own arrangement: its download notes split the
+corpus into 31 "known" methods that share the FF++/Celeb-DF real pools and 9 "unknown" ones that
+bundle reals in the folder. That is a packaging difference, not a taxonomic one -- all four editors
+are face editing and are reported in ONE column. Averaging cells scored against different real
+pools is already what every other family does, since `-cdf` and `-ff` cells use different pools.
 """
 from __future__ import annotations
 
@@ -23,13 +27,13 @@ FAMILIES = {
     "EFS": ["ddim", "DiT", "rddm", "sd2.1", "SiT", "StyleGAN2", "StyleGAN3", "StyleGANXL", "VQGAN"],
     "FE":  ["e4e"],
 }
+# Face editing, DF40's "unknown" half: same family as e4e, own bundled reals.
 STANDALONE = {"stargan": "stargan-real", "starganv2": "starganv2-real", "styleclip": "styleclip-real"}
 REAL = {"cdf": "DF40-cdf-real", "ff": "DF40-ff-real"}
 VARIANTS = ("cdf", "ff")
 
-FAMILY_NAME = {"FS": "Face swap", "FR": "Reenactment", "EFS": "Synthesis", "FE": "Editing",
-               "SA": "Editing (standalone)"}
-FAMILY_ORDER = ["FS", "FR", "EFS", "FE", "SA"]
+FAMILY_NAME = {"FS": "Face swap", "FR": "Reenactment", "EFS": "Synthesis", "FE": "Editing"}
+FAMILY_ORDER = ["FS", "FR", "EFS", "FE"]
 
 # `wav2lip` is audio-driven lip-sync: the frames exist as images but the manipulation is only
 # legible over time, so it is flagged wherever a per-generator number is printed.
@@ -37,7 +41,7 @@ LIPSYNC = {"wav2lip"}
 
 # DF40's EFS/FE/standalone sets are image collections, not videos -- one "video" per image. The
 # temporal view still runs (it sees a repeated frame); the methods section records that rule.
-IMAGE_LEVEL_FAMILIES = {"EFS", "FE", "SA"}
+IMAGE_LEVEL_FAMILIES = {"EFS", "FE"}
 
 
 def cells():
@@ -47,7 +51,7 @@ def cells():
             for var in VARIANTS:
                 yield fam, g, var, f"DF40_{g}_{var}", f"{g}-{var}", REAL[var]
     for g, real in STANDALONE.items():
-        yield "SA", g, None, f"DF40_{g}", g, real
+        yield "FE", g, None, f"DF40_{g}", g, real
 
 
 # method rows: label -> (stage23 output prefix, kind).  kind picks the scorer in build_table.py.

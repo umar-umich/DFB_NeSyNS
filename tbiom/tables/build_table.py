@@ -346,9 +346,12 @@ easy generator.
 **Families.** FS / FR / EFS / FE are DF40's own published taxonomy, used unchanged so the columns
 line up with published DF40 tables. Two consequences are ours to disclose rather than to fix.
 DF40 files `wav2lip` under reenactment while our v3.1 objective excludes it as audio-driven
-lip-sync; it is included here and flagged in the per-generator appendix. And the three standalone
-editors (`stargan`, `starganv2`, `styleclip`) ship their own paired reals instead of DF40's shared
-real sets, so they are reported as their own column and are never averaged into FE.
+lip-sync; it is included here and flagged in the per-generator appendix. And `stargan`, `starganv2`
+and `styleclip` ship their own paired reals rather than DF40's shared pools -- DF40's own split
+between 31 "known" methods that share the FF++/Celeb-DF reals and 9 "unknown" ones that bundle
+theirs. That is packaging, not taxonomy: all four editors are face editing and sit in ONE Editing
+column. Averaging across different real pools is already what every family does, since `-cdf` and
+`-ff` cells are scored against different pools; the appendix names the pool used for every cell.
 
 **The `-ff` half is included.** DF40's FF++-domain sets are built over the 1000 FaceForensics++
 source videos, 720 of which are in our training split. Those halves are therefore not
@@ -357,7 +360,7 @@ the advantage is shared rather than ours. They are included because excluding th
 of DF40 and break comparability with published DF40 numbers; `-cdf` and `-ff` are reported
 separately in the appendix so the two can always be read apart.
 
-**Image-level sets.** DF40's EFS, FE and standalone sets are image collections rather than videos:
+**Image-level sets.** DF40's EFS and FE sets are image collections rather than videos:
 one image is one "video", and video level equals frame level for them by construction. Our temporal
 view still runs on those sets -- it receives the single frame repeated across its clip window -- so
 it contributes a real but uninformative opinion rather than being switched off. No row is given a

@@ -15,9 +15,12 @@ easy generator.
 **Families.** FS / FR / EFS / FE are DF40's own published taxonomy, used unchanged so the columns
 line up with published DF40 tables. Two consequences are ours to disclose rather than to fix.
 DF40 files `wav2lip` under reenactment while our v3.1 objective excludes it as audio-driven
-lip-sync; it is included here and flagged in the per-generator appendix. And the three standalone
-editors (`stargan`, `starganv2`, `styleclip`) ship their own paired reals instead of DF40's shared
-real sets, so they are reported as their own column and are never averaged into FE.
+lip-sync; it is included here and flagged in the per-generator appendix. And `stargan`, `starganv2`
+and `styleclip` ship their own paired reals rather than DF40's shared pools -- DF40's own split
+between 31 "known" methods that share the FF++/Celeb-DF reals and 9 "unknown" ones that bundle
+theirs. That is packaging, not taxonomy: all four editors are face editing and sit in ONE Editing
+column. Averaging across different real pools is already what every family does, since `-cdf` and
+`-ff` cells are scored against different pools; the appendix names the pool used for every cell.
 
 **The `-ff` half is included.** DF40's FF++-domain sets are built over the 1000 FaceForensics++
 source videos, 720 of which are in our training split. Those halves are therefore not
@@ -26,7 +29,7 @@ the advantage is shared rather than ours. They are included because excluding th
 of DF40 and break comparability with published DF40 numbers; `-cdf` and `-ff` are reported
 separately in the appendix so the two can always be read apart.
 
-**Image-level sets.** DF40's EFS, FE and standalone sets are image collections rather than videos:
+**Image-level sets.** DF40's EFS and FE sets are image collections rather than videos:
 one image is one "video", and video level equals frame level for them by construction. Our temporal
 view still runs on those sets -- it receives the single frame repeated across its clip window -- so
 it contributes a real but uninformative opinion rather than being switched off. No row is given a
@@ -64,29 +67,29 @@ Every other set in the table is matched at 256x256 on both halves.
 
 ### DF40 video-level AUROC — mean ± sd across the generators in each family
 
-| Method | Face swap (18) | Reenactment (24) | Synthesis (18) | Editing (2) | Editing (standalone) (3) | Macro |
-|---|---:|---:|---:|---:|---:|---:|
-| DISCERN (ours, DS-R) | 0.980 ± 0.016 | 0.932 ± 0.055 | 0.975 ± 0.037 | 0.997 ± 0.002 | 0.890 ± 0.140 | 0.955 |
-| DISCERN (ours, PCR6+-R) | 0.978 ± 0.016 | 0.935 ± 0.053 | 0.971 ± 0.036 | 0.997 ± 0.004 | 0.884 ± 0.157 | 0.953 |
-| DiCoME (our training) | 0.970 ± 0.019 | 0.787 ± 0.160 | 0.980 ± 0.029 | 0.986 ± 0.006 | 0.869 ± 0.110 | 0.918 |
-| DiCoME (released weights) | 0.975 ± 0.017 | 0.815 ± 0.151 | 0.992 ± 0.015 | 0.995 ± 0.003 | 0.908 ± 0.086 | 0.937 |
-| GenD-CLIP | 0.958 ± 0.035 | 0.881 ± 0.105 | 0.957 ± 0.076 | 0.990 ± 0.006 | 0.893 ± 0.097 | 0.936 |
-| Effort | 0.939 ± 0.046 | 0.771 ± 0.109 | 0.978 ± 0.036 | 0.991 ± 0.002 | 0.924 ± 0.056 | 0.921 |
-| ForAda | 0.919 ± 0.062 | 0.741 ± 0.133 | 0.916 ± 0.125 | 0.705 ± 0.150 | 0.794 ± 0.138 | 0.815 |
-| FSFM | 0.962 ± 0.024 | 0.826 ± 0.154 | 0.944 ± 0.092 | 0.976 ± 0.006 | 0.820 ± 0.127 | 0.905 |
+| Method | Face swap (18) | Reenactment (24) | Synthesis (18) | Editing (5) | Macro |
+|---|---:|---:|---:|---:|---:|
+| DISCERN (ours, DS-R) | 0.980 ± 0.016 | 0.932 ± 0.055 | 0.975 ± 0.037 | 0.933 ± 0.115 | 0.955 |
+| DISCERN (ours, PCR6+-R) | 0.978 ± 0.016 | 0.935 ± 0.053 | 0.971 ± 0.036 | 0.929 ± 0.127 | 0.953 |
+| DiCoME (our training) | 0.970 ± 0.019 | 0.787 ± 0.160 | 0.980 ± 0.029 | 0.916 ± 0.101 | 0.913 |
+| DiCoME (released weights) | 0.975 ± 0.017 | 0.815 ± 0.151 | 0.992 ± 0.015 | 0.943 ± 0.077 | 0.931 |
+| GenD-CLIP | 0.958 ± 0.035 | 0.881 ± 0.105 | 0.957 ± 0.076 | 0.932 ± 0.087 | 0.932 |
+| Effort | 0.939 ± 0.046 | 0.771 ± 0.109 | 0.978 ± 0.036 | 0.951 ± 0.054 | 0.910 |
+| ForAda | 0.919 ± 0.062 | 0.741 ± 0.133 | 0.916 ± 0.125 | 0.758 ± 0.133 | 0.833 |
+| FSFM | 0.962 ± 0.024 | 0.826 ± 0.154 | 0.944 ± 0.092 | 0.882 ± 0.124 | 0.903 |
 
 ### DF40 frame-level AUROC — mean ± sd across the generators in each family
 
-| Method | Face swap (18) | Reenactment (24) | Synthesis (18) | Editing (2) | Editing (standalone) (3) | Macro |
-|---|---:|---:|---:|---:|---:|---:|
-| DISCERN (ours, DS-R) | — | — | — | — | — | — |
-| DISCERN (ours, PCR6+-R) | — | — | — | — | — | — |
-| DiCoME (our training) | 0.938 ± 0.033 | 0.756 ± 0.147 | 0.936 ± 0.077 | 0.971 ± 0.005 | 0.869 ± 0.110 | 0.894 |
-| DiCoME (released weights) | 0.941 ± 0.033 | 0.775 ± 0.138 | 0.951 ± 0.063 | 0.984 ± 0.002 | 0.908 ± 0.086 | 0.912 |
-| GenD-CLIP | 0.915 ± 0.051 | 0.833 ± 0.103 | 0.912 ± 0.109 | 0.962 ± 0.011 | 0.893 ± 0.097 | 0.903 |
-| Effort | 0.906 ± 0.059 | 0.737 ± 0.100 | 0.938 ± 0.077 | 0.980 ± 0.003 | 0.924 ± 0.056 | 0.897 |
-| ForAda | 0.873 ± 0.073 | 0.713 ± 0.114 | 0.842 ± 0.143 | 0.676 ± 0.084 | 0.794 ± 0.138 | 0.780 |
-| FSFM | 0.926 ± 0.037 | 0.792 ± 0.142 | 0.901 ± 0.102 | 0.953 ± 0.001 | 0.820 ± 0.127 | 0.878 |
+| Method | Face swap (18) | Reenactment (24) | Synthesis (18) | Editing (5) | Macro |
+|---|---:|---:|---:|---:|---:|
+| DISCERN (ours, DS-R) | — | — | — | — | — |
+| DISCERN (ours, PCR6+-R) | — | — | — | — | — |
+| DiCoME (our training) | 0.938 ± 0.033 | 0.756 ± 0.147 | 0.936 ± 0.077 | 0.909 ± 0.096 | 0.885 |
+| DiCoME (released weights) | 0.941 ± 0.033 | 0.775 ± 0.138 | 0.951 ± 0.063 | 0.938 ± 0.074 | 0.901 |
+| GenD-CLIP | 0.915 ± 0.051 | 0.833 ± 0.103 | 0.912 ± 0.109 | 0.921 ± 0.079 | 0.895 |
+| Effort | 0.906 ± 0.059 | 0.737 ± 0.100 | 0.938 ± 0.077 | 0.947 ± 0.050 | 0.882 |
+| ForAda | 0.873 ± 0.073 | 0.713 ± 0.114 | 0.842 ± 0.143 | 0.747 ± 0.125 | 0.794 |
+| FSFM | 0.926 ± 0.037 | 0.792 ± 0.142 | 0.901 ± 0.102 | 0.873 ± 0.116 | 0.873 |
 
 ### DF40 video-level AUROC per generator
 
@@ -156,9 +159,9 @@ Every other set in the table is matched at 256x256 on both halves.
 | Synthesis | sd2.1 | ff | 1.0000 | 0.9998 | 1.0000 | 1.0000 | 1.0000 | 0.9989 | 0.9982 | 1.0000 |
 | Editing | e4e | cdf | 0.9991 | 0.9993 | 0.9822 | 0.9928 | 0.9858 | 0.9894 | 0.5987 | 0.9719 |
 | Editing | e4e | ff | 0.9958 | 0.9942 | 0.9903 | 0.9973 | 0.9945 | 0.9918 | 0.8111 | 0.9797 |
-| Editing (standalone) | stargan | own | 0.9882 | 0.9825 | 0.9902 | 0.9946 | 0.9712 | 0.9851 | 0.9525 | 0.9031 |
-| Editing (standalone) | starganv2 | own | 0.7300 | 0.7024 | 0.7758 | 0.8229 | 0.7842 | 0.8747 | 0.7298 | 0.6734 |
-| Editing (standalone) | styleclip | own | 0.9525 | 0.9656 | 0.8395 | 0.9057 | 0.9244 | 0.9133 | 0.6992 | 0.8834 |
+| Editing | stargan | own | 0.9882 | 0.9825 | 0.9902 | 0.9946 | 0.9712 | 0.9851 | 0.9525 | 0.9031 |
+| Editing | starganv2 | own | 0.7300 | 0.7024 | 0.7758 | 0.8229 | 0.7842 | 0.8747 | 0.7298 | 0.6734 |
+| Editing | styleclip | own | 0.9525 | 0.9656 | 0.8395 | 0.9057 | 0.9244 | 0.9133 | 0.6992 | 0.8834 |
 
 ### Video counts per set (must agree across methods)
 
