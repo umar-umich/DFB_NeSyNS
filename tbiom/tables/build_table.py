@@ -239,7 +239,7 @@ def cell(g: pd.DataFrame, method: str, fam: str, tex: bool = False) -> str:
 
 
 def render(df: pd.DataFrame, out_dir: Path):
-    order = [m for m in {**T.OURS_ROWS, **T.BASELINE_ROWS} if m in set(df["method"])]
+    order = T.row_order(set(df["method"]))
     fams = [f for f in T.FAMILY_ORDER if f in set(df["family"])]
     for level in ("video", "frame"):
         g = aggregate(df, level)
@@ -323,7 +323,7 @@ def appendix(df: pd.DataFrame, out_dir: Path):
     d["family"] = pd.Categorical(d["family"], T.FAMILY_ORDER, ordered=True)
     piv = d.pivot_table(index=["family", "generator", "variant"], columns="method",
                         values="auroc", observed=True).sort_index()
-    order = [m for m in {**T.OURS_ROWS, **T.BASELINE_ROWS} if m in piv.columns]
+    order = T.row_order(list(piv.columns))
     piv = piv[order]
     L = ["### DF40 video-level AUROC per generator", "",
          "`*` marks audio-driven lip-sync, which DF40 files under reenactment and our v3.1 "
@@ -347,7 +347,7 @@ training data is taken on the authors' word rather than verified here: Effort sh
 `yermandy/GenD_CLIP_L_14` carries only an architecture config, so nothing on this machine records
 what it saw. FSFM in particular is a self-supervised face model pretrained well beyond FF++ before
 any detection fine-tuning. Treat the third-party rows as "published detector, our evaluation", not
-as a matched-training comparison; `DiCoME (our training)` is the row where training is matched.
+as a matched-training comparison; the DiCoME row is the one where training is matched.
 Every detector is evaluated, without adaptation, on
 DF40's test sets. A generator is scored on its own against the real set of its own domain --
 `DF40-cdf-real` for a `-cdf` variant, `DF40-ff-real` for `-ff` -- so a family column is the mean and
@@ -385,10 +385,11 @@ video identity from the rule in `analysis/tbiom/video_id.py`. Third-party rows u
 `prob_class_1` with GenD's reduction (mean over the frames of a video). Every method sees exactly
 the same frames: the baselines read PNGs dumped from the same h5 files our exports read.
 
-**DiCoME is our own retraining.** `DiCoME (our training)` is the comparison of record -- the same
-FF++ c23 recipe, seed and schedule as ours, so the difference is the method rather than the training
-budget. The authors' released DiCoME checkpoint was also exported over all 65 sets and is not
-printed here; it remains on disk as a reproduction check on that retraining.
+**The DiCoME row is our own retraining, not the released checkpoint.** It is the comparison of
+record: the same FF++ c23 recipe, seed and schedule as ours, so the difference between the rows is
+the method rather than the training budget. The authors' released DiCoME weights were also exported
+over all 65 sets and are not printed here; they remain on disk as a reproduction check on that
+retraining.
 """
 
 

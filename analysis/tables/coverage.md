@@ -1,6 +1,6 @@
 ### Video counts per set (must agree across methods)
 
-| set | DISCERN (ours, Dempster) | DISCERN (ours, PCR6+-R) | DiCoME (our training) | Effort | FSFM | ForAda | GenD-CLIP |
+| set | DISCERN (ours, Dempster) | DISCERN (ours, PCR6+-R) | DiCoME | Effort | FSFM | ForAda | GenD-CLIP |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | DF40_DiT_cdf | 1066 | 1066 | 1066 | 1066 | 1066 | 1066 | 1066 |
 | DF40_DiT_ff | 256 | 256 | 256 | 256 | 256 | 256 | 256 |

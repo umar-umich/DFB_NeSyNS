@@ -73,15 +73,32 @@ OPERATOR_ARMS = {"DISCERN (ours, PCR6+-R)": ("PCR6P-R", "fit"),
 OURS_ROWS = {
     "DISCERN (ours, PCR6+-R)":   ("ours", "operator"),
     "DISCERN (ours, Dempster)":  ("ours", "operator"),
-    "DiCoME (our training)":     ("dicome", "views"),
+    "DiCoME":                    ("dicome", "views"),   # OUR retraining, not the release
     # `dicomerel` (the authors' released DiCoME weights) was dropped from the printed table on
     # UMAR's instruction (2026-09-29). Its 65 exports are on disk as logs/tbiom/stage23/dicomerel_*
     # and it re-enters with one line here; it stays useful as a reproduction check on our retraining.
 }
 # third-party rows read the GenD-repo runner's test_predictions.csv
 BASELINE_ROWS = {
-    "GenD-CLIP": ("GenD_CLIP", "gend"),
-    "Effort":    ("Effort", "gend"),
-    "ForAda":    ("ForAda", "gend"),
-    "FSFM":      ("FSFM", "gend"),
+    "ForAda":        ("ForAda", "gend"),
+    "Effort":        ("Effort", "gend"),
+    "FSFM":          ("FSFM", "gend"),
+    "FSFM-Adapter":  ("FSFM_Adapter", "gend"),
+    "GenD-DINO":     ("GenD_DINO", "gend"),
+    "GenD-PE":       ("GenD_PE", "gend"),
+    "GenD-CLIP":     ("GenD_CLIP", "gend"),
 }
+
+
+# PRINT ORDER, stated explicitly rather than inherited from the dicts above. Those dicts group rows
+# by which SCORER they need, which is not the order a reader wants: DiCoME is prior work but shares
+# our three-view replay, so grouping by scorer floated it below us. Third-party first, then DiCoME,
+# then ours last, with the proposed operator on the final line.
+ROW_ORDER = ["ForAda", "Effort", "FSFM", "FSFM-Adapter", "GenD-DINO", "GenD-PE", "GenD-CLIP",
+             "DiCoME", "DISCERN (ours, Dempster)", "DISCERN (ours, PCR6+-R)"]
+
+
+def row_order(present) -> list:
+    """`present` in ROW_ORDER, with anything unlisted appended so a new row can never vanish."""
+    known = [m for m in ROW_ORDER if m in present]
+    return known + [m for m in present if m not in ROW_ORDER]
