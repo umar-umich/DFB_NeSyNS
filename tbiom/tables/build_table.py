@@ -107,6 +107,89 @@ def op_scorer():
     return _OPS
 
 
+def ablation_arms():
+    """Register one arm per view subset, then fit each on the same folds as the headline row."""
+    ARMS_MOD, P, _ = op_scorer()
+    specs = {}
+    for label, views in T.ABLATION:
+        if len(views) == 3:
+            specs[label] = "PCR6P-R"
+            continue
+        arm = next((a for a, v in ARMS_MOD.SUBSET.items() if tuple(v) == tuple(views)), None)
+        if arm is None:                                  # the single-view arms arms.py does not ship
+            arm = f"{'+'.join(views)} (PCR6+)"
+            ARMS_MOD.SUBSET[arm] = tuple(views)
+        specs[label] = arm
+    return ARMS_MOD, P, specs
+
+
+def ablation(df: pd.DataFrame, out_dir: Path):
+    """Which views carry which family, at fixed operator.
+
+    The point of the table is the ROW-TO-ROW difference: identical opinions, identical folds,
+    identical combination rule, so adding a line's worth of views is the only thing that changed.
+    """
+    ARMS_MOD, P, specs = ablation_arms()
+    _DA, rules = dsr_scorer()
+    import dsr_system as D
+    dev = D.load("vjepa2_lora_B_seed42")[0]
+    folds = [Fd for _k, Fd, _S in D.splits(dev)]
+    cells = list(T.cells())
+    fams = [f for f in T.FAMILY_ORDER if any(c[0] == f for c in cells)]
+
+    rows = []
+    for label, _views in T.ABLATION:
+        arm = specs[label]
+        ws = [ARMS_MOD.fit_w(Fd, arm) for Fd in folds]
+        per_fam = {f: [] for f in fams}
+        for fam, _g, _v, name, _fs, _rs in cells:
+            tt = _DA.ours_table(name)
+            y = tt["y"].to_numpy()
+            per_fam[fam].append(float(np.mean([auroc(y, P.p_of(ARMS_MOD.fuse(tt, arm, w))) for w in ws])))
+        rows.append((label, {f: (float(np.mean(v)), float(np.std(v))) for f, v in per_fam.items()}))
+        print(f"  ablation {label:22s} " +
+              "  ".join(f"{f} {np.mean(per_fam[f]):.3f}" for f in fams), flush=True)
+
+    head = [T.FAMILY_NAME[f] for f in fams]
+    L = ["### Branch ablation — DF40 video-level AUROC, PCR6+-R throughout", "",
+         "Every row is the same operator, the same reliability fitting on the same five development",
+         "folds and the same 65 sets; only the views available to the fusion change.", "",
+         "| Views | " + " | ".join(head) + " | Macro |", "|---|" + "---:|" * (len(fams) + 1)]
+    X = [r"\begin{tabular}{l" + "c" * (len(fams) + 1) + "}", r"\toprule",
+         "Views & " + " & ".join(head) + r" & Macro \\", r"\midrule"]
+    for label, d in rows:
+        L.append(f"| {label} | " + " | ".join(f"{d[f][0]:.3f} ± {d[f][1]:.3f}" for f in fams)
+                 + f" | {np.mean([d[f][0] for f in fams]):.3f} |")
+        X.append(f"{label} & " + " & ".join(f"{d[f][0]:.3f} $\\pm$ {d[f][1]:.3f}" for f in fams)
+                 + f" & {np.mean([d[f][0] for f in fams]):.3f} " + r"\\")
+    X += [r"\bottomrule", r"\end{tabular}"]
+
+    # Rows that a reader should not have to spot by eye. Both are DETECTED here rather than
+    # asserted, so they cannot survive in the text after they stop being true.
+    macro = {lbl: float(np.mean([d[f][0] for f in fams])) for lbl, d in rows}
+    byl = dict(rows)
+    notes = []
+    for a, b in (("APP + OM", "OM"), ("T + APP", "T"), ("T + OM", "OM")):
+        if a in byl and b in byl and all(abs(byl[a][f][0] - byl[b][f][0]) < 5e-4 for f in fams):
+            notes.append(f"- **`{a}` is identical to `{b}` in every family.** The reliability fit drives the "
+                         f"other view's weight to zero, so the pair is not a fusion at all -- it is `{b}` "
+                         f"with a second view that the fitting discards.")
+    full = "T + APP + OM (ours)"
+    if full in macro and "T + OM" in macro:
+        d = macro[full] - macro["T + OM"]
+        fr = byl[full].get("FR", (0, 0))[0] - byl["T + OM"].get("FR", (0, 0))[0]
+        notes.append(f"- **Adding APP to `T + OM` moves the macro by {d:+.4f}** and reenactment by {fr:+.4f}. "
+                     f"On this benchmark the appearance view does not earn its place once the temporal and "
+                     f"off-manifold views are both present; it is carried on the strength of the other "
+                     f"evaluations, not this one.")
+    if notes:
+        L += ["", "**What the rows say.**", ""] + notes
+    (out_dir / "ablation.md").write_text("\n".join(L) + "\n")
+    (out_dir / "ablation.tex").write_text("\n".join(X) + "\n")
+    print(f"  wrote {out_dir}/ablation.{{md,tex}}")
+    return L
+
+
 def score_operator(name: str, spec: tuple) -> dict | None:
     """Video AUROC for one combination rule over the three deployed views, averaged over splits."""
     DA, _ = dsr_scorer()
@@ -496,8 +579,9 @@ def report(df: pd.DataFrame, out_dir: Path):
         parts += ["None: every set is matched on both halves.", ""]
     for f in ("table_video.md", "table_frame.md"):
         parts += [(out_dir / f).read_text().strip(), ""]
-    for f in ("per_generator.md", "coverage.md"):
-        parts += [(out_dir / f).read_text().strip(), ""]
+    for f in ("ablation.md", "per_generator.md", "coverage.md"):
+        if (out_dir / f).is_file():
+            parts += [(out_dir / f).read_text().strip(), ""]
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(parts) + "\n")
     print(f"  wrote {REPORT}")
@@ -521,6 +605,7 @@ def main():
     if a.render or a.render_only:
         render(df, OUT_CSV.parent)
         appendix(df, OUT_CSV.parent)
+        ablation(df, OUT_CSV.parent)
         bad = coverage(df, OUT_CSV.parent)
         print(f"  wrote {OUT_CSV.parent}/per_generator.md, coverage.md")
         report(df, OUT_CSV.parent)

@@ -104,3 +104,17 @@ def row_order(present) -> list:
     """`present` in ROW_ORDER, with anything unlisted appended so a new row can never vanish."""
     known = [m for m in ROW_ORDER if m in present]
     return known + [m for m in present if m not in ROW_ORDER]
+
+
+# ---------------------------------------------------------------- branch ablation
+# Every non-empty subset of the three deployed views, under the SAME operator and the same per-split
+# fitting as the headline row, so a line here differs from the row above it only by which views were
+# available. `arms.py` already ships the two-view subsets and `T only`; the two remaining single-view
+# arms are registered at run time from this table rather than duplicated there.
+ABLATION = [("APP",             ("APP",)),
+            ("OM",              ("OM",)),
+            ("T",               ("T",)),
+            ("APP + OM",        ("APP", "OM")),
+            ("T + APP",         ("T", "APP")),
+            ("T + OM",          ("T", "OM")),
+            ("T + APP + OM (ours)", ("T", "APP", "OM"))]
