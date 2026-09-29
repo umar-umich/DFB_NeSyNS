@@ -1,0 +1,12 @@
+{
+  "_README": "Published four-family DF40 numbers, transcribed AS PRINTED and never re-measured here. Percentages as the source prints them; the builder divides by 100 to sit beside our AUROCs. `source` must name the paper before this ships -- it is currently the table UMAR supplied and the citation is not yet recorded.",
+  "_source_file": "tbiom/docs/req_results_table.jpeg (supplied by UMAR 2026-09-29)",
+  "_citation": "TODO -- paper not yet identified; do not publish this block without it",
+  "_protocol_known": false,
+  "rows": [
+    {"method": "LAA-Net (Consortium)", "FS": 83.35, "FS_sd": 7.30, "FR": 76.13, "FR_sd": 4.39, "EFS": 72.02, "EFS_sd": 25.99, "FE": 62.75, "FE_sd": 16.52},
+    {"method": "FATViT",               "FS": 82.14, "FS_sd": 12.33, "FR": 68.95, "FR_sd": 14.27, "EFS": 76.95, "EFS_sd": 21.56, "FE": 61.46, "FE_sd": 17.69},
+    {"method": "SBI",                  "FS": 73.70, "FS_sd": 10.38, "FR": 68.28, "FR_sd": 5.52,  "EFS": 75.12, "EFS_sd": 20.80, "FE": 83.08, "FE_sd": 17.67},
+    {"method": "Ma et al.",            "FS": 88.40, "FS_sd": 5.40,  "FR": 80.38, "FR_sd": 7.60,  "EFS": 78.33, "EFS_sd": 19.80, "FE": 73.60, "FE_sd": 24.14}
+  ]
+}

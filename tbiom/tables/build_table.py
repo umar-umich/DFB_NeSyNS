@@ -29,6 +29,7 @@ from pathlib import Path
 
 import numpy as np, pandas as pd
 
+FAMILY_HEAD = {"FS": "Face swap", "FR": "Reenactment", "EFS": "Synthesis", "FE": "Editing"}
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "analysis/tbiom"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -301,6 +302,36 @@ def resolutions(out_dir: Path) -> dict:
     return out
 
 
+def published(out_dir: Path) -> list[str]:
+    """Published four-family numbers, printed in their OWN block and never merged into ours.
+
+    They are transcribed as the source prints them, and the protocol behind them is not recorded:
+    which generators are in each family, which real pool each is scored against, frame or video
+    level, and whether AUROC is over the same 65 sets. Those choices move a DF40 family mean by
+    more than the gaps in this table, so a cell here and a cell above are not the same measurement
+    and a reader must not subtract one from the other. Printing them in the main table would invite
+    exactly that subtraction, which is why they sit apart.
+    """
+    import json
+    src = Path(__file__).resolve().parent / "published.json"
+    if not src.is_file():
+        return []
+    d = json.loads(src.read_text())
+    fams = ["FS", "FR", "EFS", "FE"]
+    L = ["### Published numbers (as printed; NOT re-measured, NOT comparable cell-for-cell)", "",
+         f"Transcribed from `{d['_source_file']}`. Citation: **{d['_citation']}**.", "",
+         "The protocol behind these is unrecorded -- generator membership per family, the real pool,",
+         "frame or video level -- and each of those moves a DF40 family mean by more than the gaps",
+         "in the table above. Read them as context for the scale of the task, not as a head-to-head.", "",
+         "| Method | " + " | ".join(FAMILY_HEAD[f] for f in fams) + " |",
+         "|---|" + "---:|" * len(fams)]
+    for r in d["rows"]:
+        L.append(f"| {r['method']} | " + " | ".join(f"{r[f]:.2f} ± {r[f + '_sd']:.2f}" for f in fams) + " |")
+    L.append("")
+    (out_dir / "published.md").write_text("\n".join(L) + "\n")
+    return L
+
+
 def coverage(df: pd.DataFrame, out_dir: Path) -> list[str]:
     """Every method must score the SAME videos in a set. A disagreement means the rows are not
     comparable, and a silently different denominator is exactly how a table lies."""
@@ -414,7 +445,12 @@ def report(df: pd.DataFrame, out_dir: Path):
                   f"x{res['DF40_blendface_cdf']['fake'][0][1]} on both halves.", ""]
     else:
         parts += ["None: every set is matched on both halves.", ""]
-    for f in ("table_video.md", "table_frame.md", "per_generator.md", "coverage.md"):
+    for f in ("table_video.md", "table_frame.md"):
+        parts += [(out_dir / f).read_text().strip(), ""]
+    pub = published(out_dir)
+    if pub:
+        parts += ["\n".join(pub).strip(), ""]
+    for f in ("per_generator.md", "coverage.md"):
         parts += [(out_dir / f).read_text().strip(), ""]
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(parts) + "\n")
