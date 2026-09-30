@@ -27,8 +27,8 @@ def main():
     run = BR / a.branch; dev = "cuda"
     model = TB.Branch(a.model, lora=True).to(dev)
     ck = torch.load(run / "best.pt", map_location=dev)
-    model.trainable_blocks.load_state_dict(ck["trainable_blocks"]); model.head.load_state_dict(ck["head"])
-    print(f"{a.branch}: development-selected epoch {ck['epoch']}", flush=True)
+    fmt = TB.load_trainable(model, ck)
+    print(f"{a.branch}: development-selected epoch {ck['epoch']} ({fmt})", flush=True)
     for n in a.datasets:
         out = run / "opinions" / f"{n}.csv"
         if out.exists():

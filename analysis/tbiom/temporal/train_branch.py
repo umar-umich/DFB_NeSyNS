@@ -214,6 +214,35 @@ class Branch(nn.Module):
         return F.softplus(self.head(z.float()))
 
 
+def trainable_state(model):
+    """What the checkpoint should hold: the parameters that were actually trained.
+
+    LoRALinear keeps the frozen nn.Linear as a SUBMODULE, so `trainable_blocks.state_dict()` also
+    serialises `base.weight`/`base.bias` -- for V-JEPA 2 ViT-L that is 50.4M frozen parameters,
+    192 MiB, byte-identical to the HF backbone that is downloaded anyway. Beyond the size, saving
+    them makes the file a backbone SNAPSHOT: loading it overwrites the freshly fetched weights with
+    whatever was captured at training time, so a backbone version change would be silently masked.
+    The block arm genuinely trains its modules, so there the full state is the right thing.
+    """
+    sd = model.trainable_blocks.state_dict()
+    return {k: v for k, v in sd.items() if "lora_" in k} if model.lora else sd
+
+
+def load_trainable(model, ck) -> str:
+    """Load either checkpoint format: adapter-only (current) or the pre-2026-09-30 full-module save.
+
+    Adapter-only is loaded non-strictly because the frozen `base.*` entries are absent by design --
+    they are already correct, straight from the pretrained backbone. Every key that WAS trained must
+    still be present, so a genuinely truncated checkpoint fails here rather than scoring quietly.
+    """
+    res = model.trainable_blocks.load_state_dict(ck["trainable_blocks"], strict=False)
+    missing_trained = [k for k in res.missing_keys if not model.lora or "lora_" in k]
+    assert not missing_trained, f"checkpoint is missing trained parameters: {missing_trained[:4]}"
+    assert not res.unexpected_keys, f"checkpoint has unexpected parameters: {res.unexpected_keys[:4]}"
+    model.head.load_state_dict(ck["head"])
+    return "adapters only" if res.missing_keys else "full modules"
+
+
 def opinions(model, ds, dev, process=None, workers=4, shuffle=False):
     loader = torch.utils.data.DataLoader(Clips(ds, model.preprocess, model.T, shuffle), batch_size=BATCH, num_workers=workers,
                                          worker_init_fn=lambda _: torch.set_num_threads(1))
@@ -250,7 +279,7 @@ def main():
 
     if a.export_shuffled_only:
         ck = torch.load(out_dir / "best.pt", map_location=dev)
-        model.trainable_blocks.load_state_dict(ck["trainable_blocks"]); model.head.load_state_dict(ck["head"])
+        print(f"loaded epoch {ck['epoch']} ({load_trainable(model, ck)})", flush=True)
         export_shuffled(model, dev, out_dir, a.workers); return
     devtab = A.dev_tables({n: S23 / f"warmgate_e19_{n}.csv" for n in DEV}, [1.0])
     cl = A.cells(devtab)
@@ -284,7 +313,7 @@ def main():
         print(f"epoch {ep}: loss {np.mean(losses):.4f} dev v3.1 {score:.4f} {types} ({(time.time() - t0) / 60:.0f} min)", flush=True)
         if score > best[0] + 1e-6:
             best = (score, ep)
-            torch.save({"epoch": ep, "trainable_blocks": model.trainable_blocks.state_dict(), "head": model.head.state_dict()},
+            torch.save({"epoch": ep, "trainable_blocks": trainable_state(model), "head": model.head.state_dict()},
                        out_dir / "best.pt")
             o.to_csv(out_dir / "opinions" / "dev_clean.csv", index=False)
         json.dump({"model": a.model, "seed": a.seed, "history": history, "best_epoch": best[1], "best_dev_v31": best[0],
@@ -293,8 +322,8 @@ def main():
                   open(out_dir / "train_record.json", "w"), indent=1)
 
     ck = torch.load(out_dir / "best.pt", map_location=dev)
-    model.trainable_blocks.load_state_dict(ck["trainable_blocks"]); model.head.load_state_dict(ck["head"])
-    print(f"selected epoch {ck['epoch']}; exporting opinions", flush=True)
+    fmt = load_trainable(model, ck)
+    print(f"selected epoch {ck['epoch']} ({fmt}); exporting opinions", flush=True)
     for n in DEV:
         opinions(model, n, dev, workers=a.workers).to_csv(out_dir / "opinions" / f"{n}.csv", index=False)
         for c, spec in (("jpeg40", "jpeg:40"), ("rs06", "resize:0.6")):
