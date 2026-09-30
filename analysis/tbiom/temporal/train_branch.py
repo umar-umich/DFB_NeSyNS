@@ -108,6 +108,26 @@ S23 = Path("/data/umar/Repos/DFB_NeSyNS/logs/tbiom/stage23")
 
 
 def videos_of(ds):
+    """Resolve a dataset NAME to (h5 path, [(frame keys, label, video id), ...]).
+
+    Three things happen here that decide what a number later means, so they are worth reading
+    slowly:
+
+    SCOPE. Out-of-scope subsets are dropped before anything else (protocol v3.1): CDFv3's IP_LAP,
+    KoDF's audio-driven and adversarial halves. The test is applied to the subset component twice,
+    plainly and after splitting on "-", because the corpora spell these two ways (`fake-audio-driven`
+    vs `adv-...`). A set that slips through would silently widen the evaluation.
+
+    LABEL. Genuine is decided by the substring "real" in the subset name -- correct for every corpus
+    used here (`Celeb-real`, `YouTube-real`, `DF40-cdf-real`, `FFpp-real`), but it is a substring
+    test, so a generator whose name contained "real" would be labelled genuine without complaint.
+    Check this first if a new corpus scores impossibly well or impossibly badly.
+
+    IDENTITY. The video id comes from `video_id.py`, the one rule shared with every other consumer,
+    rather than from a basename or a metadata field. Getting it wrong does not raise -- it regroups
+    frames and yields a real-looking AUROC over the wrong units, which has twice reversed a
+    conclusion in this project. `python video_id.py --check` runs its regression test.
+    """
     h5rel, lists = dataset_spec(ds)
     keys = [k for f in lists for k in (EXT / f).read_text().split("\n") if k]
     keys = [k for k in keys if not (k.split("/")[-3] in OUT_OF_SCOPE or k.split("/")[-3].split("-")[-1] in OUT_OF_SCOPE)]
@@ -119,6 +139,14 @@ def videos_of(ds):
 
 
 class Clips(torch.utils.data.Dataset):
+    """One clip per video: T frames sampled uniformly IN ORDER over that video's stored crops.
+
+    The same class serves training and evaluation -- training passes `augment="B"`, evaluation does
+    not -- so both read the same h5 crops through the same sampling path and augmentation is the
+    only difference between them. `shuffle=True` is the order-sensitivity control, not data
+    augmentation: it is used for dedicated control exports only.
+    """
+
     def __init__(self, ds, proc, T, shuffle=False, augment=None, seed=0):
         self.h5rel, self.items = videos_of(ds); self.proc = proc; self.h = None; self.T = T; self.shuffle = shuffle
         self.augment, self.seed, self._rng, self._owner = augment, seed, None, None
@@ -127,6 +155,14 @@ class Clips(torch.utils.data.Dataset):
             self.processing = SharedProcessing(enabled=True)
 
     def _worker_rng(self):
+        """One RNG per worker, seeded from (run seed, worker id, the worker's own torch seed).
+
+        Built lazily and re-built when the owning worker changes, because a DataLoader forks this
+        object into each worker AFTER __init__: an RNG created in __init__ would be cloned, and
+        every worker would then draw the identical augmentation sequence. Including the worker's
+        torch seed keeps the draws from repeating across epochs, since persistent workers keep the
+        same id. This is the corrected scheme of commit 29e7f18.
+        """
         wi = torch.utils.data.get_worker_info(); wid = wi.id if wi is not None else -1
         if self._owner != wid:
             self._rng = np.random.default_rng([int(self.seed), wid + 1, (wi.seed % (2 ** 32)) if wi is not None else 0])
@@ -140,10 +176,18 @@ class Clips(torch.utils.data.Dataset):
         if self.h is None:
             self.h = h5py.File(EXT / self.h5rel, "r")
         ks, y, v = self.items[i]
+        # Uniform over the whole video, endpoints included, so a clip always spans the stored range
+        # rather than its first T frames. NOTE: a video with fewer than T stored crops yields
+        # REPEATED indices rather than an error -- the clip is padded by duplication, which is also
+        # what makes whole-image sets (one frame per "video") run through this path unchanged.
         idx = np.linspace(0, len(ks) - 1, self.T).round().astype(int)
         if self.shuffle:                                   # order-sensitivity control: fixed permutation per video
             idx = idx[np.random.default_rng(i).permutation(self.T)]
         fr = [np.asarray(self.h[ks[j]]) for j in idx]
+        # Normalise to the 256-px crop the corpora are stored at before anything else touches the
+        # pixels, so arm-B processing and the model's own preprocessing see one consistent input
+        # size. A few corpora ship a different crop size; without this they would be augmented at
+        # one scale and evaluated at another.
         fr = [f if f.shape[:2] == (256, 256) else np.asarray(Image.fromarray(f).resize((256, 256), Image.BILINEAR)) for f in fr]
         if self.augment == "B":
             setting = self.processing.sample(self._worker_rng())          # one draw per clip, label-independent
@@ -153,6 +197,14 @@ class Clips(torch.utils.data.Dataset):
 
 
 class Branch(nn.Module):
+    """A frozen video backbone plus an evidential head, trained either by LoRA or by unfreezing.
+
+    The head emits EVIDENCE, not logits: `softplus` keeps it non-negative so `alpha = evidence + 1`
+    is a valid Dirichlet, which is what lets `opinions()` report a probability and a vacuity from
+    the same forward pass. Eight backbones are defined for the architecture sweep; only
+    `vjepa2` with `--lora --augment B` is deployed.
+    """
+
     def __init__(self, name, lora=False):
         super().__init__(); mid, d, self.T = MODELS[name]; self.name = name; self.lora = lora
         if name.startswith("vjepa2"):
@@ -201,6 +253,11 @@ class Branch(nn.Module):
         return out.reshape(-1, *out.shape[-3:])                  # (T, 3, H, W) whatever the processor's leading dims
 
     def forward(self, px):
+        # Each family exposes its clip embedding differently, so pooling is per-family rather than
+        # uniform: V-JEPA 2 and VideoMAE have no CLS token (mean over tokens), TimeSformer and ViViT
+        # do (take it), X-CLIP pools per frame and then through its own multi-frame transformer.
+        # `skip_predictor=True` keeps V-JEPA 2's encoder output and skips the JEPA predictor head,
+        # which is only needed for its pretraining objective.
         if self.name.startswith("vjepa2"):
             z = self.backbone(pixel_values_videos=px, skip_predictor=True).last_hidden_state.mean(1)
         elif self.name == "xclip":
@@ -244,6 +301,22 @@ def load_trainable(model, ck) -> str:
 
 
 def opinions(model, ds, dev, process=None, workers=4, shuffle=False):
+    """Inference: one evidential opinion per video, as a DataFrame (v, y, p, u).
+
+    The head's evidence `e` becomes a Dirichlet `alpha = e + 1` with strength `S = sum(alpha)`, and
+    for the two classes (0 = real, 1 = fake) that gives
+
+        p = alpha_fake / S        expected probability the video is fake
+        u = K / S  with K = 2     VACUITY -- how little evidence there is, NOT (1 - p)
+
+    `u` is what the fusion consumes: a view with little evidence is discounted rather than trusted
+    at p = 0.5. Kept in float64 from the model output onward, because S can be large and the ratio
+    is what later fusion divides by.
+
+    `process` applies an evaluation-only degradation (jpeg:Q, resize:S) AFTER the model's own
+    normalisation, so it is undone and redone in pixel space inside `apply_processing`; it is how
+    the processed-robustness exports are produced and is never used during training.
+    """
     loader = torch.utils.data.DataLoader(Clips(ds, model.preprocess, model.T, shuffle), batch_size=BATCH, num_workers=workers,
                                          worker_init_fn=lambda _: torch.set_num_threads(1))
     out, model_items = [], loader.dataset.items
@@ -284,6 +357,10 @@ def main():
     devtab = A.dev_tables({n: S23 / f"warmgate_e19_{n}.csv" for n in DEV}, [1.0])
     cl = A.cells(devtab)
     train = Clips("FFpp_train", model.preprocess, model.T, augment=a.augment, seed=a.seed)
+    # FF++ ships four manipulations against one real set, so the train split is ~4:1 fake. Each
+    # video is weighted by the inverse size of its own class, which makes a drawn batch balanced in
+    # expectation; `replacement=True` with `len(ys)` draws keeps an epoch the same nominal length
+    # while letting the minority (real) videos recur.
     ys = torch.tensor([it[1] for it in train.items])
     w = torch.where(ys == 1, 1.0 / (ys == 1).sum(), 1.0 / (ys == 0).sum()).double()
     sampler = torch.utils.data.WeightedRandomSampler(w, len(ys), replacement=True, generator=torch.Generator().manual_seed(a.seed))
@@ -291,6 +368,11 @@ def main():
                                          worker_init_fn=lambda _: torch.set_num_threads(1), persistent_workers=True)
     opt = torch.optim.AdamW([{"params": [p for p in model.trainable_blocks.parameters() if p.requires_grad], "lr": LR_LORA if a.lora else LR_BLOCKS},
                              {"params": model.head.parameters(), "lr": LR_HEAD}], weight_decay=0.01)
+    # Cosine over the whole run, floored so the last steps still move. LambdaLR MULTIPLIES each
+    # group's own lr, so the floor is expressed as a fraction: 1e-6 / LR_BLOCKS lands the block
+    # group at 1e-6. LR_LORA and LR_BLOCKS are both 2e-4 today, so the LoRA arm gets the same floor;
+    # if they are ever set apart, this expression has to become per-group or the adapters will floor
+    # at the wrong value.
     total = EPOCHS * len(loader)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: max(1e-6 / LR_BLOCKS, 0.5 * (1 + math.cos(math.pi * s / total))))
     history, best = [], (-1.0, None)
@@ -302,8 +384,15 @@ def main():
             px, y = px.to(dev, non_blocking=True), y.to(dev)
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 ev = model(px)
+            # DISCERN's evidential loss. `ep` and `EPOCHS` are not bookkeeping: they drive the KL
+            # annealing, which ramps the penalty on evidence assigned to the WRONG class from 0 to
+            # full over the run. Early epochs may be confidently wrong cheaply; later ones may not.
             loss = evidential_loss_discern_ext(ev.float(), y, 2, ep, EPOCHS).mean()
             opt.zero_grad(set_to_none=True); loss.backward(); opt.step(); sched.step(); losses.append(loss.item())
+        # Selection runs on the CLEAN development sets only; processed severities are scored later
+        # but never fitted or selected on. The left merge is against the detector's own development
+        # table, so the branch is scored on exactly the videos every other view was scored on, and
+        # the assert catches a scope or identity mismatch here rather than as a silent shortfall.
         o = pd.concat([opinions(model, n, dev, workers=a.workers) for n in DEV])
         t = devtab[["v", "source", "subset", "y"]].merge(o[["v", "p"]], on="v", how="left")
         assert t.p.notna().all(), "development videos without branch opinions"
@@ -311,7 +400,7 @@ def main():
         history.append({"epoch": ep, "train_loss": float(np.mean(losses)), "dev_v31": score, "types": types,
                         "minutes": (time.time() - t0) / 60})
         print(f"epoch {ep}: loss {np.mean(losses):.4f} dev v3.1 {score:.4f} {types} ({(time.time() - t0) / 60:.0f} min)", flush=True)
-        if score > best[0] + 1e-6:
+        if score > best[0] + 1e-6:      # strict improvement, so ties keep the EARLIER epoch
             best = (score, ep)
             torch.save({"epoch": ep, "trainable_blocks": trainable_state(model), "head": model.head.state_dict()},
                        out_dir / "best.pt")
