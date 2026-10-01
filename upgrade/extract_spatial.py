@@ -54,6 +54,13 @@ SPECS = {
     # runs and the number is in the report. Scale is also not matched to CLIP/DINOv3 -- 86M against
     # 303M -- so a loss here is not evidence against the PE family.
     "pe_spatial": {"kind": "timm", "id": "vit_pe_spatial_base_patch16_512", "size": 512, "readout": "pooled"},
+    # PE-Core LARGE, added 2026-10-01 on Dr Kutub's suggestion that PE-Core is strong spatially.
+    # `pe` above is PE-Core BASE at 224: 86M against CLIP ViT-L/14's 303M, so when it lost the
+    # earlier screen the result confounded backbone with capacity. This is the size-MATCHED control
+    # the independent-views report said was needed and could not run, because 256 -> 336 is an
+    # upsample and that brief forbade it. This brief asks for the fraction instead, so it runs:
+    # 100% upsampled, 1.31x -- far milder than pe_spatial's 2.0x.
+    "pe_core_l": {"kind": "timm", "id": "vit_pe_core_large_patch14_336", "size": 336, "readout": "pooled"},
 }
 
 
