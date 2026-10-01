@@ -19,13 +19,14 @@ configuration to assemble.
 | 1 | IBDC on current views | **done, except J1s** | `analysis/joint_ibdc/*` (J1 x3 seeds, both lambda sweeps, chosen-lambda seeds, j2b_verdict, collapse check all on disk); hinge margin added: `analysis/upgrade/part1_hinge_margin.json`. J1s not runnable -- definition absent. |
 | 2a | Threshold transfer vs ranking | TODO(run) | |
 | 2b | Feature-space factor profile (ESP adaptation) | TODO(run) | |
-| 3a | Extraction: DINOv3, PE-Spatial | DINOv3 cached; pe_spatial running (GPU 1) | `logs/upgrade/feats/`; 108 f/s at 512 |
-| 3b | Frozen screen | TODO(run) | |
-| 3c | Adaptation of shortlist (L and N recipes) | TODO(run) | |
+| 3a | Extraction: spatial backbones | **done** | `logs/upgrade/feats/` — clip, dinov3, pe, pe_spatial, pe_core_l x 4 splits |
+| 3d | Layer readout (last/mid/half + combos) | running (GPU 3) | added 2026-10-01 on UMAR's premise; `logs/upgrade/lfeats/` |
+| 3b | Frozen screen | **done** | `analysis/upgrade/screen_*.json`. Shortlist by incremental contribution: **PE-Core-L (+0.0042), CLIP (+0.0037)**. PE-Core at matched scale beats CLIP on FF++ val and fused AUROC but is worse on real-video FPR (0.105 vs 0.075). |
+| 3c | Adaptation of shortlist (L and N recipes) | running (GPU 1) | `analysis/upgrade/adapt/`; ~13 min/epoch, ~4.3 h per run, 4 runs |
 | 4 | Processing suppression (MC/PD/LEACE/RND) | TODO(run) | |
 | 5 | Label-preserving consistency (C-AUG, C-CONS) | TODO(run) | |
-| 6a | Extraction: video backbones | running (GPU 3) | `logs/upgrade/vfeats/`; 18.3 vid/s probed |
-| 6b | Global swap vs TD | TODO(run) | |
+| 6a | Extraction: video backbones | **done** | `logs/upgrade/vfeats/` — vjepa2_l and vjepa2_h x 4 splits |
+| 6b | Global swap vs TD | **frozen heads done** | `analysis/upgrade/heads/view_vjepa2_{l,h}_s0.json`: ViT-H 0.7419 dev v3.1 vs ViT-L 0.6892 (+0.053), VALmix-v2 +0.071, same 256 input |
 | 6c | Regional evidence (R-REG vs R-GLOB, R-POOL) | TODO(run) | |
 | 7 | Fillers (stability, mapping, neuron ESP) | TODO(run) | |
 | 8 | Final assembly, 3 seeds, tests, tables | TODO(run) | |
@@ -44,6 +45,14 @@ configuration to assemble.
 - 2026-10-01: GPU 3 added (6.5 GiB used of 143, under UMAR's 80-100 GiB bar). Two lanes now.
 - 2026-10-01: pe_spatial throughput probe 108 f/s at 512 input -> FFpp_train ~18 min. Under budget.
 - 2026-10-01: vjepa2_h probe 18.3 vid/s -> every split minutes, not hours. Part 6a is not a long pole.
+- 2026-10-01: Dr Kutub suggested PE-Core for the spatial branch. The earlier screen had tested only
+  PE-Core BASE/224 (86M vs CLIP's 303M) and it lost; at matched scale (L14-336) it has the highest
+  incremental contribution in the screen. The B16 loss was a capacity artifact. Part 3d added on
+  UMAR's layer-readout premise and written into the brief.
+- 2026-10-01: a smoke test was killed by the harness 30-min background limit, which exposed a real
+  cost bug: selection re-encoded ~140k development frames EVERY epoch through the adapting backbone.
+  Now a fixed stratified subsample (10k) drives selection and the chosen epoch is re-scored on the
+  full sets, so the reported number is never the subsampled one. Long runs are detached via setsid.
 - 2026-10-01: Part 1 hinge-margin residue run. **It qualifies G0b.** G0b's headline is 65% of
   training samples active under equal trust, but `active` only means margin > 0: the median margin
   there is 2.1e-4 and just 27% of active samples exceed 1e-2, so the effective rate is ~18%. Under

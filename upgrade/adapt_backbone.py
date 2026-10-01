@@ -44,6 +44,12 @@ LORA_R, LORA_ALPHA, LORA_DROPOUT = 8, 16, 0.1
 DEV_SETS = ("VALmix", "VALmixV2", "FFpp_val")
 V2_SOURCES = {"CDFv3valG", "DF40train", "DS20val", "DS11val", "FFIWval"}
 MAX_TRAIN_FRAMES = 40000     # budget cap; the frozen screen used all of FF++ train
+# Selection re-encodes the development frames through the ADAPTING backbone every epoch, so unlike
+# the frozen screen it cannot cache them. At PE-Core-L's 336 input that is ~60k frames per epoch and
+# it dominates the run -- the first smoke test spent more time scoring than training. Selection runs
+# on a fixed stratified subsample instead, and the chosen epoch is re-scored on the FULL development
+# sets at the end, so the reported number is never the subsampled one.
+MAX_DEV_FRAMES = 12000
 
 
 class LoRALinear(nn.Module):
@@ -120,6 +126,25 @@ def build(name, dev, recipe):
 def embed(m, spec, x, recipe):
     z = m(x).last_hidden_state[:, 0] if spec["kind"] == "hf" else m(x)
     return F.normalize(z, dim=-1) if recipe == "N" else z      # L2-normalised features for GenD's recipe
+
+
+def subsample(X, K, limit, seed):
+    """Fixed stratified-by-video subsample, so every epoch scores the same frames."""
+    if not limit or len(K) <= limit:
+        return X, K
+    vid = np.array([video_of_key(k) for k in K])
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(K))
+    seen, keep = {}, []
+    per = max(1, limit // max(1, len(np.unique(vid))))
+    for i in order:                       # round-robin over videos so no video dominates
+        v = vid[i]
+        if seen.get(v, 0) < per:
+            seen[v] = seen.get(v, 0) + 1; keep.append(i)
+        if len(keep) >= limit:
+            break
+    keep = np.sort(np.array(keep))
+    return X[keep], K[keep]
 
 
 def frames_of(dataset, size, limit=0, seed=0):
@@ -201,12 +226,14 @@ def main() -> int:
     t0 = time.time()
     Xtr, Ktr = frames_of("FFpp_train", spec["size"], a.train_frames, a.seed)
     ytr = np.array([0 if "real" in str(k).split("/")[-3].lower() else 1 for k in Ktr])
-    cache = {}
+    cache, full = {}, {}
     for n in DEV_SETS:
         X, K = frames_of(n, spec["size"])
-        cache[n] = (X, K, mean, std)
-    print(f"  data ready in {(time.time()-t0)/60:.1f} min: train {len(Xtr)}, "
-          + ", ".join(f"{n} {len(cache[n][0])}" for n in DEV_SETS), flush=True)
+        full[n] = (X, K, mean, std)
+        Xs, Ks = subsample(X, K, MAX_DEV_FRAMES // len(DEV_SETS), a.seed)
+        cache[n] = (Xs, Ks, mean, std)
+    print(f"  data ready in {(time.time()-t0)/60:.1f} min: train {len(Xtr)}, selection on "
+          + ", ".join(f"{n} {len(cache[n][0])}/{len(full[n][0])}" for n in DEV_SETS), flush=True)
 
     d = embed(m, spec, torch.zeros(1, 3, spec["size"], spec["size"], device=dev), a.recipe).shape[-1]
     head = Head(d).to(dev)
@@ -244,7 +271,18 @@ def main() -> int:
                                        if any(t in k for t in (".a.", ".b.", "norm", "ln"))}})
             torch.save({"epoch": ep, **best[2]}, OUT / f"{tag}.pt")
 
+    # Re-score the selected epoch on the FULL development sets; the per-epoch numbers above are
+    # the subsample and are kept in `history` so the two are never confused.
+    ck = torch.load(OUT / f"{tag}.pt", map_location=dev)
+    head.load_state_dict(ck["head"])
+    miss = m.load_state_dict({**m.state_dict(), **{k: v.to(dev) for k, v in ck["adapt"].items()}}, strict=False)
+    sc_f, v2_f, ff_f = dev_scores(m, spec, head, dev, a.recipe, full)
+    print(f"  selected epoch {ck['epoch']} re-scored on FULL dev: v3.1 {sc_f:.4f} "
+          f"VALmix-v2 {v2_f:.4f} FF++val {ff_f:.4f}", flush=True)
+
     json.dump({"backbone": a.backbone, "recipe": a.recipe, "seed": a.seed, "dim": int(d),
+               "dev_v31_full": sc_f, "valmixv2_full": v2_f, "ffpp_val_auroc_full": ff_f,
+               "selection_dev_frames": int(sum(len(cache[n][0]) for n in DEV_SETS)),
                "input_size": spec["size"], "trainable_params": int(n_tr), "fused_qkv": bool(fused),
                "train_frames": int(len(Xtr)), "best_epoch": best[1], "dev_v31": best[0],
                "valmixv2": hist[best[1]]["valmixv2"], "ffpp_val_auroc": hist[best[1]]["ffpp_val_auroc"],
