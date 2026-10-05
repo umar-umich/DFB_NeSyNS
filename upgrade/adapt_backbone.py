@@ -123,9 +123,42 @@ def build(name, dev, recipe):
     return m.to(dev), mean.to(dev), std.to(dev), spec, params, fused
 
 
-def embed(m, spec, x, recipe):
-    z = m(x).last_hidden_state[:, 0] if spec["kind"] == "hf" else m(x)
-    return F.normalize(z, dim=-1) if recipe == "N" else z      # L2-normalised features for GenD's recipe
+_HOOKS: dict = {}
+
+
+def attach_depth_hooks(m, spec, readout):
+    """Capture patch tokens at the depths a multi-layer readout needs. Part 3d found the combined
+    readout is the best frozen row on PE-Core, but adaptation so far trains only the LAST block's
+    output -- so the two best findings had never been combined. `--readout last+mid+half` does that."""
+    comps = [c for c in readout.split("+") if c != "last"]
+    if not comps:
+        return {}
+    blocks = (list(m.encoder.layers) if spec["kind"] == "hf"
+              else list(getattr(m, "blocks", getattr(m, "layers", []))))
+    n = len(blocks)
+    ratio = {"mid": 2 / 3, "half": 1 / 2}
+    idx = {c: max(0, min(n - 1, int(round(n * ratio[c])) - 1)) for c in comps}
+
+    def hook(name):
+        def fn(_mod, _inp, out):
+            _HOOKS[name] = out[0] if isinstance(out, tuple) else out
+        return fn
+
+    for c, i in idx.items():
+        blocks[i].register_forward_hook(hook(c))
+    return idx
+
+
+def embed(m, spec, x, recipe, readout="last"):
+    z = m(x)
+    last = z.last_hidden_state[:, 0] if spec["kind"] == "hf" else z
+    if readout == "last":
+        return F.normalize(last, dim=-1) if recipe == "N" else last
+    parts = []
+    for c in readout.split("+"):
+        v = last if c == "last" else _HOOKS[c][:, 1:].mean(1)
+        parts.append(F.normalize(v.float(), dim=-1))     # per-component L2, as in the frozen study
+    return torch.cat(parts, dim=-1)
 
 
 def subsample(X, K, limit, seed):
@@ -172,7 +205,7 @@ def video_of_key(k: str) -> str:
 
 
 @torch.no_grad()
-def dev_scores(m, spec, head, dev, recipe, cache, bs=64):
+def dev_scores(m, spec, head, dev, recipe, cache, readout="last", bs=64):
     """Frame probabilities -> per-video mean -> v3.1, exactly as the frozen screen scores."""
     m.eval(); head.eval()
     out = {}
@@ -181,7 +214,7 @@ def dev_scores(m, spec, head, dev, recipe, cache, bs=64):
         for i in range(0, len(X), bs):
             x = torch.from_numpy(X[i:i + bs]).permute(0, 3, 1, 2).float().div_(255).to(dev)
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                ev = head(embed(m, spec, (x - mean) / std, recipe).float())
+                ev = head(embed(m, spec, (x - mean) / std, recipe, readout).float())
             a = ev + 1.0
             ps.append((a / a.sum(1, keepdim=True))[:, 1].float().cpu().numpy())
         p = np.concatenate(ps)
@@ -210,17 +243,20 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--batch", type=int, default=BATCH)
     ap.add_argument("--train-frames", type=int, default=MAX_TRAIN_FRAMES)
+    ap.add_argument("--readout", default="last",
+                    help="last | mid | half | last+mid | last+mid+half (Part 3d readout, adapted)")
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
-    tag = f"{a.backbone}_{a.recipe}_s{a.seed}"
+    tag = f"{a.backbone}_{a.recipe}_s{a.seed}" + ("" if a.readout == "last" else f"_{a.readout.replace(chr(43),chr(45))}")
     if (OUT / f"{tag}.json").exists():
         print(f"{tag} exists"); return 0
 
     dev = "cuda"
     torch.manual_seed(a.seed); np.random.seed(a.seed)
     m, mean, std, spec, params, fused = build(a.backbone, dev, a.recipe)
+    depth_idx = attach_depth_hooks(m, spec, a.readout)
     n_tr = sum(p.numel() for p in params)
-    print(f"{tag}: input {spec['size']}, trainable {n_tr/1e6:.2f} M"
+    print(f"{tag}: input {spec['size']}, readout {a.readout} {depth_idx}, trainable {n_tr/1e6:.2f} M"
           + (" (fused qkv: key adapted too)" if fused else ""), flush=True)
 
     t0 = time.time()
@@ -235,7 +271,7 @@ def main() -> int:
     print(f"  data ready in {(time.time()-t0)/60:.1f} min: train {len(Xtr)}, selection on "
           + ", ".join(f"{n} {len(cache[n][0])}/{len(full[n][0])}" for n in DEV_SETS), flush=True)
 
-    d = embed(m, spec, torch.zeros(1, 3, spec["size"], spec["size"], device=dev), a.recipe).shape[-1]
+    d = embed(m, spec, torch.zeros(1, 3, spec["size"], spec["size"], device=dev), a.recipe, a.readout).shape[-1]
     head = Head(d).to(dev)
     opt = torch.optim.AdamW([{"params": params, "lr": LR_ADAPT},
                              {"params": head.parameters(), "lr": LR_HEAD}], weight_decay=WD)
@@ -256,11 +292,11 @@ def main() -> int:
             x = torch.from_numpy(Xtr[j]).permute(0, 3, 1, 2).float().div_(255).to(dev)
             y = torch.from_numpy(ytr[j]).to(dev)
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                ev = head(embed(m, spec, (x - mean) / std, a.recipe).float())
+                ev = head(embed(m, spec, (x - mean) / std, a.recipe, a.readout).float())
             loss = evidential_loss_discern_ext(ev.float(), y, 2, ep, EPOCHS).mean()
             opt.zero_grad(set_to_none=True); loss.backward(); opt.step(); sched.step()
             losses.append(loss.item())
-        sc, v2, ff = dev_scores(m, spec, head, dev, a.recipe, cache)
+        sc, v2, ff = dev_scores(m, spec, head, dev, a.recipe, cache, a.readout)
         hist.append({"epoch": ep, "loss": float(np.mean(losses)), "dev_v31": sc,
                      "valmixv2": v2, "ffpp_val_auroc": ff, "minutes": (time.time() - t0) / 60})
         print(f"  epoch {ep} loss {np.mean(losses):.4f} dev v3.1 {sc:.4f} VALmix-v2 {v2:.4f} "
@@ -276,7 +312,7 @@ def main() -> int:
     ck = torch.load(OUT / f"{tag}.pt", map_location=dev)
     head.load_state_dict(ck["head"])
     miss = m.load_state_dict({**m.state_dict(), **{k: v.to(dev) for k, v in ck["adapt"].items()}}, strict=False)
-    sc_f, v2_f, ff_f = dev_scores(m, spec, head, dev, a.recipe, full)
+    sc_f, v2_f, ff_f = dev_scores(m, spec, head, dev, a.recipe, full, a.readout)
     print(f"  selected epoch {ck['epoch']} re-scored on FULL dev: v3.1 {sc_f:.4f} "
           f"VALmix-v2 {v2_f:.4f} FF++val {ff_f:.4f}", flush=True)
 
@@ -284,6 +320,7 @@ def main() -> int:
                "dev_v31_full": sc_f, "valmixv2_full": v2_f, "ffpp_val_auroc_full": ff_f,
                "selection_dev_frames": int(sum(len(cache[n][0]) for n in DEV_SETS)),
                "input_size": spec["size"], "trainable_params": int(n_tr), "fused_qkv": bool(fused),
+               "readout": a.readout, "depth_index": depth_idx,
                "train_frames": int(len(Xtr)), "best_epoch": best[1], "dev_v31": best[0],
                "valmixv2": hist[best[1]]["valmixv2"], "ffpp_val_auroc": hist[best[1]]["ffpp_val_auroc"],
                "minutes": round((time.time() - t0) / 60, 1), "history": hist},
