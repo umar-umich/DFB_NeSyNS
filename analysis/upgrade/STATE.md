@@ -17,14 +17,14 @@ configuration to assemble.
 | Part | What | Status | Evidence |
 |---|---|---|---|
 | 1 | IBDC on current views | **done, except J1s** | `analysis/joint_ibdc/*` (J1 x3 seeds, both lambda sweeps, chosen-lambda seeds, j2b_verdict, collapse check all on disk); hinge margin added: `analysis/upgrade/part1_hinge_margin.json`. J1s not runnable -- definition absent. |
-| 2a | Threshold transfer vs ranking | TODO(run) | |
+| 2a | Threshold transfer | partial | only the 2 processed cells resolved; the ten test sets did not load |
 | 2b | Feature-space factor profile (ESP adaptation) | TODO(run) | |
 | 3a | Extraction: spatial backbones | **done** | `logs/upgrade/feats/` — clip, dinov3, pe, pe_spatial, pe_core_l x 4 splits |
-| 3d | Layer readout (last/mid/half + combos) | running (GPU 3) | added 2026-10-01 on UMAR's premise; `logs/upgrade/lfeats/` |
+| 3d | Layer readout | **done** | PASS on frozen PE-Core (+0.0060 vs +0.0008); does NOT compound with adaptation |
 | 3b | Frozen screen | **done** | `analysis/upgrade/screen_*.json`. Shortlist by incremental contribution: **PE-Core-L (+0.0042), CLIP (+0.0037)**. PE-Core at matched scale beats CLIP on FF++ val and fused AUROC but is worse on real-video FPR (0.105 vs 0.075). |
-| 3c | Adaptation of shortlist (L and N recipes) | running (GPU 1) | `analysis/upgrade/adapt/`; ~13 min/epoch, ~4.3 h per run, 4 runs |
-| 4 | Processing suppression (MC/PD/LEACE/RND) | TODO(run) | |
-| 5 | Label-preserving consistency (C-AUG, C-CONS) | TODO(run) | |
+| 3c | Adaptation of shortlist | **done, 8 runs incl. 3 seeds** | winner **pe_core_l + LayerNorm(N)**: fused 0.9329, real FPR 0.0603, incremental **+0.0248** |
+| 4 | Suppression | 4b done, 4c rerunning | subspaces fitted; rows failed silently once, relaunched with stderr captured |
+| 5 | Consistency | **done, NEGATIVE** | C-CONS 0.8343 vs C-AUG 0.8340 = +0.0003; the term adds nothing over its augmentation control |
 | 6a | Extraction: video backbones | **done** | `logs/upgrade/vfeats/` — vjepa2_l and vjepa2_h x 4 splits |
 | 6b | Global swap vs TD | **frozen heads done** | `analysis/upgrade/heads/view_vjepa2_{l,h}_s0.json`: ViT-H 0.7419 dev v3.1 vs ViT-L 0.6892 (+0.053), VALmix-v2 +0.071, same 256 input |
 | 6c | Regional evidence (R-REG vs R-GLOB, R-POOL) | TODO(run) | |

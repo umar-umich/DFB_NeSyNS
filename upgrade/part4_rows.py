@@ -39,8 +39,12 @@ LAMBDAS = (0.25, 0.5, 0.75)
 
 
 def project_out(X, U, lam=1.0):
-    """z' = z - lam * U U^T z. lam=1 is a full projection; lam<1 is partial suppression."""
-    return X - lam * ((X @ U) @ U.T)
+    """z' = z - lam * U U^T z. lam=1 is a full projection; lam<1 is partial suppression.
+
+    Cast back to float32: the LEACE eraser and the SVD bases come out of float64 linear algebra, and
+    a float64 feature silently meets float32 head weights as a dtype error at the first matmul.
+    """
+    return (X - lam * ((X @ U) @ U.T)).astype(np.float32)
 
 
 def boot_ci(a, b, groups, rng, n=1000):
@@ -145,7 +149,7 @@ def main() -> int:
     for lam in LAMBDAS:
         U = S["PD"]; d, pc = proj_all(U, lam); run(f"A-PD-{lam}", project_out(tr["x"], U, lam), d, pc)
     P = S["LEACE"]; mu = S["leace_mu"]
-    lea = lambda X: (X - mu) @ P.T + mu
+    lea = lambda X: ((X - mu) @ P.T + mu).astype(np.float32)
     run("A-LEACE", lea(tr["x"]), {n: {**D, "x": lea(D["x"])} for n, D in DEVC.items()},
         {p: (None if c is None else {**c, "x": lea(c["x"])}) for p, c in PROC.items()})
     rnd = []

@@ -19,7 +19,15 @@ and are never filled in from a neighbouring number.
 
 ## 2. Diagnostics
 
-### 2a. TODO(run)
+### 2a. Threshold transfer versus ranking
+
+A set with healthy AUROC but high FPR at the FF++ threshold has a threshold-transfer
+problem, not a ranking one. Analysis only; no rule reads it.
+
+| set | AUROC | FPR@FF++ tau | FPR@own EER | gap | ECE |
+|---|---:|---:|---:|---:|---:|
+| rs06 | 0.8805 | 0.1309 | 0.2019 | -0.0709 | 0.1709 |
+| jpeg40 | 0.8474 | 0.0442 | 0.2275 | -0.1833 | 0.3726 |
 
 ### Part 1 residue: the hinge margin qualifies G0b
 
@@ -49,9 +57,9 @@ only means `kappa - u_f > 0`. The margin's own distribution:
 | pe_spatial | 0.6842 | 0.8721 | 0.9093 | 0.1131 | +0.0000 |
 | pe_core_l | 0.7426 | 0.9144 | 0.9135 | 0.1052 | +0.0042 |
 | clipL | 0.8605 | 0.9945 | 0.9259 | 0.0997 | +0.0187 |
-| clipN | TODO(run) | TODO(run) | TODO(run) | TODO(run) | TODO(run) |
+| clipN | 0.8433 | 0.9898 | 0.9144 | 0.0872 | +0.0051 |
 | pe_core_lL | 0.8699 | 0.9947 | 0.9302 | 0.0876 | +0.0224 |
-| pe_core_lN | TODO(run) | TODO(run) | TODO(run) | TODO(run) | TODO(run) |
+| pe_core_lN | 0.8679 | 0.9929 | 0.9329 | 0.0603 | +0.0248 |
 
 ### Layer readout (Part 3d)
 
@@ -75,7 +83,12 @@ only means `kappa - u_f > 0`. The margin's own distribution:
 | clip_L_s0 | last | 10 | 0.8575 | 0.8907 | 0.9939 |
 | clip_N_s0 | last | 8 | 0.8229 | 0.8474 | 0.9891 |
 | pe_core_l_L_s0 | last | 2 | 0.8676 | 0.9114 | 0.9943 |
+| pe_core_l_L_s0 | last+mid+half | 9 | 0.8700 | 0.9255 | 0.9959 |
+| pe_core_l_L_s0 | last+mid | 4 | 0.8737 | 0.9248 | 0.9949 |
+| pe_core_l_L_s1 | last | 5 | 0.8604 | 0.9068 | 0.9954 |
+| pe_core_l_L_s2 | last | 8 | 0.8762 | 0.9253 | 0.9946 |
 | pe_core_l_N_s0 | last | 16 | 0.8634 | 0.9079 | 0.9924 |
+| pe_core_l_N_s0 | last+mid+half | 6 | 0.8678 | 0.9139 | 0.9923 |
 
 ## 4. Suppression study — TODO(run)
 

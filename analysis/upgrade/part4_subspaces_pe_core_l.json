@@ -1,0 +1,39 @@
+{
+ "feats": "pe_core_l",
+ "readout": "last+mid+half",
+ "dim": 3072,
+ "settings_present": [
+  "jpeg:70",
+  "jpeg:50",
+  "jpeg:30",
+  "resize:0.75",
+  "resize:0.50",
+  "resize:0.35"
+ ],
+ "paired_frames": 691188,
+ "MC": {
+  "rank": 6
+ },
+ "PD": {
+  "rank": 32,
+  "explained_variance": 0.747150182723999
+ },
+ "RND": {
+  "rank": 32,
+  "draws": 5
+ },
+ "LEACE": {
+  "erased_rank": 7,
+  "population": 806386,
+  "levels": [
+   "jpeg:30",
+   "jpeg:50",
+   "jpeg:70",
+   "none",
+   "resize:0.35",
+   "resize:0.50",
+   "resize:0.75"
+  ]
+ },
+ "note": "RND is the control that decides the study: projecting out any k directions removes capacity, so a PD gain over A0 is only evidence if it also beats RND at the same rank. LEACE erases LINEAR predictability of the processing label; it does not guarantee a nonlinear head cannot recover it."
+}

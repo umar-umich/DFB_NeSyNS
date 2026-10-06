@@ -1,0 +1,27 @@
+{
+ "arm": "PCR6P-R",
+ "ffpp_tau": 0.492172251411776,
+ "sets": {
+  "jpeg40": {
+   "videos": 5814,
+   "auroc": 0.847416115802654,
+   "fpr_at_ffpp_tau": 0.044189852700491,
+   "tpr_at_ffpp_tau": 0.39588043205224815,
+   "fpr_at_own_eer": 0.22749590834697217,
+   "own_eer_tau": 0.09743448343100938,
+   "ece": 0.3725573261569992,
+   "threshold_transfer_gap": -0.18330605564648117
+  },
+  "rs06": {
+   "videos": 5814,
+   "auroc": 0.8805177018552255,
+   "fpr_at_ffpp_tau": 0.1309328968903437,
+   "tpr_at_ffpp_tau": 0.7103742778196434,
+   "fpr_at_own_eer": 0.20185488270594654,
+   "own_eer_tau": 0.3353501751306117,
+   "ece": 0.17085038085879128,
+   "threshold_transfer_gap": -0.07092198581560283
+  }
+ },
+ "note": "Analysis only; no rule reads this. A high `fpr_at_ffpp_tau` beside a healthy `auroc` and a small `fpr_at_own_eer` is a threshold-transfer problem, not a ranking one."
+}

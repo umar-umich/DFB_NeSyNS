@@ -1,0 +1,6 @@
+{
+ "row": "R-REG",
+ "model": "vjepa2_h",
+ "status": "TODO(run)",
+ "reason": "regional feature cache absent; dense per-region extraction not yet run"
+}
