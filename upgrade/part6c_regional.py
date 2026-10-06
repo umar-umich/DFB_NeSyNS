@@ -86,29 +86,144 @@ class MatchedMLP(nn.Module):
         return F.softplus(self.net(x))
 
 
+def load(model, dataset):
+    """(videos, time groups, regions, dim) plus labels and video ids."""
+    f = VF / f"{model}_regional_{dataset}.npz"
+    z = np.load(f, allow_pickle=True)
+    X = z["feature"].astype(np.float32)
+    return {"x": X, "y": z["label"].astype(np.int64),
+            "v": np.array([str(v) for v in z["video"]]),
+            "key": np.array([str(v) + "/000.png" for v in z["video"]], dtype=object),
+            "regions": [str(r) for r in z["regions"]]}
+
+
+def shape_for(row, X):
+    """R-REG keeps the (time, region) grid; the controls collapse it, each in one specific way."""
+    if row == "R-REG":
+        return X                                   # (N, T, R, D)
+    if row == "R-POOL":
+        return X.mean(2)                           # mean over REGIONS -> (N, T, D), then flattened
+    return X.mean((1, 2))                          # R-GLOB: global pool -> (N, D)
+
+
+def build(row, X, dev):
+    N, T, R, D = X.shape
+    if row == "R-REG":
+        m = RegionalTransformer(D, R, T)
+        return m.to(dev), sum(p.numel() for p in m.parameters())
+    ref = sum(p.numel() for p in RegionalTransformer(D, R, T).parameters())
+    d_in = D * T if row == "R-POOL" else D
+    return MatchedMLP(d_in, ref).to(dev), ref
+
+
+def feats(row, X):
+    if row == "R-REG":
+        return X
+    if row == "R-POOL":
+        return X.mean(2).reshape(len(X), -1)
+    return X.mean((1, 2))
+
+
+def score(model, row, DEVC, dev, perm=None, region_mask=None):
+    model.eval(); out = {}
+    with torch.no_grad():
+        for n, D in DEVC.items():
+            X = D["x"]
+            if perm is not None:
+                X = X[:, perm]                     # frame-order control: permute the time groups
+            Z = feats(row, X)
+            p = []
+            for i in range(0, len(Z), 256):
+                b = torch.from_numpy(Z[i:i + 256]).to(dev)
+                ev = model(b, region_mask)
+                a = ev + 1.0
+                p.append((a / a.sum(1, keepdim=True))[:, 1].cpu().numpy())
+            out[n] = np.concatenate(p)
+    dk, dp, dy = [], [], []
+    for n in ("VALmix", "VALmixV2"):
+        dk += list(DEVC[n]["key"]); dp.append(out[n]); dy.append(DEVC[n]["y"])
+    ff = DEVC["FFpp_val"]
+    sc, _t, cells = V31.score(dk, np.concatenate(dp), np.concatenate(dy), ff["key"], out["FFpp_val"], ff["y"])
+    v2 = float(np.nanmean([v for (t, s), v in cells.items() if s in V2_SOURCES and not np.isnan(v)]))
+    return sc, v2, V31.fast_auc(out["FFpp_val"][ff["y"] == 0], out["FFpp_val"][ff["y"] == 1])
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--row", required=True, choices=["R-REG", "R-GLOB", "R-POOL"])
     ap.add_argument("--model", default="vjepa2_h")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--shuffle-eval", type=int, default=5, help="frame-order control permutations")
+    ap.add_argument("--shuffle-eval", type=int, default=5)
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     tag = f"{a.model}_{a.row}_s{a.seed}"
     if (OUT / f"{tag}.json").exists():
         print(f"{tag} exists"); return 0
-
     need = VF / f"{a.model}_regional_FFpp_train.npz"
     if not need.exists():
-        print(f"regional cache missing: {need}\n"
-              f"Part 6a cached GLOBAL pooled features only; the dense per-region pass has not been "
-              f"run. This row cannot be scored yet -- recorded as TODO(run) rather than approximated "
-              f"from global features, which would not be the experiment the brief asks for.")
+        print(f"regional cache missing: {need}")
         json.dump({"row": a.row, "model": a.model, "status": "TODO(run)",
-                   "reason": "regional feature cache absent; dense per-region extraction not yet run"},
-                  open(OUT / f"{tag}.TODO.json", "w"), indent=1)
+                   "reason": "regional feature cache absent"}, open(OUT / f"{tag}.TODO.json", "w"), indent=1)
         return 3
-    print("regional cache present; training", flush=True)
+
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    torch.manual_seed(a.seed); np.random.seed(a.seed)
+    TR = load(a.model, "FFpp_train")
+    DEVC = {n: load(a.model, n) for n in DEV_SETS}
+    model, n_par = build(a.row, TR["x"], dev)
+    print(f"{tag}: {TR['x'].shape} -> {a.row}, {n_par/1e3:.1f}K params "
+          f"(matched to the transformer's)", flush=True)
+
+    Xtr, ytr = feats(a.row, TR["x"]), TR["y"]
+    opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WD)
+    rng = np.random.default_rng(a.seed)
+    w = np.where(ytr == 1, 1 / max(1, (ytr == 1).sum()), 1 / max(1, (ytr == 0).sum())); w /= w.sum()
+    hist, best = [], (-1.0, None, None)
+    for ep in range(EPOCHS):
+        model.train()
+        idx = rng.choice(len(Xtr), len(Xtr), replace=True, p=w)
+        ls = []
+        for i in range(0, len(idx) - BATCH + 1, BATCH):
+            j = idx[i:i + BATCH]
+            ev = model(torch.from_numpy(Xtr[j]).to(dev))
+            loss = evidential_loss_discern_ext(ev, torch.from_numpy(ytr[j]).to(dev), 2, ep, EPOCHS).mean()
+            opt.zero_grad(set_to_none=True); loss.backward(); opt.step(); ls.append(loss.item())
+        sc, v2, ff = score(model, a.row, DEVC, dev)
+        hist.append({"epoch": ep, "loss": float(np.mean(ls)), "dev_v31": sc, "valmixv2": v2,
+                     "ffpp_val_auroc": ff})
+        print(f"  epoch {ep} loss {np.mean(ls):.4f} dev v3.1 {sc:.4f} VALmix-v2 {v2:.4f} FF++val {ff:.4f}", flush=True)
+        if sc > best[0] + 1e-6:
+            best = (sc, ep, {k: v.detach().clone() for k, v in model.state_dict().items()})
+    model.load_state_dict(best[2])
+    torch.save({"state": best[2], "epoch": best[1]}, OUT / f"{tag}.pt")
+
+    # --- diagnostic 1: frame order shuffled at evaluation
+    T = TR["x"].shape[1]
+    sh = []
+    for s in range(a.shuffle_eval):
+        perm = np.random.default_rng(1000 + s).permutation(T)
+        sh.append(score(model, a.row, DEVC, dev, perm=perm)[0])
+    # --- diagnostic 2: ablate one region at a time (R-REG only; the controls have no regions)
+    abl = {}
+    if a.row == "R-REG":
+        R = TR["x"].shape[2]
+        for r in range(R):
+            mask = torch.ones(R, device=dev); mask[r] = 0
+            abl[TR["regions"][r]] = score(model, a.row, DEVC, dev, region_mask=mask)[0]
+
+    res = {"row": a.row, "model": a.model, "seed": a.seed, "params": int(n_par),
+           "best_epoch": best[1], "dev_v31": best[0],
+           "valmixv2": hist[best[1]]["valmixv2"], "ffpp_val_auroc": hist[best[1]]["ffpp_val_auroc"],
+           "shuffled_dev_v31": {"mean": float(np.mean(sh)), "sd": float(np.std(sh)), "draws": sh,
+                                "delta_vs_clean": float(np.mean(sh) - best[0])},
+           "region_ablation_dev_v31": abl,
+           "note": ("A gain that SURVIVES frame shuffling is regional aggregation, not temporal "
+                    "modelling. The five regions OVERLAP by construction, so an ablation does not "
+                    "remove a region's patches from the others."),
+           "history": hist}
+    json.dump(res, open(OUT / f"{tag}.json", "w"), indent=1)
+    print(f"{tag}: dev v3.1 {best[0]:.4f}  shuffled {np.mean(sh):.4f} "
+          f"(delta {np.mean(sh)-best[0]:+.4f})", flush=True)
     return 0
 
 
