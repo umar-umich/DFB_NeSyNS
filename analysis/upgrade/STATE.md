@@ -23,7 +23,7 @@ configuration to assemble.
 | 3d | Layer readout | **done** | PASS on frozen PE-Core (+0.0060 vs +0.0008); does NOT compound with adaptation |
 | 3b | Frozen screen | **done** | `analysis/upgrade/screen_*.json`. Shortlist by incremental contribution: **PE-Core-L (+0.0042), CLIP (+0.0037)**. PE-Core at matched scale beats CLIP on FF++ val and fused AUROC but is worse on real-video FPR (0.105 vs 0.075). |
 | 3c | Adaptation of shortlist | **done, 8 runs incl. 3 seeds** | winner **pe_core_l + LayerNorm(N)**: fused 0.9329, real FPR 0.0603, incremental **+0.0248** |
-| 4 | Suppression | 4b done, 4c rerunning | subspaces fitted; rows failed silently once, relaunched with stderr captured |
+| 4 | Suppression | **done, NEGATIVE** | **no row kept**. Every row fails condition 3: suppression buys a small clean gain and pays it back in robustness. A-PD, the row the premise predicted, is the WORST (-0.0233 vs random). |
 | 5 | Consistency | **done, NEGATIVE** | C-CONS 0.8343 vs C-AUG 0.8340 = +0.0003; the term adds nothing over its augmentation control |
 | 6a | Extraction: video backbones | **done** | `logs/upgrade/vfeats/` — vjepa2_l and vjepa2_h x 4 splits |
 | 6b | Global swap vs TD | **frozen heads done** | `analysis/upgrade/heads/view_vjepa2_{l,h}_s0.json`: ViT-H 0.7419 dev v3.1 vs ViT-L 0.6892 (+0.053), VALmix-v2 +0.071, same 256 input |

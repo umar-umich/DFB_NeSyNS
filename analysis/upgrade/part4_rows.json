@@ -1,0 +1,152 @@
+{
+ "feats": "pe_core_l",
+ "readout": "last+mid+half",
+ "seed": 0,
+ "rows": {
+  "A0": {
+   "dev_v31": 0.8135902979664369,
+   "valmixv2": 0.8663058716083023,
+   "ffpp_val_auroc": 0.9620918367346939,
+   "ffpp_val_jpeg:30": 0.8852933673469388,
+   "ffpp_val_resize:0.35": 0.8689795918367347
+  },
+  "A-MC": {
+   "dev_v31": 0.8203812147682544,
+   "valmixv2": 0.8762781536159385,
+   "ffpp_val_auroc": 0.9606377551020409,
+   "ffpp_val_jpeg:30": 0.8799744897959184,
+   "ffpp_val_resize:0.35": 0.8646811224489795
+  },
+  "A-PD": {
+   "dev_v31": 0.7898566067445808,
+   "valmixv2": 0.8388366301642459,
+   "ffpp_val_auroc": 0.9529591836734694,
+   "ffpp_val_jpeg:30": 0.8715561224489796,
+   "ffpp_val_resize:0.35": 0.8686862244897959
+  },
+  "A-PD-0.25": {
+   "dev_v31": 0.8144562137545833,
+   "valmixv2": 0.8669210758617546,
+   "ffpp_val_auroc": 0.9624872448979592,
+   "ffpp_val_jpeg:30": 0.8835076530612245,
+   "ffpp_val_resize:0.35": 0.8696045918367347
+  },
+  "A-PD-0.5": {
+   "dev_v31": 0.8163842604346468,
+   "valmixv2": 0.8684196344838895,
+   "ffpp_val_auroc": 0.9629336734693877,
+   "ffpp_val_jpeg:30": 0.8812117346938776,
+   "ffpp_val_resize:0.35": 0.8703316326530612
+  },
+  "A-PD-0.75": {
+   "dev_v31": 0.8134065771636253,
+   "valmixv2": 0.8659151829777366,
+   "ffpp_val_auroc": 0.9621683673469388,
+   "ffpp_val_jpeg:30": 0.8805102040816326,
+   "ffpp_val_resize:0.35": 0.8733928571428572
+  },
+  "A-LEACE": {
+   "dev_v31": 0.8176801735002295,
+   "valmixv2": 0.8732159617301642,
+   "ffpp_val_auroc": 0.9612244897959183,
+   "ffpp_val_jpeg:30": 0.8834693877551021,
+   "ffpp_val_resize:0.35": 0.8673852040816327
+  },
+  "A-RND0": {
+   "dev_v31": 0.8141621029671665,
+   "valmixv2": 0.8667356165391761,
+   "ffpp_val_auroc": 0.9614540816326531,
+   "ffpp_val_jpeg:30": 0.8851275510204082,
+   "ffpp_val_resize:0.35": 0.8683928571428572
+  },
+  "A-RND1": {
+   "dev_v31": 0.8121375490509322,
+   "valmixv2": 0.8648005777294229,
+   "ffpp_val_auroc": 0.9620408163265306,
+   "ffpp_val_jpeg:30": 0.8873724489795919,
+   "ffpp_val_resize:0.35": 0.8699107142857143
+  },
+  "A-RND2": {
+   "dev_v31": 0.811250581655103,
+   "valmixv2": 0.8642916560247323,
+   "ffpp_val_auroc": 0.9605994897959184,
+   "ffpp_val_jpeg:30": 0.8839285714285714,
+   "ffpp_val_resize:0.35": 0.8676275510204081
+  },
+  "A-RND3": {
+   "dev_v31": 0.815329980405911,
+   "valmixv2": 0.8684504115428843,
+   "ffpp_val_auroc": 0.9614668367346939,
+   "ffpp_val_jpeg:30": 0.8842602040816326,
+   "ffpp_val_resize:0.35": 0.8658545918367347
+  },
+  "A-RND4": {
+   "dev_v31": 0.8128858680987182,
+   "valmixv2": 0.8661592385330908,
+   "ffpp_val_auroc": 0.9619897959183673,
+   "ffpp_val_jpeg:30": 0.8858163265306123,
+   "ffpp_val_resize:0.35": 0.869375
+  },
+  "A-RND": {
+   "dev_v31": 0.8131532164355662,
+   "sd": 0.001447703553458972,
+   "draws": [
+    0.8141621029671665,
+    0.8121375490509322,
+    0.811250581655103,
+    0.815329980405911,
+    0.8128858680987182
+   ]
+  }
+ },
+ "keep_rule": {
+  "A-MC": {
+   "c1_beats_RND": true,
+   "c2_clean_within_0.01": true,
+   "c3_processed_not_worse": false,
+   "c4_fused_fpr": "TODO(run)",
+   "kept": false,
+   "note": "c4 needs the fused evaluation; no row is passed on 3 of 4 conditions"
+  },
+  "A-PD": {
+   "c1_beats_RND": false,
+   "c2_clean_within_0.01": true,
+   "c3_processed_not_worse": false,
+   "c4_fused_fpr": "TODO(run)",
+   "kept": false,
+   "note": "c4 needs the fused evaluation; no row is passed on 3 of 4 conditions"
+  },
+  "A-PD-0.25": {
+   "c1_beats_RND": true,
+   "c2_clean_within_0.01": true,
+   "c3_processed_not_worse": false,
+   "c4_fused_fpr": "TODO(run)",
+   "kept": false,
+   "note": "c4 needs the fused evaluation; no row is passed on 3 of 4 conditions"
+  },
+  "A-PD-0.5": {
+   "c1_beats_RND": true,
+   "c2_clean_within_0.01": true,
+   "c3_processed_not_worse": false,
+   "c4_fused_fpr": "TODO(run)",
+   "kept": false,
+   "note": "c4 needs the fused evaluation; no row is passed on 3 of 4 conditions"
+  },
+  "A-PD-0.75": {
+   "c1_beats_RND": true,
+   "c2_clean_within_0.01": true,
+   "c3_processed_not_worse": false,
+   "c4_fused_fpr": "TODO(run)",
+   "kept": false,
+   "note": "c4 needs the fused evaluation; no row is passed on 3 of 4 conditions"
+  },
+  "A-LEACE": {
+   "c1_beats_RND": true,
+   "c2_clean_within_0.01": true,
+   "c3_processed_not_worse": false,
+   "c4_fused_fpr": "TODO(run)",
+   "kept": false,
+   "note": "c4 needs the fused evaluation; no row is passed on 3 of 4 conditions"
+  }
+ }
+}
