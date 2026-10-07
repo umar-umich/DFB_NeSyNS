@@ -48,6 +48,36 @@ SLICES = ["CDFv3 reenactment", "KoDF first-order motion"]
 
 
 @torch.no_grad()
+def video_opinions(model, seed, dev, datasets):
+    """Video-view opinions from a cached per-VIDEO feature file (one row per video, no pooling)."""
+    st = torch.load(HEADS / f"view_{model}_s{seed}.pt", map_location=dev)
+    head = Head(st["dim"]).to(dev); head.load_state_dict(st["state"]); head.eval()
+    out = {}
+    for n in datasets:
+        f = ROOT / f"logs/upgrade/vfeats/{model}_{n}.npz"
+        if not f.exists():
+            print(f"  no video features for {model} on {n}; skipped"); continue
+        z = np.load(f, allow_pickle=True)
+        ev = head(torch.from_numpy(z["feature"].astype(np.float32)).to(dev))
+        a = ev + 1.0; s = a.sum(1, keepdim=True)
+        p = (a / s)[:, 1].float().cpu().numpy(); u = (2.0 / s.squeeze(1)).float().cpu().numpy()
+        for v, a_, b_ in zip(z["video"], p, u):
+            out[str(v)] = (float(a_), float(b_))
+    return out
+
+
+def swap_t(t, op, name):
+    """Replace the TEMPORAL view, leaving appearance and off-manifold as deployed."""
+    t = t.copy()
+    miss = [v for v in t.v if str(v) not in op]
+    if miss:
+        raise KeyError(f"{name}: {len(miss)} videos lack a video-view opinion, e.g. {miss[:3]}")
+    t["p_T"] = np.array([op[str(v)][0] for v in t.v])
+    t["u_T"] = np.array([op[str(v)][1] for v in t.v])
+    return t
+
+
+@torch.no_grad()
 def opinions(view, seed, dev, datasets):
     st = torch.load(HEADS / f"view_{view}_s{seed}.pt", map_location=dev)
     head = Head(st["dim"]).to(dev); head.load_state_dict(st["state"]); head.eval()
@@ -138,6 +168,9 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--objective", default="overall", choices=["overall", "reenactment"],
                     help="development objective the vacuity scale is fitted against")
+    ap.add_argument("--video-view", default=None,
+                    help="swap the TEMPORAL view too, e.g. vjepa2_h (Part 6b asked whether a stronger "
+                         "video backbone helps the SYSTEM, which standalone AUROC cannot answer)")
     ap.add_argument("--calibrate", action="store_true",
                     help="fit a vacuity scale for the appearance view on development")
     a = ap.parse_args()
@@ -148,6 +181,11 @@ def main() -> int:
     devc = "cuda" if torch.cuda.is_available() else "cpu"
     dev_op = opinions(a.view, a.seed, devc, ("VALmix", "VALmixV2", "FFpp_val"))
     dev_sw = swap_app(dev_t, dev_op, "development")
+    vid_op = None
+    if a.video_view:
+        vid_op = video_opinions(a.video_view, a.seed, devc, ("VALmix", "VALmixV2", "FFpp_val"))
+        dev_sw = swap_t(dev_sw, vid_op, "development")
+        print(f"  temporal view swapped for {a.video_view}", flush=True)
 
     # calibration and weights BOTH fitted on development, then frozen
     tau, grid_log = 1.0, []
@@ -197,6 +235,8 @@ def main() -> int:
             continue
         try:
             t = swap_app(tests[n], test_op, n)
+            if a.video_view:
+                t = swap_t(t, video_opinions(a.video_view, a.seed, devc, [n]), n)
             if a.calibrate:
                 t = calibrate(t, tau)
         except KeyError as e:
@@ -223,6 +263,7 @@ def main() -> int:
     json.dump({"view": a.view, "label": label, "seed": a.seed, "arm": ARM,
                "calibrated": bool(a.calibrate), "vacuity_scale": float(tau),
                "objective": a.objective, "tau_grid": grid_log, "guard": GUARD,
+               "video_view": a.video_view,
                "threshold": thr,
                "weights_per_fold": [list(map(float, w)) for w in ws],
                "tests": rows, "slices": slices, "complementarity": comp,

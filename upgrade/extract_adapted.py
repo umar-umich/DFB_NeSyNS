@@ -33,7 +33,11 @@ def main() -> int:
     ap.add_argument("--dataset", required=True); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--batch-size", type=int, default=64)
     a = ap.parse_args()
-    tag = f"{a.backbone}{a.recipe}"                      # e.g. pe_core_lL -> feats/pe_core_lL_<ds>.npz
+    # The SEED belongs in the filename. Without it every seed wrote to one path, the second seed
+    # found the first seed's file and reported "exists", and a caller that renamed the result
+    # afterwards silently relabelled seed 0's features as another seed's. Seed 0 keeps the bare name
+    # so the existing caches and every path that reads them stay valid.
+    tag = f"{a.backbone}{a.recipe}" + ("" if a.seed == 0 else f"_s{a.seed}")
     f = OUT / f"{tag}_{a.dataset}.npz"
     if f.exists():
         print(f"{f.name} exists"); return 0

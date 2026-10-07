@@ -1,0 +1,11 @@
+{
+ "run": "J0",
+ "trained": false,
+ "dev_v31": 0.9007897175343463,
+ "types": {
+  "swap": 0.9491053691647376,
+  "reenactment": 0.928989215537067,
+  "in_the_wild": 0.8242745679012345
+ },
+ "note": "deployed heads read through the Task 1 fusion code, equal trust"
+}
