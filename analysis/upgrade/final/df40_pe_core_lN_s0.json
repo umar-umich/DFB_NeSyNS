@@ -1,0 +1,487 @@
+{
+ "view": "pe_core_lN",
+ "label": "PE-Core-L + LayerNorm (winner)",
+ "seed": 0,
+ "arm": "PCR6P-R",
+ "per_set": {
+  "DF40_blendface_cdf": {
+   "family": "FS",
+   "generator": "blendface",
+   "variant": "cdf",
+   "videos": 818,
+   "auroc": 0.9828827247191011
+  },
+  "DF40_blendface_ff": {
+   "family": "FS",
+   "generator": "blendface",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9940306122448981
+  },
+  "DF40_e4s_cdf": {
+   "family": "FS",
+   "generator": "e4s",
+   "variant": "cdf",
+   "videos": 470,
+   "auroc": 0.994786055102355
+  },
+  "DF40_e4s_ff": {
+   "family": "FS",
+   "generator": "e4s",
+   "variant": "ff",
+   "videos": 255,
+   "auroc": 0.9985093167701864
+  },
+  "DF40_facedancer_cdf": {
+   "family": "FS",
+   "generator": "facedancer",
+   "variant": "cdf",
+   "videos": 826,
+   "auroc": 0.9774500624219724
+  },
+  "DF40_facedancer_ff": {
+   "family": "FS",
+   "generator": "facedancer",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9845918367346939
+  },
+  "DF40_faceswap_cdf": {
+   "family": "FS",
+   "generator": "faceswap",
+   "variant": "cdf",
+   "videos": 815,
+   "auroc": 0.9991709734887905
+  },
+  "DF40_faceswap_ff": {
+   "family": "FS",
+   "generator": "faceswap",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.997295918367347
+  },
+  "DF40_fsgan_cdf": {
+   "family": "FS",
+   "generator": "fsgan",
+   "variant": "cdf",
+   "videos": 794,
+   "auroc": 0.9901502991390632
+  },
+  "DF40_fsgan_ff": {
+   "family": "FS",
+   "generator": "fsgan",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9955102040816326
+  },
+  "DF40_inswap_cdf": {
+   "family": "FS",
+   "generator": "inswap",
+   "variant": "cdf",
+   "videos": 602,
+   "auroc": 0.9803503285986855
+  },
+  "DF40_inswap_ff": {
+   "family": "FS",
+   "generator": "inswap",
+   "variant": "ff",
+   "videos": 258,
+   "auroc": 0.9952179176755448
+  },
+  "DF40_mobileswap_cdf": {
+   "family": "FS",
+   "generator": "mobileswap",
+   "variant": "cdf",
+   "videos": 815,
+   "auroc": 0.9426560598310196
+  },
+  "DF40_mobileswap_ff": {
+   "family": "FS",
+   "generator": "mobileswap",
+   "variant": "ff",
+   "videos": 998,
+   "auroc": 0.9912753912753913
+  },
+  "DF40_simswap_cdf": {
+   "family": "FS",
+   "generator": "simswap",
+   "variant": "cdf",
+   "videos": 819,
+   "auroc": 0.9837332819155463
+  },
+  "DF40_simswap_ff": {
+   "family": "FS",
+   "generator": "simswap",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9971938775510204
+  },
+  "DF40_uniface_cdf": {
+   "family": "FS",
+   "generator": "uniface",
+   "variant": "cdf",
+   "videos": 804,
+   "auroc": 0.995611515956492
+  },
+  "DF40_uniface_ff": {
+   "family": "FS",
+   "generator": "uniface",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9979081632653061
+  },
+  "DF40_danet_cdf": {
+   "family": "FR",
+   "generator": "danet",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.8257992810378063
+  },
+  "DF40_danet_ff": {
+   "family": "FR",
+   "generator": "danet",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9746428571428571
+  },
+  "DF40_facevid2vid_cdf": {
+   "family": "FR",
+   "generator": "facevid2vid",
+   "variant": "cdf",
+   "videos": 815,
+   "auroc": 0.8388248990175154
+  },
+  "DF40_facevid2vid_ff": {
+   "family": "FR",
+   "generator": "facevid2vid",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9543877551020409
+  },
+  "DF40_fomm_cdf": {
+   "family": "FR",
+   "generator": "fomm",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.9218693017036278
+  },
+  "DF40_fomm_ff": {
+   "family": "FR",
+   "generator": "fomm",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9914285714285715
+  },
+  "DF40_hyperreenact_cdf": {
+   "family": "FR",
+   "generator": "hyperreenact",
+   "variant": "cdf",
+   "videos": 819,
+   "auroc": 0.9605426913705761
+  },
+  "DF40_hyperreenact_ff": {
+   "family": "FR",
+   "generator": "hyperreenact",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9956122448979592
+  },
+  "DF40_lia_cdf": {
+   "family": "FR",
+   "generator": "lia",
+   "variant": "cdf",
+   "videos": 824,
+   "auroc": 0.998460708943542
+  },
+  "DF40_lia_ff": {
+   "family": "FR",
+   "generator": "lia",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 1.0
+  },
+  "DF40_mcnet_cdf": {
+   "family": "FR",
+   "generator": "mcnet",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.868372609971693
+  },
+  "DF40_mcnet_ff": {
+   "family": "FR",
+   "generator": "mcnet",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9827551020408163
+  },
+  "DF40_MRAA_cdf": {
+   "family": "FR",
+   "generator": "MRAA",
+   "variant": "cdf",
+   "videos": 827,
+   "auroc": 0.9932307266148439
+  },
+  "DF40_MRAA_ff": {
+   "family": "FR",
+   "generator": "MRAA",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9998469387755101
+  },
+  "DF40_one_shot_free_cdf": {
+   "family": "FR",
+   "generator": "one_shot_free",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.8877446468575795
+  },
+  "DF40_one_shot_free_ff": {
+   "family": "FR",
+   "generator": "one_shot_free",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9740816326530612
+  },
+  "DF40_pirender_cdf": {
+   "family": "FR",
+   "generator": "pirender",
+   "variant": "cdf",
+   "videos": 814,
+   "auroc": 0.8043601158928697
+  },
+  "DF40_pirender_ff": {
+   "family": "FR",
+   "generator": "pirender",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9631632653061224
+  },
+  "DF40_sadtalker_cdf": {
+   "family": "FR",
+   "generator": "sadtalker",
+   "variant": "cdf",
+   "videos": 838,
+   "auroc": 0.773161389172625
+  },
+  "DF40_sadtalker_ff": {
+   "family": "FR",
+   "generator": "sadtalker",
+   "variant": "ff",
+   "videos": 278,
+   "auroc": 0.9396997929606624
+  },
+  "DF40_tpsm_cdf": {
+   "family": "FR",
+   "generator": "tpsm",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.9642863345084487
+  },
+  "DF40_tpsm_ff": {
+   "family": "FR",
+   "generator": "tpsm",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9861224489795918
+  },
+  "DF40_wav2lip_cdf": {
+   "family": "FR",
+   "generator": "wav2lip",
+   "variant": "cdf",
+   "videos": 844,
+   "auroc": 0.8138138138138139
+  },
+  "DF40_wav2lip_ff": {
+   "family": "FR",
+   "generator": "wav2lip",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9467346938775509
+  },
+  "DF40_ddim_cdf": {
+   "family": "EFS",
+   "generator": "ddim",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.975952778621318
+  },
+  "DF40_ddim_ff": {
+   "family": "EFS",
+   "generator": "ddim",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_DiT_cdf": {
+   "family": "EFS",
+   "generator": "DiT",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9522598441137767
+  },
+  "DF40_DiT_ff": {
+   "family": "EFS",
+   "generator": "DiT",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 0.99685960591133
+  },
+  "DF40_rddm_cdf": {
+   "family": "EFS",
+   "generator": "rddm",
+   "variant": "cdf",
+   "videos": 622,
+   "auroc": 0.9681394878024092
+  },
+  "DF40_rddm_ff": {
+   "family": "EFS",
+   "generator": "rddm",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 0.9999384236453203
+  },
+  "DF40_sd2.1_cdf": {
+   "family": "EFS",
+   "generator": "sd2.1",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9961977426865067
+  },
+  "DF40_sd2.1_ff": {
+   "family": "EFS",
+   "generator": "sd2.1",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_SiT_cdf": {
+   "family": "EFS",
+   "generator": "SiT",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9647104970138678
+  },
+  "DF40_SiT_ff": {
+   "family": "EFS",
+   "generator": "SiT",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 0.999692118226601
+  },
+  "DF40_StyleGAN2_cdf": {
+   "family": "EFS",
+   "generator": "StyleGAN2",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9997595910517258
+  },
+  "DF40_StyleGAN2_ff": {
+   "family": "EFS",
+   "generator": "StyleGAN2",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_StyleGAN3_cdf": {
+   "family": "EFS",
+   "generator": "StyleGAN3",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9962610081992105
+  },
+  "DF40_StyleGAN3_ff": {
+   "family": "EFS",
+   "generator": "StyleGAN3",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_StyleGANXL_cdf": {
+   "family": "EFS",
+   "generator": "StyleGANXL",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9929775280898876
+  },
+  "DF40_StyleGANXL_ff": {
+   "family": "EFS",
+   "generator": "StyleGANXL",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_VQGAN_cdf": {
+   "family": "EFS",
+   "generator": "VQGAN",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9989750986941998
+  },
+  "DF40_VQGAN_ff": {
+   "family": "EFS",
+   "generator": "VQGAN",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_e4e_cdf": {
+   "family": "FE",
+   "generator": "e4e",
+   "variant": "cdf",
+   "videos": 18828,
+   "auroc": 0.9999445733048167
+  },
+  "DF40_e4e_ff": {
+   "family": "FE",
+   "generator": "e4e",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 1.0
+  },
+  "DF40_stargan": {
+   "family": "FE",
+   "generator": "stargan",
+   "variant": "own",
+   "videos": 3968,
+   "auroc": 0.9963282367813476
+  },
+  "DF40_starganv2": {
+   "family": "FE",
+   "generator": "starganv2",
+   "variant": "own",
+   "videos": 3996,
+   "auroc": 0.8874039204369535
+  },
+  "DF40_styleclip": {
+   "family": "FE",
+   "generator": "styleclip",
+   "variant": "own",
+   "videos": 3824,
+   "auroc": 0.9908626062322946
+  }
+ },
+ "families": {
+  "FS": {
+   "mean": 0.988795807729947,
+   "sd": 0.012993707880948769,
+   "n": 18
+  },
+  "FR": {
+   "mean": 0.9316225759195702,
+   "sd": 0.07048290580612504,
+   "n": 24
+  },
+  "EFS": {
+   "mean": 0.9912068735586753,
+   "sd": 0.01455814109899564,
+   "n": 18
+  },
+  "FE": {
+   "mean": 0.9749078673510825,
+   "sd": 0.04387887512398654,
+   "n": 5
+  }
+ },
+ "macro": 0.9716332811398187,
+ "missing_sets": []
+}

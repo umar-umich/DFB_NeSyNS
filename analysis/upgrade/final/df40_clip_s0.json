@@ -1,0 +1,487 @@
+{
+ "view": "clip",
+ "label": "CLIP frozen (comparator)",
+ "seed": 0,
+ "arm": "PCR6P-R",
+ "per_set": {
+  "DF40_blendface_cdf": {
+   "family": "FS",
+   "generator": "blendface",
+   "variant": "cdf",
+   "videos": 818,
+   "auroc": 0.9792485955056179
+  },
+  "DF40_blendface_ff": {
+   "family": "FS",
+   "generator": "blendface",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9833163265306122
+  },
+  "DF40_e4s_cdf": {
+   "family": "FS",
+   "generator": "e4s",
+   "variant": "cdf",
+   "videos": 470,
+   "auroc": 0.9904763737109434
+  },
+  "DF40_e4s_ff": {
+   "family": "FS",
+   "generator": "e4s",
+   "variant": "ff",
+   "videos": 255,
+   "auroc": 0.9899378881987578
+  },
+  "DF40_facedancer_cdf": {
+   "family": "FS",
+   "generator": "facedancer",
+   "variant": "cdf",
+   "videos": 826,
+   "auroc": 0.9793400610348176
+  },
+  "DF40_facedancer_ff": {
+   "family": "FS",
+   "generator": "facedancer",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9664795918367347
+  },
+  "DF40_faceswap_cdf": {
+   "family": "FS",
+   "generator": "faceswap",
+   "variant": "cdf",
+   "videos": 815,
+   "auroc": 0.9987388213712451
+  },
+  "DF40_faceswap_ff": {
+   "family": "FS",
+   "generator": "faceswap",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9925
+  },
+  "DF40_fsgan_cdf": {
+   "family": "FS",
+   "generator": "fsgan",
+   "variant": "cdf",
+   "videos": 794,
+   "auroc": 0.9909346271705822
+  },
+  "DF40_fsgan_ff": {
+   "family": "FS",
+   "generator": "fsgan",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9917857142857143
+  },
+  "DF40_inswap_cdf": {
+   "family": "FS",
+   "generator": "inswap",
+   "variant": "cdf",
+   "videos": 602,
+   "auroc": 0.9576134195463218
+  },
+  "DF40_inswap_ff": {
+   "family": "FS",
+   "generator": "inswap",
+   "variant": "ff",
+   "videos": 258,
+   "auroc": 0.9722154963680387
+  },
+  "DF40_mobileswap_cdf": {
+   "family": "FS",
+   "generator": "mobileswap",
+   "variant": "cdf",
+   "videos": 815,
+   "auroc": 0.9580459668742173
+  },
+  "DF40_mobileswap_ff": {
+   "family": "FS",
+   "generator": "mobileswap",
+   "variant": "ff",
+   "videos": 998,
+   "auroc": 0.9785631035631036
+  },
+  "DF40_simswap_cdf": {
+   "family": "FS",
+   "generator": "simswap",
+   "variant": "cdf",
+   "videos": 819,
+   "auroc": 0.9470104646882506
+  },
+  "DF40_simswap_ff": {
+   "family": "FS",
+   "generator": "simswap",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9720918367346939
+  },
+  "DF40_uniface_cdf": {
+   "family": "FS",
+   "generator": "uniface",
+   "variant": "cdf",
+   "videos": 804,
+   "auroc": 0.9830563233657608
+  },
+  "DF40_uniface_ff": {
+   "family": "FS",
+   "generator": "uniface",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9909183673469387
+  },
+  "DF40_danet_cdf": {
+   "family": "FR",
+   "generator": "danet",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.9330792074049632
+  },
+  "DF40_danet_ff": {
+   "family": "FR",
+   "generator": "danet",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9721428571428571
+  },
+  "DF40_facevid2vid_cdf": {
+   "family": "FR",
+   "generator": "facevid2vid",
+   "variant": "cdf",
+   "videos": 815,
+   "auroc": 0.9315435768084244
+  },
+  "DF40_facevid2vid_ff": {
+   "family": "FR",
+   "generator": "facevid2vid",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.953469387755102
+  },
+  "DF40_fomm_cdf": {
+   "family": "FR",
+   "generator": "fomm",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.9494816178385982
+  },
+  "DF40_fomm_ff": {
+   "family": "FR",
+   "generator": "fomm",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9754591836734694
+  },
+  "DF40_hyperreenact_cdf": {
+   "family": "FR",
+   "generator": "hyperreenact",
+   "variant": "cdf",
+   "videos": 819,
+   "auroc": 0.986353836175919
+  },
+  "DF40_hyperreenact_ff": {
+   "family": "FR",
+   "generator": "hyperreenact",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9938265306122449
+  },
+  "DF40_lia_cdf": {
+   "family": "FR",
+   "generator": "lia",
+   "variant": "cdf",
+   "videos": 824,
+   "auroc": 0.9975562667408773
+  },
+  "DF40_lia_ff": {
+   "family": "FR",
+   "generator": "lia",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9998979591836735
+  },
+  "DF40_mcnet_cdf": {
+   "family": "FR",
+   "generator": "mcnet",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.9369171456853586
+  },
+  "DF40_mcnet_ff": {
+   "family": "FR",
+   "generator": "mcnet",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9722448979591837
+  },
+  "DF40_MRAA_cdf": {
+   "family": "FR",
+   "generator": "MRAA",
+   "variant": "cdf",
+   "videos": 827,
+   "auroc": 0.9940184553591523
+  },
+  "DF40_MRAA_ff": {
+   "family": "FR",
+   "generator": "MRAA",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9991836734693877
+  },
+  "DF40_one_shot_free_cdf": {
+   "family": "FR",
+   "generator": "one_shot_free",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.932853446329646
+  },
+  "DF40_one_shot_free_ff": {
+   "family": "FR",
+   "generator": "one_shot_free",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9498469387755102
+  },
+  "DF40_pirender_cdf": {
+   "family": "FR",
+   "generator": "pirender",
+   "variant": "cdf",
+   "videos": 814,
+   "auroc": 0.8961557487103385
+  },
+  "DF40_pirender_ff": {
+   "family": "FR",
+   "generator": "pirender",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9251530612244898
+  },
+  "DF40_sadtalker_cdf": {
+   "family": "FR",
+   "generator": "sadtalker",
+   "variant": "cdf",
+   "videos": 838,
+   "auroc": 0.9052860061287027
+  },
+  "DF40_sadtalker_ff": {
+   "family": "FR",
+   "generator": "sadtalker",
+   "variant": "ff",
+   "videos": 278,
+   "auroc": 0.9499482401656315
+  },
+  "DF40_tpsm_cdf": {
+   "family": "FR",
+   "generator": "tpsm",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.9836583713943351
+  },
+  "DF40_tpsm_ff": {
+   "family": "FR",
+   "generator": "tpsm",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9819897959183674
+  },
+  "DF40_wav2lip_cdf": {
+   "family": "FR",
+   "generator": "wav2lip",
+   "variant": "cdf",
+   "videos": 844,
+   "auroc": 0.7794226811080744
+  },
+  "DF40_wav2lip_ff": {
+   "family": "FR",
+   "generator": "wav2lip",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.8315816326530612
+  },
+  "DF40_ddim_cdf": {
+   "family": "EFS",
+   "generator": "ddim",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9535694402267436
+  },
+  "DF40_ddim_ff": {
+   "family": "EFS",
+   "generator": "ddim",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 0.9797413793103449
+  },
+  "DF40_DiT_cdf": {
+   "family": "EFS",
+   "generator": "DiT",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.8945427168741775
+  },
+  "DF40_DiT_ff": {
+   "family": "EFS",
+   "generator": "DiT",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 0.9543103448275863
+  },
+  "DF40_rddm_cdf": {
+   "family": "EFS",
+   "generator": "rddm",
+   "variant": "cdf",
+   "videos": 622,
+   "auroc": 0.9532341330094138
+  },
+  "DF40_rddm_ff": {
+   "family": "EFS",
+   "generator": "rddm",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 0.9988916256157636
+  },
+  "DF40_sd2.1_cdf": {
+   "family": "EFS",
+   "generator": "sd2.1",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9930154873975099
+  },
+  "DF40_sd2.1_ff": {
+   "family": "EFS",
+   "generator": "sd2.1",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_SiT_cdf": {
+   "family": "EFS",
+   "generator": "SiT",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9366395890272294
+  },
+  "DF40_SiT_ff": {
+   "family": "EFS",
+   "generator": "SiT",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 0.978448275862069
+  },
+  "DF40_StyleGAN2_cdf": {
+   "family": "EFS",
+   "generator": "StyleGAN2",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9983234639133515
+  },
+  "DF40_StyleGAN2_ff": {
+   "family": "EFS",
+   "generator": "StyleGAN2",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_StyleGAN3_cdf": {
+   "family": "EFS",
+   "generator": "StyleGAN3",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9932938556534062
+  },
+  "DF40_StyleGAN3_ff": {
+   "family": "EFS",
+   "generator": "StyleGAN3",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_StyleGANXL_cdf": {
+   "family": "EFS",
+   "generator": "StyleGANXL",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9846581131693491
+  },
+  "DF40_StyleGANXL_ff": {
+   "family": "EFS",
+   "generator": "StyleGANXL",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_VQGAN_cdf": {
+   "family": "EFS",
+   "generator": "VQGAN",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9959257009818807
+  },
+  "DF40_VQGAN_ff": {
+   "family": "EFS",
+   "generator": "VQGAN",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_e4e_cdf": {
+   "family": "FE",
+   "generator": "e4e",
+   "variant": "cdf",
+   "videos": 18828,
+   "auroc": 0.9996713558454077
+  },
+  "DF40_e4e_ff": {
+   "family": "FE",
+   "generator": "e4e",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.997704081632653
+  },
+  "DF40_stargan": {
+   "family": "FE",
+   "generator": "stargan",
+   "variant": "own",
+   "videos": 3968,
+   "auroc": 0.9910145579962278
+  },
+  "DF40_starganv2": {
+   "family": "FE",
+   "generator": "starganv2",
+   "variant": "own",
+   "videos": 3996,
+   "auroc": 0.7750342935528121
+  },
+  "DF40_styleclip": {
+   "family": "FE",
+   "generator": "styleclip",
+   "variant": "own",
+   "videos": 3824,
+   "auroc": 0.9755676345609064
+  }
+ },
+ "families": {
+  "FS": {
+   "mean": 0.9790151654517972,
+   "sd": 0.013898285380871893,
+   "n": 18
+  },
+  "FR": {
+   "mean": 0.9471279382590571,
+   "sd": 0.052313916325202485,
+   "n": 24
+  },
+  "EFS": {
+   "mean": 0.9785885625482682,
+   "sd": 0.02842019161552543,
+   "n": 18
+  },
+  "FE": {
+   "mean": 0.9477983847176015,
+   "sd": 0.08679583375244115,
+   "n": 5
+  }
+ },
+ "macro": 0.963132512744181,
+ "missing_sets": []
+}

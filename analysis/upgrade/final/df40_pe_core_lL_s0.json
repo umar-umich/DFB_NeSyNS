@@ -1,0 +1,487 @@
+{
+ "view": "pe_core_lL",
+ "label": "PE-Core-L + LoRA",
+ "seed": 0,
+ "arm": "PCR6P-R",
+ "per_set": {
+  "DF40_blendface_cdf": {
+   "family": "FS",
+   "generator": "blendface",
+   "variant": "cdf",
+   "videos": 818,
+   "auroc": 0.9870084269662921
+  },
+  "DF40_blendface_ff": {
+   "family": "FS",
+   "generator": "blendface",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.993061224489796
+  },
+  "DF40_e4s_cdf": {
+   "family": "FS",
+   "generator": "e4s",
+   "variant": "cdf",
+   "videos": 470,
+   "auroc": 0.9949207326458366
+  },
+  "DF40_e4s_ff": {
+   "family": "FS",
+   "generator": "e4s",
+   "variant": "ff",
+   "videos": 255,
+   "auroc": 0.998944099378882
+  },
+  "DF40_facedancer_cdf": {
+   "family": "FS",
+   "generator": "facedancer",
+   "variant": "cdf",
+   "videos": 826,
+   "auroc": 0.9835448744624774
+  },
+  "DF40_facedancer_ff": {
+   "family": "FS",
+   "generator": "facedancer",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9906632653061225
+  },
+  "DF40_faceswap_cdf": {
+   "family": "FS",
+   "generator": "faceswap",
+   "variant": "cdf",
+   "videos": 815,
+   "auroc": 0.9997971530876828
+  },
+  "DF40_faceswap_ff": {
+   "family": "FS",
+   "generator": "faceswap",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9986224489795918
+  },
+  "DF40_fsgan_cdf": {
+   "family": "FS",
+   "generator": "fsgan",
+   "variant": "cdf",
+   "videos": 794,
+   "auroc": 0.9906336640887202
+  },
+  "DF40_fsgan_ff": {
+   "family": "FS",
+   "generator": "fsgan",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9974489795918368
+  },
+  "DF40_inswap_cdf": {
+   "family": "FS",
+   "generator": "inswap",
+   "variant": "cdf",
+   "videos": 602,
+   "auroc": 0.9854913080347679
+  },
+  "DF40_inswap_ff": {
+   "family": "FS",
+   "generator": "inswap",
+   "variant": "ff",
+   "videos": 258,
+   "auroc": 0.997457627118644
+  },
+  "DF40_mobileswap_cdf": {
+   "family": "FS",
+   "generator": "mobileswap",
+   "variant": "cdf",
+   "videos": 815,
+   "auroc": 0.9475684828814844
+  },
+  "DF40_mobileswap_ff": {
+   "family": "FS",
+   "generator": "mobileswap",
+   "variant": "ff",
+   "videos": 998,
+   "auroc": 0.993906093906094
+  },
+  "DF40_simswap_cdf": {
+   "family": "FS",
+   "generator": "simswap",
+   "variant": "cdf",
+   "videos": 819,
+   "auroc": 0.9841101509228909
+  },
+  "DF40_simswap_ff": {
+   "family": "FS",
+   "generator": "simswap",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9976530612244898
+  },
+  "DF40_uniface_cdf": {
+   "family": "FS",
+   "generator": "uniface",
+   "variant": "cdf",
+   "videos": 804,
+   "auroc": 0.9961320314463151
+  },
+  "DF40_uniface_ff": {
+   "family": "FS",
+   "generator": "uniface",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9985714285714287
+  },
+  "DF40_danet_cdf": {
+   "family": "FR",
+   "generator": "danet",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.8233853741555668
+  },
+  "DF40_danet_ff": {
+   "family": "FR",
+   "generator": "danet",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.981530612244898
+  },
+  "DF40_facevid2vid_cdf": {
+   "family": "FR",
+   "generator": "facevid2vid",
+   "variant": "cdf",
+   "videos": 815,
+   "auroc": 0.8769865768260632
+  },
+  "DF40_facevid2vid_ff": {
+   "family": "FR",
+   "generator": "facevid2vid",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9713265306122448
+  },
+  "DF40_fomm_cdf": {
+   "family": "FR",
+   "generator": "fomm",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.9319764513832208
+  },
+  "DF40_fomm_ff": {
+   "family": "FR",
+   "generator": "fomm",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9967346938775511
+  },
+  "DF40_hyperreenact_cdf": {
+   "family": "FR",
+   "generator": "hyperreenact",
+   "variant": "cdf",
+   "videos": 819,
+   "auroc": 0.9701747620466616
+  },
+  "DF40_hyperreenact_ff": {
+   "family": "FR",
+   "generator": "hyperreenact",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9956632653061225
+  },
+  "DF40_lia_cdf": {
+   "family": "FR",
+   "generator": "lia",
+   "variant": "cdf",
+   "videos": 824,
+   "auroc": 0.9982259018332348
+  },
+  "DF40_lia_ff": {
+   "family": "FR",
+   "generator": "lia",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 1.0
+  },
+  "DF40_mcnet_cdf": {
+   "family": "FR",
+   "generator": "mcnet",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.8646736015838008
+  },
+  "DF40_mcnet_ff": {
+   "family": "FR",
+   "generator": "mcnet",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9868877551020409
+  },
+  "DF40_MRAA_cdf": {
+   "family": "FR",
+   "generator": "MRAA",
+   "variant": "cdf",
+   "videos": 827,
+   "auroc": 0.9961738889562162
+  },
+  "DF40_MRAA_ff": {
+   "family": "FR",
+   "generator": "MRAA",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 1.0
+  },
+  "DF40_one_shot_free_cdf": {
+   "family": "FR",
+   "generator": "one_shot_free",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.9092961464321067
+  },
+  "DF40_one_shot_free_ff": {
+   "family": "FR",
+   "generator": "one_shot_free",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9803061224489795
+  },
+  "DF40_pirender_cdf": {
+   "family": "FR",
+   "generator": "pirender",
+   "variant": "cdf",
+   "videos": 814,
+   "auroc": 0.8303300120132853
+  },
+  "DF40_pirender_ff": {
+   "family": "FR",
+   "generator": "pirender",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9784693877551021
+  },
+  "DF40_sadtalker_cdf": {
+   "family": "FR",
+   "generator": "sadtalker",
+   "variant": "cdf",
+   "videos": 838,
+   "auroc": 0.7920326864147089
+  },
+  "DF40_sadtalker_ff": {
+   "family": "FR",
+   "generator": "sadtalker",
+   "variant": "ff",
+   "videos": 278,
+   "auroc": 0.9671842650103519
+  },
+  "DF40_tpsm_cdf": {
+   "family": "FR",
+   "generator": "tpsm",
+   "variant": "cdf",
+   "videos": 825,
+   "auroc": 0.9550301304204365
+  },
+  "DF40_tpsm_ff": {
+   "family": "FR",
+   "generator": "tpsm",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.991326530612245
+  },
+  "DF40_wav2lip_cdf": {
+   "family": "FR",
+   "generator": "wav2lip",
+   "variant": "cdf",
+   "videos": 844,
+   "auroc": 0.884207240948814
+  },
+  "DF40_wav2lip_ff": {
+   "family": "FR",
+   "generator": "wav2lip",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9826530612244898
+  },
+  "DF40_ddim_cdf": {
+   "family": "EFS",
+   "generator": "ddim",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9819819819819819
+  },
+  "DF40_ddim_ff": {
+   "family": "EFS",
+   "generator": "ddim",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_DiT_cdf": {
+   "family": "EFS",
+   "generator": "DiT",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9388222492155075
+  },
+  "DF40_DiT_ff": {
+   "family": "EFS",
+   "generator": "DiT",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 0.9999384236453203
+  },
+  "DF40_rddm_cdf": {
+   "family": "EFS",
+   "generator": "rddm",
+   "variant": "cdf",
+   "videos": 622,
+   "auroc": 0.96253416337686
+  },
+  "DF40_rddm_ff": {
+   "family": "EFS",
+   "generator": "rddm",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 0.9998152709359606
+  },
+  "DF40_sd2.1_cdf": {
+   "family": "EFS",
+   "generator": "sd2.1",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9950020244964065
+  },
+  "DF40_sd2.1_ff": {
+   "family": "EFS",
+   "generator": "sd2.1",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_SiT_cdf": {
+   "family": "EFS",
+   "generator": "SiT",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9625594695819415
+  },
+  "DF40_SiT_ff": {
+   "family": "EFS",
+   "generator": "SiT",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_StyleGAN2_cdf": {
+   "family": "EFS",
+   "generator": "StyleGAN2",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9994495900394776
+  },
+  "DF40_StyleGAN2_ff": {
+   "family": "EFS",
+   "generator": "StyleGAN2",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_StyleGAN3_cdf": {
+   "family": "EFS",
+   "generator": "StyleGAN3",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9949324324324325
+  },
+  "DF40_StyleGAN3_ff": {
+   "family": "EFS",
+   "generator": "StyleGAN3",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_StyleGANXL_cdf": {
+   "family": "EFS",
+   "generator": "StyleGANXL",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9891499645713129
+  },
+  "DF40_StyleGANXL_ff": {
+   "family": "EFS",
+   "generator": "StyleGANXL",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_VQGAN_cdf": {
+   "family": "EFS",
+   "generator": "VQGAN",
+   "variant": "cdf",
+   "videos": 1066,
+   "auroc": 0.9980704018625367
+  },
+  "DF40_VQGAN_ff": {
+   "family": "EFS",
+   "generator": "VQGAN",
+   "variant": "ff",
+   "videos": 256,
+   "auroc": 1.0
+  },
+  "DF40_e4e_cdf": {
+   "family": "FE",
+   "generator": "e4e",
+   "variant": "cdf",
+   "videos": 18828,
+   "auroc": 0.9998123324396783
+  },
+  "DF40_e4e_ff": {
+   "family": "FE",
+   "generator": "e4e",
+   "variant": "ff",
+   "videos": 280,
+   "auroc": 0.9998979591836735
+  },
+  "DF40_stargan": {
+   "family": "FE",
+   "generator": "stargan",
+   "variant": "own",
+   "videos": 3968,
+   "auroc": 0.9973302041330644
+  },
+  "DF40_starganv2": {
+   "family": "FE",
+   "generator": "starganv2",
+   "variant": "own",
+   "videos": 3996,
+   "auroc": 0.9284767750733716
+  },
+  "DF40_styleclip": {
+   "family": "FE",
+   "generator": "styleclip",
+   "variant": "own",
+   "videos": 3824,
+   "auroc": 0.9708109065155807
+  }
+ },
+ "families": {
+  "FS": {
+   "mean": 0.9908630585057419,
+   "sd": 0.01172229187586727,
+   "n": 18
+  },
+  "FR": {
+   "mean": 0.9443572915503392,
+   "sd": 0.06299173325350566,
+   "n": 24
+  },
+  "EFS": {
+   "mean": 0.9901253317855411,
+   "sd": 0.017143402649973744,
+   "n": 18
+  },
+  "FE": {
+   "mean": 0.9792656354690736,
+   "sd": 0.027659280400086615,
+   "n": 5
+  }
+ },
+ "macro": 0.976152829327674,
+ "missing_sets": []
+}
