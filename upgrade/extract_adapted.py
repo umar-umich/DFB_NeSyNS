@@ -29,7 +29,7 @@ torch.set_num_threads(4)
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--backbone", required=True); ap.add_argument("--recipe", required=True, choices=["L", "N"])
+    ap.add_argument("--backbone", required=True); ap.add_argument("--recipe", required=True, choices=["L", "N", "LN"])
     ap.add_argument("--dataset", required=True); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--batch-size", type=int, default=64)
     a = ap.parse_args()
