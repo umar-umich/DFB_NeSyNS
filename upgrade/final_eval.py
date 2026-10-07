@@ -171,6 +171,8 @@ def main() -> int:
     ap.add_argument("--video-view", default=None,
                     help="swap the TEMPORAL view too, e.g. vjepa2_h (Part 6b asked whether a stronger "
                          "video backbone helps the SYSTEM, which standalone AUROC cannot answer)")
+    ap.add_argument("--scales", default=None,
+                    help="fixed per-view vacuity scales 'T,APP,OM' from the joint fit on development")
     ap.add_argument("--calibrate", action="store_true",
                     help="fit a vacuity scale for the appearance view on development")
     a = ap.parse_args()
@@ -188,6 +190,18 @@ def main() -> int:
         print(f"  temporal view swapped for {a.video_view}", flush=True)
 
     # calibration and weights BOTH fitted on development, then frozen
+    scales = tuple(float(x) for x in a.scales.split(",")) if a.scales else None
+    if scales:
+        # fitted on development by upgrade/joint_calibration.py; applied unchanged here
+        def _apply(t_):
+            tt = t_.copy()
+            for v, k in zip(("T", "APP", "OM"), scales):
+                if k != 1.0:
+                    tt[f"u_{v}"] = np.clip(tt[f"u_{v}"].to_numpy() * k, 1e-6, 1.0)
+            return tt
+        dev_sw = _apply(dev_sw)
+        print(f"  per-view vacuity scales applied: T={scales[0]} APP={scales[1]} OM={scales[2]}", flush=True)
+
     tau, grid_log = 1.0, []
     if a.calibrate:
         for cand in TAU_GRID:
@@ -237,6 +251,8 @@ def main() -> int:
             t = swap_app(tests[n], test_op, n)
             if a.video_view:
                 t = swap_t(t, video_opinions(a.video_view, a.seed, devc, [n]), n)
+            if scales:
+                t = _apply(t)
             if a.calibrate:
                 t = calibrate(t, tau)
         except KeyError as e:
@@ -263,7 +279,7 @@ def main() -> int:
     json.dump({"view": a.view, "label": label, "seed": a.seed, "arm": ARM,
                "calibrated": bool(a.calibrate), "vacuity_scale": float(tau),
                "objective": a.objective, "tau_grid": grid_log, "guard": GUARD,
-               "video_view": a.video_view,
+               "video_view": a.video_view, "per_view_scales": list(scales) if scales else None,
                "threshold": thr,
                "weights_per_fold": [list(map(float, w)) for w in ws],
                "tests": rows, "slices": slices, "complementarity": comp,
