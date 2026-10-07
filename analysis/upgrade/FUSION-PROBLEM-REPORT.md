@@ -81,6 +81,18 @@ selected `tau = 1.0` — no calibration — because the grid is monotone against
 to 0.9104 at 20). Reenactment is a minority of development, so a gain concentrated there is
 invisible to an aggregate objective. The intervention was fine; the objective could not see it.
 
+## 4b. The best configuration found (for context on what is being fused)
+
+| recipe | dev fused | dev FPR | contribution | **test ten-set** | test FPR |
+|---|---:|---:|---:|---:|---:|
+| CLIP frozen (deployed-style) | 0.9130 | 0.0745 | +0.0037 | 0.9130 | 0.0698 |
+| PE-Core-L + LoRA | 0.9302 | 0.0876 | +0.0224 | 0.9190 | 0.0920 |
+| PE-Core-L + LayerNorm | 0.9329 | 0.0603 | +0.0248 | 0.9212 | 0.0666 |
+| **PE-Core-L + LoRA & LayerNorm** | **0.9364** | 0.0810 | **+0.0308** | **0.9240** | **0.0627** |
+
+The two adaptation methods touch disjoint parameters and compose: together they beat either alone on
+development fused AUROC, on incremental contribution, and on the ten-set test mean.
+
 ## 5. Joint per-view calibration, and an unexpected result
 
 Fitting all three scales together over `{0.5, 1, 2, 4}^3`, weights refitted inside every candidate,
@@ -93,9 +105,33 @@ same guard, reenactment objective (`upgrade/joint_calibration.py`):
 | 1.0 | 2.0 | 4.0 | 0.9271 | 0.9377 *(fails guard)* |
 
 **The joint fit quietens OM, not APP** — and gains five times more reenactment on development than
-the appearance-only scale did. That is not what the single-view study implied, and it was unreachable
-there because only the APP knob existed. Note it sits right at the guard edge, trading 0.0045 overall
-for 0.0102 reenactment, whereas the APP-only result gained on both. Test evaluation is running.
+the appearance-only scale did. It sits right at the guard edge, trading 0.0045 overall for 0.0102.
+
+**It then failed on test.** Ten-set mean **0.9035 against 0.9212** (−0.0177), reenactment +0.0051,
+KoDF flat. It overfitted the development reenactment population, which is the risk recorded when it
+was run: the development reenactment set is a fixed subset list, the test slices come from CDFv3 and
+KoDF, and a scale selected on the former does not have to survive on the latter. The single-view
+appearance scale, selected under a pre-registered rule, did survive.
+
+## 5b. Vector-valued reliability: the fifth attempt, and its control
+
+One scalar per view cannot say "trust this view on swaps but not reenactment". The premise is
+measured and holds — the temporal view separates reenactment at 0.609 against swaps at 0.357, the
+off-manifold view is the reverse at 0.296 and 0.481, and because the real videos are shared, the
+asymmetry is entirely in the FAKE channel.
+
+So the discount was given a vector: `e_fake' = w rho e_fake`, `e_real' = (w / rho) e_real`. Six
+numbers instead of three; `rho = 1` recovers the deployed system exactly.
+
+| | development reenactment |
+|---|---:|
+| fitted asymmetry | **+0.0014** |
+| random asymmetry, best of 20 draws at the same magnitudes | **+0.0012** |
+
+**0.0002 apart.** The gain is the extra parameters, not the direction — the same verdict CCR's
+shuffled control delivered. Enriching the reliability REPRESENTATION has now failed five times:
+grouped t-norms, direct three-source PCR6+, input-conditioned controllers, conflict conditioning,
+and per-channel vectors.
 
 ## 6. Honest limits
 
@@ -110,6 +146,27 @@ for 0.0102 reenactment, whereas the APP-only result gained on both. Test evaluat
   fixed subset list; the test slices come from CDFv3 and KoDF. The joint result is selected on the
   former and must be judged on the latter.
 - **One backbone, one operator.** Everything here is PE-Core-L under PCR6+-R.
+
+## 6b. The distinction that actually separates the successes from the failures
+
+Every failed intervention acts on **evidence**, and evidence scaling drags `p` toward 0.5: it
+quietens a view by corrupting what it claims. The one intervention that passed a pre-registered test
+scales **vacuity** with `p` untouched — the view says exactly what it said, only less loudly.
+
+| intervention | acts on | result |
+|---|---|---|
+| reliability weight (deployed) | evidence | the baseline |
+| grouped t-norm, direct PCR6+ | operator | negative |
+| controllers (quality), CCR (conflict) | evidence, input-conditioned | negative, controls match |
+| per-channel vector | evidence | negative, control matches |
+| **vacuity scale, p preserved** | **vacuity** | **passed its pre-registered test** |
+
+That is a hypothesis, not a finding: it rests on one success against six failures, and the success is
+a single scalar on one view. **The experiment that would test it directly has not been run** — take
+the same magnitude change, apply it once as an evidence scale and once as a vacuity scale, on the
+same folds, and see whether the p-preserving form systematically wins. If it does, the question for
+this fusion stops being "what should reliability be a function of" — five answers, all no — and
+becomes "what is a discount allowed to change".
 
 ## 7. Where this points
 
