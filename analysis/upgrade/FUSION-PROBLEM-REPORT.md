@@ -168,6 +168,35 @@ same folds, and see whether the p-preserving form systematically wins. If it doe
 this fusion stops being "what should reliability be a function of" — five answers, all no — and
 becomes "what is a discount allowed to change".
 
+## 6c. The matched-magnitude experiment (specified before running)
+
+**Question.** Holding the amount of quietening fixed, does it matter *how* a view is quietened?
+
+**The two arms.** A view's opinion has `alpha = e + 1`, `S = sum(alpha)`, `u = 2 / S`.
+
+| arm | operation | effect on `p` |
+|---|---|---|
+| **EVIDENCE** (what the deployed discount does) | `e' = r e`, so `u' = 2 / (r (S - 2) + 2)` | moves toward 0.5 |
+| **VACUITY** (what passed the pre-registered test) | `u' = m u` | **unchanged** |
+
+**Matching.** The arms are made comparable by equal MEAN VACUITY on the fold, not by equal
+parameter: for each target multiplier `m` the vacuity arm uses `m` directly, and `r` is solved
+numerically so the evidence arm reaches the same mean `u`. Without this the comparison would be
+between two different amounts of quietening and would say nothing about the mechanism.
+
+**Grid.** `m` in {1.25, 1.5, 2, 3, 4}, applied to each view alone and to all three together.
+
+**Read-out.** Fused development AUROC, overall and on the reenactment population, with the trust
+weights refitted inside every candidate.
+
+**Pre-set interpretation, fixed before the numbers exist.**
+- If the vacuity arm beats the evidence arm at matched vacuity across most of the grid, the relevant
+  property is that `p` is preserved, and "what a discount is allowed to change" is the right question.
+- If the two arms track each other, the earlier success was about the amount of quietening and not
+  its form, the hypothesis is withdrawn, and the appearance-scale result stands as a tuning win
+  rather than evidence of a mechanism.
+- If the evidence arm wins, the hypothesis is wrong in the opposite direction and that is reported.
+
 ## 7. Where this points
 
 1. **Calibrate, do not just discount.** A p-preserving magnitude control is a different lever from
