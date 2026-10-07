@@ -2,25 +2,165 @@
  "arm": "PCR6P-R",
  "ffpp_tau": 0.492172251411776,
  "sets": {
-  "jpeg40": {
-   "videos": 5814,
-   "auroc": 0.847416115802654,
-   "fpr_at_ffpp_tau": 0.044189852700491,
-   "tpr_at_ffpp_tau": 0.39588043205224815,
-   "fpr_at_own_eer": 0.22749590834697217,
-   "own_eer_tau": 0.09743448343100938,
-   "ece": 0.3725573261569992,
-   "threshold_transfer_gap": -0.18330605564648117
+  "CDFv2": {
+   "videos": 518,
+   "auroc": 0.9584765366820885,
+   "fpr_at_ffpp_tau": 0.016853932584269662,
+   "tpr_at_ffpp_tau": 0.6088235294117647,
+   "fpr_at_own_eer": 0.10674157303370786,
+   "own_eer_tau": 0.2155727361805483,
+   "ece": 0.2543949905765942,
+   "threshold_transfer_gap": -0.0898876404494382
   },
-  "rs06": {
-   "videos": 5814,
-   "auroc": 0.8805177018552255,
-   "fpr_at_ffpp_tau": 0.1309328968903437,
-   "tpr_at_ffpp_tau": 0.7103742778196434,
-   "fpr_at_own_eer": 0.20185488270594654,
-   "own_eer_tau": 0.3353501751306117,
-   "ece": 0.17085038085879128,
-   "threshold_transfer_gap": -0.07092198581560283
+  "CDFv3": {
+   "videos": 5118,
+   "auroc": 0.9643997634535777,
+   "fpr_at_ffpp_tau": 0.016853932584269662,
+   "tpr_at_ffpp_tau": 0.757085020242915,
+   "fpr_at_own_eer": 0.10112359550561797,
+   "own_eer_tau": 0.2157997325488143,
+   "ece": 0.2829563851750382,
+   "threshold_transfer_gap": -0.08426966292134831
+  },
+  "DFD": {
+   "videos": 3431,
+   "auroc": 0.9312767355910654,
+   "fpr_at_ffpp_tau": 0.09917355371900827,
+   "tpr_at_ffpp_tau": 0.757496740547588,
+   "fpr_at_own_eer": 0.15426997245179064,
+   "own_eer_tau": 0.33389350476082363,
+   "ece": 0.22022924783592027,
+   "threshold_transfer_gap": -0.05509641873278237
+  },
+  "DFDC": {
+   "videos": 4704,
+   "auroc": 0.8540569764046334,
+   "fpr_at_ffpp_tau": 0.15248380129589634,
+   "tpr_at_ffpp_tau": 0.7040602762662201,
+   "fpr_at_own_eer": 0.21511879049676025,
+   "own_eer_tau": 0.35062840144740576,
+   "ece": 0.10339977252520761,
+   "threshold_transfer_gap": -0.06263498920086391
+  },
+  "DFDCP": {
+   "videos": 654,
+   "auroc": 0.8606234618539786,
+   "fpr_at_ffpp_tau": 0.14782608695652175,
+   "tpr_at_ffpp_tau": 0.6721698113207547,
+   "fpr_at_own_eer": 0.21739130434782608,
+   "own_eer_tau": 0.321297644521264,
+   "ece": 0.18211346073249984,
+   "threshold_transfer_gap": -0.06956521739130433
+  },
+  "DFEval24": {
+   "videos": 814,
+   "auroc": 0.7243717011282746,
+   "fpr_at_ffpp_tau": 0.12383177570093458,
+   "tpr_at_ffpp_tau": 0.4067357512953368,
+   "fpr_at_own_eer": 0.3294392523364486,
+   "own_eer_tau": 0.22386909373025957,
+   "ece": 0.18414629228301282,
+   "threshold_transfer_gap": -0.20560747663551404
+  },
+  "FFIW": {
+   "videos": 3470,
+   "auroc": 0.9227562723716665,
+   "fpr_at_ffpp_tau": 0.0893371757925072,
+   "tpr_at_ffpp_tau": 0.7118155619596542,
+   "fpr_at_own_eer": 0.1659942363112392,
+   "own_eer_tau": 0.27577221847165545,
+   "ece": 0.09869364629430359,
+   "threshold_transfer_gap": -0.07665706051873199
+  },
+  "KoDF": {
+   "videos": 1395,
+   "auroc": 0.9600476266709357,
+   "fpr_at_ffpp_tau": 0.017369727047146403,
+   "tpr_at_ffpp_tau": 0.8729838709677419,
+   "fpr_at_own_eer": 0.0794044665012407,
+   "own_eer_tau": 0.10935509295604953,
+   "ece": 0.12838198724630226,
+   "threshold_transfer_gap": -0.062034739454094295
+  },
+  "IDForge": {
+   "videos": 5974,
+   "auroc": 0.9634698692660943,
+   "fpr_at_ffpp_tau": 0.046200200870438565,
+   "tpr_at_ffpp_tau": 0.7867425510545698,
+   "fpr_at_own_eer": 0.1111483093404754,
+   "own_eer_tau": 0.279723712720958,
+   "ece": 0.07897944942505418,
+   "threshold_transfer_gap": -0.06494810847003683
+  },
+  "DFDM": {
+   "videos": 1896,
+   "auroc": 0.9954088239525971,
+   "fpr_at_ffpp_tau": 0.02247191011235955,
+   "tpr_at_ffpp_tau": 0.9610011641443539,
+   "fpr_at_own_eer": 0.033707865168539325,
+   "own_eer_tau": 0.44659876163281076,
+   "ece": 0.05968290900644771,
+   "threshold_transfer_gap": -0.011235955056179775
+  },
+  "CDFv3 reenactment": {
+   "videos": 3378,
+   "auroc": 0.968720154494382,
+   "fpr_at_ffpp_tau": 0.016853932584269662,
+   "tpr_at_ffpp_tau": 0.804375,
+   "fpr_at_own_eer": 0.09550561797752809,
+   "own_eer_tau": 0.23103587493694552,
+   "ece": 0.24414783442863577,
+   "threshold_transfer_gap": -0.07865168539325842
+  },
+  "KoDF first-order motion": {
+   "videos": 755,
+   "auroc": 0.9836876832844574,
+   "fpr_at_ffpp_tau": 0.017369727047146403,
+   "tpr_at_ffpp_tau": 0.8494318181818182,
+   "fpr_at_own_eer": 0.05707196029776675,
+   "own_eer_tau": 0.15415848270862206,
+   "ece": 0.14374082332447724,
+   "threshold_transfer_gap": -0.03970223325062035
+  },
+  "CDFv2 jpeg40": {
+   "videos": 518,
+   "auroc": 0.8708195637805685,
+   "fpr_at_ffpp_tau": 0.0056179775280898875,
+   "tpr_at_ffpp_tau": 0.1676470588235294,
+   "fpr_at_own_eer": 0.20786516853932585,
+   "own_eer_tau": 0.06209308498768693,
+   "ece": 0.48153442174901995,
+   "threshold_transfer_gap": -0.20224719101123595
+  },
+  "CDFv2 rs06": {
+   "videos": 518,
+   "auroc": 0.9404990085922009,
+   "fpr_at_ffpp_tau": 0.028089887640449437,
+   "tpr_at_ffpp_tau": 0.5,
+   "fpr_at_own_eer": 0.11797752808988764,
+   "own_eer_tau": 0.15350116504129557,
+   "ece": 0.3030119517250352,
+   "threshold_transfer_gap": -0.0898876404494382
+  },
+  "DFDCP jpeg40": {
+   "videos": 654,
+   "auroc": 0.8189397046759639,
+   "fpr_at_ffpp_tau": 0.013043478260869565,
+   "tpr_at_ffpp_tau": 0.28773584905660377,
+   "fpr_at_own_eer": 0.26956521739130435,
+   "own_eer_tau": 0.05473904744446382,
+   "ece": 0.412647463847381,
+   "threshold_transfer_gap": -0.2565217391304348
+  },
+  "DFDCP rs06": {
+   "videos": 654,
+   "auroc": 0.8039171452009843,
+   "fpr_at_ffpp_tau": 0.1608695652173913,
+   "tpr_at_ffpp_tau": 0.5966981132075472,
+   "fpr_at_own_eer": 0.2826086956521739,
+   "own_eer_tau": 0.3632915333471196,
+   "ece": 0.2070598706331554,
+   "threshold_transfer_gap": -0.1217391304347826
   }
  },
  "note": "Analysis only; no rule reads this. A high `fpr_at_ffpp_tau` beside a healthy `auroc` and a small `fpr_at_own_eer` is a threshold-transfer problem, not a ranking one."

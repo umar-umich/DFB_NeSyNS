@@ -47,7 +47,9 @@ def ece(y, p, bins=15):
 
 
 def main() -> int:
-    dev, tests = DS.load("vjepa2_lora_B_seed42")[0], DS.load("vjepa2_lora_B_seed42")[1]
+    # DS.load returns (dev, processed-dev, tests). Taking [1] gave the PROCESSED DEVELOPMENT
+    # dict, so the table listed rs06 and jpeg40 -- development cells -- as if they were test sets.
+    dev, _dproc, tests = DS.load("vjepa2_lora_B_seed42")
     folds = [Fd for _k, Fd, _S in DS.splits(dev)]
     ws = [AR.fit_w(Fd, ARM) for Fd in folds]
 

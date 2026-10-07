@@ -1,0 +1,39 @@
+{
+ "view": "clip",
+ "dim": 1024,
+ "frames": 22396,
+ "groups": {
+  "processing": {
+   "rank": 2,
+   "E_delta": 0.009427872568192178,
+   "E_per_rank": 0.004713936284096089,
+   "null_p95": 0.02140917242740568,
+   "above_null": false
+  },
+  "source": {
+   "rank": 6,
+   "levels": [
+    "CDFv2val-Celeb-real",
+    "CDFv2val-YouTube-real",
+    "DFDCPval-real",
+    "DFEval24val-real",
+    "CDFv3valG",
+    "DS11val",
+    "DS20val",
+    "FFIWval"
+   ],
+   "E_delta": 0.0249501173343133,
+   "E_per_rank": 0.004158352889052217,
+   "null_p95": 0.0835904472548792,
+   "above_null": false
+  },
+  "manipulation_family": {
+   "rank": 1,
+   "E_delta": 0.8860106724426626,
+   "E_per_rank": 0.8860106724426626,
+   "null_p95": 0.14383310797919557,
+   "above_null": true
+  }
+ },
+ "note": "`d` is the class-separation direction (fake mean minus real mean), NOT the decision direction of the evidential head. These describe the representation; they do not show that a nuisance causes the detector's errors."
+}
