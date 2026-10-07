@@ -1,0 +1,14 @@
+{
+ "run_id": "20261007T195756Z",
+ "brief": "tbiom/docs/CROSS_EXAM_Fusion_Experiments_Claude_Code_Instructions_2026-10-07.md (revision 3)",
+ "clock_start_utc": "2026-10-07T19:57:56+00:00",
+ "deadline_utc": "2026-10-10T19:57:56+00:00",
+ "phase_targets": {
+  "0-8h": "audit, stress-test reservation, algebra, split lock, B0/B1",
+  "8-48h": "L/S/F matched comparison and the hard gate",
+  "48-66h": "Phase 4 only on a gate pass; optional A/I/G",
+  "66-72h": "freeze, final stress-test round, report"
+ },
+ "git_commit": "8baf26dd144ed7243caf513ebcbe98cc039215e3",
+ "python": "3.12.3"
+}

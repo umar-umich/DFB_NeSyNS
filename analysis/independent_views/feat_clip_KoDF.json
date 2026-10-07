@@ -1,0 +1,13 @@
+{
+ "backbone": "clip",
+ "hf_or_timm_id": "openai/clip-vit-large-patch14",
+ "input_size": 224,
+ "stored_crop": 256,
+ "upsampled_fraction": 0.0,
+ "upsample_factor": 0.875,
+ "readout": "cls_pre_proj",
+ "dataset": "KoDF",
+ "frames": 71648,
+ "dim": 1024,
+ "seconds": 293.3
+}

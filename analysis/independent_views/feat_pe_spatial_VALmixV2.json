@@ -1,0 +1,13 @@
+{
+ "backbone": "pe_spatial",
+ "hf_or_timm_id": "vit_pe_spatial_base_patch16_512",
+ "input_size": 512,
+ "stored_crop": 256,
+ "upsampled_fraction": 1.0,
+ "upsample_factor": 2.0,
+ "readout": "pooled",
+ "dataset": "VALmixV2",
+ "frames": 77394,
+ "dim": 768,
+ "seconds": 766.4
+}

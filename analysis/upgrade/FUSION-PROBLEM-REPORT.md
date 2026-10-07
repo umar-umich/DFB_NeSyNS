@@ -1,5 +1,18 @@
 # Strong branches, weak fusion: what we measured and where it points
 
+> **CORRECTION, 20261007T195756Z.** A Phase 0 algebra audit found that the vacuity-scaling results in sections
+> 4, 5 and 6 were computed on **invalid opinions**. A binary opinion needs `b_G + b_F + u = 1` with
+> non-negative masses, so holding `p` fixed while multiplying `u` is only valid while
+> `u <= 2 min(p, 1-p)`. The implementation clipped `u` at 1.0 and never checked that bound.
+> At the appearance scale of 2.0 that "passed" its pre-registered test, **48% of development videos
+> had negative belief mass** (worst −0.101); at the joint-calibration setting of OM x 4 it is
+> **99.97%**. Those three results — the reenactment calibration, the joint calibration, and the
+> vacuity arm of the matched-magnitude experiment — are **withdrawn pending re-run under a validity
+> constraint**. Everything based on evidence discounting is unaffected and was verified against the
+> closed form to 3.3e-16: the recipe comparison, the ten-set and DF40 tables, the screen, the
+> adaptation results and the IBDC rerun all stand. Evidence: `outputs/fusion_experiments/20261007T195756Z/phase0_algebra.json`.
+
+
 Self-contained for discussion. Everything below is measured on this system; nothing is projected.
 Source files are named so each number can be checked.
 

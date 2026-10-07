@@ -1,0 +1,13 @@
+{
+ "backbone": "pe_core_l",
+ "hf_or_timm_id": "vit_pe_core_large_patch14_336",
+ "input_size": 336,
+ "stored_crop": 256,
+ "upsampled_fraction": 1.0,
+ "upsample_factor": 1.312,
+ "readout": "pooled",
+ "dataset": "FFpp_val",
+ "frames": 22396,
+ "dim": 1024,
+ "seconds": 227.1
+}
