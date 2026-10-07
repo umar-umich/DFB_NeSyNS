@@ -108,7 +108,20 @@ def build(name, dev, recipe):
     for p in m.parameters():
         p.requires_grad_(False)
     fused = False
-    if recipe == "L":
+    if recipe == "LN":
+        # Both at once. LoRA adds a low-rank update inside the attention projections; LayerNorm
+        # rescales each block's activations. They act on different parameters and neither subsumes
+        # the other, so training them together is a strictly larger hypothesis class than either --
+        # which is the point, and also why it can overfit where the single-knob recipes did not.
+        trainable, fused = inject_lora(m)
+        params = [p for w in trainable for p in list(w.a.parameters()) + list(w.b.parameters())]
+        for p_ in params:
+            p_.requires_grad_(True)
+        for mod in m.modules():
+            if isinstance(mod, nn.LayerNorm):
+                for p_ in mod.parameters():
+                    p_.requires_grad_(True); params.append(p_)
+    elif recipe == "L":
         trainable, fused = inject_lora(m)
         params = [p for w in trainable for p in list(w.a.parameters()) + list(w.b.parameters())]
         for p in params:
@@ -239,7 +252,7 @@ def dev_scores(m, spec, head, dev, recipe, cache, readout="last", bs=64):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--backbone", required=True, choices=list(SPECS))
-    ap.add_argument("--recipe", required=True, choices=["L", "N"])
+    ap.add_argument("--recipe", required=True, choices=["L", "N", "LN"])
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--batch", type=int, default=BATCH)
     ap.add_argument("--train-frames", type=int, default=MAX_TRAIN_FRAMES)

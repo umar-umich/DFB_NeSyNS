@@ -103,6 +103,22 @@
    "fpr_at_own_eer": 0.033707865168539325
   }
  },
+ "slices": {
+  "CDFv3 reenactment": {
+   "videos": 3378,
+   "auroc": 0.978181179775281,
+   "fpr_at_dev_tau": 0.016853932584269662,
+   "tpr_at_dev_tau": 0.82375,
+   "fpr_at_own_eer": 0.07865168539325842
+  },
+  "KoDF first-order motion": {
+   "videos": 755,
+   "auroc": 0.9809243176178659,
+   "fpr_at_dev_tau": 0.01488833746898263,
+   "tpr_at_dev_tau": 0.84375,
+   "fpr_at_own_eer": 0.06699751861042183
+  }
+ },
  "complementarity": {
   "CDFv2": {
    "T": 0.7384087904824852,
@@ -193,8 +209,27 @@
    "T+OM": 0.9955200062785313,
    "APP+OM": 0.9888490667224757,
    "T+APP+OM": 0.9937345489267635
+  },
+  "CDFv3 reenactment": {
+   "T": 0.9741142907303371,
+   "APP": 0.8952615870786518,
+   "OM": 0.8416011235955055,
+   "T+APP": 0.9815870786516854,
+   "T+OM": 0.9727001404494382,
+   "APP+OM": 0.892712429775281,
+   "T+APP+OM": 0.978181179775281
+  },
+  "KoDF first-order motion": {
+   "T": 0.9886786600496278,
+   "APP": 0.5798062824272502,
+   "OM": 0.73055774870291,
+   "T+APP": 0.9836876832844574,
+   "T+OM": 0.9859716896007218,
+   "APP+OM": 0.7053349875930521,
+   "T+APP+OM": 0.9809243176178659
   }
  },
  "mean_auroc": 0.912993453097456,
+ "slice_note": "the reenactment slices share videos with CDFv3 and KoDF and are therefore excluded from the ten-set mean",
  "note": "Weights and threshold are fitted on the development folds and applied unchanged; no test set is read to choose anything. Pairs are scored by making the absent view vacuous, not by deleting its term."
 }
