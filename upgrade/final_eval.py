@@ -71,6 +71,23 @@ def opinions(view, seed, dev, datasets):
 # Evidence-magnitude calibration grid. tau > 1 makes the view QUIETER.
 TAU_GRID = (1.0, 1.5, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0)
 
+# Pre-registered in tbiom/docs/reenactment-calibration-preregistration.md, fixed before the run.
+REEN_SUBSETS = {
+    "Face2Face", "NeuralTextures",
+    "DaGAN", "FSRT", "HyperReenact", "hyperreenact", "LIA", "lia", "MCNET", "mcnet",
+    "TPSMM", "tpsm", "LivePortrait", "liveportrait", "AniTalker", "EDTalk", "EchoMimic",
+    "FLOAT", "R3DPortrait", "hellomeme", "SadTalker", "sadtalker", "fomm", "facevid2vid",
+    "danet", "MRAA", "one_shot_free", "pirender",
+}
+GUARD = 0.005        # overall development AUROC may not drop more than this
+
+
+def reen_mask(t):
+    """Every REAL video, plus the fakes whose subset is reenactment. Reals are never filtered: a
+    slice changes which manipulations are asked about, not which genuine videos must not be flagged."""
+    sub = t["subset"].astype(str)
+    return ((t["y"].to_numpy() == 0) | sub.isin(REEN_SUBSETS).to_numpy())
+
 
 def calibrate(t, tau):
     """Scale the appearance view's VACUITY, leaving its probability untouched.
@@ -119,6 +136,8 @@ def main() -> int:
     ap.add_argument("--view", required=True, help="feature/head prefix, e.g. pe_core_lN")
     ap.add_argument("--label", default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--objective", default="overall", choices=["overall", "reenactment"],
+                    help="development objective the vacuity scale is fitted against")
     ap.add_argument("--calibrate", action="store_true",
                     help="fit a vacuity scale for the appearance view on development")
     a = ap.parse_args()
@@ -131,22 +150,32 @@ def main() -> int:
     dev_sw = swap_app(dev_t, dev_op, "development")
 
     # calibration and weights BOTH fitted on development, then frozen
-    tau = 1.0
+    tau, grid_log = 1.0, []
     if a.calibrate:
-        best = (-1.0, 1.0)
         for cand in TAU_GRID:
-            sc = []
+            ov, re = [], []
             for _k, Fd, Sd in DS.splits(calibrate(dev_sw, cand)):
                 w = AR.fit_w(Fd, ARM)
-                p = P.p_of(AR.fuse(Sd, ARM, w))
-                y = Sd.y.to_numpy()
-                sc.append(auroc(y, p))
-            m = float(np.mean(sc))
-            print(f"  tau {cand:5.1f}: dev fused AUROC {m:.4f}", flush=True)
-            if m > best[0]:
-                best = (m, cand)
-        tau = best[1]
-        print(f"  selected tau = {tau} (development)", flush=True)
+                p = P.p_of(AR.fuse(Sd, ARM, w)); y = Sd.y.to_numpy()
+                ov.append(auroc(y, p))
+                if a.objective == "reenactment":
+                    m = reen_mask(Sd)
+                    if m.sum() > 10 and len(np.unique(y[m])) > 1:
+                        re.append(auroc(y[m], p[m]))
+            grid_log.append({"tau": cand, "dev_overall": float(np.mean(ov)),
+                             "dev_reenactment": float(np.mean(re)) if re else None})
+            print(f"  tau {cand:5.1f}: overall {np.mean(ov):.4f}"
+                  + (f"  reenactment {np.mean(re):.4f}" if re else ""), flush=True)
+        base = grid_log[0]["dev_overall"]
+        if a.objective == "reenactment":
+            # maximise reenactment SUBJECT TO the pre-registered guard on overall AUROC
+            ok = [g for g in grid_log if g["dev_overall"] >= base - GUARD]
+            tau = max(ok, key=lambda g: g["dev_reenactment"])["tau"] if ok else 1.0
+            print(f"  guard: overall must stay >= {base - GUARD:.4f}; "
+                  f"{len(ok)} of {len(grid_log)} taus qualify", flush=True)
+        else:
+            tau = max(grid_log, key=lambda g: g["dev_overall"])["tau"]
+        print(f"  selected tau = {tau} ({a.objective} objective)", flush=True)
         dev_sw = calibrate(dev_sw, tau)
 
     folds = [Fd for _k, Fd, _S in DS.splits(dev_sw)]
@@ -192,7 +221,8 @@ def main() -> int:
         mean = float(np.mean([r["auroc"] for r in rows.values()]))
         print(f"\n  ten-set mean AUROC {mean:.4f}")
     json.dump({"view": a.view, "label": label, "seed": a.seed, "arm": ARM,
-               "calibrated": bool(a.calibrate), "vacuity_scale": float(tau), "dev_tau": None,
+               "calibrated": bool(a.calibrate), "vacuity_scale": float(tau),
+               "objective": a.objective, "tau_grid": grid_log, "guard": GUARD,
                "threshold": thr,
                "weights_per_fold": [list(map(float, w)) for w in ws],
                "tests": rows, "slices": slices, "complementarity": comp,
