@@ -197,13 +197,42 @@ weights refitted inside every candidate.
   rather than evidence of a mechanism.
 - If the evidence arm wins, the hypothesis is wrong in the opposite direction and that is reported.
 
+## 6d. Result: the hypothesis is WRONG, in the opposite direction
+
+Twenty cells — four view-sets by five multipliers — each with the two arms matched to the same mean
+vacuity to four decimal places.
+
+| | vacuity arm wins | mean delta (vacuity − evidence) |
+|---|---:|---:|
+| overall | **4 / 20** | **−0.0015** |
+| reenactment | **4 / 20** | **−0.0017** |
+
+**The evidence arm is better at matched magnitude**, which is the third of the three readings fixed
+in advance. Preserving `p` is not the useful property; it is slightly harmful. The hypothesis in 6b
+is withdrawn.
+
+**What this does to the earlier success.** The appearance vacuity scale that passed its
+pre-registered test was therefore not evidence of a mechanism. At the same amount of quietening, the
+ordinary evidence discount would have done as well or better. What made that result work was the
+**objective** — fitting against reenactment instead of the aggregate — not the form of the knob. The
+test-set gains it produced are real and still stand; the explanation offered for them does not.
+
+**One thing the grid did show.** Discounting all three views together through EVIDENCE at `m` = 3–4
+reaches overall **0.9351** against the baseline's 0.9332, a gain of +0.0019 from nothing but a
+uniform temperature on every view at once — a region the weight grid cannot reach, since `max(w) = 1`
+pins at least one view at full volume. That is a small, unexplained positive and the only live thread
+left in this section.
+
 ## 7. Where this points
 
-1. **Calibrate, do not just discount.** A p-preserving magnitude control is a different lever from
-   the reliability weight and the evidence says it reaches things the weight cannot.
-2. **Aggregate objectives hide family-level gains.** The same knob was worthless against overall
-   AUROC and valuable against a reenactment objective. Any future fusion tuning should state which
-   objective it serves.
+1. **The objective, not the knob.** This is the one conclusion that survived its own test. The same
+   intervention was worthless against overall development AUROC and valuable against a reenactment
+   objective, and the matched-magnitude experiment then showed the knob's form was irrelevant. Any
+   future fusion tuning should state which objective it serves; aggregate AUROC cannot see a gain
+   concentrated in one family.
+2. **Uniform discounting of all views is unexplored and slightly positive.** +0.0019 overall at
+   `m` = 3–4 on every view at once, which the constrained weight grid cannot express. Small, but it
+   is the only untested direction this study turned up.
 3. **Confidence should be earned, not asserted.** The deep issue is that a view's evidence magnitude
    reflects how hard it was trained, not how reliable it is on the sample at hand. A per-sample
    reliability estimate — rather than one scalar per view per fold — is the direction this points,
