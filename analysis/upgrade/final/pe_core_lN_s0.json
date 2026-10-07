@@ -3,7 +3,10 @@
  "label": "PE-Core-L + LayerNorm (winner)",
  "seed": 0,
  "arm": "PCR6P-R",
- "dev_tau": 0.5928171918139926,
+ "calibrated": false,
+ "vacuity_scale": 1.0,
+ "dev_tau": null,
+ "threshold": 0.5928171918139926,
  "weights_per_fold": [
   [
    0.25,

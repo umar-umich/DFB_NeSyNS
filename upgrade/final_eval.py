@@ -68,6 +68,31 @@ def opinions(view, seed, dev, datasets):
     return out
 
 
+# Evidence-magnitude calibration grid. tau > 1 makes the view QUIETER.
+TAU_GRID = (1.0, 1.5, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0)
+
+
+def calibrate(t, tau):
+    """Scale the appearance view's VACUITY, leaving its probability untouched.
+
+    The diagnosis behind this: adapting the appearance view does not displace the temporal view by
+    WEIGHT -- T keeps 0.25 in every row -- it drowns it by MAGNITUDE. The adapted view sits near
+    saturation, so it emits very low vacuity and dominates the combination wherever it is confident,
+    including reenactment, where it is confidently mediocre and the temporal view is the one that
+    knows.
+
+    Scaling `u` alone is the minimal intervention that addresses exactly that: `p` is untouched, so
+    the view's RANKING is bit-for-bit unchanged and its standalone AUROC cannot move. Only how loudly
+    it speaks inside the fusion changes. Scaling the evidence instead would move `p` as well and
+    would confound a calibration effect with a ranking one.
+
+    `tau` is fitted on the development folds, like every other fusion parameter.
+    """
+    tt = t.copy()
+    tt["u_APP"] = np.clip(tt["u_APP"].to_numpy() * tau, 1e-6, 1.0)
+    return tt
+
+
 def swap_app(t, op, name):
     t = t.copy()
     miss = [v for v in t.v if str(v) not in op]
@@ -94,6 +119,8 @@ def main() -> int:
     ap.add_argument("--view", required=True, help="feature/head prefix, e.g. pe_core_lN")
     ap.add_argument("--label", default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--calibrate", action="store_true",
+                    help="fit a vacuity scale for the appearance view on development")
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     label = a.label or a.view
@@ -103,7 +130,25 @@ def main() -> int:
     dev_op = opinions(a.view, a.seed, devc, ("VALmix", "VALmixV2", "FFpp_val"))
     dev_sw = swap_app(dev_t, dev_op, "development")
 
-    # weights and threshold FITTED ON DEVELOPMENT, then frozen
+    # calibration and weights BOTH fitted on development, then frozen
+    tau = 1.0
+    if a.calibrate:
+        best = (-1.0, 1.0)
+        for cand in TAU_GRID:
+            sc = []
+            for _k, Fd, Sd in DS.splits(calibrate(dev_sw, cand)):
+                w = AR.fit_w(Fd, ARM)
+                p = P.p_of(AR.fuse(Sd, ARM, w))
+                y = Sd.y.to_numpy()
+                sc.append(auroc(y, p))
+            m = float(np.mean(sc))
+            print(f"  tau {cand:5.1f}: dev fused AUROC {m:.4f}", flush=True)
+            if m > best[0]:
+                best = (m, cand)
+        tau = best[1]
+        print(f"  selected tau = {tau} (development)", flush=True)
+        dev_sw = calibrate(dev_sw, tau)
+
     folds = [Fd for _k, Fd, _S in DS.splits(dev_sw)]
     ws = [AR.fit_w(Fd, ARM) for Fd in folds]
     taus = []
@@ -112,8 +157,9 @@ def main() -> int:
         m = (dev_sw.source == "FFpp_val").to_numpy() if "source" in dev_sw else np.ones(len(dev_sw), bool)
         if m.any():
             taus.append(eer(dev_sw.y.to_numpy()[m], p[m])[1])
-    tau = float(np.mean(taus))
-    print(f"{label}: weights fitted on development, tau={tau:.4f} (FF++ val EER)", flush=True)
+    thr = float(np.mean(taus))          # DECISION THRESHOLD, distinct from the calibration scale
+    print(f"{label}: weights fitted on development, threshold={thr:.4f} (FF++ val EER)"
+          + (f", vacuity scale={tau}" if a.calibrate else ""), flush=True)
 
     test_op = opinions(a.view, a.seed, devc, TEST_SETS)
     rows, comp, slices = {}, {}, {}
@@ -122,6 +168,8 @@ def main() -> int:
             continue
         try:
             t = swap_app(tests[n], test_op, n)
+            if a.calibrate:
+                t = calibrate(t, tau)
         except KeyError as e:
             print(f"  {n}: {e}"); continue
         y = t.y.to_numpy()
@@ -129,8 +177,8 @@ def main() -> int:
         own = eer(y, ps)[1]
         tgt = slices if n in SLICES else rows
         tgt[n] = {"videos": int(len(y)), "auroc": auroc(y, ps),
-                   "fpr_at_dev_tau": float((ps[y == 0] >= tau).mean()),
-                   "tpr_at_dev_tau": float((ps[y == 1] >= tau).mean()),
+                   "fpr_at_dev_tau": float((ps[y == 0] >= thr).mean()),
+                   "tpr_at_dev_tau": float((ps[y == 1] >= thr).mean()),
                    "fpr_at_own_eer": float((ps[y == 0] >= own).mean())}
         c = {}
         for r in (1, 2, 3):
@@ -143,7 +191,9 @@ def main() -> int:
     if rows:
         mean = float(np.mean([r["auroc"] for r in rows.values()]))
         print(f"\n  ten-set mean AUROC {mean:.4f}")
-    json.dump({"view": a.view, "label": label, "seed": a.seed, "arm": ARM, "dev_tau": tau,
+    json.dump({"view": a.view, "label": label, "seed": a.seed, "arm": ARM,
+               "calibrated": bool(a.calibrate), "vacuity_scale": float(tau), "dev_tau": None,
+               "threshold": thr,
                "weights_per_fold": [list(map(float, w)) for w in ws],
                "tests": rows, "slices": slices, "complementarity": comp,
                "mean_auroc": float(np.mean([r["auroc"] for r in rows.values()])) if rows else None,
