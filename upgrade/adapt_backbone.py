@@ -193,7 +193,22 @@ def subsample(X, K, limit, seed):
     return X[keep], K[keep]
 
 
-def frames_of(dataset, size, limit=0, seed=0):
+def _degrade(im, spec):
+    """Label-preserving intervention on the NATIVE crop, before any model preprocessing -- which is
+    where training applies augmentation, and the only place it is comparable across views."""
+    if not spec:
+        return im
+    import io as _io
+    kind, val = spec.split(":")
+    if kind == "jpeg":
+        b = _io.BytesIO(); im.save(b, format="JPEG", quality=int(val)); b.seek(0)
+        return Image.open(b).convert("RGB")
+    w, h = im.size; s = float(val)
+    sm = im.resize((max(1, int(w * s)), max(1, int(h * s))), Image.BILINEAR)
+    return sm.resize((w, h), Image.BILINEAR).convert("RGB")
+
+
+def frames_of(dataset, size, limit=0, seed=0, process=None):
     """Decoded crops plus their keys. Source-paired for training is handled by the caller's sampler."""
     man = sorted((EXT / "splits" / dataset).glob("*.txt"))
     lines = [l.strip() for mm in man for l in mm.read_text().splitlines() if l.strip()]
@@ -207,6 +222,7 @@ def frames_of(dataset, size, limit=0, seed=0):
             a = f[k][()]
             im = (Image.open(io.BytesIO(a.tobytes())) if a.dtype == np.uint8 and a.ndim == 1
                   else Image.fromarray(np.asarray(a).astype(np.uint8))).convert("RGB")
+            im = _degrade(im, process)
             if im.size != (size, size):
                 im = im.resize((size, size), Image.BICUBIC)
             X.append(np.asarray(im, dtype=np.uint8)); K.append(k)

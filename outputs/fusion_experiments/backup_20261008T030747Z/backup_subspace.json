@@ -1,0 +1,51 @@
+{
+ "backup_run_id": "backup_20261008T030747Z",
+ "datasets_with_all_conditions": [
+  "FFpp_val"
+ ],
+ "conditions": [
+  "identity",
+  "jpeg:50",
+  "resize:0.5"
+ ],
+ "pca_dim": 32,
+ "out_dim": 8,
+ "ridge": 0.001,
+ "usable_pairs": 560,
+ "guided": {
+  "pairs": 560,
+  "eigenvalues_top8": [
+   4.716903180953776,
+   3.5435252550030323,
+   2.8406636821732345,
+   2.720202525683528,
+   2.2869556735290035,
+   2.0850184715777225,
+   1.550392407263422,
+   1.393269213098897
+  ]
+ },
+ "shuffled": {
+  "pairs": 554,
+  "eigenvalues_top8": [
+   16.76223071484485,
+   8.756014664202073,
+   6.865670999198168,
+   5.986141952763632,
+   5.348544522346961,
+   4.956781410124049,
+   4.6960152843845036,
+   4.055409816923473
+  ]
+ },
+ "feasibility_coverage": {
+  "CDFv2val": 0,
+  "CDFv3valG": 173,
+  "DF40train": 0,
+  "DS11val": 0,
+  "DS20val": 0,
+  "FFIWval": 0,
+  "FFpp_val": 560
+ },
+ "caveat": "Pairs are dominated by FF++; four of seven development domains supply none, so the subspace is fitted mostly on FF++ structure."
+}

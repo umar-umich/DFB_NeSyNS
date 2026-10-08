@@ -32,12 +32,16 @@ def main() -> int:
     ap.add_argument("--backbone", required=True); ap.add_argument("--recipe", required=True, choices=["L", "N", "LN"])
     ap.add_argument("--dataset", required=True); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--process", default=None,
+                    help="label-preserving intervention applied to the NATIVE crop before the "
+                         "backbone's preprocessing: jpeg:<q> or resize:<scale>")
     a = ap.parse_args()
     # The SEED belongs in the filename. Without it every seed wrote to one path, the second seed
     # found the first seed's file and reported "exists", and a caller that renamed the result
     # afterwards silently relabelled seed 0's features as another seed's. Seed 0 keeps the bare name
     # so the existing caches and every path that reads them stay valid.
-    tag = f"{a.backbone}{a.recipe}" + ("" if a.seed == 0 else f"_s{a.seed}")
+    tag = (f"{a.backbone}{a.recipe}" + ("" if a.seed == 0 else f"_s{a.seed}")
+           + ("" if not a.process else "_" + a.process.replace(":", "")))
     f = OUT / f"{tag}_{a.dataset}.npz"
     if f.exists():
         print(f"{f.name} exists"); return 0
@@ -55,7 +59,7 @@ def main() -> int:
     m.eval()
     print(f"{tag}: epoch {ck['epoch']}, {len(adapted)} adapted tensors restored, input {spec['size']}", flush=True)
 
-    X, K = AB.frames_of(a.dataset, spec["size"])
+    X, K = AB.frames_of(a.dataset, spec["size"], process=a.process)
     Z, t0 = [], time.time()
     with torch.no_grad():
         for i in range(0, len(X), a.batch_size):

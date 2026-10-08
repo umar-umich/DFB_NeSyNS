@@ -1,0 +1,108 @@
+{
+ "backup_run_id": "backup_20261008T030747Z",
+ "main_run_id": "20261007T195756Z",
+ "pair_rule": "same original source content; FF++ target id, Celeb-DF identity+clip",
+ "per_domain": {
+  "CDFv2val": {
+   "real_videos": 0,
+   "fake_videos": 0,
+   "source_groups_with_a_genuine_partner": 0,
+   "aligned_pairs": 0,
+   "unmatched_videos": 450,
+   "families_with_pairs": []
+  },
+  "CDFv3valG": {
+   "real_videos": 128,
+   "fake_videos": 960,
+   "source_groups_with_a_genuine_partner": 39,
+   "aligned_pairs": 173,
+   "unmatched_videos": 576,
+   "families_with_pairs": [
+    "BlendFace",
+    "Celeb-DF-v2",
+    "DaGAN",
+    "FSRT",
+    "GHOST",
+    "HifiFace",
+    "HyperReenact",
+    "InSwapper",
+    "LIA",
+    "LivePortrait",
+    "MCNET",
+    "MobileFaceSwap",
+    "SimSwap",
+    "TPSMM",
+    "UniFace"
+   ]
+  },
+  "DF40train": {
+   "real_videos": 0,
+   "fake_videos": 640,
+   "source_groups_with_a_genuine_partner": 0,
+   "aligned_pairs": 0,
+   "unmatched_videos": 64,
+   "families_with_pairs": []
+  },
+  "DS11val": {
+   "real_videos": 0,
+   "fake_videos": 0,
+   "source_groups_with_a_genuine_partner": 0,
+   "aligned_pairs": 0,
+   "unmatched_videos": 448,
+   "families_with_pairs": []
+  },
+  "DS20val": {
+   "real_videos": 0,
+   "fake_videos": 0,
+   "source_groups_with_a_genuine_partner": 0,
+   "aligned_pairs": 0,
+   "unmatched_videos": 448,
+   "families_with_pairs": []
+  },
+  "FFIWval": {
+   "real_videos": 0,
+   "fake_videos": 0,
+   "source_groups_with_a_genuine_partner": 0,
+   "aligned_pairs": 0,
+   "unmatched_videos": 500,
+   "families_with_pairs": []
+  },
+  "FFpp_val": {
+   "real_videos": 140,
+   "fake_videos": 560,
+   "source_groups_with_a_genuine_partner": 140,
+   "aligned_pairs": 560,
+   "unmatched_videos": 0,
+   "families_with_pairs": [
+    "Deepfakes",
+    "Face2Face",
+    "FaceSwap",
+    "NeuralTextures"
+   ]
+  }
+ },
+ "total_aligned_pairs": 733,
+ "families_with_pairs": [
+  "BlendFace",
+  "Celeb-DF-v2",
+  "DaGAN",
+  "Deepfakes",
+  "FSRT",
+  "Face2Face",
+  "FaceSwap",
+  "GHOST",
+  "HifiFace",
+  "HyperReenact",
+  "InSwapper",
+  "LIA",
+  "LivePortrait",
+  "MCNET",
+  "MobileFaceSwap",
+  "NeuralTextures",
+  "SimSwap",
+  "TPSMM",
+  "UniFace"
+ ],
+ "feasible": true,
+ "decision": "proceed: the subspace can be fitted on these pairs"
+}
