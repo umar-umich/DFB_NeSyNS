@@ -1,0 +1,138 @@
+{
+ "run_id": "20261007T195756Z",
+ "threshold": 0.4329150855299807,
+ "gamma": 0.125,
+ "panel": {
+  "DFEval24": {
+   "videos": 814,
+   "B0-matched": {
+    "auroc": 0.7331182509321583,
+    "fpr_genuine_at_dev_threshold": 0.25934579439252337,
+    "nll": 0.7003826954722647
+   },
+   "B1-refit": {
+    "auroc": 0.7345104353300083,
+    "fpr_genuine_at_dev_threshold": 0.35514018691588783,
+    "nll": 0.6069645333841909
+   }
+  },
+  "DFDC": {
+   "videos": 4704,
+   "B0-matched": {
+    "auroc": 0.8605129521827455,
+    "fpr_genuine_at_dev_threshold": 0.1490280777537797,
+    "nll": 0.5702142834588411
+   },
+   "B1-refit": {
+    "auroc": 0.8620513205322812,
+    "fpr_genuine_at_dev_threshold": 0.18056155507559396,
+    "nll": 0.47345704263560595
+   }
+  },
+  "CDFv2": {
+   "videos": 518,
+   "B0-matched": {
+    "auroc": 0.950165234633179,
+    "fpr_genuine_at_dev_threshold": 0.08426966292134831,
+    "nll": 0.38449995124213543
+   },
+   "B1-refit": {
+    "auroc": 0.9437541308658294,
+    "fpr_genuine_at_dev_threshold": 0.1797752808988764,
+    "nll": 0.4284292244877115
+   }
+  },
+  "CDFv3": {
+   "videos": 5118,
+   "B0-matched": {
+    "auroc": 0.9542589728426512,
+    "fpr_genuine_at_dev_threshold": 0.08426966292134831,
+    "nll": 0.3395222773263062
+   },
+   "B1-refit": {
+    "auroc": 0.9569087476686531,
+    "fpr_genuine_at_dev_threshold": 0.1797752808988764,
+    "nll": 0.3434253765468125
+   }
+  },
+  "DFD": {
+   "videos": 3431,
+   "B0-matched": {
+    "auroc": 0.9404651588781019,
+    "fpr_genuine_at_dev_threshold": 0.10192837465564739,
+    "nll": 0.4162842497276272
+   },
+   "B1-refit": {
+    "auroc": 0.939927304334084,
+    "fpr_genuine_at_dev_threshold": 0.15426997245179064,
+    "nll": 0.35476113758788863
+   }
+  },
+  "DFDCP": {
+   "videos": 654,
+   "B0-matched": {
+    "auroc": 0.8990771123872026,
+    "fpr_genuine_at_dev_threshold": 0.09565217391304348,
+    "nll": 0.5197303575390917
+   },
+   "B1-refit": {
+    "auroc": 0.8979696472518457,
+    "fpr_genuine_at_dev_threshold": 0.1391304347826087,
+    "nll": 0.4712366753941037
+   }
+  },
+  "FFIW": {
+   "videos": 3470,
+   "B0-matched": {
+    "auroc": 0.9664643008412992,
+    "fpr_genuine_at_dev_threshold": 0.05763688760806916,
+    "nll": 0.2815811232945546
+   },
+   "B1-refit": {
+    "auroc": 0.9690033137057861,
+    "fpr_genuine_at_dev_threshold": 0.08069164265129683,
+    "nll": 0.3415217235860923
+   }
+  },
+  "KoDF": {
+   "videos": 1395,
+   "B0-matched": {
+    "auroc": 0.9399338629632594,
+    "fpr_genuine_at_dev_threshold": 0.03970223325062035,
+    "nll": 0.47911499199681723
+   },
+   "B1-refit": {
+    "auroc": 0.9425603337869205,
+    "fpr_genuine_at_dev_threshold": 0.03970223325062035,
+    "nll": 0.3271413260349749
+   }
+  },
+  "IDForge": {
+   "videos": 5974,
+   "B0-matched": {
+    "auroc": 0.9884840782549623,
+    "fpr_genuine_at_dev_threshold": 0.05021760964178105,
+    "nll": 0.16679776547432534
+   },
+   "B1-refit": {
+    "auroc": 0.9907011400478963,
+    "fpr_genuine_at_dev_threshold": 0.07130900569132909,
+    "nll": 0.2612783907272237
+   }
+  },
+  "DFDM": {
+   "videos": 1896,
+   "B0-matched": {
+    "auroc": 0.985804633032923,
+    "fpr_genuine_at_dev_threshold": 0.0898876404494382,
+    "nll": 0.12469164047934778
+   },
+   "B1-refit": {
+    "auroc": 0.9854383853710219,
+    "fpr_genuine_at_dev_threshold": 0.20786516853932585,
+    "nll": 0.18801347894163284
+   }
+  }
+ },
+ "note": "DeepfakeEval24 and DFDC are PREVIOUSLY EXPOSED. This is targeted evaluation on known-difficult datasets, not untouched confirmation. L, S and F are reported on development out-of-fold only: their heads require per-view FEATURES, and the off-manifold cache does not cover DFDC, CDFv2, CDFv3 or KoDF, so a panel row for them would be computed on a different set of datasets than B0/B1."
+}

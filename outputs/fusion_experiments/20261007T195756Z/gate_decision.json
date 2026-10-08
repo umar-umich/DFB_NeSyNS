@@ -1,0 +1,27 @@
+{
+ "run_id": "20261007T195756Z",
+ "macro": {
+  "L": 0.9400945593876034,
+  "S": 0.9461018231357982,
+  "F": 0.8580207831385264,
+  "B0_matched": 0.9512601499381423,
+  "B1_refit": 0.952244004627469
+ },
+ "F_minus_S": {
+  "point": -0.08808103999727179,
+  "mean": -0.05796980338724301,
+  "lo97.5": -0.17607592664930555,
+  "hi": 0.02667024982235438
+ },
+ "F_minus_B1refit": {
+  "point": -0.09422322148894269,
+  "interval": "not paired-bootstrapped: B1 uses the Phase 1 fold partition, not the Phase 2 one"
+ },
+ "seeds": [
+  42,
+  1024,
+  3407
+ ],
+ "gate_passed": false,
+ "consequence": "Phases 3, 4 and 5 are SKIPPED. B1 is retained as the cheap intervention. The brief forbids tuning F after inspecting this gate."
+}

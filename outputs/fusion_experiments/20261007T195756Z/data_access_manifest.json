@@ -1,0 +1,31 @@
+{
+ "run_id": "20261007T195756Z",
+ "stress_tests": [
+  "DFEval24",
+  "DFDC"
+ ],
+ "development_sources": [
+  "CDFv2val",
+  "CDFv3valG",
+  "DF40train",
+  "DFDCPval",
+  "DFEval24val",
+  "DS11val",
+  "DS20val",
+  "FFIWval",
+  "FFpp_val"
+ ],
+ "reserved_from_fitting": [
+  "DFDCPval",
+  "DFEval24val"
+ ],
+ "development_videos_total": 5814,
+ "development_videos_after_reservation": 4914,
+ "exposure": {
+  "all_ten_benchmarks": "exposed",
+  "DF40": "exposed",
+  "DFEval24": "exposed (primary stress test)",
+  "DFDC": "exposed (secondary)"
+ },
+ "note": "Stress-test source groups are excluded from every fitted module in this run. Exclusion cannot undo historical adaptive use of these benchmarks."
+}

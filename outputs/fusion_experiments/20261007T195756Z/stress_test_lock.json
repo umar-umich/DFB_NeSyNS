@@ -1,0 +1,31 @@
+{
+ "run_id": "20261007T195756Z",
+ "gate_passed": false,
+ "rows": [
+  "B0-matched",
+  "B1-refit",
+  "L",
+  "S",
+  "F"
+ ],
+ "conditional_variant": null,
+ "reason": "the Phase 2 gate failed, so no conditional variant was selected",
+ "gamma": 0.125,
+ "panel": [
+  "DFEval24",
+  "DFDC",
+  "CDFv2",
+  "CDFv3",
+  "DFD",
+  "DFDCP",
+  "FFIW",
+  "KoDF",
+  "IDForge",
+  "DFDM"
+ ],
+ "fitting_excluded": [
+  "DFDCPval",
+  "DFEval24val"
+ ],
+ "frozen_before_evaluation": true
+}
