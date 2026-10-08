@@ -1,0 +1,1 @@
+predictions.csv.gz: one row per development video. Columns: video_group, domain, label, then one out-of-fold probability column per model and seed.

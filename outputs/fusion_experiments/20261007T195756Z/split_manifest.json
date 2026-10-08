@@ -1,0 +1,49 @@
+{
+ "run_id": "20261007T195756Z",
+ "n_videos": 4914,
+ "n_source_groups": 52,
+ "n_domains": 7,
+ "outer_folds": [
+  {
+   "fold": 0,
+   "train_videos": 3942,
+   "assess_videos": 972,
+   "train_groups": 42,
+   "assess_groups": 10,
+   "group_overlap": 0
+  },
+  {
+   "fold": 1,
+   "train_videos": 3941,
+   "assess_videos": 973,
+   "train_groups": 41,
+   "assess_groups": 11,
+   "group_overlap": 0
+  },
+  {
+   "fold": 2,
+   "train_videos": 3884,
+   "assess_videos": 1030,
+   "train_groups": 41,
+   "assess_groups": 11,
+   "group_overlap": 0
+  },
+  {
+   "fold": 3,
+   "train_videos": 3948,
+   "assess_videos": 966,
+   "train_groups": 42,
+   "assess_groups": 10,
+   "group_overlap": 0
+  },
+  {
+   "fold": 4,
+   "train_videos": 3941,
+   "assess_videos": 973,
+   "train_groups": 42,
+   "assess_groups": 10,
+   "group_overlap": 0
+  }
+ ],
+ "leakage_check": "every fold reports group_overlap 0; a source video and its derivatives never cross a partition"
+}

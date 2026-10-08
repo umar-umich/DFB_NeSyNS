@@ -1,0 +1,14 @@
+{
+ "run_id": "phase3_override_20261008T041857Z",
+ "type": "GATE OVERRIDE",
+ "authorised_by": "UMAR, explicit instruction 2026-10-08, overriding the Phase 2 hard gate",
+ "brief_rule_overridden": "Section 8: 'Optional and disabled unless the Phase 2 hard gate passed.'",
+ "gate_result_being_overridden": {
+  "F_minus_S": -0.0881,
+  "F_minus_B1refit": -0.0942,
+  "passed": false
+ },
+ "main_run": "20261007T195756Z",
+ "status_of_results": "These results are OUTSIDE the pre-registered protocol. They are an instructed follow-up after an inspected gate failure, so they carry selection exposure the main-run numbers do not, and may not be reported as a pre-registered comparison.",
+ "started_utc": "2026-10-08T04:18:57.801985+00:00"
+}
