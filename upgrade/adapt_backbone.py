@@ -19,7 +19,7 @@ the frozen screen caches them, which is what makes this the expensive part of th
 """
 from __future__ import annotations
 
-import argparse, io, json, math, sys, time
+import argparse, io, json, math, os, sys, time
 from pathlib import Path
 
 import h5py
@@ -40,7 +40,12 @@ torch.set_num_threads(4)
 OUT = ROOT / "analysis/upgrade/adapt"
 EPOCHS, BATCH, WD = 20, 64, 0.01
 LR_ADAPT, LR_HEAD = 2e-4, 2e-3
-LORA_R, LORA_ALPHA, LORA_DROPOUT = 8, 16, 0.1
+# Section 8's LoRA sweep varies these per cell. They are read from the environment so one script
+# serves every cell, and the resolved values are written into the run JSON -- without this, every
+# sweep cell would silently train the CENTRE configuration and the sweep would be ten copies of B0.
+LORA_R = int(os.environ.get("BF_LORA_R", 8))
+LORA_ALPHA = float(os.environ.get("BF_LORA_ALPHA", 16))
+LORA_DROPOUT = float(os.environ.get("BF_LORA_DROPOUT", 0.1))
 DEV_SETS = ("VALmix", "VALmixV2", "FFpp_val")
 V2_SOURCES = {"CDFv3valG", "DF40train", "DS20val", "DS11val", "FFIWval"}
 MAX_TRAIN_FRAMES = 40000     # budget cap; the frozen screen used all of FF++ train
@@ -277,6 +282,13 @@ def main() -> int:
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     tag = f"{a.backbone}_{a.recipe}_s{a.seed}" + ("" if a.readout == "last" else f"_{a.readout.replace(chr(43),chr(45))}")
+    # SECTION 8's SWEEP VARIES THE LoRA CONFIG, SO IT MUST APPEAR IN THE FILENAME. Without this every
+    # sweep cell resolves to the same `{backbone}_{recipe}_s{seed}` output, the existence check below
+    # fires, and all ten cells report "exists" and do nothing -- which is exactly what happened on
+    # the first launch. Only a NON-DEFAULT config is suffixed, so every pre-existing run keeps its
+    # current name and nothing already on disk is orphaned.
+    if (LORA_R, LORA_ALPHA, LORA_DROPOUT) != (8, 16.0, 0.1):
+        tag += f"_r{LORA_R}a{LORA_ALPHA:g}d{LORA_DROPOUT:g}"
     if (OUT / f"{tag}.json").exists():
         print(f"{tag} exists"); return 0
 
@@ -345,7 +357,9 @@ def main() -> int:
     print(f"  selected epoch {ck['epoch']} re-scored on FULL dev: v3.1 {sc_f:.4f} "
           f"VALmix-v2 {v2_f:.4f} FF++val {ff_f:.4f}", flush=True)
 
-    json.dump({"backbone": a.backbone, "recipe": a.recipe, "seed": a.seed, "dim": int(d),
+    json.dump({"backbone": a.backbone, "recipe": a.recipe,
+           "lora_r": LORA_R, "lora_alpha": LORA_ALPHA, "lora_dropout": LORA_DROPOUT,
+           "lora_alpha_over_r": LORA_ALPHA / LORA_R, "seed": a.seed, "dim": int(d),
                "dev_v31_full": sc_f, "valmixv2_full": v2_f, "ffpp_val_auroc_full": ff_f,
                "selection_dev_frames": int(sum(len(cache[n][0]) for n in DEV_SETS)),
                "input_size": spec["size"], "trainable_params": int(n_tr), "fused_qkv": bool(fused),

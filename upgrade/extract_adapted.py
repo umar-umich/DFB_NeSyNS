@@ -35,12 +35,18 @@ def main() -> int:
     ap.add_argument("--process", default=None,
                     help="label-preserving intervention applied to the NATIVE crop before the "
                          "backbone's preprocessing: jpeg:<q> or resize:<scale>")
+    ap.add_argument("--ckpt-suffix", default="",
+                    help="suffix of the adapt checkpoint to load, e.g. _r16a32d0.1 for a section-8 "
+                         "LoRA sweep cell. The same suffix goes into the feature cache name, and "
+                         "the BF_LORA_* environment variables must match the cell or the adapted "
+                         "tensor shapes will not match and the assertion below will say so.")
     a = ap.parse_args()
     # The SEED belongs in the filename. Without it every seed wrote to one path, the second seed
     # found the first seed's file and reported "exists", and a caller that renamed the result
     # afterwards silently relabelled seed 0's features as another seed's. Seed 0 keeps the bare name
     # so the existing caches and every path that reads them stay valid.
     tag = (f"{a.backbone}{a.recipe}" + ("" if a.seed == 0 else f"_s{a.seed}")
+           + a.ckpt_suffix
            + ("" if not a.process else "_" + a.process.replace(":", "")))
     f = OUT / f"{tag}_{a.dataset}.npz"
     if f.exists():
@@ -48,7 +54,8 @@ def main() -> int:
 
     dev = "cuda"
     m, mean, std, spec, _params, _fused = AB.build(a.backbone, dev, a.recipe)
-    ck = torch.load(AB.OUT / f"{a.backbone}_{a.recipe}_s{a.seed}.pt", map_location=dev)
+    ck = torch.load(AB.OUT / f"{a.backbone}_{a.recipe}_s{a.seed}{a.ckpt_suffix}.pt",
+                    map_location=dev)
     # The run saved only the ADAPTED tensors (adapters, or LayerNorm); everything else stays at the
     # pretrained value, so a strict load would fail by design. Assert the adapted keys all landed.
     sd = m.state_dict()
