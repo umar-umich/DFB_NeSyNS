@@ -1,0 +1,145 @@
+--- tbiom/handoff/PECORE_L14_TemporalBranch/code/tbiom/temporal/train_branch.py	2026-10-08 22:03:58.485794052 -0400
++++ logs/branchfusion/p_dense_code/tbiom/temporal/train_branch.py	2026-10-09 11:27:27.918146360 -0400
+@@ -113,8 +113,9 @@
+     return added
+ LR_BLOCKS, LR_HEAD = 2e-4, 2e-3
+ DEV = ["VALmix", "VALmixV2", "FFpp_val"]
++PROCESSED_TESTS = ("CDFv2", "DFDCP")   # named so a restricted run can empty it
+ TESTS = ["CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "DFEval24", "FFIW", "KoDF", "IDForge", "DFDM"]
+-S23 = Path("/data/kutub/conferences/DFD/PECORE_L14_TemporalBranch/reference")
++S23 = Path("/data/umar/Repos/DFB_NeSyNS/logs/tbiom/stage23")
+ 
+ 
+ def videos_of(ds):
+@@ -393,17 +394,97 @@
+     return pd.DataFrame(out, columns=["v", "y", "p", "u"])
+ 
+ 
++# ----------------------------------------------------------------------------- dense coverage gate
++# What the dense crops actually cover, measured 2026-10-09 against the development table:
++#   FFpp_val 699/700, CDFv2val 450/450, DFEval24val 371/450, CDFv3valG 597/1664,
++#   and NOTHING for DF40train, DFDCPval, DS11val, DS20val, FFIWval -- 2117 of 5814 videos (36.4%).
++# So a dense run cannot be selected on the same pool as a sparse one, and the first version of this
++# gate floored coverage at half the pool and stopped the run. That floor was the wrong instrument.
++# Coverage is not what makes a development macro meaningless; an EMPTY v3.1 TYPE is. The macro is a
++# mean over swap / reenactment / in-the-wild, so if the dense subset wiped out one of the three the
++# remaining average would silently be a different objective wearing the same name. It does not:
++# every type keeps at least one scorable cell (swap 2/5, reenactment 1/3, in_the_wild 1/2).
++# This gate therefore checks the thing that matters -- all three types still scorable, on a subset
++# that is not a remnant -- and records the restriction so the number it produces can never be read
++# as a full-pool v3.1. Only the epoch CHOICE rests on it; the pilot's actual answer is the
++# ordered-vs-shuffled |delta p|, which is computed per video and does not depend on this pool at all.
++DEV_RESTRICTION: dict = {}
++MIN_COVERAGE = 0.30
++
++
++def _audit_module():
++    """The analysis module, imported the way THIS trainer's sys.path exposes it.
++
++    `main` does `import exp1_fusion_audit as A` -- flat, because the caller puts
++    `p_dense_code/tbiom` on sys.path rather than importing `tbiom` as a package. Spelling it
++    `tbiom.exp1_fusion_audit` here cost a 21-minute training epoch: the gate runs at the END of
++    epoch 0, so the ModuleNotFoundError did not surface until the first development evaluation.
++    Both spellings are accepted now, and `preflight` below calls this before training starts so a
++    path problem costs seconds instead of an epoch.
++    """
++    try:
++        import exp1_fusion_audit as _A
++    except ModuleNotFoundError:
++        import tbiom.exp1_fusion_audit as _A
++    return _A
++
++
++def preflight():
++    """Everything the per-epoch selection gate needs, resolved before the first batch."""
++    _audit_module()
++    return True
++
++
++def restrict_to_dense(t, announce: bool = False):
++    _A = _audit_module()
++    cov = float(t.p.notna().mean())
++    sub = t[t.p.notna()].reset_index(drop=True)
++    scorable = {}
++    for typ, ri, fi in _A.cells(sub):
++        ok, tot = scorable.setdefault(typ, [0, 0])
++        scorable[typ] = [ok + int(len(ri) > 0 and len(fi) > 0), tot + 1]
++    empty = sorted(k for k, (ok, _) in scorable.items() if ok == 0)
++    DEV_RESTRICTION.clear()
++    DEV_RESTRICTION.update({
++        "restricted": True, "covered": int(t.p.notna().sum()), "pool": int(len(t)),
++        "coverage": round(cov, 4),
++        "per_source": {str(k): [int(v["n"]), int(v["N"])] for k, v in
++                       t.assign(n=t.p.notna().astype(int), N=1).groupby("source")[["n", "N"]].sum().T.to_dict().items()},
++        "cells_scorable": {k: v for k, v in scorable.items()},
++        "note": "dev v3.1 here is computed on the dense-covered subset only; compare against "
++                "sparse-P restricted to the same videos, never against a full-pool v3.1",
++    })
++    if announce:
++        print(f"  DENSE-RESTRICTED SELECTION: {DEV_RESTRICTION['covered']}/{DEV_RESTRICTION['pool']} "
++              f"development videos have dense crops ({cov:.1%}); the rest are DROPPED.", flush=True)
++        for src, (n, N) in sorted(DEV_RESTRICTION["per_source"].items()):
++            print(f"    {src:<14} {n:>5}/{N:<5} {'' if n else '  (absent -- its cells are gone)'}", flush=True)
++        print("    v3.1 cells surviving: "
++              + "  ".join(f"{k} {ok}/{tot}" for k, (ok, tot) in sorted(scorable.items())), flush=True)
++        print("    dev v3.1 below is a RESTRICTED macro. The valid comparison is dense-P against "
++              "sparse-P on these same videos.", flush=True)
++    assert not empty, (f"v3.1 type(s) {empty} have no scorable cell left after dense restriction; "
++                       f"the development macro would be a different objective under the same name")
++    assert cov >= MIN_COVERAGE, (f"dense coverage {cov:.1%} is below the {MIN_COVERAGE:.0%} floor; "
++                                 f"extract more dense crops or abandon the pilot")
++    return sub
++
++
+ def main():
+     ap = argparse.ArgumentParser(); ap.add_argument("--model", required=True, choices=sorted(MODELS))
+     ap.add_argument("--seed", type=int, default=42); ap.add_argument("--workers", type=int, default=12)
+     ap.add_argument("--lora", action="store_true", help="LoRA adapters in every layer instead of unfreezing the last blocks")
+     ap.add_argument("--augment", default=None, choices=[None, "B"], help="B: DISCERN arm-B processing mix on training clips")
+     ap.add_argument("--run-suffix", default="", help="extra run-name tag (e.g. _fresh) so a rerun never overwrites an existing run")
++    ap.add_argument("--epochs", type=int, default=None,
++                    help="override the module EPOCHS constant (P-dense pilot)")
+     ap.add_argument("--export-shuffled-only", action="store_true",
+                     help="load best.pt of a finished run and write only the shuffled-frame control exports")
+     a = ap.parse_args()
++    if getattr(a, "epochs", None):
++        globals()["EPOCHS"] = int(a.epochs)
+     import exp1_fusion_audit as A
+-    out_dir = Path(f"/data/kutub/conferences/DFD/PECORE_L14_TemporalBranch/runs/{a.model}{'_lora' if a.lora else ''}{'_B' if a.augment == 'B' else ''}{a.run_suffix}_seed{a.seed}")
++    out_dir = Path(f"/data/umar/Repos/DFB_NeSyNS/logs/branchfusion/p_dense/{a.model}{'_lora' if a.lora else ''}{'_B' if a.augment == 'B' else ''}{a.run_suffix}_seed{a.seed}")
+     (out_dir / "opinions").mkdir(parents=True, exist_ok=True)
+     torch.manual_seed(a.seed); np.random.seed(a.seed); dev = "cuda"
+     model = Branch(a.model, lora=a.lora).to(dev)
+@@ -461,6 +542,13 @@
+         # the assert catches a scope or identity mismatch here rather than as a silent shortfall.
+         o = pd.concat([opinions(model, n, dev, workers=a.workers) for n in DEV])
+         t = devtab[["v", "source", "subset", "y"]].merge(o[["v", "p"]], on="v", how="left")
++        # DENSE PILOT: the dense crops cover 821 of VALmix's 1350 videos and similar fractions
++        # elsewhere, so this branch can only score the videos it has clips for. Dropping the rest is
++        # correct here and WRONG for a sparse run, so coverage is printed and FLOORED rather than waved
++        # through: below half the pool the development macro would rest on too few cells to mean
++        # anything, and the run stops instead of reporting a number built on a remnant.
++        if float(t.p.notna().mean()) < 1.0:
++            t = restrict_to_dense(t, announce=(ep == 0))
+         assert t.p.notna().all(), "development videos without branch opinions"
+         score, types = A.v31(t.p.to_numpy(), A.cells(t))
+         history.append({"epoch": ep, "train_loss": float(np.mean(losses)), "dev_v31": score, "types": types,
+@@ -473,7 +561,8 @@
+             o.to_csv(out_dir / "opinions" / "dev_clean.csv", index=False)
+         json.dump({"model": a.model, "seed": a.seed, "history": history, "best_epoch": best[1], "best_dev_v31": best[0],
+                    "budget": {"augment": a.augment, "arm": "lora" if a.lora else "last_blocks", "lora": {"r": LORA_R, "alpha": LORA_ALPHA, "dropout": LORA_DROPOUT, "lr": LR_LORA} if a.lora else None, "lr_blocks": LR_BLOCKS, "lr_head": LR_HEAD, "epochs": EPOCHS, "unfrozen_blocks": UNFREEZE, "trainable_block_params": n_blocks,
+-                              "head_params": n_head, "batch": BATCH, "frames": model.T}},
++                              "head_params": n_head, "batch": BATCH, "frames": model.T},
++                   "dev_restriction": dict(DEV_RESTRICTION)},
+                   open(out_dir / "train_record.json", "w"), indent=1)
+ 
+     ck = torch.load(out_dir / "best.pt", map_location=dev)
+@@ -485,7 +574,7 @@
+             opinions(model, n, dev, spec, a.workers).to_csv(out_dir / "opinions" / f"{n}_{c}.csv", index=False)
+     for n in TESTS:
+         opinions(model, n, dev, workers=a.workers).to_csv(out_dir / "opinions" / f"{n}.csv", index=False)
+-    for n in ("CDFv2", "DFDCP"):
++    for n in PROCESSED_TESTS:
+         for c, spec in (("jpeg40", "jpeg:40"), ("rs06", "resize:0.6")):
+             opinions(model, n, dev, spec, a.workers).to_csv(out_dir / "opinions" / f"{n}_{c}.csv", index=False)
+     export_shuffled(model, dev, out_dir, a.workers)
