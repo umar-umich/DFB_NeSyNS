@@ -152,6 +152,8 @@ def main() -> int:
     ap.add_argument("--sizes", default="1,2,3,4,5,6")
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--top", type=int, default=0, help="markdown rows to show (0 = every subset)")
+    ap.add_argument("--tag", default="", help="suffix for the output files, so a focused grid does "
+                                              "not overwrite the full one")
     a = ap.parse_args()
     items = [x.strip() for x in a.branches.split(",") if x.strip()]
     sizes = tuple(int(x) for x in a.sizes.split(","))
@@ -159,13 +161,15 @@ def main() -> int:
     test_tabs = B.test_tables(items)
     print(f"branches {items} | development {len(dev)} videos | test sets {list(test_tabs)}")
     res = sweep(dev, test_tabs, items, sizes)
-    json.dump(res, open(C.OUT / "per_dataset.json", "w"), indent=1, default=str)
+    sfx = f"_{a.tag}" if a.tag else ""
+    json.dump(res, open(C.OUT / f"per_dataset{sfx}.json", "w"), indent=1, default=str)
     df = grid(res)
-    df.to_csv(C.OUT / "per_dataset_auroc.csv", index=False)
-    out = C.ROOT / "reports/branch_fusion/PER_DATASET.md"
+    df.to_csv(C.OUT / f"per_dataset_auroc{sfx}.csv", index=False)
+    out = C.ROOT / f"reports/branch_fusion/PER_DATASET{sfx.upper()}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(markdown(res, df, a.top))
-    print(f"\n-> {C.OUT / 'per_dataset.json'}\n-> {C.OUT / 'per_dataset_auroc.csv'}\n-> {out}")
+    print(f"\n-> {C.OUT / f'per_dataset{sfx}.json'}\n"
+          f"-> {C.OUT / f'per_dataset_auroc{sfx}.csv'}\n-> {out}")
     return 0
 
 

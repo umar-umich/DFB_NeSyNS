@@ -23,6 +23,8 @@ import argparse, io, json, math, os, sys, time
 from pathlib import Path
 
 import h5py
+import re
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -154,8 +156,22 @@ def attach_depth_hooks(m, spec, readout):
     blocks = (list(m.encoder.layers) if spec["kind"] == "hf"
               else list(getattr(m, "blocks", getattr(m, "layers", []))))
     n = len(blocks)
+    # `mid` and `half` are DEPTH FRACTIONS, which is how Part 3d expressed them; `bN` names an
+    # absolute block, 1-indexed, which is how a reader thinks about "block 16". On a 24-block
+    # PE-Core the two agree exactly -- mid = round(24*2/3)-1 = index 15 = block 16 = b16 -- and
+    # `verify_block_alias` asserts that rather than leaving it to be assumed.
     ratio = {"mid": 2 / 3, "half": 1 / 2}
-    idx = {c: max(0, min(n - 1, int(round(n * ratio[c])) - 1)) for c in comps}
+    idx = {}
+    for c in comps:
+        if c in ratio:
+            idx[c] = max(0, min(n - 1, int(round(n * ratio[c])) - 1))
+        elif re.fullmatch(r"b\d+", c):
+            b = int(c[1:])
+            if not 1 <= b <= n:
+                raise ValueError(f"readout {c!r}: this backbone has {n} blocks, so b{b} does not exist")
+            idx[c] = b - 1
+        else:
+            raise ValueError(f"unknown readout component {c!r}; use last, mid, half or bN")
 
     def hook(name):
         def fn(_mod, _inp, out):
