@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 import sys
 from pathlib import Path
 
@@ -74,6 +75,50 @@ SOURCES = {
     "P": {"kind": "temporal", "branch": "pecore_l14_lora_B_seed42",
           "note": "PE-Core L/14 temporal, LoRA + 2 unfrozen blocks (7.6M trainable), 16 frames"},
 }
+
+# ----------------------------------------------------------------------------- dynamic registry
+#: Branches produced by a later experiment register themselves here rather than by editing SOURCES,
+#: so an arm can be added without a code change and, more importantly, so the ledger records WHEN
+#: and WHY each one appeared. The file is a dict of {label: {dir, note}}; the reader is always
+#: `export`, because anything registered this way ships v,y,p,u CSVs like S does.
+#:
+#: A registered branch is NOT automatically in any screen: `subsets.py` takes its branch list
+#: explicitly, and `dev_table(..., require_all=True)` will reject a branch whose coverage is partial.
+#: That is deliberate -- a half-covered branch silently shrinking the development pool is exactly how
+#: a comparison stops being between the same videos.
+REGISTRY = C.BRANCH_OUT / "registry.json"
+
+
+def _load_registry() -> dict:
+    if not REGISTRY.exists():
+        return {}
+    try:
+        reg = json.loads(REGISTRY.read_text())
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{REGISTRY} is not readable JSON: {e}") from e
+    out = {}
+    for label, spec in reg.items():
+        if label in SOURCES:
+            raise ValueError(f"registry label {label!r} collides with a built-in branch; "
+                             f"pick another label rather than shadowing {SOURCES[label]['note']!r}")
+        out[label] = {"kind": "export", "dir": Path(spec["dir"]),
+                      "note": spec.get("note", ""), "registered": spec.get("registered", "")}
+    return out
+
+
+def register(label: str, directory, note: str = "") -> dict:
+    """Add an export branch to the registry on disk. Idempotent for the same label and directory."""
+    reg = json.loads(REGISTRY.read_text()) if REGISTRY.exists() else {}
+    if label in SOURCES:
+        raise ValueError(f"{label!r} is a built-in branch; choose another label")
+    reg[label] = {"dir": str(directory), "note": note,
+                  "registered": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    REGISTRY.write_text(json.dumps(reg, indent=1))
+    SOURCES.update(_load_registry())
+    return reg[label]
+
+
+SOURCES.update(_load_registry())
 
 
 # ----------------------------------------------------------------------------- readers
