@@ -106,6 +106,18 @@ P_DENSE = C.ROOT / "logs/branchfusion/p_dense"
 DENSE_SETS = ("VALmix", "VALmixV2", "FFpp_val")
 
 
+def _dense_run(seed: int):
+    """The dense run directory for this seed.
+
+    The trainer tags the directory with its budget (``pecore_l14_lora_B_dense_seed42``), so an
+    exact name is wrong whenever the arm or augment changes. Match on the stable part and take
+    the newest directory that actually holds opinions.
+    """
+    cand = [d for d in sorted(P_DENSE.glob(f"pecore_l14*dense_seed{seed}"))
+            if (d / "opinions").is_dir() and any((d / "opinions").glob("*.csv"))]
+    return max(cand, key=lambda d: d.stat().st_mtime) if cand else None
+
+
 def dense_vs_sparse(seed: int = 42) -> dict:
     """Section 2.2's dense pilot: does stride-1 training make branch P order-sensitive?
 
@@ -126,10 +138,11 @@ def dense_vs_sparse(seed: int = 42) -> dict:
     columns are reported for completeness and carry the epoch-selection confound noted in the
     record: sparse P chose its epoch on the full pool, dense P on the restricted one.
     """
-    run = P_DENSE / f"pecore_l14_dense_seed{seed}"
+    run = _dense_run(seed)
+    if run is None:
+        return {"status": "no dense run",
+                "expected": str(P_DENSE / f"pecore_l14*dense_seed{seed}" / "opinions")}
     dd = run / "opinions"
-    if not dd.exists():
-        return {"status": "no dense run", "expected": str(dd)}
     spec = B.SOURCES.get("P", {})
     sd = C.TEMPORAL / spec["branch"] / "opinions"
     per, rows = {}, []
