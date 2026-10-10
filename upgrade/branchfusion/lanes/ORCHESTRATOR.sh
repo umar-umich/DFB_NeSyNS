@@ -90,6 +90,27 @@ commit "fusion: depth probes and the P off-manifold runs"
 $PY upgrade/branchfusion/om_report.py --stage depth > "$M/depth_verdict.txt" 2>&1 || true
 say "depth verdict:"; sed 's/^/    /' "$M/depth_verdict.txt" | tee -a "$M/orchestrator.log"
 
+# ------------------------------------------------- 2b. P+OM again, with the plain path kept
+# WHY A SECOND P RUN. The first put ONLY the residual in front of the temporal stage, and it could
+# not learn: training loss sat at 1.58 while the no-OM control fell past 1.00, and development held
+# near chance. That is a predictable consequence of the construction rather than a fact about
+# off-manifold features -- DISCERN gives f_t and f_a their own evidential heads and FUSES them, so
+# the residual is a second view beside the plain feature. The alignment term drives f_c toward f_t
+# by design, which squeezes f_a toward zero, so a network whose only input is f_a has its input
+# removed by its own loss. `--om-mode concat` passes [f_t ; f_a] and is the faithful comparison.
+# The residual-only run is kept and reported: it is the evidence for this paragraph.
+if ! done_marker p_concat && [ -f "$M/concat.smokepass" ]; then
+  say "launching P+OM (concat: [f_t ; f_a]) on GPU 3 -- the DISCERN-faithful construction"
+  CUDA_VISIBLE_DEVICES=3 $PYV upgrade/branchfusion/train_om_pecore.py \
+      --operator bvae --block 16 --om-mode concat \
+      --model pecore_l14 --lora --augment B --seed 42 --workers 8 \
+      >> "$L/om_P_b16_cat.log" 2>&1 && mark p_concat || say "P+OM concat FAILED"
+  commit "fusion: the off-manifold residual as a second view rather than a replacement"
+elif ! done_marker p_concat; then
+  say "P+OM concat SKIPPED: no smoke pass recorded at $M/concat.smokepass"
+  mark p_concat
+fi
+
 # ---------------------------------------------------------------- 3. branch S, encoder in loop
 if ! done_marker s_inloop && [ ! -f "$M/s_inloop.smokepass" ]; then
   say "S in-loop is SKIPPED: its smoke test never recorded a pass."
@@ -102,7 +123,7 @@ fi
 if ! done_marker s_inloop; then
   say "launching S in-loop (real-timestamp temporal stage) on GPU 3"
   CUDA_VISIBLE_DEVICES=3 $PYV upgrade/branchfusion/train_om_pecore.py \
-      --operator bvae --block 16 --temporal seq \
+      --operator bvae --block 16 --temporal seq --om-mode concat \
       --model pecore_l14 --lora --augment B --seed 42 --workers 8 \
       >> "$L/om_S_inloop.log" 2>&1 && mark s_inloop || say "S in-loop FAILED (see $L/om_S_inloop.log)"
   # Its no-OM control, so gate 1 can be applied to S as well as to P.

@@ -156,7 +156,8 @@ def install_tpos() -> None:
     TB.Clips.__init__ = cinit
 
 
-def install(operator: str | None, block: int = 0, temporal: str = "mixer") -> None:
+def install(operator: str | None, block: int = 0, temporal: str = "mixer",
+            keep_plain: bool = False) -> None:
     """Put the residual between PE-Core's per-frame output and the temporal mixer.
 
     `block` taps an intermediate PE-Core block instead of the final attention pool, per UMAR: the
@@ -186,7 +187,7 @@ def install(operator: str | None, block: int = 0, temporal: str = "mixer") -> No
         # `operator=None` is the CONTROL: the same block tap, the same rebuilt mixer, no residual.
         # Gate 1 for this branch is "beats its own no-OM control at the same depth", so without
         # this run a good OM number cannot be told apart from the block-16 tap simply being better.
-        self.om = OMFrontEnd(d_in, operator) if operator else None
+        self.om = OMFrontEnd(d_in, operator, keep_plain=keep_plain) if operator else None
         # The mixer is rebuilt at the residual's width. Its weights were never trained at this
         # point -- the run starts from scratch -- so nothing is discarded by replacing it.
         d_t = self.om.d_out if self.om else d_in
@@ -236,6 +237,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--operator", default="bvae", choices=["bvae", "bvae_real", "none"],
                     help="'none' is the no-OM control at the same depth, which gate 1 needs")
+    ap.add_argument("--om-mode", default="residual", choices=["residual", "concat"],
+                    help="residual = the temporal stage sees f_a alone; concat = [f_t ; f_a], "
+                         "which is how DISCERN uses the transform (a second view, not a "
+                         "replacement) and what the residual-only run shows is necessary")
     ap.add_argument("--temporal", default="mixer", choices=["mixer", "seq"],
                     help="mixer = P's learned slot positions; seq = S's real-timestamp encoding")
     ap.add_argument("--block", type=int, default=0,
@@ -247,7 +252,7 @@ def main() -> int:
     op = None if a.operator == "none" else a.operator
     if a.temporal == "seq":
         install_tpos()
-    install(op, a.block, a.temporal)
+    install(op, a.block, a.temporal, keep_plain=(a.om_mode == "concat"))
     if a.smoke:
         TB.EPOCHS = 1
         orig = TB.Clips.__init__
@@ -266,6 +271,7 @@ def main() -> int:
             if x != "--run-suffix" and (i == 0 or rest[i - 1] != "--run-suffix")]
     sys.argv = [sys.argv[0]] + rest + [
         "--run-suffix", f"{suffix}_om{a.operator}" + (f"_b{a.block}" if a.block else "")
+        + ("_cat" if a.om_mode == "concat" else "")
         + ("_seq" if a.temporal == "seq" else "") + ("_smoke" if a.smoke else "")]
     print(f"OM-PE: residual {a.operator} between PE-Core's frames and the temporal mixer; "
           f"argv {' '.join(sys.argv[1:])}", flush=True)

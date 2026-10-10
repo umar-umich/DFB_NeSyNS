@@ -148,13 +148,13 @@ class OMFrontEnd(nn.Module):
     stage can use. That is the point of putting it here rather than scoring a cached residual.
     """
 
-    def __init__(self, d_in: int, operator: str = "bvae"):
+    def __init__(self, d_in: int, operator: str = "bvae", keep_plain: bool = False):
         super().__init__()
         assert operator in ("bvae", "bvae_real"), operator
-        self.operator = operator
+        self.operator, self.keep_plain = operator, keep_plain
         self.inorm, self.proj = nn.LayerNorm(d_in), nn.Linear(d_in, RH.FEATURE_DIM)
         self.vae = BetaVAEWithAlignment(RH.FEATURE_DIM, RH.LATENT_DIM)
-        self.d_out = RH.FEATURE_DIM
+        self.d_out = RH.FEATURE_DIM * (2 if keep_plain else 1)
 
     def forward(self, x, mask):
         """`x` (B, T, d_in) -> residual (B, T, 64); the VAE terms are stashed for the loss."""
@@ -163,7 +163,16 @@ class OMFrontEnd(nn.Module):
         _, mu, log_var, f_c = self.vae(f_t)
         f_a = RH.purify(f_t, f_c)
         self._terms = (f_t, f_c, mu, log_var, mask.reshape(B * T))
-        return f_a.view(B, T, -1)
+        # KEEP_PLAIN passes [f_t ; f_a] rather than f_a alone, which is how DISCERN actually uses
+        # this transform: `residual_head` gives f_t and f_a their OWN evidential heads and fuses
+        # them, so the residual is a SECOND VIEW beside the plain feature, never a replacement for
+        # it. That distinction is not cosmetic. The alignment term drives f_c toward f_t by
+        # construction (1 - cos(f_t.detach(), f_c)), so f_r = f_t - f_c is pushed toward zero and
+        # with it f_a; a network whose only path is f_a therefore has its input squeezed away by
+        # its own loss. That is what the residual-only P run shows -- its training loss sat at 1.58
+        # while the no-OM control fell past 1.00, and development stuck near chance.
+        out = torch.cat([f_t, f_a], dim=1) if self.keep_plain else f_a
+        return out.view(B, T, -1)
 
     def vae_loss(self, y=None):
         """The alignment + KL term, over VALID frames only.
