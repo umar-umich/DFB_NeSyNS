@@ -57,4 +57,16 @@ gitignored; this is the committed mirror.
 [2026-10-10T07:18:35-04:00] S control FAILED
 [2026-10-10T07:18:35-04:00] committed: fusion: branch S with the off-manifold front end and its control
 [2026-10-10T07:18:35-04:00] completing the block-16 test-set extraction
+[2026-10-10T07:18:47-04:00] committed: fusion: opinions for the encoder-in-loop off-manifold branch
+[2026-10-10T07:18:48-04:00] gate verdict:
+    Temporal off-manifold runs, PE-Core trunk, block 16 (development v3.1):
+    
+      ombvae_b16_cat                     off-manifold   0.8296  (epoch 9)
+      ombvae_b16                         off-manifold   0.4942  (epoch 2)
+    
+    P16om: ombvae_b16_cat
+      GATE 1 cannot be evaluated -- its no-OM control has not finished. HELD.
+    P16om: ombvae_b16
+      GATE 1 cannot be evaluated -- its no-OM control has not finished. HELD.
+[2026-10-10T07:18:48-04:00] no branch passed both gates; the screen is NOT re-run and the deployed selection stands
 ```
