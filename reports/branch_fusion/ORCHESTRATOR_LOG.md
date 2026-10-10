@@ -51,4 +51,8 @@ gitignored; this is the committed mirror.
     launched; reporting depth as indistinguishable is the honest result, and any future
     depth claim needs several seeds per cell rather than another layer.
 [2026-10-10T03:21:41-04:00] launching P+OM (concat: [f_t ; f_a]) on GPU 3 -- the DISCERN-faithful construction
+[2026-10-10T05:41:35-04:00] committed: fusion: the off-manifold residual as a second view rather than a replacement
+[2026-10-10T05:41:35-04:00] launching S in-loop (real-timestamp temporal stage) on GPU 3
+[2026-10-10T06:49:19-04:00] S in-loop FAILED (see logs/branchfusion/lanes/om_S_inloop.log)
+[2026-10-10T07:18:35-04:00] S control FAILED
 ```
