@@ -1,0 +1,108 @@
+{
+ "per_fold": [
+  {
+   "fold": 0,
+   "subset": "A+V+O+M+P",
+   "operator": "F7",
+   "inner_macro": 0.920000455200895,
+   "w": [
+    0.75,
+    0.5,
+    1.0,
+    0.25,
+    0.25
+   ],
+   "outer_macro": 0.9095566591714196,
+   "outer_auroc": 0.9436928167666659
+  },
+  {
+   "fold": 1,
+   "subset": "A+V+O+M+P",
+   "operator": "F7",
+   "inner_macro": 0.9152318167338804,
+   "w": [
+    1.0,
+    0.5,
+    1.0,
+    0.5,
+    0.5
+   ],
+   "outer_macro": 0.9116259978436593,
+   "outer_auroc": 0.9430333933672124
+  },
+  {
+   "fold": 2,
+   "subset": "A+S+V+O+M+P",
+   "operator": "F7",
+   "inner_macro": 0.9124609346468625,
+   "w": [
+    1.0,
+    0.0,
+    0.5,
+    1.0,
+    0.5,
+    0.25
+   ],
+   "outer_macro": 0.91445751378234,
+   "outer_auroc": 0.9458751036458377
+  },
+  {
+   "fold": 3,
+   "subset": "A+V+O+M+P",
+   "operator": "F2",
+   "inner_macro": 0.9180548703947279,
+   "w": [
+    1.0,
+    0.75,
+    0.75,
+    0.5,
+    0.5
+   ],
+   "outer_macro": 0.9074548315438576,
+   "outer_auroc": 0.938910835056341
+  },
+  {
+   "fold": 4,
+   "subset": "A+V+O+M+P",
+   "operator": "F7",
+   "inner_macro": 0.9074322319151031,
+   "w": [
+    0.75,
+    0.5,
+    1.0,
+    0.25,
+    0.25
+   ],
+   "outer_macro": 0.9191361023382879,
+   "outer_auroc": 0.951651108297838
+  }
+ ],
+ "nested_macro_mean": 0.9124462209359129,
+ "nested_macro_sd": 0.004067827756111147,
+ "selection_stable": false,
+ "selected_per_fold": [
+  "A+V+O+M+P",
+  "A+V+O+M+P",
+  "A+S+V+O+M+P",
+  "A+V+O+M+P",
+  "A+V+O+M+P"
+ ],
+ "modal_subset": "A+V+O+M+P",
+ "note": "unbiased: the subset and the operator were chosen on inner folds of each outer training part, and each outer part was scored once",
+ "sizes": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6
+ ],
+ "items": [
+  "A",
+  "S",
+  "V",
+  "O",
+  "M",
+  "P"
+ ]
+}

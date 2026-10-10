@@ -1,0 +1,28 @@
+{
+ "label": "Y16",
+ "ckpt": "logs/upgrade/om/om_pe_core_l_LN_bvae_s0_b16.pt",
+ "cache": "omEIL_b16",
+ "arm": "r",
+ "epoch": 5,
+ "operator": "bvae",
+ "readout": "b16",
+ "encoder_in_loop": true,
+ "datasets": {
+  "VALmix": 1350,
+  "VALmixV2": 4852,
+  "FFpp_val": 700,
+  "CDFv2": 518
+ },
+ "missing": [
+  "CDFv3",
+  "DFD",
+  "DFDC",
+  "DFDCP",
+  "DFEval24",
+  "FFIW",
+  "KoDF",
+  "IDForge",
+  "DFDM"
+ ],
+ "dir": "/data/umar/Repos/DFB_NeSyNS/logs/branchfusion/branches/om_eil_Y16"
+}

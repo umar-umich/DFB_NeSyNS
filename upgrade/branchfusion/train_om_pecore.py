@@ -51,6 +51,29 @@ from seq_branch import OMFrontEnd                                   # noqa: E402
 
 STATE: dict = {}
 
+#: Where Dr Kutub's trainer writes, and where ours must write instead.
+KUTUB_RUNS = "/data/kutub/conferences/DFD/PECORE_L14_TemporalBranch/runs"
+OUR_RUNS = ROOT / "logs/branchfusion/om_pecore"
+
+
+def redirect_outputs() -> None:
+    """Keep this campaign's runs out of Dr Kutub's directory.
+
+    `train_branch.main` hardcodes its run directory under /data/kutub/..., because it was written
+    to run from his checkout. Importing it as a library therefore writes OUR runs into HIS space,
+    which is forbidden -- and it already happened: six directories and about 170 MB landed there
+    before this was noticed. The trainer is his reference and is not edited, so the `Path` it calls
+    is wrapped instead, rewriting only that one prefix and passing every other path through.
+    """
+    real = TB.Path
+
+    def path(*a, **kw):
+        if a and str(a[0]).startswith(KUTUB_RUNS):
+            a = (str(a[0]).replace(KUTUB_RUNS, str(OUR_RUNS)),) + a[1:]
+        return real(*a, **kw)
+
+    TB.Path = path
+
 
 def frame_index(key: str) -> int:
     """The frame's position in the SOURCE video, parsed from its h5 key.
@@ -249,6 +272,7 @@ def main() -> int:
                     help="end-to-end rehearsal: N training clips, 1 epoch, 1 test export; the "
                          "DEVELOPMENT sets stay whole because the trainer asserts full coverage")
     a, rest = ap.parse_known_args()
+    redirect_outputs()
     op = None if a.operator == "none" else a.operator
     if a.temporal == "seq":
         install_tpos()

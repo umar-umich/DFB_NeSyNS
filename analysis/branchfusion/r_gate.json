@@ -1,0 +1,19 @@
+{
+ "status": "ok",
+ "n_videos": 6902,
+ "R_auroc": 0.7077707882180626,
+ "control_auroc": 0.8492865020276109,
+ "R_v31_macro": 0.6694842071461503,
+ "control_v31_macro": 0.8102845000649266,
+ "paired_delta": {
+  "point": -0.1415157138095483,
+  "boot_mean": -0.14327666879591197,
+  "lo2.5": -0.17020438586092226,
+  "hi97.5": -0.11791695498861743,
+  "excludes_zero": true
+ },
+ "passed": false,
+ "rule": "R enters the subset search only if it beats its mean-pooled control on development with a source-grouped interval above zero (section 2.3)",
+ "consequence": "R is reported as a SIDE RESULT and does not enter any subset",
+ "naming": "R is a patch-STATISTICS branch, not a localization method"
+}

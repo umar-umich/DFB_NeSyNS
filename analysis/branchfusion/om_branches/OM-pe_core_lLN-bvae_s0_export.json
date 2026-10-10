@@ -1,0 +1,20 @@
+{
+ "tag": "OM-pe_core_lLN-bvae_s0",
+ "arm": "r",
+ "datasets": {
+  "VALmix": 1350,
+  "VALmixV2": 4852,
+  "FFpp_val": 700,
+  "CDFv2": 518,
+  "CDFv3": 5418,
+  "DFD": 3431,
+  "DFDC": 4704,
+  "DFDCP": 654,
+  "DFEval24": 814,
+  "FFIW": 3470,
+  "KoDF": 2239,
+  "IDForge": 5974,
+  "DFDM": 1896
+ },
+ "dir": "/data/umar/Repos/DFB_NeSyNS/logs/branchfusion/branches/OM-pe_core_lLN-bvae_s0"
+}

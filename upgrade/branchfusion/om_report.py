@@ -81,7 +81,10 @@ def depth_stage() -> int:
 
 def branch_rows() -> list[dict]:
     """Every finished temporal OM run paired with its own no-OM control."""
-    base = C.ROOT / "logs/tbiom/temporal/branches"
+    # Our PE runs live here, NOT under `logs/tbiom/temporal/branches` -- Dr Kutub's trainer
+    # hardcodes a run directory in his own space and `train_om_pecore.redirect_outputs` rewrites it
+    # to this one. Reading the wrong directory would report "no run has finished" forever.
+    base = C.ROOT / "logs/branchfusion/om_pecore"
     out = []
     for d in sorted(base.glob("pecore_l14_lora_B_om*_seed42")):
         rec = d / "train_record.json"

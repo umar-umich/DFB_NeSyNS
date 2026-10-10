@@ -1,0 +1,180 @@
+{
+ "A+V+O": {
+  "subset": "A+V+O",
+  "operator": "F8",
+  "full_auroc": 0.9360825160164923,
+  "full_macro": 0.9047131247441539,
+  "per_branch": {
+   "A": {
+    "refit_delta": {
+     "point": 0.027306869103829845,
+     "boot_mean": 0.027353894033440435,
+     "lo2.5": 0.02238769680711072,
+     "hi97.5": 0.03249537611712359,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.9087756469126624,
+    "refit_reduced_macro": 0.8791314999258515,
+    "frozen_weight_delta": 0.03193986925378367,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   },
+   "V": {
+    "refit_delta": {
+     "point": 0.02647573428536143,
+     "boot_mean": 0.026417765285531837,
+     "lo2.5": 0.020700571650764825,
+     "hi97.5": 0.032970180973655894,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.9096067817311309,
+    "refit_reduced_macro": 0.8790350231538365,
+    "frozen_weight_delta": 0.026069786832057407,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   },
+   "O": {
+    "refit_delta": {
+     "point": 0.003871775240230857,
+     "boot_mean": 0.0039014563190206556,
+     "lo2.5": 0.0019556746302864412,
+     "hi97.5": 0.005825065457251148,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.9322107407762614,
+    "refit_reduced_macro": 0.8983318819811891,
+    "frozen_weight_delta": 0.003779981767613294,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   }
+  }
+ },
+ "A+V+P": {
+  "subset": "A+V+P",
+  "operator": "F8",
+  "full_auroc": 0.935053254166726,
+  "full_macro": 0.9040704533988883,
+  "per_branch": {
+   "A": {
+    "refit_delta": {
+     "point": 0.009153057611199,
+     "boot_mean": 0.009125278126693458,
+     "lo2.5": 0.006044716567142808,
+     "hi97.5": 0.012242071923518404,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.925900196555527,
+    "refit_reduced_macro": 0.895145469150543,
+    "frozen_weight_delta": 0.007793339260009469,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   },
+   "V": {
+    "refit_delta": {
+     "point": 0.02455027440373525,
+     "boot_mean": 0.024475598993140828,
+     "lo2.5": 0.018891486440615907,
+     "hi97.5": 0.030368932590776315,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.9105029797629908,
+    "refit_reduced_macro": 0.8778046081801382,
+    "frozen_weight_delta": 0.02455027440373525,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   },
+   "P": {
+    "refit_delta": {
+     "point": 0.002842513390464596,
+     "boot_mean": 0.0029346994850896805,
+     "lo2.5": 0.000423072324694232,
+     "hi97.5": 0.005684681780245653,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.9322107407762614,
+    "refit_reduced_macro": 0.8983318819811891,
+    "frozen_weight_delta": 0.007438208673146596,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   }
+  }
+ },
+ "A+V+O+M+P": {
+  "subset": "A+V+O+M+P",
+  "operator": "F8",
+  "full_auroc": 0.9418088131427104,
+  "full_macro": 0.9114929699971829,
+  "per_branch": {
+   "A": {
+    "refit_delta": {
+     "point": 0.009974205299846717,
+     "boot_mean": 0.009909814968947793,
+     "lo2.5": 0.006941813609329925,
+     "hi97.5": 0.013065373256860453,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.9318346078428636,
+    "refit_reduced_macro": 0.902063813769537,
+    "frozen_weight_delta": 0.007465379541041428,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   },
+   "V": {
+    "refit_delta": {
+     "point": 0.007722841873039177,
+     "boot_mean": 0.007782748306921409,
+     "lo2.5": 0.004569475333722583,
+     "hi97.5": 0.011217216689141649,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.9340859712696712,
+    "refit_reduced_macro": 0.9013530776483174,
+    "frozen_weight_delta": 0.00903512135757989,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   },
+   "O": {
+    "refit_delta": {
+     "point": 0.0026833067915567055,
+     "boot_mean": 0.0027112034115139632,
+     "lo2.5": 0.001166427433378242,
+     "hi97.5": 0.004334883427310227,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.9391255063511537,
+    "refit_reduced_macro": 0.9071459282132484,
+    "frozen_weight_delta": 0.0028125520010022775,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   },
+   "M": {
+    "refit_delta": {
+     "point": 0.005989193631794842,
+     "boot_mean": 0.005921751681953256,
+     "lo2.5": 0.003636327695822722,
+     "hi97.5": 0.008418942031018941,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.9358196195109155,
+    "refit_reduced_macro": 0.9058838816591016,
+    "frozen_weight_delta": 0.005637734783836668,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   },
+   "P": {
+    "refit_delta": {
+     "point": 0.002407338895479283,
+     "boot_mean": 0.0024736650472607213,
+     "lo2.5": 0.000572075664085045,
+     "hi97.5": 0.004587994960067737,
+     "excludes_zero": true
+    },
+    "refit_reduced_auroc": 0.9394014742472311,
+    "refit_reduced_macro": 0.9078406002720595,
+    "frozen_weight_delta": 0.00419106965538385,
+    "frozen_weight_note": "sensitivity analysis: weights fitted for the full subset, one branch zeroed. Not the same quantity as the refit delta.",
+    "folds_weight_zero": 0
+   }
+  }
+ }
+}

@@ -1,0 +1,1371 @@
+{
+ "git": "35db7b60f33bd3900c9dea5c1b712c40a9bf5e7f",
+ "b0": {
+  "claim": {
+   "appearance": {
+    "backbone": "pe_core_l",
+    "timm_id": "vit_pe_core_large_patch14_336",
+    "recipe": "LoRA + LayerNorm",
+    "readout": "attention pool (last)",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "head": "Linear(d,256) GELU drop0.1 Linear(256,2) softplus",
+    "feature_cache": "pe_core_lLN",
+    "head_ckpt": "view_pe_core_lLN_s0.pt",
+    "adapt_record": "analysis/upgrade/adapt/pe_core_l_LN_s0.json"
+   },
+   "off_manifold": {
+    "identifier": "legacy_om",
+    "source": "logs/tbiom/stage23/warmgate_e19_*",
+    "view": "artifact",
+    "encoder": "CLIP ViT-L/14 + LoRA(q,v)",
+    "construction": "beta-VAE manifold, residual orthogonalised against f_s",
+    "feature_dim": 64,
+    "vae_latent": 32
+   },
+   "temporal": {
+    "branch": "vjepa2_lora_B_seed42",
+    "encoder": "V-JEPA 2 ViT-L/16 + LoRA(query,value)",
+    "frames": 16
+   },
+   "fusion": {
+    "operator": "PCR6P-R",
+    "weights": "fitted per split on development folds",
+    "discount": "evidence scaling e' = r e"
+   },
+   "expected": {
+    "dev_fused_auroc": 0.9364,
+    "ten_set_mean": 0.924
+   }
+  },
+  "confirmed": {
+   "appearance_adapt": {
+    "backbone": "pe_core_l",
+    "recipe": "LN",
+    "seed": 0,
+    "dim": 1024,
+    "input_size": 336,
+    "trainable_params": 890880,
+    "fused_qkv": true,
+    "readout": "last",
+    "depth_index": {},
+    "train_frames": 40000,
+    "best_epoch": 7,
+    "dev_v31": 0.8351824367779471,
+    "valmixv2": 0.8750607008691268,
+    "ffpp_val_auroc": 0.9941198979591837,
+    "minutes": 103.6
+   },
+   "lora_covers_K": true,
+   "screen": {
+    "fused_mean": {
+     "auroc": 0.9364053669544852,
+     "auroc_sd": 0.0,
+     "fpr_real": 0.08103333237498214,
+     "loo": {
+      "T": 0.025616409924141603,
+      "APP": 0.030812144466289947,
+      "OM": 0.004359376242920909
+     },
+     "folds_weight_zero": {
+      "T": 0.0,
+      "APP": 0.0,
+      "OM": 0.0
+     },
+     "phi_APP_OM": 0.4015580774961631,
+     "phi_APP_T": 0.07520562326389332
+    },
+    "standalone_mean": {
+     "dev_v31": 0.8734820860268787,
+     "valmixv2": 0.9222908747170566,
+     "ffpp_val_auroc": 0.9953188775510204
+    }
+   },
+   "final": {
+    "arm": "PCR6P-R",
+    "label": "PE-Core-L + LoRA&LayerNorm",
+    "dev_tau": null,
+    "weights_per_fold": [
+     [
+      0.25,
+      0.5,
+      1.0
+     ],
+     [
+      0.25,
+      1.0,
+      0.5
+     ],
+     [
+      0.25,
+      1.0,
+      0.5
+     ],
+     [
+      0.25,
+      1.0,
+      0.5
+     ],
+     [
+      0.25,
+      1.0,
+      0.5
+     ]
+    ],
+    "ten_set_mean_recomputed": 0.9239820411557778,
+    "ten_set_mean_recorded": 0.9239820411557778,
+    "n_sets": 10,
+    "per_set": {
+     "CDFv2": 0.9616655651024455,
+     "CDFv3": 0.9633569121593959,
+     "DFD": 0.9504168148235944,
+     "DFDC": 0.857120332843025,
+     "DFDCP": 0.9048297785069729,
+     "DFEval24": 0.7033920875502397,
+     "FFIW": 0.9679166839688061,
+     "KoDF": 0.9438385495877691,
+     "IDForge": 0.9948244647686006,
+     "DFDM": 0.9924592222469294
+    }
+   }
+  },
+  "problems": [],
+  "checkpoints": {
+   "appearance_head": {
+    "path": "analysis/upgrade/heads/view_pe_core_lLN_s0.pt",
+    "exists": true,
+    "sha256": "a8dbe426963f16980547e749102499409bb61690b541e8b9490a23781e4e64a5",
+    "bytes": 1054000
+   },
+   "appearance_adapter": {
+    "path": "analysis/upgrade/adapt/pe_core_l_LN_s0.pt",
+    "exists": true,
+    "sha256": "750b406428b4fc531696b9cf3c63b1f39da5d031f141072aa3ef49fc82001b1d",
+    "bytes": 4662446
+   },
+   "temporal_branch": {
+    "path": "logs/tbiom/temporal/branches/vjepa2_lora_B_seed42/best.pt",
+    "exists": true,
+    "sha256": "6f0d9c63a6c052dec00a1b93872542ab72569ab2c6fb24d78ac11af7854bb1ce",
+    "bytes": 205257928
+   },
+   "videomae_branch": {
+    "path": "logs/tbiom/temporal/branches/videomae_lora_seed42/best.pt",
+    "exists": true,
+    "sha256": "537aec0dba9fe0a664973696a43a97dba823685d889f66615d1248bd0903175d",
+    "bytes": 58226358
+   }
+  },
+  "single_run": "appearance, off-manifold and temporal each come from ONE recorded run; no field was taken from a different seed or epoch"
+ },
+ "naming": {
+  "legacy_om": {
+   "identifier": "legacy_om",
+   "computation": "f_s = Linear(1024->64) of CLIP ViT-L/14 CLS (+LoRA q,v); beta-VAE 64->32->32->64 gives f_c; f_r = f_s - f_c; f_a = f_r - proj_{f_s}(f_r). The artifact head reads f_a.",
+   "export_columns": "p_artifact / u_artifact in logs/tbiom/stage23/",
+   "aliases_seen": [
+    "OM",
+    "off-manifold",
+    "LFS",
+    "facial structure",
+    "artifact view"
+   ],
+   "determinism": "the beta-VAE returns mu at eval (beta_vae_aligned.py:47-49), so legacy_om is a deterministic function of f_s through a 32-dim bottleneck",
+   "table_label": "O"
+  },
+  "recipe_names": {
+   "L": "LoRA only",
+   "N": "LayerNorm only + L2-normalised features",
+   "LN": "LoRA AND LayerNorm",
+   "warning": "section 8 requires 'LayerNorm' written in full in this campaign, because 'LN' previously meant LoRA+LayerNorm"
+  },
+  "branch_labels": {
+   "A": "PE spatial: PE-Core-L/336 (B0 recipe) frame features, order-invariant mean, head",
+   "S": "PE sequence: A's frame features, temporal transformer, head",
+   "V": "V-JEPA 2 video branch (verified, LoRA)",
+   "O": "legacy_om: CLIP/beta-VAE orthogonal residual from the DISCERN_Ext export",
+   "M": "VideoMAE video branch (earlier encoder panel, LoRA)",
+   "R": "PE patch relations (side diagnostic): block-16 patch covariance"
+  }
+ },
+ "b1": {
+  "implementation": "analysis/tbiom/grouped/ops.py:discount",
+  "convention": "evidence_scaling",
+  "formula": "e'_k = r e_k",
+  "belief_discounting_would_be": "b'_k = rho b_k, u' = 1 - rho + rho u; e'_k = rho u e_k / (1 - rho + rho u)",
+  "not_equivalent": true,
+  "source_excerpt": "def discount(o, r):\n    \"\"\"Evidence scaling e' = r e, applied in the evidence domain, then back to an opinion.\"\"\"\n    if r is None or r == 1.0:\n        return o\n    return opinion_of_evidence(evidence_of(o) * r)\n\n\ndef p_of(o):\n    return np.clip(o[..., 0] + o[..., 2] / 2, 0.0, 1.0)\n\n\n# -------------",
+  "previous_gamma_sweep": {
+   "1.0": 0.9512601499381423,
+   "0.5": 0.951565358393083,
+   "0.25": 0.9519849055391891,
+   "0.125": 0.952244004627469
+  },
+  "note": "B1 is the global reliability discount. Its verified implementation scales EVIDENCE. `opinions.discount_belief` provides the other convention so the two can be compared, and `DISCOUNT_DEFAULT` names this one so no caller drifts."
+ },
+ "ibdc": {
+  "artifacts": [
+   "analysis/upgrade/ibdc/run_J2a_s0_lam0.1.json",
+   "analysis/upgrade/ibdc/run_J1_s0.json",
+   "analysis/upgrade/ibdc/run_J2b_s0_lam0.3.json",
+   "analysis/upgrade/ibdc/run_J1_s2.json",
+   "analysis/upgrade/ibdc/run_J2b_s0_lam0.1.json",
+   "analysis/upgrade/ibdc/run_J1_s1.json",
+   "analysis/upgrade/ibdc/run_J2b_s0_lam1.0.json",
+   "analysis/upgrade/ibdc/run_J2a_s0_lam1.0.json",
+   "analysis/upgrade/ibdc/run_J0.json",
+   "analysis/upgrade/ibdc/run_J2a_s0_lam0.3.json"
+  ],
+  "docs": [
+   "tbiom/docs/discern-v2-joint-ibdc-brief.md"
+  ],
+  "recorded_rule": null,
+  "verified_pass": null,
+  "label": "one-sided IBDC is a CANDIDATE LOSS, not part of B0",
+  "note": "Section 1: if the four-part rule is not verified in the artifacts, one-sided IBDC must not be described as part of the reference system. Section 6 still compares it as one of three matched heads-only schedules."
+ },
+ "mixed": {
+  "screen_eval_declares_reuse": true,
+  "om_cdfv2_auroc_per_arm": {
+   "clip": 0.9735789821546595,
+   "pe_core_lL": 0.9736615994712492,
+   "pe_core_lN": 0.9736450760079313,
+   "pe_core_lLN": 0.9734633179114343
+  },
+  "om_effectively_frozen_across_arms": true,
+  "verdict": "CONFIRMED: the screens replaced the appearance view only. Those rows are a valid NAMED baseline (new appearance + legacy_om) and must not be printed as a newly trained spatial pair.",
+  "consequence_for_this_campaign": "Branch O here is explicitly legacy_om from the stage-23 export. No row substitutes it for a retrained off-manifold view."
+ },
+ "pe448": {
+  "pe_models_pretrained": [
+   "vit_base_patch16_rope_224.naver_in1k",
+   "vit_base_patch16_rope_ape_224.naver_in1k",
+   "vit_base_patch16_rope_mixed_224.naver_in1k",
+   "vit_base_patch16_rope_mixed_ape_224.naver_in1k",
+   "vit_base_patch16_rope_reg1_gap_256.sbb_in1k",
+   "vit_betwixt_patch16_rope_reg4_gap_256.sbb_in1k",
+   "vit_large_patch16_rope_224.naver_in1k",
+   "vit_large_patch16_rope_ape_224.naver_in1k",
+   "vit_large_patch16_rope_mixed_224.naver_in1k",
+   "vit_large_patch16_rope_mixed_ape_224.naver_in1k",
+   "vit_medium_patch16_rope_reg1_gap_256.sbb_in1k",
+   "vit_mediumd_patch16_rope_reg1_gap_256.sbb_in1k",
+   "vit_pe_core_base_patch16_224.fb",
+   "vit_pe_core_gigantic_patch14_448.fb",
+   "vit_pe_core_large_patch14_336.fb",
+   "vit_pe_core_small_patch16_384.fb",
+   "vit_pe_core_tiny_patch16_384.fb",
+   "vit_pe_lang_gigantic_patch14_448.fb",
+   "vit_pe_lang_gigantic_patch14_448.fb_tiling",
+   "vit_pe_lang_large_patch14_448.fb",
+   "vit_pe_lang_large_patch14_448.fb_tiling",
+   "vit_pe_spatial_base_patch16_512.fb",
+   "vit_pe_spatial_gigantic_patch14_448.fb",
+   "vit_pe_spatial_large_patch14_448.fb",
+   "vit_pe_spatial_small_patch16_512.fb",
+   "vit_pe_spatial_tiny_patch16_512.fb",
+   "vit_small_patch16_rope_224.naver_in1k",
+   "vit_small_patch16_rope_ape_224.naver_in1k",
+   "vit_small_patch16_rope_mixed_224.naver_in1k",
+   "vit_small_patch16_rope_mixed_ape_224.naver_in1k"
+  ],
+  "at_448": [
+   "vit_pe_core_gigantic_patch14_448.fb",
+   "vit_pe_lang_gigantic_patch14_448.fb",
+   "vit_pe_lang_gigantic_patch14_448.fb_tiling",
+   "vit_pe_lang_large_patch14_448.fb",
+   "vit_pe_lang_large_patch14_448.fb_tiling",
+   "vit_pe_spatial_gigantic_patch14_448.fb",
+   "vit_pe_spatial_large_patch14_448.fb"
+  ],
+  "pe_core_at_448": [
+   "vit_pe_core_gigantic_patch14_448.fb"
+  ],
+  "pe_core_large_at_448": [],
+  "decision": "PE-Core at 448 exists only as the GIGANTIC G/14 model, so a 448 run would change capacity as well as resolution and is NOT like-for-like. Left out of this campaign per section 1.",
+  "note": "PE-Spatial-L/448 (304.0M, 24 blocks) and PE-Lang-L/448 (291.4M, 23 blocks) DO exist and load. They are size-matched to CLIP but are different variants, not PE-Core at a different resolution, and section 11 keeps them queued.",
+  "primary_configuration": "PE-Core-L/14 at 336 with LoRA + LayerNorm (the measured best)",
+  "resolution_note": "crop 256 enlarged to 336 is a 1.31x upsample; it does not restore detail"
+ },
+ "suppression": {
+  "artifacts": [
+   "analysis/upgrade/part4_rows.json",
+   "analysis/upgrade/part4_subspaces_pe_core_l.json",
+   "analysis/upgrade/part4_subspaces_pe_core_l.npz"
+  ],
+  "b0_fields": {
+   "calibrated": false,
+   "vacuity_scale": 1.0,
+   "objective": "overall",
+   "video_view": null,
+   "per_view_scales": null,
+   "threshold": 0.5299543489925214,
+   "guard": 0.005
+  },
+  "b0_has_suppression": false,
+  "nuisance_diagnostic": {
+   "processing": {
+    "E_delta": 0.004947050360604804,
+    "null_p95": 0.013911912963894527,
+    "above_null": false
+   },
+   "source": {
+    "E_delta": 0.07783091875539919,
+    "null_p95": 0.17199567893300194,
+    "above_null": false
+   },
+   "manipulation_family": {
+    "E_delta": 0.6140035161963843,
+    "null_p95": 0.09137050027237574,
+    "above_null": true
+   }
+  },
+  "decision": "B0 carries NO nuisance suppression, so none is added. No suppression-off ablation is needed (section 6).",
+  "evidence": "the feature-space nuisance diagnostic did not clear its permutation null (processing and source both below null_p95) and the intervention-guided subspace study lost to every control including shuffled pairs"
+ },
+ "caches": {
+  "caches": {
+   "VALmix": {
+    "path": "logs/upgrade/feats/pe_core_lLN_VALmix.npz",
+    "bytes": 87062811,
+    "frames": 40142,
+    "videos": 1350,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 1,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "VALmix",
+     "frames": 40142,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 1.6
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "VALmixV2": {
+    "path": "logs/upgrade/feats/pe_core_lLN_VALmixV2.npz",
+    "bytes": 167009515,
+    "frames": 77394,
+    "videos": 4852,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 1,
+    "frames_per_video_max": 16,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "VALmixV2",
+     "frames": 77394,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 4.1
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "FFpp_val": {
+    "path": "logs/upgrade/feats/pe_core_lLN_FFpp_val.npz",
+    "bytes": 47955975,
+    "frames": 22396,
+    "videos": 700,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 31,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "FFpp_val",
+     "frames": 22396,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 1.2
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "CDFv2": {
+    "path": "logs/upgrade/feats/pe_core_lLN_CDFv2.npz",
+    "bytes": 35360838,
+    "frames": 16572,
+    "videos": 518,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 30,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "CDFv2",
+     "frames": 16572,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 0.9
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "CDFv3": {
+    "path": "logs/upgrade/feats/pe_core_lLN_CDFv3.npz",
+    "bytes": 381619691,
+    "frames": 173295,
+    "videos": 5418,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 17,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "CDFv3",
+     "frames": 173295,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 12.4
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "DFD": {
+    "path": "logs/upgrade/feats/pe_core_lLN_DFD.npz",
+    "bytes": 239012341,
+    "frames": 109298,
+    "videos": 3431,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 5,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "DFD",
+     "frames": 109298,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 8.8
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "DFDC": {
+    "path": "logs/upgrade/feats/pe_core_lLN_DFDC.npz",
+    "bytes": 280088894,
+    "frames": 132116,
+    "videos": 4704,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 1,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "DFDC",
+     "frames": 132116,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 12.2
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "DFDCP": {
+    "path": "logs/upgrade/feats/pe_core_lLN_DFDCP.npz",
+    "bytes": 37044402,
+    "frames": 17222,
+    "videos": 654,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 1,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "DFDCP",
+     "frames": 17222,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 0.9
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "DFEval24": {
+    "path": "logs/upgrade/feats/pe_core_lLN_DFEval24.npz",
+    "bytes": 50371831,
+    "frames": 23209,
+    "videos": 814,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 1,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "DFEval24",
+     "frames": 23209,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 1.2
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "FFIW": {
+    "path": "logs/upgrade/feats/pe_core_lLN_FFIW.npz",
+    "bytes": 236339295,
+    "frames": 110800,
+    "videos": 3470,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 1,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "FFIW",
+     "frames": 110800,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 7.5
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "KoDF": {
+    "path": "logs/upgrade/feats/pe_core_lLN_KoDF.npz",
+    "bytes": 153595747,
+    "frames": 71648,
+    "videos": 2239,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 32,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "KoDF",
+     "frames": 71648,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 6.0
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "IDForge": {
+    "path": "logs/upgrade/feats/pe_core_lLN_IDForge.npz",
+    "bytes": 409159689,
+    "frames": 190761,
+    "videos": 5974,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 14,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "IDForge",
+     "frames": 190761,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 8.5
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   },
+   "DFDM": {
+    "path": "logs/upgrade/feats/pe_core_lLN_DFDM.npz",
+    "bytes": 127706431,
+    "frames": 59754,
+    "videos": 1896,
+    "dim": 1024,
+    "dtype": "float16 on disk, float32 in memory",
+    "frames_per_video_min": 1,
+    "frames_per_video_max": 32,
+    "frame_index_from_key": true,
+    "token_pooling": "PE-Core AttentionPoolLatent (global_pool='map')",
+    "prefix_tokens": 1,
+    "feature_normalisation": "none in the cache; the LayerNorm recipe L2-normalises inside the adapted trunk",
+    "frozen_modules": "all PE-Core weights",
+    "trainable_modules": "LN",
+    "learned_projections": "head Linear(1024,256) and Linear(256,2) only; no 1024->64 projection, unlike the deployed DISCERN_Ext appearance view",
+    "encoder_input": 336,
+    "crop_resolution": 256,
+    "upsample_factor": 1.312,
+    "sidecar": {
+     "backbone": "pe_core_l",
+     "recipe": "LN",
+     "adapted_epoch": 7,
+     "dataset": "DFDM",
+     "frames": 59754,
+     "dim": 1024,
+     "input_size": 336,
+     "minutes": 4.2
+    },
+    "config_hash": "cc11b9e82a6f82bf"
+   }
+  },
+  "alignment": {
+   "VALmix": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 1350,
+    "dropped_per_branch": {},
+    "labels_agree": true
+   },
+   "VALmixV2": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 3764,
+    "dropped_per_branch": {
+     "A": 1088
+    },
+    "labels_agree": true
+   },
+   "FFpp_val": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 700,
+    "dropped_per_branch": {},
+    "labels_agree": true
+   },
+   "CDFv2": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 518,
+    "dropped_per_branch": {},
+    "labels_agree": true
+   },
+   "CDFv3": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 5118,
+    "dropped_per_branch": {
+     "A": 300
+    },
+    "labels_agree": true
+   },
+   "DFD": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 3431,
+    "dropped_per_branch": {},
+    "labels_agree": true
+   },
+   "DFDC": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 4704,
+    "dropped_per_branch": {},
+    "labels_agree": true
+   },
+   "DFDCP": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 654,
+    "dropped_per_branch": {},
+    "labels_agree": true
+   },
+   "DFEval24": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 814,
+    "dropped_per_branch": {},
+    "labels_agree": true
+   },
+   "FFIW": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 3470,
+    "dropped_per_branch": {},
+    "labels_agree": true
+   },
+   "KoDF": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 1395,
+    "dropped_per_branch": {
+     "A": 844
+    },
+    "labels_agree": true
+   },
+   "IDForge": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 5974,
+    "dropped_per_branch": {},
+    "labels_agree": true
+   },
+   "DFDM": {
+    "branches": [
+     "A",
+     "V",
+     "O",
+     "M"
+    ],
+    "videos": 1896,
+    "dropped_per_branch": {},
+    "labels_agree": true
+   }
+  },
+  "staleness_rule": "detected by model and configuration hash plus export provenance, never by expecting a particular AUROC"
+ },
+ "coverage": {
+  "columns": [
+   "A",
+   "S",
+   "V",
+   "O",
+   "M",
+   "R"
+  ],
+  "rows": {
+   "VALmix": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "VALmixV2": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "FFpp_val": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "CDFv2": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "CDFv3": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "DFD": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "DFDC": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "DFDCP": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "DFEval24": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "FFIW": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "KoDF": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "IDForge": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ],
+   "DFDM": [
+    true,
+    false,
+    true,
+    true,
+    true,
+    false
+   ]
+  }
+ },
+ "data_access": {
+  "source_trained_on": {
+   "encoder adaptation (A, and any LoRA cell)": "FF++ c23 train only",
+   "beta-VAE fitting (legacy_om)": "FF++ c23 train only (inherited, frozen here)",
+   "S temporal module": "FF++ c23 train only",
+   "R preprocessing statistics and projection": "FF++ c23 train only",
+   "representation projections": "FF++ c23 train only"
+  },
+  "development_fitted": {
+   "fusion reliability weights": "inner development folds",
+   "F2 simplex weights": "inner development folds",
+   "Track D heads and concatenation head": "inner development training groups",
+   "temperature (Track D variant)": "inner development calibration data"
+  },
+  "ffpp_val_fitted": {
+   "temperature (Track P)": "FF++ validation",
+   "per-view EER thresholds": "FF++ validation"
+  },
+  "never_fitted_on": [
+   "any test partition",
+   "the held-out stress settings jpeg40 and rs06"
+  ],
+  "tracks": {
+   "P": "source-trained reference: heads fit on FF++ train, checkpoint by B0's rule; only the declared low-dimensional trust fitting uses development",
+   "D": "learned-fusion comparison: representations frozen, small CE/EDL heads and the concatenation head fit on inner development training groups. Labelled 'fusion/heads trained on development data' in every table."
+  },
+  "grouping": "a genuine source, all its fake descendants and every corruption variant stay in one partition; groups come from the union-find in exp1_fusion_audit.groups_for, the same one B0's intervals use",
+  "reserved": {
+   "primary_hard": "DFEval24",
+   "secondary_hard": "DFDC",
+   "caveat": "both have been evaluated before; no row calls them untouched"
+  }
+ },
+ "leakage": {
+  "dev_videos": 5814,
+  "overlaps": {},
+  "clean": true,
+  "note": "Exact video-identity overlap only. Section 3 also asks for identity and source duplication across datasets where metadata permits; unresolved grouping is disclosed rather than assumed absent."
+ },
+ "corrections": [
+  "**Shared features do not imply fusion cannot help.** Distinct heads over one representation can preserve different predictive information, and a fused score can beat both. What the previous campaign showed is narrower: `legacy_om` is a deterministic function of the appearance feature through a 32-dimensional bottleneck, so it adds no INFORMATION at eval -- that is a statement about this particular construction, not about shared trunks in general.",
+  "**LayerNorm adaptation changes activations and can change attention.** Rescaling a block's activations alters the pre-softmax logits downstream, so the claim that LayerNorm leaves the attention function intact is wrong as stated. The defensible version is that it does not add parameters to the projections and keeps the trunk's weight matrices fixed.",
+  "**LoRA does not force the original pretraining objective.** The adapter is trained on the detection loss; calling it 'further along the contrastive objective' overstates what is known. What is measured is that LoRA buys standalone AUROC and LayerNorm-only buys fused AUROC.",
+  "**Different recipes do not guarantee independent errors.** Using distinct adaptation knobs per branch is a reason to EXPECT less correlation, not evidence of it. Error correlation is measured per subset and reported, never assumed from the configuration.",
+  "**Orthogonality is not causal identification.** The orthogonal residual construction and any subspace projection are geometric operations. No causal claim follows from them, nor from an attribution map or a shuffled sequence."
+ ],
+ "b0_reproduction": {
+  "status": "pass",
+  "tolerance": {
+   "max_abs_auroc": 0.0005,
+   "min_spearman": 0.9999,
+   "max_flips": 0
+  },
+  "max_abs_diff": 2.220446049250313e-16,
+  "min_spearman": 0.9964807939449648,
+  "decision_flips_vs_folds": 801,
+  "flip_note": "Flips are counted between each fold's fused score and the fold mean at the frozen threshold, which is the only flip comparison the stored record supports -- it stores metrics, not per-video scores. A nonzero count is fold disagreement, not a reproduction failure.",
+  "per_set": {
+   "CDFv2": {
+    "recorded": 0.9616655651024455,
+    "reproduced": 0.9616655651024455,
+    "abs_diff": 0.0,
+    "n": 518,
+    "within_tol": true,
+    "spearman_fold0_vs_mean": 0.9983717831461038,
+    "tau": 0.5299543489925214,
+    "n_flagged_at_tau": 275,
+    "fpr_real_at_tau": 0.056179775280898875,
+    "decision_flips_vs_folds": 15
+   },
+   "CDFv3": {
+    "recorded": 0.9633569121593959,
+    "reproduced": 0.9633569121593959,
+    "abs_diff": 0.0,
+    "n": 5118,
+    "within_tol": true,
+    "spearman_fold0_vs_mean": 0.9964807939449648,
+    "tau": 0.5299543489925214,
+    "n_flagged_at_tau": 4251,
+    "fpr_real_at_tau": 0.056179775280898875,
+    "decision_flips_vs_folds": 218
+   },
+   "DFD": {
+    "recorded": 0.9504168148235944,
+    "reproduced": 0.9504168148235945,
+    "abs_diff": 1.1102230246251565e-16,
+    "n": 3431,
+    "within_tol": true,
+    "spearman_fold0_vs_mean": 0.9995693107677756,
+    "tau": 0.5299543489925214,
+    "n_flagged_at_tau": 2387,
+    "fpr_real_at_tau": 0.05785123966942149,
+    "decision_flips_vs_folds": 54
+   },
+   "DFDC": {
+    "recorded": 0.857120332843025,
+    "reproduced": 0.8571203328430251,
+    "abs_diff": 1.1102230246251565e-16,
+    "n": 4704,
+    "within_tol": true,
+    "spearman_fold0_vs_mean": 0.9982339260194989,
+    "tau": 0.5299543489925214,
+    "n_flagged_at_tau": 1790,
+    "fpr_real_at_tau": 0.10928725701943845,
+    "decision_flips_vs_folds": 158
+   },
+   "DFDCP": {
+    "recorded": 0.9048297785069729,
+    "reproduced": 0.9048297785069729,
+    "abs_diff": 0.0,
+    "n": 654,
+    "within_tol": true,
+    "spearman_fold0_vs_mean": 0.9978089242525917,
+    "tau": 0.5299543489925214,
+    "n_flagged_at_tau": 276,
+    "fpr_real_at_tau": 0.05652173913043478,
+    "decision_flips_vs_folds": 29
+   },
+   "DFEval24": {
+    "recorded": 0.7033920875502397,
+    "reproduced": 0.7033920875502397,
+    "abs_diff": 0.0,
+    "n": 814,
+    "within_tol": true,
+    "spearman_fold0_vs_mean": 0.9966191895379408,
+    "tau": 0.5299543489925214,
+    "n_flagged_at_tau": 253,
+    "fpr_real_at_tau": 0.18457943925233644,
+    "decision_flips_vs_folds": 50
+   },
+   "FFIW": {
+    "recorded": 0.9679166839688061,
+    "reproduced": 0.9679166839688064,
+    "abs_diff": 2.220446049250313e-16,
+    "n": 3470,
+    "within_tol": true,
+    "spearman_fold0_vs_mean": 0.9986821905594723,
+    "tau": 0.5299543489925214,
+    "n_flagged_at_tau": 1426,
+    "fpr_real_at_tau": 0.03861671469740634,
+    "decision_flips_vs_folds": 123
+   },
+   "KoDF": {
+    "recorded": 0.9438385495877691,
+    "reproduced": 0.9438385495877691,
+    "abs_diff": 0.0,
+    "n": 1395,
+    "within_tol": true,
+    "spearman_fold0_vs_mean": 0.99948640578602,
+    "tau": 0.5299543489925214,
+    "n_flagged_at_tau": 753,
+    "fpr_real_at_tau": 0.004962779156327543,
+    "decision_flips_vs_folds": 54
+   },
+   "IDForge": {
+    "recorded": 0.9948244647686006,
+    "reproduced": 0.9948244647686005,
+    "abs_diff": 1.1102230246251565e-16,
+    "n": 5974,
+    "within_tol": true,
+    "spearman_fold0_vs_mean": 0.99903358454625,
+    "tau": 0.5299543489925214,
+    "n_flagged_at_tau": 2766,
+    "fpr_real_at_tau": 0.012052226314027453,
+    "decision_flips_vs_folds": 92
+   },
+   "DFDM": {
+    "recorded": 0.9924592222469294,
+    "reproduced": 0.9924592222469294,
+    "abs_diff": 0.0,
+    "n": 1896,
+    "within_tol": true,
+    "spearman_fold0_vs_mean": 0.9994879703409678,
+    "tau": 0.5299543489925214,
+    "n_flagged_at_tau": 1672,
+    "fpr_real_at_tau": 0.05056179775280899,
+    "decision_flips_vs_folds": 8
+   }
+  },
+  "branches_used": [
+   "V",
+   "A",
+   "O"
+  ],
+  "weights_per_fold": [
+   [
+    0.25,
+    0.5,
+    1.0
+   ],
+   [
+    0.25,
+    1.0,
+    0.5
+   ],
+   [
+    0.25,
+    1.0,
+    0.5
+   ],
+   [
+    0.25,
+    1.0,
+    0.5
+   ],
+   [
+    0.25,
+    1.0,
+    0.5
+   ]
+  ],
+  "dev_tau": 0.5299543489925214,
+  "note": "Reproduction re-fuses the materialised branch exports with the recorded fold weights. A per-set AUROC difference above 5e-4 means the exports or the operator have moved since the row was written."
+ },
+ "algebra": {
+  "branches": [
+   "V",
+   "A",
+   "O"
+  ],
+  "convention": "evidence_scaling",
+  "invalid_stored_opinions": {
+   "V": 0,
+   "A": 0,
+   "O": 0
+  },
+  "F5": {
+   "endpoints": {
+    "rho1_equals_undiscounted": 0.0,
+    "rho0_equals_dropped": 0.5060949861553583
+   },
+   "conflict": {
+    "vacuous_with_confident": {
+     "p": 0.9,
+     "finite": true,
+     "in_range": true
+    },
+    "both_vacuous": {
+     "p": 0.5,
+     "finite": true,
+     "in_range": true
+    },
+    "opposed_strong": {
+     "p": 0.5,
+     "finite": true,
+     "in_range": true
+    },
+    "opposed_dogmatic": {
+     "p": 0.5,
+     "finite": true,
+     "in_range": true
+    },
+    "vacuous_is_identity_err": 0.0
+   }
+  },
+  "F6": {
+   "endpoints": {
+    "rho1_equals_undiscounted": 0.0,
+    "rho0_equals_dropped": 0.0
+   },
+   "conflict": {
+    "vacuous_with_confident": {
+     "p": 0.9,
+     "finite": true,
+     "in_range": true
+    },
+    "both_vacuous": {
+     "p": 0.5,
+     "finite": true,
+     "in_range": true
+    },
+    "opposed_strong": {
+     "p": 0.5,
+     "finite": true,
+     "in_range": true
+    },
+    "opposed_dogmatic": {
+     "p": 0.5,
+     "finite": true,
+     "in_range": true
+    },
+    "vacuous_is_identity_err": 0.0
+   }
+  },
+  "F7": {
+   "endpoints": {
+    "rho1_equals_undiscounted": 0.0,
+    "rho0_equals_dropped": 0.0
+   },
+   "conflict": {
+    "vacuous_with_confident": {
+     "p": 0.9,
+     "finite": true,
+     "in_range": true
+    },
+    "both_vacuous": {
+     "p": 0.5,
+     "finite": true,
+     "in_range": true
+    },
+    "opposed_strong": {
+     "p": 0.5000000000000001,
+     "finite": true,
+     "in_range": true
+    },
+    "opposed_dogmatic": {
+     "p": 0.4999999952205821,
+     "finite": true,
+     "in_range": true
+    },
+    "vacuous_is_identity_err": 0.0
+   }
+  },
+  "F8": {
+   "endpoints": {
+    "rho1_equals_undiscounted": 0.0,
+    "rho0_equals_dropped": 0.0
+   },
+   "conflict": {
+    "vacuous_with_confident": {
+     "p": 0.9,
+     "finite": true,
+     "in_range": true
+    },
+    "both_vacuous": {
+     "p": 0.5,
+     "finite": true,
+     "in_range": true
+    },
+    "opposed_strong": {
+     "p": 0.5,
+     "finite": true,
+     "in_range": true
+    },
+    "opposed_dogmatic": {
+     "p": 0.49999999999999994,
+     "finite": true,
+     "in_range": true
+    },
+    "vacuous_is_identity_err": 0.0
+   }
+  },
+  "permutation": {
+   "F5": {
+    "n_permutations": 6,
+    "max_abs_change": 2.220446049250313e-16,
+    "invariant": true
+   },
+   "F7": {
+    "n_permutations": 6,
+    "max_abs_change": 4.440892098500626e-15,
+    "invariant": true
+   },
+   "F8": {
+    "n_permutations": 6,
+    "max_abs_change": 4.440892098500626e-16,
+    "invariant": true
+   },
+   "pairwise": {
+    "n_permutations": 6,
+    "max_abs_change": 0.2832219869227225,
+    "invariant": false
+   }
+  },
+  "belief_discount_identity_max_err": {
+   "0.25": 2.220446049250313e-16,
+   "0.5": 4.440892098500626e-16,
+   "0.75": 1.7763568394002505e-15
+  }
+ }
+}

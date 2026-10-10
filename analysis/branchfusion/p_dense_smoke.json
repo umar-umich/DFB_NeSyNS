@@ -1,0 +1,33 @@
+{
+ "FFpp_train": {
+  "h5": "/data/umar/Datasets/tbiom_dense/ffpp_train_dense.h5",
+  "videos": 3596,
+  "frames_per_video": 32,
+  "median_stride_source_frames": 1.0,
+  "labels": {
+   "real": 719,
+   "fake": 2877
+  },
+  "example_id": "FFpp_train/Deepfakes/Deepfakes__001_870",
+  "example_video": "FFpp_train/Deepfakes/Deepfakes__001_870"
+ },
+ "VALmix": {
+  "h5": "/data/umar/Datasets/tbiom_dense/dev2_dense.h5",
+  "videos": 821,
+  "frames_per_video": 32,
+  "median_stride_source_frames": 1.0,
+  "labels": {
+   "real": 408,
+   "fake": 413
+  },
+  "example_id": "VALmix/CDFv2val-Celeb-real/cdf2-id0_0005",
+  "example_video": "VALmix/CDFv2val-Celeb-real/cdf2-id0_0005"
+ },
+ "id_agreement_VALmix": {
+  "reference_ids": 1350,
+  "dense_ids": 821,
+  "overlap": 821,
+  "fraction_of_dense_matched": 1.0,
+  "verdict": "ids match the selection CSVs"
+ }
+}

@@ -1,0 +1,38 @@
+# Orchestrator decision log
+
+Written unattended. Every line is a decision the orchestrator made, or a number it made
+it on. The live copy is `logs/branchfusion/orchestrator/orchestrator.log`, which is
+gitignored; this is the committed mirror.
+
+```
+[2026-10-09T23:26:11-04:00] === orchestrator start ===
+[2026-10-09T23:26:11-04:00] GPUs: 0, 46948 MiB 1, 69596 MiB 2, 40246 MiB 3, 36415 MiB 
+[2026-10-09T23:28:42-04:00] === orchestrator start ===
+[2026-10-09T23:28:43-04:00] GPUs: 0, 46948 MiB 1, 69596 MiB 2, 40246 MiB 3, 34985 MiB 
+[2026-10-09T23:54:28-04:00] S IN-LOOP SMOKE: PASS, recorded on reaching the EXPORT stage rather than DONE.
+[2026-10-09T23:54:28-04:00]   The rehearsal was a child of the ssh session and dies with it, mid-export. It had
+[2026-10-09T23:54:28-04:00]   already cleared every stage this patch touches: the timestamp table reached the
+[2026-10-09T23:54:28-04:00]   temporal stage (no slot-number fallback warning was printed), SeqTemporal and the
+[2026-10-09T23:54:28-04:00]   VAE loss ran, a full epoch scored on WHOLE dev sets (v3.1 0.5595), and a checkpoint
+[2026-10-09T23:54:28-04:00]   was selected. The export that follows is Dr Kutub's unmodified code, which the
+[2026-10-09T23:54:28-04:00]   P+OM smoke ran to completion ("done in 23 min", exit 0). S in-loop is cleared.
+[2026-10-09T23:54:33-04:00] === orchestrator start ===
+[2026-10-09T23:54:33-04:00] GPUs: 0, 46948 MiB 1, 130350 MiB 2, 36726 MiB 3, 34985 MiB 
+[2026-10-10T00:24:45-04:00] still waiting on spatial depth runs (b12/b8/b16 seed 1) (30 min)
+[2026-10-10T00:38:21-04:00] === orchestrator start ===
+[2026-10-10T00:38:21-04:00] GPUs: 0, 46948 MiB 1, 93962 MiB 2, 75214 MiB 3, 34985 MiB 
+[2026-10-10T01:08:33-04:00] still waiting on spatial depth runs (b12/b8/b16 seed 1) (30 min)
+[2026-10-10T01:13:06-04:00] CONCAT SMOKE: PASS -- ran to completion ("done in 34 min", exit 0), epoch 0 dev 0.5128.
+[2026-10-10T01:13:06-04:00]   Its watcher had DEADLOCKED on itself: the watcher polled pgrep -f "om-mode concat
+[2026-10-10T01:13:06-04:00]   --smoke", and its own parent shell carried that string in its command line, so the
+[2026-10-10T01:13:06-04:00]   watcher waited for a process that was waiting for the watcher. Marker written by
+[2026-10-10T01:13:06-04:00]   hand from the log; wait_for in this orchestrator now counts only python processes.
+[2026-10-10T01:13:25-04:00] === orchestrator start ===
+[2026-10-10T01:13:25-04:00] GPUs: 0, 46948 MiB 1, 93962 MiB 2, 14 MiB 3, 36415 MiB 
+[2026-10-10T01:43:44-04:00] still waiting on spatial depth runs (b12/b8/b16 seed 1) (30 min)
+[2026-10-10T02:14:01-04:00] still waiting on spatial depth runs (b12/b8/b16 seed 1) (60 min)
+[2026-10-10T02:44:19-04:00] still waiting on spatial depth runs (b12/b8/b16 seed 1) (90 min)
+[2026-10-10T03:14:37-04:00] still waiting on spatial depth runs (b12/b8/b16 seed 1) (120 min)
+[2026-10-10T03:21:40-04:00] spatial depth runs (b12/b8/b16 seed 1) is finished
+[2026-10-10T03:21:41-04:00] P+OM and its control is finished
+```

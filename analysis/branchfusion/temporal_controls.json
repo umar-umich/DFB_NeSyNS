@@ -1,0 +1,338 @@
+{
+ "V": {
+  "status": "ok",
+  "per_dataset": {
+   "VALmix": {
+    "n": 1350,
+    "auroc_ordered": 0.741996159122085,
+    "auroc_shuffled": 0.7346875171467764,
+    "delta_auroc": 0.007308641975308672,
+    "nll_ordered": 1.0971354252922516,
+    "nll_shuffled": 1.097996161358154,
+    "mean_abs_dp": 0.09203387368989163,
+    "mean_abs_du": 0.09557385558702779,
+    "max_abs_dp": 0.9314643164719066
+   },
+   "VALmixV2": {
+    "n": 3764,
+    "auroc_ordered": 0.8214409385611077,
+    "auroc_shuffled": 0.7966263126791318,
+    "delta_auroc": 0.024814625881975916,
+    "nll_ordered": 0.7639637416149602,
+    "nll_shuffled": 0.8530426069575173,
+    "mean_abs_dp": 0.13388312839525057,
+    "mean_abs_du": 0.1229315470322691,
+    "max_abs_dp": 0.9515929117230612
+   },
+   "FFpp_val": {
+    "n": 700,
+    "auroc_ordered": 0.9904017857142857,
+    "auroc_shuffled": 0.9868941326530613,
+    "delta_auroc": 0.0035076530612244694,
+    "nll_ordered": 0.09751542182563747,
+    "nll_shuffled": 0.1376945105013951,
+    "mean_abs_dp": 0.0344927678190537,
+    "mean_abs_du": 0.033155455887059794,
+    "max_abs_dp": 0.9280576874669825
+   },
+   "CDFv3": {
+    "n": 5118,
+    "auroc_ordered": 0.9262526725196742,
+    "auroc_shuffled": 0.9271067415730337,
+    "delta_auroc": -0.0008540690533594963,
+    "nll_ordered": 0.8874464937216366,
+    "nll_shuffled": 0.9448287732325011,
+    "mean_abs_dp": 0.12665354753645203,
+    "mean_abs_du": 0.11853191391244429,
+    "max_abs_dp": 0.9544593962244794
+   },
+   "KoDF": {
+    "n": 1395,
+    "auroc_ordered": 0.9655532097974866,
+    "auroc_shuffled": 0.963271932282078,
+    "delta_auroc": 0.0022812775154086307,
+    "nll_ordered": 0.26864753064426483,
+    "nll_shuffled": 0.2786660387071394,
+    "mean_abs_dp": 0.040943014816360916,
+    "mean_abs_du": 0.04250159976463011,
+    "max_abs_dp": 0.9212743998388218
+   }
+  },
+  "mean_abs_dp_overall": 0.08560126645140177,
+  "max_abs_delta_auroc": 0.024814625881975916,
+  "order_sensitive": true,
+  "verdict": "the prediction moves under permutation, so the function is order-sensitive. That is necessary but NOT sufficient for useful temporal reasoning -- read it with control 6's matched comparison"
+ },
+ "M": {
+  "status": "ok",
+  "per_dataset": {
+   "VALmix": {
+    "n": 1350,
+    "auroc_ordered": 0.6914524005486968,
+    "auroc_shuffled": 0.7017470507544582,
+    "delta_auroc": -0.010294650205761369,
+    "nll_ordered": 0.9859956579212564,
+    "nll_shuffled": 0.9352685638474075,
+    "mean_abs_dp": 0.16372001803699693,
+    "mean_abs_du": 0.053015054721736725,
+    "max_abs_dp": 0.8987251634984065
+   },
+   "VALmixV2": {
+    "n": 3764,
+    "auroc_ordered": 0.828306613513208,
+    "auroc_shuffled": 0.8192489665267716,
+    "delta_auroc": 0.009057646986436407,
+    "nll_ordered": 0.5606753369182074,
+    "nll_shuffled": 0.5932139386507,
+    "mean_abs_dp": 0.12221484314034625,
+    "mean_abs_du": 0.04373004525672912,
+    "max_abs_dp": 0.9157088933294254
+   },
+   "FFpp_val": {
+    "n": 700,
+    "auroc_ordered": 0.9735204081632653,
+    "auroc_shuffled": 0.9600127551020409,
+    "delta_auroc": 0.013507653061224478,
+    "nll_ordered": 0.1964879989614953,
+    "nll_shuffled": 0.2367740754960236,
+    "mean_abs_dp": 0.05463420173627218,
+    "mean_abs_du": 0.018257304650952703,
+    "max_abs_dp": 0.8954544172580118
+   },
+   "CDFv3": {
+    "n": 5118,
+    "auroc_ordered": 0.8802938634399309,
+    "auroc_shuffled": 0.8379094072692536,
+    "delta_auroc": 0.04238445617067732,
+    "nll_ordered": 0.4282659737994628,
+    "nll_shuffled": 0.4562991663197733,
+    "mean_abs_dp": 0.11608971367477289,
+    "mean_abs_du": 0.04328038364243301,
+    "max_abs_dp": 0.9265425977685963
+   },
+   "KoDF": {
+    "n": 1395,
+    "auroc_ordered": 0.8997013327463379,
+    "auroc_shuffled": 0.8816762386936684,
+    "delta_auroc": 0.0180250940526695,
+    "nll_ordered": 0.44152097046578537,
+    "nll_shuffled": 0.5015916531009262,
+    "mean_abs_dp": 0.0854698538188719,
+    "mean_abs_du": 0.03254094361781672,
+    "max_abs_dp": 0.9036400562614325
+   }
+  },
+  "mean_abs_dp_overall": 0.10842572608145203,
+  "max_abs_delta_auroc": 0.04238445617067732,
+  "order_sensitive": true,
+  "verdict": "the prediction moves under permutation, so the function is order-sensitive. That is necessary but NOT sufficient for useful temporal reasoning -- read it with control 6's matched comparison"
+ },
+ "P": {
+  "status": "ok",
+  "per_dataset": {
+   "VALmix": {
+    "n": 1350,
+    "auroc_ordered": 0.8773344307270233,
+    "auroc_shuffled": 0.8772203017832647,
+    "delta_auroc": 0.00011412894375861793,
+    "nll_ordered": 0.588433152458013,
+    "nll_shuffled": 0.5893737910745439,
+    "mean_abs_dp": 0.0021496425867649142,
+    "mean_abs_du": 0.002861784335040635,
+    "max_abs_dp": 0.04138079852803844
+   },
+   "VALmixV2": {
+    "n": 3764,
+    "auroc_ordered": 0.8803390750897537,
+    "auroc_shuffled": 0.8803163594268928,
+    "delta_auroc": 2.271566286093929e-05,
+    "nll_ordered": 0.6650323301027146,
+    "nll_shuffled": 0.6643641246828176,
+    "mean_abs_dp": 0.0019716712006983377,
+    "mean_abs_du": 0.0025632622264254255,
+    "max_abs_dp": 0.04393922034383668
+   },
+   "FFpp_val": {
+    "n": 700,
+    "auroc_ordered": 0.9946173469387755,
+    "auroc_shuffled": 0.9946811224489795,
+    "delta_auroc": -6.377551020408934e-05,
+    "nll_ordered": 0.09104512975852116,
+    "nll_shuffled": 0.09108526873870157,
+    "mean_abs_dp": 0.0003983677927645835,
+    "mean_abs_du": 0.0006328744270042663,
+    "max_abs_dp": 0.030335396463445963
+   },
+   "CDFv3": {
+    "n": 5118,
+    "auroc_ordered": 0.8406814356548242,
+    "auroc_shuffled": 0.8407343174271028,
+    "delta_auroc": -5.288177227857904e-05,
+    "nll_ordered": 0.5041479927988928,
+    "nll_shuffled": 0.5032853830854521,
+    "mean_abs_dp": 0.0016491090632755744,
+    "mean_abs_du": 0.0021490455584176824,
+    "max_abs_dp": 0.044148114026892116
+   },
+   "KoDF": {
+    "n": 1395,
+    "auroc_ordered": 0.8239426578884175,
+    "auroc_shuffled": 0.8240927419354839,
+    "delta_auroc": -0.0001500840470664011,
+    "nll_ordered": 0.9798998163473969,
+    "nll_shuffled": 0.9804413820214846,
+    "mean_abs_dp": 0.0008142244397994211,
+    "mean_abs_du": 0.0010623890270545428,
+    "max_abs_dp": 0.03186302730487356
+   }
+  },
+  "mean_abs_dp_overall": 0.0013966030166605663,
+  "max_abs_delta_auroc": 0.0001500840470664011,
+  "order_sensitive": false,
+  "verdict": "the branch's prediction barely moves when the frames are permuted, so its temporal stage has learned a permutation-invariant function and the branch must NOT be called spatio-temporal in tables"
+ },
+ "p_dense_vs_sparse": {
+  "status": "ok",
+  "seed": 42,
+  "n_datasets": 3,
+  "per_dataset": {
+   "VALmix": {
+    "status": "ok",
+    "n_shared": 821,
+    "dense_videos": 821,
+    "sparse_videos": 1350,
+    "dense": {
+     "auroc_ordered": 0.8122507477567298,
+     "auroc_shuffled": 0.8121825001186915,
+     "delta_auroc": 6.824763803825462e-05,
+     "mean_abs_dp": 0.0011139737769763176,
+     "max_abs_dp": 0.06908690191857436,
+     "nll_ordered": 0.6664721553251901
+    },
+    "sparse": {
+     "auroc_ordered": 0.8271821440440583,
+     "auroc_shuffled": 0.8270248777477093,
+     "delta_auroc": 0.00015726629634904565,
+     "mean_abs_dp": 0.0025365837169543134,
+     "max_abs_dp": 0.04138079852803844,
+     "nll_ordered": 0.718868941455423
+    },
+    "dp_ratio": 0.4391630244768229
+   },
+   "VALmixV2": {
+    "status": "ok",
+    "n_shared": 597,
+    "dense_videos": 597,
+    "sparse_videos": 3764,
+    "dense": {
+     "auroc_ordered": 0.8384007297050775,
+     "auroc_shuffled": 0.8384875993571645,
+     "delta_auroc": -8.686965208704045e-05,
+     "mean_abs_dp": 0.0008803751613833533,
+     "max_abs_dp": 0.021797573645337076,
+     "nll_ordered": 0.8138458738306772
+    },
+    "sparse": {
+     "auroc_ordered": 0.8588150979455327,
+     "auroc_shuffled": 0.8585544889892716,
+     "delta_auroc": 0.00026060895626112135,
+     "mean_abs_dp": 0.002132888718621434,
+     "max_abs_dp": 0.034364616792898706,
+     "nll_ordered": 0.5094809537021868
+    },
+    "dp_ratio": 0.4127618819008864
+   },
+   "FFpp_val": {
+    "status": "ok",
+    "n_shared": 699,
+    "dense_videos": 699,
+    "sparse_videos": 700,
+    "dense": {
+     "auroc_ordered": 0.981063122923588,
+     "auroc_shuffled": 0.981024789164324,
+     "delta_auroc": 3.833375926398652e-05,
+     "mean_abs_dp": 0.00038875093158323036,
+     "max_abs_dp": 0.01274321800263356,
+     "nll_ordered": 0.21311812274136277
+    },
+    "sparse": {
+     "auroc_ordered": 0.9946077178635319,
+     "auroc_shuffled": 0.9946716074623051,
+     "delta_auroc": -6.388959877323686e-05,
+     "mean_abs_dp": 0.00039893770376996915,
+     "max_abs_dp": 0.030335396463445963,
+     "nll_ordered": 0.0911673204767476
+    },
+    "dp_ratio": 0.9744652558771116
+   }
+  },
+  "mean_abs_dp_dense": 0.0007943666233143004,
+  "mean_abs_dp_sparse": 0.001689470046448572,
+  "dp_ratio": 0.47018686420877076,
+  "mean_delta_auroc_dense": 6.570581738400231e-06,
+  "dense_order_sensitive": false,
+  "dense_best_epoch": 2,
+  "dense_dev_v31_RESTRICTED": 0.8002919637268011,
+  "dev_restriction": {
+   "restricted": true,
+   "covered": 2117,
+   "pool": 5814,
+   "coverage": 0.3641,
+   "per_source": {
+    "CDFv2val": [
+     450,
+     450
+    ],
+    "CDFv3valG": [
+     597,
+     1664
+    ],
+    "DF40train": [
+     0,
+     704
+    ],
+    "DFDCPval": [
+     0,
+     450
+    ],
+    "DFEval24val": [
+     371,
+     450
+    ],
+    "DS11val": [
+     0,
+     448
+    ],
+    "DS20val": [
+     0,
+     448
+    ],
+    "FFIWval": [
+     0,
+     500
+    ],
+    "FFpp_val": [
+     699,
+     700
+    ]
+   },
+   "cells_scorable": {
+    "swap": [
+     2,
+     5
+    ],
+    "reenactment": [
+     1,
+     3
+    ],
+    "in_the_wild": [
+     1,
+     2
+    ]
+   },
+   "note": "dev v3.1 here is computed on the dense-covered subset only; compare against sparse-P restricted to the same videos, never against a full-pool v3.1"
+  },
+  "selection_confound": "sparse P selected its epoch on the full development pool, dense P on the dense-covered subset, so the AUROC columns are not a clean head-to-head. The |delta p| columns are within-branch and are not affected by this.",
+  "verdict": "P-dense stays order-invariant with consecutive frames and real motion in front of it, so the inertness is ARCHITECTURAL, not a sampling artefact. Retraining P on denser clips will not make it spatio-temporal, and the frame-spacing hypothesis of section 2.2 is REJECTED for this branch."
+ }
+}

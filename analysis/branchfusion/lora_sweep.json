@@ -1,0 +1,286 @@
+{
+ "plan": {
+  "cells": [
+   {
+    "sweep": "rank",
+    "r": 8,
+    "alpha": 16,
+    "alpha_over_r": 2.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": true,
+    "trainable_lora": 786432,
+    "id": "r8_a16_d0.1"
+   },
+   {
+    "sweep": "rank",
+    "r": 16,
+    "alpha": 32,
+    "alpha_over_r": 2.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 1572864,
+    "id": "r16_a32_d0.1"
+   },
+   {
+    "sweep": "rank",
+    "r": 2,
+    "alpha": 4,
+    "alpha_over_r": 2.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 196608,
+    "id": "r2_a4_d0.1"
+   },
+   {
+    "sweep": "rank",
+    "r": 4,
+    "alpha": 8,
+    "alpha_over_r": 2.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 393216,
+    "id": "r4_a8_d0.1"
+   },
+   {
+    "sweep": "dropout",
+    "r": 8,
+    "alpha": 16,
+    "alpha_over_r": 2.0,
+    "dropout": 0.0,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a16_d0"
+   },
+   {
+    "sweep": "dropout",
+    "r": 8,
+    "alpha": 16,
+    "alpha_over_r": 2.0,
+    "dropout": 0.05,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a16_d0.05"
+   },
+   {
+    "sweep": "dropout",
+    "r": 8,
+    "alpha": 16,
+    "alpha_over_r": 2.0,
+    "dropout": 0.2,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a16_d0.2"
+   },
+   {
+    "sweep": "scaling",
+    "r": 8,
+    "alpha": 32,
+    "alpha_over_r": 4.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a32_d0.1"
+   },
+   {
+    "sweep": "scaling",
+    "r": 8,
+    "alpha": 4.0,
+    "alpha_over_r": 0.5,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a4_d0.1"
+   },
+   {
+    "sweep": "scaling",
+    "r": 8,
+    "alpha": 8,
+    "alpha_over_r": 1.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a8_d0.1"
+   }
+  ],
+  "n_cells": 10,
+  "queue": [
+   {
+    "sweep": "rank",
+    "r": 8,
+    "alpha": 16,
+    "alpha_over_r": 2.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": true,
+    "trainable_lora": 786432,
+    "id": "r8_a16_d0.1"
+   },
+   {
+    "sweep": "rank",
+    "r": 16,
+    "alpha": 32,
+    "alpha_over_r": 2.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 1572864,
+    "id": "r16_a32_d0.1"
+   },
+   {
+    "sweep": "rank",
+    "r": 2,
+    "alpha": 4,
+    "alpha_over_r": 2.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 196608,
+    "id": "r2_a4_d0.1"
+   },
+   {
+    "sweep": "rank",
+    "r": 4,
+    "alpha": 8,
+    "alpha_over_r": 2.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 393216,
+    "id": "r4_a8_d0.1"
+   },
+   {
+    "sweep": "dropout",
+    "r": 8,
+    "alpha": 16,
+    "alpha_over_r": 2.0,
+    "dropout": 0.0,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a16_d0"
+   },
+   {
+    "sweep": "dropout",
+    "r": 8,
+    "alpha": 16,
+    "alpha_over_r": 2.0,
+    "dropout": 0.05,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a16_d0.05"
+   },
+   {
+    "sweep": "dropout",
+    "r": 8,
+    "alpha": 16,
+    "alpha_over_r": 2.0,
+    "dropout": 0.2,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a16_d0.2"
+   },
+   {
+    "sweep": "scaling",
+    "r": 8,
+    "alpha": 32,
+    "alpha_over_r": 4.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a32_d0.1"
+   },
+   {
+    "sweep": "scaling",
+    "r": 8,
+    "alpha": 4.0,
+    "alpha_over_r": 0.5,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a4_d0.1"
+   },
+   {
+    "sweep": "scaling",
+    "r": 8,
+    "alpha": 8,
+    "alpha_over_r": 1.0,
+    "dropout": 0.1,
+    "layernorm": true,
+    "targets": "fused qkv",
+    "is_centre": false,
+    "trainable_lora": 786432,
+    "id": "r8_a8_d0.1"
+   }
+  ],
+  "dropped": [],
+  "minutes_per_cell_estimate": 220.0,
+  "estimated_gpu_hours": 36.7,
+  "cap_hours": 55.0,
+  "controls": {
+   "frozen": {
+    "note": "no adaptation at all",
+    "existing": "analysis/upgrade/screen_pe_core_l.json"
+   },
+   "layernorm_only": {
+    "note": "LayerNorm parameters only, features L2-normalised (GenD recipe)",
+    "existing": "analysis/upgrade/adapt/pe_core_l_N_s0.json"
+   },
+   "lora_only": {
+    "note": "LoRA only, LayerNorm NOT trained",
+    "existing": "analysis/upgrade/adapt/pe_core_l_L_s0.json"
+   }
+  },
+  "centre": {
+   "r": 8,
+   "alpha": 16,
+   "dropout": 0.1,
+   "targets": "fused qkv",
+   "layernorm": true
+  },
+  "reference_subset": [
+   "A",
+   "V",
+   "O"
+  ],
+  "seeds": {
+   "screen": 1,
+   "final": 3,
+   "note": "one seed for screening, then three ADAPTATION seeds for the centre and the selected recipe. A seed means a new adaptation run, not a re-scored head."
+  },
+  "evaluation": "each cell standalone AND by its fused contribution in the fixed reference subset with A swapped in; the subset and operator search is NOT re-run per cell",
+  "fairness": "data budget, effective batch size, augmentation, schedule and early stopping held equal; peak memory, throughput and GPU-hours recorded"
+ }
+}

@@ -1,0 +1,210 @@
+{
+ "A+V+O": {
+  "subset": "A+V+O",
+  "operator": "F8",
+  "tau_fused": 0.5428766936359238,
+  "tau_per_branch": {
+   "A": 0.5002585666952655,
+   "V": 0.5429997821543219,
+   "O": 0.4106551995625
+  },
+  "error_correlation_phi": {
+   "A-V": {
+    "all": 0.044756062745580076,
+    "real": 0.06809636852764787,
+    "fake": 0.07964119608440585
+   },
+   "A-O": {
+    "all": 0.3682716278733855,
+    "real": 0.28840422665214094,
+    "fake": 0.45194522859981806
+   },
+   "V-O": {
+    "all": 0.11492713342329355,
+    "real": 0.1020844982400386,
+    "fake": 0.07531952838817284
+   }
+  },
+  "rescue_count": 0,
+  "rescue_rate": 0.0,
+  "rescue_denominator": 216,
+  "harmful_overrule_count": 657,
+  "harmful_overrule_rate": 0.12193763919821826,
+  "harmful_denominator": 5388,
+  "folds_weight_zero": {
+   "A": 0,
+   "V": 0,
+   "O": 0
+  },
+  "fused_error_rate": 0.15578158458244112,
+  "branch_error_rate": {
+   "A": 0.168807994289793,
+   "V": 0.2880085653104925,
+   "O": 0.24339757316202712
+  },
+  "caveat": "explanatory only. Section 4 forbids promoting a branch because its errors decorrelate, or rejecting one only because a fitted weight reaches zero."
+ },
+ "A+V+P": {
+  "subset": "A+V+P",
+  "operator": "F8",
+  "tau_fused": 0.6302563305755673,
+  "tau_per_branch": {
+   "A": 0.5002585666952655,
+   "V": 0.5429997821543219,
+   "P": 0.9576214674581554
+  },
+  "error_correlation_phi": {
+   "A-V": {
+    "all": 0.044756062745580076,
+    "real": 0.06809636852764787,
+    "fake": 0.07964119608440585
+   },
+   "A-P": {
+    "all": 0.33649195522021846,
+    "real": 0.30667691323645513,
+    "fake": 0.4775733143876863
+   },
+   "V-P": {
+    "all": 0.181135691311153,
+    "real": 0.069412056278082,
+    "fake": 0.11249281498941341
+   }
+  },
+  "rescue_count": 0,
+  "rescue_rate": 0.0,
+  "rescue_denominator": 255,
+  "harmful_overrule_count": 733,
+  "harmful_overrule_rate": 0.13703495980557112,
+  "harmful_denominator": 5349,
+  "folds_weight_zero": {
+   "A": 0,
+   "V": 0,
+   "P": 0
+  },
+  "fused_error_rate": 0.1763026409707352,
+  "branch_error_rate": {
+   "A": 0.168807994289793,
+   "V": 0.2880085653104925,
+   "P": 0.27765881513204854
+  },
+  "caveat": "explanatory only. Section 4 forbids promoting a branch because its errors decorrelate, or rejecting one only because a fitted weight reaches zero."
+ },
+ "A+V+O+M+P": {
+  "subset": "A+V+O+M+P",
+  "operator": "F8",
+  "tau_fused": 0.48301871145056924,
+  "tau_per_branch": {
+   "A": 0.5002585666952655,
+   "V": 0.5429997821543219,
+   "O": 0.4106551995625,
+   "M": 0.9350046339775194,
+   "P": 0.9576214674581554
+  },
+  "error_correlation_phi": {
+   "A-V": {
+    "all": 0.044756062745580076,
+    "real": 0.06809636852764787,
+    "fake": 0.07964119608440585
+   },
+   "A-O": {
+    "all": 0.3682716278733855,
+    "real": 0.28840422665214094,
+    "fake": 0.45194522859981806
+   },
+   "A-M": {
+    "all": 0.05912866745487815,
+    "real": -0.008084520834544242,
+    "fake": 0.13166841271521626
+   },
+   "A-P": {
+    "all": 0.33649195522021846,
+    "real": 0.30667691323645513,
+    "fake": 0.4775733143876863
+   },
+   "V-O": {
+    "all": 0.11492713342329355,
+    "real": 0.1020844982400386,
+    "fake": 0.07531952838817284
+   },
+   "V-M": {
+    "all": 0.44216187682105235,
+    "real": 0.39943893329028485,
+    "fake": 0.4103690723136763
+   },
+   "V-P": {
+    "all": 0.181135691311153,
+    "real": 0.069412056278082,
+    "fake": 0.11249281498941341
+   },
+   "O-M": {
+    "all": 0.12963276895769718,
+    "real": 0.030261321005858443,
+    "fake": 0.11164617272392004
+   },
+   "O-P": {
+    "all": 0.49607403693975044,
+    "real": 0.2034144470898646,
+    "fake": 0.5295391299983305
+   },
+   "M-P": {
+    "all": 0.20608761360739394,
+    "real": 0.006977025632859335,
+    "fake": 0.15018851216993417
+   }
+  },
+  "rescue_count": 0,
+  "rescue_rate": 0.0,
+  "rescue_denominator": 133,
+  "harmful_overrule_count": 620,
+  "harmful_overrule_rate": 0.11332480350941326,
+  "harmful_denominator": 5471,
+  "folds_weight_zero": {
+   "A": 0,
+   "V": 0,
+   "O": 0,
+   "M": 0,
+   "P": 0
+  },
+  "fused_error_rate": 0.13436830835117772,
+  "branch_error_rate": {
+   "A": 0.168807994289793,
+   "V": 0.2880085653104925,
+   "O": 0.24339757316202712,
+   "M": 0.2833690221270521,
+   "P": 0.27765881513204854
+  },
+  "caveat": "explanatory only. Section 4 forbids promoting a branch because its errors decorrelate, or rejecting one only because a fitted weight reaches zero."
+ },
+ "A+V": {
+  "subset": "A+V",
+  "operator": "F8",
+  "tau_fused": 0.46098200913947135,
+  "tau_per_branch": {
+   "A": 0.5002585666952655,
+   "V": 0.5429997821543219
+  },
+  "error_correlation_phi": {
+   "A-V": {
+    "all": 0.044756062745580076,
+    "real": 0.06809636852764787,
+    "fake": 0.07964119608440585
+   }
+  },
+  "rescue_count": 6,
+  "rescue_rate": 0.01904761904761905,
+  "rescue_denominator": 315,
+  "harmful_overrule_count": 466,
+  "harmful_overrule_rate": 0.088107392701834,
+  "harmful_denominator": 5289,
+  "folds_weight_zero": {
+   "A": 0,
+   "V": 0
+  },
+  "fused_error_rate": 0.13829407566024268,
+  "branch_error_rate": {
+   "A": 0.168807994289793,
+   "V": 0.2880085653104925
+  },
+  "caveat": "explanatory only. Section 4 forbids promoting a branch because its errors decorrelate, or rejecting one only because a fitted weight reaches zero."
+ }
+}
