@@ -85,6 +85,11 @@ def branch_rows() -> list[dict]:
     out = []
     for d in sorted(base.glob("pecore_l14_lora_B_om*_seed42")):
         rec = d / "train_record.json"
+        # A rehearsal directory matches this glob and carries a real DONE marker, so without this
+        # it would enter the gate table as a finished run with a meaningless score (the S smoke
+        # reached 0.5595 on 64 training clips). Rehearsals are named with `_smoke`.
+        if "_smoke" in d.name:
+            continue
         if not (d / "DONE").exists() or not rec.exists():
             continue
         r = json.load(open(rec))
