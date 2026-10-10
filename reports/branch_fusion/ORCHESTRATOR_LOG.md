@@ -35,4 +35,20 @@ gitignored; this is the committed mirror.
 [2026-10-10T03:14:37-04:00] still waiting on spatial depth runs (b12/b8/b16 seed 1) (120 min)
 [2026-10-10T03:21:40-04:00] spatial depth runs (b12/b8/b16 seed 1) is finished
 [2026-10-10T03:21:41-04:00] P+OM and its control is finished
+[2026-10-10T03:21:41-04:00] committed: fusion: depth probes and the P off-manifold runs
+[2026-10-10T03:21:41-04:00] depth verdict:
+    PE spatial trunk, off-manifold with the encoder in the loop (full dev, residual arm):
+      b8    0.7831
+      b12   0.8053
+      b16   0.8673
+      last  0.8664
+      b20   0.8613
+      spread across depths: 0.0842
+    
+    block 16: seed 0 0.8673, seed 1 0.8547, |difference| 0.0126
+    SEED NOISE (0.0126) EXCEEDS THE WHOLE DEPTH SPREAD (0.0060).
+    The depth ordering is not measurable at one seed per cell. No further depth run is
+    launched; reporting depth as indistinguishable is the honest result, and any future
+    depth claim needs several seeds per cell rather than another layer.
+[2026-10-10T03:21:41-04:00] launching P+OM (concat: [f_t ; f_a]) on GPU 3 -- the DISCERN-faithful construction
 ```
