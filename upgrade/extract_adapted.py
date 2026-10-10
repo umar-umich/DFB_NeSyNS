@@ -40,21 +40,29 @@ def main() -> int:
                          "LoRA sweep cell. The same suffix goes into the feature cache name, and "
                          "the BF_LORA_* environment variables must match the cell or the adapted "
                          "tensor shapes will not match and the assertion below will say so.")
+    # An encoder-in-the-loop OM run keeps its checkpoint outside the adapt directory and may tap an
+    # intermediate block, so the cache name cannot be derived from backbone+recipe alone. These
+    # three are optional and change nothing for the existing callers.
+    ap.add_argument("--ckpt", default=None,
+                    help="explicit checkpoint path, overriding the adapt-directory lookup")
+    ap.add_argument("--readout", default="last", help="last | mid | half | bN (must match training)")
+    ap.add_argument("--cache-tag", default=None, help="feature-cache prefix, overriding the derived tag")
     a = ap.parse_args()
     # The SEED belongs in the filename. Without it every seed wrote to one path, the second seed
     # found the first seed's file and reported "exists", and a caller that renamed the result
     # afterwards silently relabelled seed 0's features as another seed's. Seed 0 keeps the bare name
     # so the existing caches and every path that reads them stay valid.
-    tag = (f"{a.backbone}{a.recipe}" + ("" if a.seed == 0 else f"_s{a.seed}")
-           + a.ckpt_suffix
-           + ("" if not a.process else "_" + a.process.replace(":", "")))
+    tag = (a.cache_tag or (f"{a.backbone}{a.recipe}" + ("" if a.seed == 0 else f"_s{a.seed}")
+                           + a.ckpt_suffix)) \
+        + ("" if not a.process else "_" + a.process.replace(":", ""))
     f = OUT / f"{tag}_{a.dataset}.npz"
     if f.exists():
         print(f"{f.name} exists"); return 0
 
     dev = "cuda"
     m, mean, std, spec, _params, _fused = AB.build(a.backbone, dev, a.recipe)
-    ck = torch.load(AB.OUT / f"{a.backbone}_{a.recipe}_s{a.seed}{a.ckpt_suffix}.pt",
+    AB.attach_depth_hooks(m, spec, a.readout)
+    ck = torch.load(a.ckpt or (AB.OUT / f"{a.backbone}_{a.recipe}_s{a.seed}{a.ckpt_suffix}.pt"),
                     map_location=dev)
     # The run saved only the ADAPTED tensors (adapters, or LayerNorm); everything else stays at the
     # pretrained value, so a strict load would fail by design. Assert the adapted keys all landed.
@@ -72,13 +80,14 @@ def main() -> int:
         for i in range(0, len(X), a.batch_size):
             x = torch.from_numpy(X[i:i + a.batch_size]).permute(0, 3, 1, 2).float().div_(255).to(dev)
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                Z.append(AB.embed(m, spec, (x - mean) / std, a.recipe).float().cpu().numpy())
+                Z.append(AB.embed(m, spec, (x - mean) / std, a.recipe, a.readout).float().cpu().numpy())
     F = np.concatenate(Z).astype(np.float16)
     y = np.array([0 if "real" in str(k).split("/")[-3].lower() else 1 for k in K], dtype=np.int64)
     tmp = f.with_suffix(".partial.npz")
     np.savez(tmp, feature=F, key=K, label=y, video=np.array([video_of(str(k)) for k in K], dtype=object))
     tmp.replace(f)
     json.dump({"backbone": a.backbone, "recipe": a.recipe, "adapted_epoch": int(ck["epoch"]),
+               "readout": a.readout, "ckpt": str(a.ckpt) if a.ckpt else None,
                "dataset": a.dataset, "frames": int(len(K)), "dim": int(F.shape[1]),
                "input_size": spec["size"], "minutes": round((time.time() - t0) / 60, 1)},
               open(f.with_suffix(".json"), "w"), indent=1)

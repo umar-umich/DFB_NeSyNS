@@ -56,6 +56,11 @@ import common as C                                      # noqa: E402
 sys.path[:0] = [str(C.ROOT / "upgrade"), str(C.ROOT / "branches/ijepa"), str(C.EXT)]
 import v31 as V31                                       # noqa: E402
 from src.losses.evidential_loss import evidential_loss_discern_ext   # noqa: E402
+from src.modules.beta_vae_aligned import BetaVAEWithAlignment         # noqa: E402
+from src.losses.aligned_vae_loss import aligned_vae_loss_func         # noqa: E402
+
+sys.path.insert(0, str(C.ROOT / "analysis/tbiom/temporal"))
+import residual_head as RH                                            # noqa: E402
 
 C.thread_caps()
 
@@ -70,6 +75,13 @@ VARIANTS = {
               "note": "A's adapted PE-Core-L/336 LoRA+LayerNorm frame embeddings"},
     "frozen": {"backbone": "MEANPOOL_pe_core_l-mid", "patch_dir": True, "suffix": "",
                "note": "frozen PE-Core-L block-16 patch mean, not fitted to FF++ labels"},
+    # UMAR 2026-10-09: PE-Core's best visual embeddings are not at the output, so the sequence
+    # branch should see an intermediate block. These read the ADAPTED block taps written by
+    # `extract_adapted_layer.py`, which is the same LoRA as `adapt` at a different depth.
+    "adapt-b16": {"backbone": "pe_core_lLN-b16", "patch_dir": None, "suffix": "",
+                  "note": "A's adapted PE-Core-L, block 16 readout"},
+    "adapt-b20": {"backbone": "pe_core_lLN-b20", "patch_dir": None, "suffix": "",
+                  "note": "A's adapted PE-Core-L, block 20 readout"},
     # S-dense / P-dense: the SAME readouts on the stride-1 consecutive crops in
     # /data/umar/Datasets/tbiom_dense, which already exist for FF++ train and the development pool.
     # Section 2.2 scopes the dense pilot to exactly those partitions, so these variants cannot be
@@ -118,6 +130,58 @@ class TemporalPE(nn.Module):
         return torch.cat([torch.sin(x), torch.cos(x)], dim=-1)[..., :self.d_model]
 
 
+class OMFrontEnd(nn.Module):
+    """The off-manifold residual, applied PER FRAME, before the sequence stage.
+
+    UMAR's architecture: PE-Core over all 16 frames, take an intermediate block, apply the
+    reconstruction, THEN the transformer. So each frame embedding is reduced to what the beta-VAE
+    cannot reconstruct and orthogonalised against itself,
+
+        f_t = Linear(LayerNorm(x))   f_c = bVAE(f_t)   f_a = (f_t - f_c) - proj_{f_t}(f_t - f_c)
+
+    and the transformer attends over the sequence of f_a rather than the sequence of raw
+    embeddings. The VAE and alignment terms are returned so the caller can add them to the
+    detection loss: without them the beta-VAE has no reason to model anything and f_a degenerates.
+
+    Unlike `om_branch.py`, the transform here is NOT fitted on a frozen pipeline and then frozen --
+    the transformer downstream trains through it, so the residual is shaped by what the temporal
+    stage can use. That is the point of putting it here rather than scoring a cached residual.
+    """
+
+    def __init__(self, d_in: int, operator: str = "bvae"):
+        super().__init__()
+        assert operator in ("bvae", "bvae_real"), operator
+        self.operator = operator
+        self.inorm, self.proj = nn.LayerNorm(d_in), nn.Linear(d_in, RH.FEATURE_DIM)
+        self.vae = BetaVAEWithAlignment(RH.FEATURE_DIM, RH.LATENT_DIM)
+        self.d_out = RH.FEATURE_DIM
+
+    def forward(self, x, mask):
+        """`x` (B, T, d_in) -> residual (B, T, 64); the VAE terms are stashed for the loss."""
+        B, T, _ = x.shape
+        f_t = self.proj(self.inorm(x.float())).reshape(B * T, -1)
+        _, mu, log_var, f_c = self.vae(f_t)
+        f_a = RH.purify(f_t, f_c)
+        self._terms = (f_t, f_c, mu, log_var, mask.reshape(B * T))
+        return f_a.view(B, T, -1)
+
+    def vae_loss(self, y=None):
+        """The alignment + KL term, over VALID frames only.
+
+        Padded slots carry no image, so including them would let the VAE reduce its loss by
+        modelling padding. `bvae_real` further restricts to REAL videos, which is what makes its
+        manifold one-class; `y` is per-video and is broadcast over that video's frames.
+        """
+        f_t, f_c, mu, log_var, m = self._terms
+        keep = m.bool()
+        if self.operator == "bvae_real" and y is not None:
+            keep = keep & (y.repeat_interleave(f_t.shape[0] // y.shape[0]) == 0)
+        if int(keep.sum()) < 2:
+            return f_t.sum() * 0.0
+        return aligned_vae_loss_func(f_t[keep], f_c[keep], mu[keep], log_var[keep],
+                                     RH.BETA_KLD, RH.LAMBDA_ALIGN)
+
+
 class SeqBranch(nn.Module):
     """Branch S and its two section-7 pooling controls, in one module so the budget is matched.
 
@@ -133,10 +197,11 @@ class SeqBranch(nn.Module):
     def __init__(self, d_in: int, pool: str = "attn", use_pos: bool = True,
                  d_model: int = D_MODEL, n_blocks: int = N_BLOCKS, n_heads: int = N_HEADS,
                  ff: int = FF, dropout: float = DROPOUT, pe_scale: float = 10.0,
-                 order_head: bool = False):
+                 order_head: bool = False, om: str | None = None):
         super().__init__()
         self.pool, self.use_pos, self.d_model = pool, use_pos, d_model
-        self.proj = nn.Linear(d_in, d_model)
+        self.om = OMFrontEnd(d_in, om) if om else None
+        self.proj = nn.Linear(self.om.d_out if self.om else d_in, d_model)
         self.pos = TemporalPE(d_model, pe_scale) if use_pos else None
         # The order-discrimination head (section 7 intervention, not part of the specified S). It
         # reads the pooled clip and must say whether the frames arrived in order. Its only purpose is
@@ -167,6 +232,8 @@ class SeqBranch(nn.Module):
 
     def forward(self, x, mask, tpos):
         """`x` (B, T, d_in), `mask` (B, T) True on valid frames, `tpos` (B, T) real frame indices."""
+        if self.om is not None:
+            x = self.om(x, mask)
         h = self.proj(x)
         if self.pos is not None:
             h = h + self.pos(tpos, mask)
@@ -302,17 +369,26 @@ def dev_score(model, DEV, dev):
 
 # ----------------------------------------------------------------------------- training
 def train(variant: str, seed: int, pool: str = "attn", use_pos: bool = True,
-          epochs: int = EPOCHS, tag: str | None = None, order_loss: float = 0.0) -> dict:
+          epochs: int = EPOCHS, tag: str | None = None, order_loss: float = 0.0,
+          om: str | None = None) -> dict:
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(seed)
     np.random.seed(seed)
-    tag = tag or model_tag(variant, pool, use_pos, seed, order_loss)
+    tag = tag or model_tag(variant, pool, use_pos, seed, order_loss, om)
+    # The order-loss path runs a SECOND forward, which would overwrite the front end's stashed VAE
+    # terms. They are read before that happens today, but the coupling is invisible at the call
+    # site, so the combination is refused rather than left to be discovered later.
+    assert not (om and order_loss > 0), \
+        "the off-manifold front end and the order-discrimination loss cannot be combined"
 
     TR = clips(variant, "FFpp_train")
     DEV = {n: clips(variant, n) for n in C.DEV_SETS}
     scale = max(TR["median_stride"], 1.0)
     model = SeqBranch(TR["dim"], pool=pool, use_pos=use_pos, pe_scale=scale,
-                      order_head=order_loss > 0).to(dev)
+                      order_head=order_loss > 0, om=om).to(dev)
+    if om:
+        print(f"  off-manifold front end: {om}, per frame, {TR['dim']} -> {model.om.d_out} "
+              f"before the sequence stage", flush=True)
     print(f"  positional scale set from the data: median stride {TR['median_stride']:.1f} "
           f"source frames", flush=True)
     pr = model.param_report()
@@ -336,7 +412,12 @@ def train(variant: str, seed: int, pool: str = "attn", use_pos: bool = True,
             m = torch.from_numpy(TR["mask"][j]).to(dev)
             tp = torch.from_numpy(TR["tpos"][j]).to(dev)
             ev, pooled = model(x, m, tp)
-            loss = evidential_loss_discern_ext(ev, y[torch.from_numpy(j).to(dev)], 2, ep, epochs)
+            yj = y[torch.from_numpy(j).to(dev)]
+            loss = evidential_loss_discern_ext(ev, yj, 2, ep, epochs)
+            if model.om is not None:
+                # Without this term the beta-VAE is unconstrained and the "residual" is whatever
+                # happens to be left over, which is not a manifold residual at all.
+                loss = loss.mean() + RH.LAMBDA_VAE * model.om.vae_loss(yj)
             if order_loss > 0:
                 # ORDER-DISCRIMINATION AUXILIARY LOSS. Half the batch is re-presented with its
                 # valid frames permuted, and a head must tell ordered from shuffled. This is a
@@ -391,8 +472,10 @@ def train(variant: str, seed: int, pool: str = "attn", use_pos: bool = True,
     return rec
 
 
-def model_tag(variant, pool, use_pos, seed, order_loss: float = 0.0) -> str:
+def model_tag(variant, pool, use_pos, seed, order_loss: float = 0.0, om: str | None = None) -> str:
     bits = [f"S-{variant}"]
+    if om:
+        bits.append(f"om{om}")
     if pool != "attn":
         bits.append(f"pool{pool}")
     if not use_pos:
@@ -441,6 +524,9 @@ def export(tag: str, datasets=None, out_dir: Path | None = None) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--variant", default="adapt", choices=sorted(VARIANTS))
+    ap.add_argument("--om", default=None, choices=["bvae", "bvae_real"],
+                    help="insert the off-manifold residual PER FRAME, before the sequence stage: "
+                         "PE-Core -> intermediate block -> reconstruction -> transformer")
     ap.add_argument("--order-loss", type=float, default=0.0,
                     help="weight of the order-discrimination auxiliary loss (0 disables it)")
     ap.add_argument("--pool", default="attn", choices=("attn", "mean", "mlp"))
@@ -479,7 +565,7 @@ def main() -> int:
         print(json.dumps(sat, indent=1), flush=True)
         json.dump(sat, open(C.SEQ / "saturation.json", "w"), indent=1)
 
-    train(a.variant, a.seed, a.pool, not a.no_pos, a.epochs, order_loss=a.order_loss)
+    train(a.variant, a.seed, a.pool, not a.no_pos, a.epochs, order_loss=a.order_loss, om=a.om)
     return 0
 
 
