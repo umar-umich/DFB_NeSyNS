@@ -36,7 +36,19 @@ done_marker () { [ -f "$M/$1.done" ]; }
 mark () { touch "$M/$1.done"; }
 
 commit () {  # commit <message>
-  git add -A analysis reports upgrade logs/branchfusion/orchestrator 2>/dev/null
+  # `logs/` matches the `*log*` ignore rule, so the decision log would never enter history and a
+  # clone of this branch would show the results without the reasoning that produced them. Mirror it
+  # into reports/, which is tracked, before every commit.
+  mkdir -p reports/branch_fusion
+  { echo "# Orchestrator decision log"; echo;
+    echo "Written unattended. Every line is a decision the orchestrator made, or a number it made";
+    echo "it on. The live copy is \`logs/branchfusion/orchestrator/orchestrator.log\`, which is";
+    echo "gitignored; this is the committed mirror."; echo; echo '```';
+    cat "$M/orchestrator.log" 2>/dev/null; echo '```'; } > reports/branch_fusion/ORCHESTRATOR_LOG.md
+  for v in depth gate; do
+    [ -f "$M/${v}_verdict.txt" ] && cp "$M/${v}_verdict.txt" "reports/branch_fusion/${v}_verdict.txt"
+  done
+  git add -A analysis reports upgrade 2>/dev/null
   git diff --cached --quiet 2>/dev/null && { say "nothing to commit for: $1"; return 0; }
   git commit -q -m "$1
 
