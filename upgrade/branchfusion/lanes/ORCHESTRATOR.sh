@@ -67,6 +67,17 @@ wait_for () {  # wait_for <pattern> <label> <max_minutes>
   say "$label is finished"; return 0
 }
 
+# DISK. /data was at 98% (659G free) when this launched. The test-set caches and checkpoints
+# below add a few GB, but a two-day unattended run that fills the volume would corrupt whatever it
+# was writing at the time. Stop cleanly instead, with the reason recorded.
+disk_ok () {
+  local free; free=$(df --output=avail -BG /data/umar | tail -1 | tr -dc '0-9')
+  [ "${free:-0}" -ge 40 ] && return 0
+  say "DISK BELOW 40G (${free}G free) -- stopping before writing more. Nothing is corrupted;"
+  say "  free space and re-run this script, which resumes from its .done markers."
+  return 1
+}
+
 say "=== orchestrator start ==="
 say "GPUs: $(nvidia-smi --query-gpu=index,memory.used --format=csv,noheader | tr '\n' ' ')"
 
@@ -104,6 +115,7 @@ fi
 
 # ---------------------------------------------------------------- 4. finish the Y16 test exports
 if ! done_marker y16_tests; then
+  disk_ok || exit 1
   say "completing the block-16 test-set extraction"
   for DS in CDFv2 CDFv3 DFD DFDC DFDCP DFEval24 FFIW KoDF IDForge DFDM; do
     [ -f "logs/upgrade/feats/omEIL_b16_${DS}.npz" ] && continue
