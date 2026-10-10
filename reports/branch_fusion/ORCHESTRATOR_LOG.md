@@ -55,4 +55,6 @@ gitignored; this is the committed mirror.
 [2026-10-10T05:41:35-04:00] launching S in-loop (real-timestamp temporal stage) on GPU 3
 [2026-10-10T06:49:19-04:00] S in-loop FAILED (see logs/branchfusion/lanes/om_S_inloop.log)
 [2026-10-10T07:18:35-04:00] S control FAILED
+[2026-10-10T07:18:35-04:00] committed: fusion: branch S with the off-manifold front end and its control
+[2026-10-10T07:18:35-04:00] completing the block-16 test-set extraction
 ```
