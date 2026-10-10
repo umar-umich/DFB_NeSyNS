@@ -42,8 +42,23 @@ OM = C.ROOT / "analysis/upgrade/om"
 PHI_GATE = 0.60
 #: Everything already measured, so the report stands alone when it is read days later.
 KNOWN = {"frozen Y (arm 1, cached features)": 0.8696, "A alone": 0.8736,
-         "O, the CLIP off-manifold": 0.8252}
-PHI_KNOWN = {"frozen Y vs A": 0.789, "in-loop Y16 vs A": 0.678, "O's highest phi with anything": 0.476}
+         "O, the CLIP off-manifold": 0.8252,
+         "in-loop Y16, block 16 (spatial trunk)": 0.8673,
+         "P + OM, residual only (the construction that fails)": 0.4942,
+         "P + OM, concat [f_t ; f_a]": 0.8296}
+#: Per-video error phi, measured on BOTH halves so a single-split reading cannot mislead.
+#: Development n=5814, test pooled over the ten sets n=27974, every branch at its own development
+#: EER threshold. The gate is phi < 0.60 against A.
+PHI_KNOWN = {
+    "frozen Y vs A (dev / test)": (0.789, 0.786),
+    "in-loop Y16 vs A (dev / test)": (0.678, 0.669),
+    "in-loop Y16 vs O (dev / test)": (0.440, 0.386),
+    "in-loop Y16 vs V (dev / test)": (0.100, 0.197),
+    "O's highest phi with anything": (0.476, 0.415),
+}
+#: Test-pooled AUROC, for the same n=27974.
+AUROC_TEST = {"A": 0.9392, "S": 0.9366, "Y16": 0.9296, "O": 0.9071, "P": 0.9057,
+              "V": 0.8353, "M": 0.7281}
 
 
 def spatial(tag: str) -> float | None:
@@ -192,8 +207,17 @@ def final_stage() -> int:
     print("## Reference points\n")
     for k, v in KNOWN.items():
         print(f"- {k}: dev v3.1 {v:.4f}")
-    for k, v in PHI_KNOWN.items():
-        print(f"- {k}: {v:+.3f}")
+    print("\nPer-video error correlation against the branches already deployed:\n")
+    print("| pair | development (n=5814) | test pooled (n=27974) |")
+    print("|---|---|---|")
+    for k, (a, b) in PHI_KNOWN.items():
+        print(f"| {k.replace(' (dev / test)', '')} | {a:+.3f} | {b:+.3f} |")
+    print("\nTest-pooled AUROC: " + ", ".join(f"{k} {v:.4f}" for k, v in AUROC_TEST.items()))
+    print("\nPutting the encoder in the loop moved the off-manifold branch from +0.789 to +0.678")
+    print("against A on development and from +0.786 to +0.669 on test -- the same shift on both")
+    print("halves, so the mechanism is real. It is also not enough: the gate is 0.60, and a branch")
+    print("at +0.67 still fails on the same videos A fails on. Y16 is a SUBSTITUTE for A, not an")
+    print("addition, which is what the frozen arm was too.")
     print("\n## Depth\n")
     depth_stage()
     print("\n## Gates\n")

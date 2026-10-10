@@ -16,9 +16,27 @@ was never asked to make it informative.
 - frozen Y (arm 1, cached features): dev v3.1 0.8696
 - A alone: dev v3.1 0.8736
 - O, the CLIP off-manifold: dev v3.1 0.8252
-- frozen Y vs A: +0.789
-- in-loop Y16 vs A: +0.678
-- O's highest phi with anything: +0.476
+- in-loop Y16, block 16 (spatial trunk): dev v3.1 0.8673
+- P + OM, residual only (the construction that fails): dev v3.1 0.4942
+- P + OM, concat [f_t ; f_a]: dev v3.1 0.8296
+
+Per-video error correlation against the branches already deployed:
+
+| pair | development (n=5814) | test pooled (n=27974) |
+|---|---|---|
+| frozen Y vs A | +0.789 | +0.786 |
+| in-loop Y16 vs A | +0.678 | +0.669 |
+| in-loop Y16 vs O | +0.440 | +0.386 |
+| in-loop Y16 vs V | +0.100 | +0.197 |
+| O's highest phi with anything | +0.476 | +0.415 |
+
+Test-pooled AUROC: A 0.9392, S 0.9366, Y16 0.9296, O 0.9071, P 0.9057, V 0.8353, M 0.7281
+
+Putting the encoder in the loop moved the off-manifold branch from +0.789 to +0.678
+against A on development and from +0.786 to +0.669 on test -- the same shift on both
+halves, so the mechanism is real. It is also not enough: the gate is 0.60, and a branch
+at +0.67 still fails on the same videos A fails on. Y16 is a SUBSTITUTE for A, not an
+addition, which is what the frozen arm was too.
 
 ## Depth
 
