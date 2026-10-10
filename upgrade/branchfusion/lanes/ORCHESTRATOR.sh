@@ -57,9 +57,21 @@ Committed unattended by the orchestrator; see logs/branchfusion/orchestrator/orc
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>" && say "committed: $1"
 }
 
+# `pgrep -f` matches ANY process whose command line contains the pattern, including the shells
+# that wrote these lane scripts -- a heredoc carries the script's own text in its argv. A watcher
+# built on the bare pattern deadlocked on its own parent earlier tonight and waited forever. Count
+# only processes that are actually python.
+py_running () {
+  local pat=$1 pid
+  for pid in $(pgrep -f "$pat" 2>/dev/null); do
+    case "$(ps -o comm= -p "$pid" 2>/dev/null)" in python*) return 0 ;; esac
+  done
+  return 1
+}
+
 wait_for () {  # wait_for <pattern> <label> <max_minutes>
   local pat=$1 label=$2 max=$3 n=0
-  while pgrep -f "$pat" > /dev/null 2>&1; do
+  while py_running "$pat"; do
     sleep 60; n=$((n + 1))
     [ $((n % 30)) -eq 0 ] && say "still waiting on $label (${n} min)"
     if [ "$n" -ge "$max" ]; then say "TIMEOUT waiting on $label after ${max} min -- moving on"; return 1; fi

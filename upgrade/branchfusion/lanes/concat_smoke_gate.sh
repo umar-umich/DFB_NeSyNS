@@ -8,7 +8,12 @@ M=logs/branchfusion/orchestrator; mkdir -p "$M"
 SP=/data/umar/tmp/claude-1277036770/-data-umar-Repos-DFB-NeSyNS/720603a3-9cc8-4737-a3ec-e85a9f3c4783/scratchpad
 LOGS="$SP/cat_smoke.log"
 D=logs/tbiom/temporal/branches/pecore_l14_lora_B_ombvae_b16_cat_smoke_seed42
-while pgrep -f "om-mode concat --smoke" > /dev/null 2>&1; do sleep 20; done
+# Poll the LOG, not a process pattern: `pgrep -f` also matches the shell that wrote this script,
+# including this very line, so the first version of this gate waited on its own parent and hung.
+for _ in $(seq 1 360); do
+  grep -qE "done in|Traceback|AssertionError" "$LOGS" 2>/dev/null && break
+  sleep 20
+done
 cp "$LOGS" "$M/cat_smoke.log" 2>/dev/null
 if { [ -f "$D/DONE" ] || grep -q "exporting opinions" "$M/cat_smoke.log" 2>/dev/null; } \
    && ! grep -qE "Traceback|AssertionError" "$M/cat_smoke.log" 2>/dev/null; then
