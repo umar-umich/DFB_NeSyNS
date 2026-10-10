@@ -7,7 +7,14 @@ PE spatial trunk, off-manifold with the encoder in the loop (full dev, residual 
   spread across depths: 0.0842
 
 block 16: seed 0 0.8673, seed 1 0.8547, |difference| 0.0126
-SEED NOISE (0.0126) EXCEEDS THE WHOLE DEPTH SPREAD (0.0060).
-The depth ordering is not measurable at one seed per cell. No further depth run is
-launched; reporting depth as indistinguishable is the honest result, and any future
-depth claim needs several seeds per cell rather than another layer.
+
+Each depth gap against that noise -- a gap smaller than the seed movement is not a
+result, however suggestive its ordering looks:
+  b16   0.8673  vs  last  0.8664   gap 0.0009   INDISTINGUISHABLE
+  last  0.8664  vs  b20   0.8613   gap 0.0051   INDISTINGUISHABLE
+  b20   0.8613  vs  b12   0.8053   gap 0.0560   REAL (4.4x the noise)
+  b12   0.8053  vs  b8    0.7831   gap 0.0221   REAL (1.8x the noise)
+
+Some gaps are several times the seed movement, so depth IS measurable here -- but
+only where the table says REAL. The blocks separated by less than the noise are one
+result, not an ordering, and must not be reported as a ranking.

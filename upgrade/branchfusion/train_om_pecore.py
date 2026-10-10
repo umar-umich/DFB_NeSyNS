@@ -256,6 +256,37 @@ def install(operator: str | None, block: int = 0, temporal: str = "mixer",
     TB.evidential_loss_discern_ext = loss
 
 
+def install_opinion_retry() -> None:
+    """Retry a development scoring pass that came back short, instead of dying at the assert.
+
+    Three of five runs last night died at `assert t.p.notna().all()` -- "development videos without
+    branch opinions" -- AFTER five or six clean epochs each. The same code path had already
+    succeeded five times in the same process, and two other runs completed all ten epochs, so this
+    is not a scope or identity bug in `videos_of`: it is a scoring pass that returned fewer rows
+    than the dataset has videos, under a box that was at 99% disk and running several jobs.
+
+    The assert is right to exist and is not disabled. This checks the same thing EARLIER, where the
+    dataset is still in hand, so a short pass can be retried and a persistent shortfall can say
+    which dataset and how many videos rather than only that something was missing.
+    """
+    orig = TB.opinions
+
+    def opinions(model, ds, dev, **kw):
+        want = len(TB.videos_of(ds)[1])
+        out = None
+        for attempt in (1, 2, 3):
+            out = orig(model, ds, dev, **kw)
+            if len(out) >= want:
+                return out
+            print(f"  {ds}: scoring returned {len(out)}/{want} videos "
+                  f"(attempt {attempt}/3) -- retrying", flush=True)
+        print(f"  {ds}: STILL SHORT after 3 attempts ({len(out)}/{want}); the assert below will "
+              f"name this dataset", flush=True)
+        return out
+
+    TB.opinions = opinions
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--operator", default="bvae", choices=["bvae", "bvae_real", "none"],
@@ -273,6 +304,7 @@ def main() -> int:
                          "DEVELOPMENT sets stay whole because the trainer asserts full coverage")
     a, rest = ap.parse_known_args()
     redirect_outputs()
+    install_opinion_retry()
     op = None if a.operator == "none" else a.operator
     if a.temporal == "seq":
         install_tpos()

@@ -34,7 +34,12 @@ sys.path.insert(0, str(HERE))
 import common as C                                       # noqa: E402
 
 OM = C.ROOT / "analysis/upgrade/om"
-PHI_GATE, SEED_GATE = 0.60, 0.0060
+#: The only fixed threshold left. The depth comparison measures its own spread from the runs,
+#: because an earlier version hardcoded 0.0060 -- the spread across the three depths that existed
+#: when it was written -- and then declared a 0.0126 seed movement larger than "the whole depth
+#: spread" after b8 and b12 had widened that spread to 0.0842. The conclusion it printed was the
+#: opposite of what the numbers said.
+PHI_GATE = 0.60
 #: Everything already measured, so the report stands alone when it is read days later.
 KNOWN = {"frozen Y (arm 1, cached features)": 0.8696, "A alone": 0.8736,
          "O, the CLIP off-manifold": 0.8252}
@@ -68,14 +73,23 @@ def depth_stage() -> int:
         return 0
     d = abs(s1 - b16)
     print(f"\nblock 16: seed 0 {b16:.4f}, seed 1 {s1:.4f}, |difference| {d:.4f}")
-    if d > SEED_GATE:
-        print(f"SEED NOISE ({d:.4f}) EXCEEDS THE WHOLE DEPTH SPREAD ({SEED_GATE:.4f}).")
-        print("The depth ordering is not measurable at one seed per cell. No further depth run is")
-        print("launched; reporting depth as indistinguishable is the honest result, and any future")
-        print("depth claim needs several seeds per cell rather than another layer.")
+    print("\nEach depth gap against that noise -- a gap smaller than the seed movement is not a")
+    print("result, however suggestive its ordering looks:")
+    order = [(k, v) for k, v in sorted(done.items(), key=lambda kv: -kv[1])]
+    verdict = []
+    for (ka, va), (kb, vb) in zip(order, order[1:]):
+        gap = va - vb
+        tell = "INDISTINGUISHABLE" if gap <= d else f"REAL ({gap / d:.1f}x the noise)"
+        print(f"  {ka:5s} {va:.4f}  vs  {kb:5s} {vb:.4f}   gap {gap:.4f}   {tell}")
+        verdict.append((ka, kb, gap > d))
+    big = [v for v in verdict if v[2]]
+    if not big:
+        print("\nNo gap survives the seed noise: depth is not measurable at one seed per cell, and")
+        print("any future depth claim needs several seeds per cell rather than another layer.")
     else:
-        print(f"seed-to-seed movement ({d:.4f}) is below the depth spread, so the ordering survives")
-        print("its first replication. It is still one replicate and should be called suggestive.")
+        print("\nSome gaps are several times the seed movement, so depth IS measurable here -- but")
+        print("only where the table says REAL. The blocks separated by less than the noise are one")
+        print("result, not an ordering, and must not be reported as a ranking.")
     return 0
 
 
