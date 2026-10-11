@@ -214,6 +214,7 @@ def install(operator: str | None, block: int = 0, temporal: str = "mixer",
         # The mixer is rebuilt at the residual's width. Its weights were never trained at this
         # point -- the run starts from scratch -- so nothing is discarded by replacing it.
         d_t = self.om.d_out if self.om else d_in
+        orphan = self.temporal
         if temporal == "seq":
             # Branch S's stage. The positional scale is the median spacing between the clip's real
             # frame indices, which is what `seq_branch` derives from the cache and passes as
@@ -221,6 +222,27 @@ def install(operator: str | None, block: int = 0, temporal: str = "mixer",
             self.temporal = SeqTemporal(d_t, d, pe_scale=STATE.get("pe_scale", 10.0))
         else:
             self.temporal = TB.TemporalMixer(d_t, d, T)
+        # PUT THE NEW MODULES WHERE THE TRAINER LOOKS. `orig_init` has already built its own
+        # TemporalMixer and placed it in `trainable_blocks`, and that ModuleList -- not the
+        # attributes -- is what `main` hands to AdamW and what `trainable_state` serialises.
+        # Rebinding `self.temporal` therefore left the orphan in the list and BOTH new modules
+        # outside it: the rebuilt temporal stage and the residual received gradients but no
+        # optimiser step and no checkpoint entry, so every run of this file before 2026-10-10
+        # trained LoRA and the head on top of a RANDOM temporal stage. The orphan is dropped by
+        # identity rather than by index, because `inject_lora` decides how many entries precede it.
+        keep = [m for m in self.trainable_blocks if m is not orphan]
+        self.trainable_blocks = nn.ModuleList(
+            keep + [self.temporal] + ([self.om] if self.om is not None else []))
+        # Checked here rather than in a test, because what makes this hold is a property of DR
+        # KUTUB'S trainer -- that it optimises and serialises `trainable_blocks` -- and a future
+        # revision of his file could move the optimiser to `model.parameters()` and quietly make
+        # the list the wrong place to be. A run that trains nothing it was built to train should
+        # not start.
+        reachable = {id(q) for q in self.trainable_blocks.parameters()}
+        for tag, mod in (("temporal", self.temporal), ("om", self.om)):
+            missing = [] if mod is None else [n for n, q in mod.named_parameters()
+                                              if id(q) not in reachable]
+            assert not missing, f"{tag} parameters outside trainable_blocks: {missing[:4]}"
 
     def forward(self, px):
         if not self.name.startswith("pecore"):
@@ -238,7 +260,10 @@ def install(operator: str | None, block: int = 0, temporal: str = "mixer",
             mask = torch.ones(B, T_, dtype=torch.bool, device=f.device)  # clips are not padded here
             f = self.om(f, mask)
         STATE["om"] = self.om
-        return self.head(self.temporal(f))
+        # SOFTPLUS, as in `Branch.forward`. The head emits EVIDENCE, and `opinions` forms
+        # `alpha = evidence + 1`; without this the head emits logits, alpha can go negative and the
+        # reported p leaves [0, 1] -- which it did, down to -0.186 in the seq control.
+        return torch.nn.functional.softplus(self.head(self.temporal(f).float()))
 
     TB.Branch.__init__, TB.Branch.forward = init, forward
 
@@ -257,34 +282,94 @@ def install(operator: str | None, block: int = 0, temporal: str = "mixer",
 
 
 def install_opinion_retry() -> None:
-    """Retry a development scoring pass that came back short, instead of dying at the assert.
+    """Retry a development scoring pass that failed the trainer's own coverage test.
 
-    Three of five runs last night died at `assert t.p.notna().all()` -- "development videos without
-    branch opinions" -- AFTER five or six clean epochs each. The same code path had already
-    succeeded five times in the same process, and two other runs completed all ten epochs, so this
-    is not a scope or identity bug in `videos_of`: it is a scoring pass that returned fewer rows
-    than the dataset has videos, under a box that was at 99% disk and running several jobs.
+    WHAT ACTUALLY CAUSED THE THREE DEATHS, recorded because two wrong diagnoses were committed
+    before this one. Runs died at `assert t.p.notna().all()` -- "development videos without branch
+    opinions" -- after five or six clean epochs. The first guess was a SHORT scoring pass under
+    disk pressure, so the first version of this wrapper tested the row count; it never fired,
+    because the count was always right. The assert does not test the count. It tests that every
+    development video carries a usable `p`, and a row present with `p = NaN` fails it exactly as a
+    missing row does.
 
-    The assert is right to exist and is not disabled. This checks the same thing EARLIER, where the
-    dataset is still in hand, so a short pass can be retried and a persistent shortfall can say
-    which dataset and how many videos rather than only that something was missing.
+    The NaN came from `install`'s forward, which had dropped the `softplus` that `Branch.forward`
+    applies. The head then emitted logits rather than evidence, so `alpha = evidence + 1` could go
+    negative -- opinions down to p = -0.186 were exported -- and a clip whose two alphas happened
+    to sum near zero produced 0/0. That is why it struck mid-run, without pattern, and left the
+    count intact. The softplus is back; this wrapper stays as the net.
+
+    So it tests both things the assert cares about, where the dataset is still in hand: coverage
+    against `videos_of`, and finiteness of `p`. A pass failing either is retried; one that keeps
+    failing says WHICH of the two it is and names the dataset, which is what the assert alone
+    cannot do. The assert is not disabled -- this only gives it a diagnosable failure.
     """
     orig = TB.opinions
 
-    def opinions(model, ds, dev, **kw):
+    def check(out, want):
+        """(ok, how it failed) for one scoring pass."""
+        if len(out) < want:
+            return False, f"{len(out)}/{want} videos"
+        bad = int((~np.isfinite(out.p.to_numpy())).sum())
+        if bad:
+            return False, f"{bad}/{len(out)} opinions are NaN or inf"
+        return True, ""
+
+    def opinions(model, ds, dev, *args, **kw):
         want = len(TB.videos_of(ds)[1])
-        out = None
+        out = why = None
         for attempt in (1, 2, 3):
-            out = orig(model, ds, dev, **kw)
-            if len(out) >= want:
+            out = orig(model, ds, dev, *args, **kw)
+            ok, why = check(out, want)
+            if ok:
                 return out
-            print(f"  {ds}: scoring returned {len(out)}/{want} videos "
-                  f"(attempt {attempt}/3) -- retrying", flush=True)
-        print(f"  {ds}: STILL SHORT after 3 attempts ({len(out)}/{want}); the assert below will "
-              f"name this dataset", flush=True)
+            print(f"  {ds}: {why} (attempt {attempt}/3) -- retrying", flush=True)
+        print(f"  {ds}: STILL BAD after 3 attempts ({why}); the assert below will name this "
+              f"dataset", flush=True)
         return out
 
     TB.opinions = opinions
+
+
+def export_only(out_dir: Path, workers: int, model_name: str, lora: bool) -> int:
+    """Write the exports of a run whose TRAINING finished but whose export stage crashed.
+
+    Both reruns got through all their epochs and saved `best.pt`; the P control then hit the
+    coverage assert and branch S hit a signature bug in the wrapper above. Retraining either would
+    cost the two and four hours they already cost, and would train a DIFFERENT model -- the
+    selected weights are on disk and are the thing the gates are about. This replays only the
+    export tail of `TB.main`, in the same order and to the same filenames, against those weights.
+
+    The model must be built AFTER `install`, exactly as in training, or `load_trainable` has no
+    rebuilt mixer to load into.
+    """
+    ck_path = out_dir / "best.pt"
+    if not ck_path.exists():
+        print(f"no checkpoint at {ck_path}", flush=True)
+        return 1
+    import exp1_fusion_audit as A                                      # noqa: F401  (trainer's import)
+    dev = "cuda"
+    model = TB.Branch(model_name, lora=lora).to(dev)
+    ck = torch.load(ck_path, map_location=dev)
+    print(f"export-only: {out_dir.name}, epoch {ck['epoch']} ({TB.load_trainable(model, ck)})",
+          flush=True)
+    (out_dir / "opinions").mkdir(parents=True, exist_ok=True)
+    for n in TB.DEV:
+        TB.opinions(model, n, dev, workers=workers).to_csv(
+            out_dir / "opinions" / f"{n}.csv", index=False)
+        for c, spec in (("jpeg40", "jpeg:40"), ("rs06", "resize:0.6")):
+            TB.opinions(model, n, dev, spec, workers).to_csv(
+                out_dir / "opinions" / f"{n}_{c}.csv", index=False)
+    for n in TB.TESTS:
+        TB.opinions(model, n, dev, workers=workers).to_csv(
+            out_dir / "opinions" / f"{n}.csv", index=False)
+    for n in ("CDFv2", "DFDCP"):
+        for c, spec in (("jpeg40", "jpeg:40"), ("rs06", "resize:0.6")):
+            TB.opinions(model, n, dev, spec, workers).to_csv(
+                out_dir / "opinions" / f"{n}_{c}.csv", index=False)
+    (out_dir / "DONE").touch()
+    TB.export_shuffled(model, dev, out_dir, workers)
+    print("export-only: done", flush=True)
+    return 0
 
 
 def main() -> int:
@@ -299,6 +384,9 @@ def main() -> int:
                     help="mixer = P's learned slot positions; seq = S's real-timestamp encoding")
     ap.add_argument("--block", type=int, default=0,
                     help="tap this PE-Core block (1-indexed) instead of the final attention pool")
+    ap.add_argument("--export-only", action="store_true",
+                    help="training already finished and saved best.pt, but the export tail "
+                         "crashed: replay only the exports against the selected weights")
     ap.add_argument("--smoke", type=int, default=0, metavar="N",
                     help="end-to-end rehearsal: N training clips, 1 epoch, 1 test export; the "
                          "DEVELOPMENT sets stay whole because the trainer asserts full coverage")
@@ -331,6 +419,17 @@ def main() -> int:
         + ("_seq" if a.temporal == "seq" else "") + ("_smoke" if a.smoke else "")]
     print(f"OM-PE: residual {a.operator} between PE-Core's frames and the temporal mixer; "
           f"argv {' '.join(sys.argv[1:])}", flush=True)
+    if a.export_only:
+        # The run name the trainer would have built, from the same argv it would have parsed.
+        def arg(flag, default):
+            return next((sys.argv[i + 1] for i, x in enumerate(sys.argv) if x == flag), default)
+
+        model = arg("--model", "pecore_l14")
+        name = (f"{model}{'_lora' if '--lora' in sys.argv else ''}"
+                f"{'_B' if arg('--augment', None) == 'B' else ''}"
+                f"{arg('--run-suffix', '')}_seed{arg('--seed', '0')}")
+        return export_only(OUR_RUNS / name, int(arg("--workers", "4")),
+                           model, "--lora" in sys.argv)
     TB.main()
     return 0
 

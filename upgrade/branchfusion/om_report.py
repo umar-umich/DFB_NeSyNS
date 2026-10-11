@@ -41,11 +41,15 @@ OM = C.ROOT / "analysis/upgrade/om"
 #: opposite of what the numbers said.
 PHI_GATE = 0.60
 #: Everything already measured, so the report stands alone when it is read days later.
+#: The P and S entries that stood here (residual-only 0.4942, concat 0.8296) are GONE, not
+#: updated: every PE-Core run before 2026-10-10 trained its LoRA adapters and head on top of a
+#: temporal stage and a beta-VAE that were never handed to the optimiser, and exported opinions
+#: from a head without `softplus`. See `logs/branchfusion/om_pecore/voided_2026-10-10_*/README.md`.
+#: The spatial-trunk numbers below are unaffected: `adapt_om.py` builds its own optimiser over the
+#: residual head, and `seq_branch.py` optimises `model.parameters()`.
 KNOWN = {"frozen Y (arm 1, cached features)": 0.8696, "A alone": 0.8736,
          "O, the CLIP off-manifold": 0.8252,
-         "in-loop Y16, block 16 (spatial trunk)": 0.8673,
-         "P + OM, residual only (the construction that fails)": 0.4942,
-         "P + OM, concat [f_t ; f_a]": 0.8296}
+         "in-loop Y16, block 16 (spatial trunk)": 0.8673}
 #: Per-video error phi, measured on BOTH halves so a single-split reading cannot mislead.
 #: Development n=5814, test pooled over the ten sets n=27974, every branch at its own development
 #: EER threshold. The gate is phi < 0.60 against A.
