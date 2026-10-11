@@ -290,7 +290,14 @@ def oracle_single(t, branches) -> np.ndarray:
 
 
 # ----------------------------------------------------------------------------- weight fitting
-def weight_grid(n: int, grid=(0.0, 0.25, 0.5, 0.75, 1.0), anchored: bool = True):
+#: B0's locked reliability grid. `fit_weights` is exhaustive over it, so the cost of every fusion
+#: fit in this project is `len(WEIGHT_GRID)**k - (len(WEIGHT_GRID)-1)**k` for a k-branch subset:
+#: 369 vectors at k=4, 325,089 at k=8, 746 billion at k=17. Any widening of the subset space runs
+#: into this before it runs into anything else.
+WEIGHT_GRID = (0.0, 0.25, 0.5, 0.75, 1.0)
+
+
+def weight_grid(n: int, grid=WEIGHT_GRID, anchored: bool = True):
     """Reliability grids for `n` branches.
 
     `anchored` keeps B0's convention that at least one branch has weight 1, which removes the global
@@ -303,7 +310,7 @@ def weight_grid(n: int, grid=(0.0, 0.25, 0.5, 0.75, 1.0), anchored: bool = True)
 
 
 def fit_weights(fit_t, branches, op, objective="v31", convention=DISCOUNT_DEFAULT,
-                grid=(0.0, 0.25, 0.5, 0.75, 1.0), anchored=True, cl=None):
+                grid=WEIGHT_GRID, anchored=True, cl=None):
     """Fit per-branch weights on a FIT partition only, by the stated objective.
 
     `objective` is "v31" (the development macro B0 selects on) or "auroc". The search budget is the

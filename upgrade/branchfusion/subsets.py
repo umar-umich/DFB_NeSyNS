@@ -346,13 +346,21 @@ def oracle_row(test_tabs, branches) -> dict:
                         "never beats this row is selecting a view, not combining evidence.")}
 
 
-def evaluate_test(dev, test_tabs, subset, op=SCREEN_OP, tau_source="FFpp_val") -> dict:
+def evaluate_test(dev, test_tabs, subset, op=SCREEN_OP, tau_source="FFpp_val",
+                  grid=O.WEIGHT_GRID) -> dict:
     """Score a LOCKED subset+operator on the test partitions, once.
 
     Weights are fitted on the whole development pool (the locked setting), and the decision threshold
     comes from FF++ validation rows inside development -- never from a test set.
+
+    `grid` is the weight search, and it is the whole cost of this function: `fit_weights` is
+    EXHAUSTIVE over `len(grid)**k - (len(grid)-1)**k` vectors, so a size-8 subset costs 325,089
+    fusions and a size-12 subset 227 million. The locked grid is the default and nothing that
+    reports a locked number may pass anything else; a coarser grid exists only so a wide
+    exploratory map can cover subset sizes the locked fit cannot reach in any amount of time, and
+    every artifact built that way has to say which grid produced it.
     """
-    w, fitval = O.fit_weights(dev, subset, op, objective="v31")
+    w, fitval = O.fit_weights(dev, subset, op, objective="v31", grid=grid)
     pdev = O.fuse(dev, subset, op, list(w))
     if "source" in dev.columns:
         ff = np.where(dev.source.to_numpy() == tau_source)[0]
@@ -369,6 +377,7 @@ def evaluate_test(dev, test_tabs, subset, op=SCREEN_OP, tau_source="FFpp_val") -
     aus = [rows[d]["auroc"] for d in C.TEST_SETS if d in rows]
     return {"subset": C.subset_id(subset), "operator": op, "weights": list(w),
             "fit_objective": fitval, "tau": tau, "tau_source": tau_source,
+            "weight_grid": list(grid), "locked_grid": tuple(grid) == tuple(O.WEIGHT_GRID),
             "per_dataset": rows, "ten_set_macro": float(np.mean(aus)) if aus else float("nan"),
             "n_sets": len(aus),
             "locked": True}

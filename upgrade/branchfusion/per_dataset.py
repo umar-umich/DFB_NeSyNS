@@ -78,7 +78,8 @@ def oracle_row(test_tabs: dict, items) -> dict:
     return {"per_dataset": per, "ten_set_macro": float(np.mean(aus)) if aus else float("nan")}
 
 
-def sweep(dev, test_tabs, items, sizes=(1, 2, 3, 4, 5, 6), op=S.SCREEN_OP, shard=None) -> dict:
+def sweep(dev, test_tabs, items, sizes=(1, 2, 3, 4, 5, 6), op=S.SCREEN_OP, shard=None,
+          grid=None) -> dict:
     """Score every subset on every test set. `shard=(i, n)` takes a strided slice.
 
     The grid is 2**k - 1 subsets, so a fourteen-branch candidate list is 16383 of them at roughly
@@ -95,12 +96,13 @@ def sweep(dev, test_tabs, items, sizes=(1, 2, 3, 4, 5, 6), op=S.SCREEN_OP, shard
     print(f"{len(subs)} subsets x {len(test_tabs)} test sets under {op}", flush=True)
     rows = []
     for i, s in enumerate(subs, 1):
-        r = S.evaluate_test(dev, test_tabs, s, op)
+        r = S.evaluate_test(dev, test_tabs, s, op, **({} if grid is None else {"grid": grid}))
         r.pop("locked", None)
         r["exploratory"] = True
         rows.append(r)
         print(f"  [{i:>2}/{len(subs)}] {C.subset_id(s):<14} macro {r['ten_set_macro']:.4f}", flush=True)
     return {"header": HEADER, "operator": op, "items": list(items), "sizes": list(sizes),
+            "weight_grid": list(grid) if grid is not None else list(O.WEIGHT_GRID),
             "census": dataset_census(test_tabs), "oracle": oracle_row(test_tabs, items),
             "rows": rows}
 
@@ -169,6 +171,12 @@ def main() -> int:
     ap.add_argument("--shard", default="", metavar="i/n",
                     help="compute only every n-th subset starting at i (0-based) and write a "
                          "shard file; the grid and the report are built later by --merge")
+    ap.add_argument("--weight-grid", default="locked", choices=["locked", "coarse", "equal"],
+                    help="locked = B0's (0,.25,.5,.75,1), the only grid a locked number may use. "
+                         "coarse = (0,.5,1). equal = no search at all, every branch at weight 1. "
+                         "`fit_weights` is EXHAUSTIVE, so this is what decides whether a subset "
+                         "size is reachable: at size 8 locked costs 325,089 fusions, coarse 6,305 "
+                         "and equal exactly 1.")
     ap.add_argument("--merge", type=int, default=0, metavar="N",
                     help="read the N shard files for --tag and write the combined grid and report")
     a = ap.parse_args()
@@ -200,11 +208,15 @@ def main() -> int:
         dev = B.dev_table(items, require_all=True)
         test_tabs = B.test_tables(items)
         print(f"branches {items} | development {len(dev)} videos | test sets {list(test_tabs)}")
+        grid = {"locked": O.WEIGHT_GRID, "coarse": (0.0, 0.5, 1.0), "equal": (1.0,)}[a.weight_grid]
+        if a.weight_grid != "locked":
+            print(f"WEIGHT GRID {a.weight_grid} {grid} -- NOT the locked fit; these rows are not "
+                  f"comparable with locked numbers and every artifact must say so", flush=True)
         shard = None
         if a.shard:
             i, n = (int(x) for x in a.shard.split("/"))
             shard = (i, n)
-        res = sweep(dev, test_tabs, items, sizes, shard=shard)
+        res = sweep(dev, test_tabs, items, sizes, shard=shard, grid=grid)
         if shard is not None:
             res["shard"] = list(shard)
             f = C.OUT / f"per_dataset{sfx}_shard{shard[0]}.json"
