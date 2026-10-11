@@ -136,28 +136,48 @@ def branch_rows() -> list[dict]:
     return out
 
 
-def phi_against_A(opinions_dir: Path) -> float | None:
-    """Per-video error phi against A on the development pool, the only correlation that matters."""
+def phi_against_A(opinions_dir: Path) -> tuple[float | None, float | None]:
+    """Per-video error phi against A, on BOTH halves: (development, test pooled).
+
+    The gate is decided on DEVELOPMENT, because selection in this project never reads test. But
+    development alone was misleading here: P16om sits at +0.415 on development and +0.536 on the
+    ten pooled test sets, so a gate at 0.60 that saw only the first number would call a branch
+    comfortably clear when it is 0.064 from the line. Both are printed, and a test value that
+    crosses the gate the development value passes is called out rather than left for a reader to
+    notice. Y16 was reported on both halves for the same reason; this makes it the rule.
+    """
     try:
         import branches as B
         import decorrelation as D
-        dev = B.dev_table(["A"], require_all=True)
-        rows = []
-        for n in C.DEV_SETS:
-            f = opinions_dir / f"{n}.csv"
-            if not f.exists():
-                return None
-            rows.append(pd.read_csv(f)[["v", "p"]])
-        new = pd.concat(rows).rename(columns={"p": "p_NEW"}).drop_duplicates("v")
-        t = dev.merge(new, on="v", how="inner")
-        if len(t) < 100:
-            return None
-        taus = D.thresholds(t, ["A", "NEW"])
-        m = D.matrix(t, ["A", "NEW"], taus)
-        return float(m["phi"]["A-NEW"]["all"])
+
+        def one(base, sets, taus=None):
+            """phi on one pool. `taus` is passed in so BOTH halves are thresholded at the EER
+            point taken from development, never at a test-fitted one."""
+            rows = []
+            for n in sets:
+                f = opinions_dir / f"{n}.csv"
+                if not f.exists():
+                    return None, None
+                rows.append(pd.read_csv(f)[["v", "p"]])
+            new = pd.concat(rows).rename(columns={"p": "p_NEW"}).drop_duplicates("v")
+            t = base.merge(new, on="v", how="inner")
+            if len(t) < 100:
+                return None, None
+            taus = taus or D.thresholds(t, ["A", "NEW"])
+            return float(D.matrix(t, ["A", "NEW"], taus)["phi"]["A-NEW"]["all"]), taus
+
+        d, taus = one(B.dev_table(["A"], require_all=True), list(C.DEV_SETS))
+        t = None
+        if d is not None:
+            try:
+                pooled = pd.concat(B.test_tables(["A"]).values(), ignore_index=True)
+                t, _ = one(pooled, list(C.TEST_SETS), taus)
+            except Exception:                                # noqa: BLE001
+                t = None
+        return d, t
     except Exception as e:                                   # noqa: BLE001
         print(f"  (phi unavailable: {type(e).__name__}: {e})")
-        return None
+        return None, None
 
 
 def gates_stage() -> int:
@@ -184,12 +204,18 @@ def gates_stage() -> int:
             continue
         g1 = r["dev"] > ctl
         print(f"  gate 1  {r['dev']:.4f} vs control {ctl:.4f}  -> {'PASS' if g1 else 'FAIL'}")
-        phi = phi_against_A(r["dir"] / "opinions")
+        phi, phi_t = phi_against_A(r["dir"] / "opinions")
         if phi is None:
             print("  gate 2  phi against A unavailable (opinions missing). HELD.")
             continue
         g2 = phi < PHI_GATE
-        print(f"  gate 2  phi vs A {phi:+.3f} < {PHI_GATE}  -> {'PASS' if g2 else 'FAIL'}")
+        shown = f"{phi:+.3f}" + (f" dev / {phi_t:+.3f} test" if phi_t is not None else " dev")
+        print(f"  gate 2  phi vs A {shown}, gated on development < {PHI_GATE}  "
+              f"-> {'PASS' if g2 else 'FAIL'}")
+        if g2 and phi_t is not None and phi_t >= PHI_GATE:
+            print(f"          NOTE: the test half puts it at {phi_t:+.3f}, past the gate the "
+                  f"development half clears. Gate 2 is a development decision by protocol, but "
+                  f"this branch is not comfortably decorrelated.")
         if g1 and g2:
             print(f"REGISTER:{label}")
         else:

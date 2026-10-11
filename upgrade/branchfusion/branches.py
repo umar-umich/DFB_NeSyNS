@@ -88,6 +88,14 @@ SOURCES = {
 #: a comparison stops being between the same videos.
 REGISTRY = C.BRANCH_OUT / "registry.json"
 
+#: The built-in labels, frozen BEFORE any registry merge. The collision test below has to ask
+#: "is this one of the hand-written branches?", and it cannot ask that of `SOURCES` itself: the
+#: module merges the registry into `SOURCES` at import, so a second call -- which `register`
+#: makes, to refresh after writing -- would find every registered label already there and reject
+#: it as a collision with itself. That is why registering any branch failed as soon as the
+#: registry was non-empty, and why only the very first one ever succeeded.
+BUILTIN = frozenset(SOURCES)
+
 
 def _load_registry() -> dict:
     if not REGISTRY.exists():
@@ -98,7 +106,7 @@ def _load_registry() -> dict:
         raise ValueError(f"{REGISTRY} is not readable JSON: {e}") from e
     out = {}
     for label, spec in reg.items():
-        if label in SOURCES:
+        if label in BUILTIN:
             raise ValueError(f"registry label {label!r} collides with a built-in branch; "
                              f"pick another label rather than shadowing {SOURCES[label]['note']!r}")
         out[label] = {"kind": "export", "dir": Path(spec["dir"]),
@@ -109,7 +117,7 @@ def _load_registry() -> dict:
 def register(label: str, directory, note: str = "") -> dict:
     """Add an export branch to the registry on disk. Idempotent for the same label and directory."""
     reg = json.loads(REGISTRY.read_text()) if REGISTRY.exists() else {}
-    if label in SOURCES:
+    if label in BUILTIN:
         raise ValueError(f"{label!r} is a built-in branch; choose another label")
     reg[label] = {"dir": str(directory), "note": note,
                   "registered": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}

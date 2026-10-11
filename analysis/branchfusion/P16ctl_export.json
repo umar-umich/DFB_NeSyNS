@@ -1,0 +1,42 @@
+{
+ "label": "P16ctl",
+ "run": "pecore_l14_lora_B_omnone_b16_seed42",
+ "best_epoch": 9,
+ "dev_v31": 0.8677872705976739,
+ "budget": {
+  "augment": "B",
+  "arm": "lora",
+  "lora": {
+   "r": 8,
+   "alpha": 16,
+   "dropout": 0.1,
+   "lr": 0.0002
+  },
+  "lr_blocks": 0.0002,
+  "lr_head": 0.002,
+  "epochs": 10,
+  "unfrozen_blocks": 2,
+  "trainable_block_params": 7624192,
+  "head_params": 66946,
+  "batch": 32,
+  "frames": 16
+ },
+ "encoder_in_loop": true,
+ "datasets": {
+  "VALmix": 1350,
+  "VALmixV2": 3764,
+  "FFpp_val": 700,
+  "CDFv2": 518,
+  "CDFv3": 5118,
+  "DFD": 3431,
+  "DFDC": 4704,
+  "DFDCP": 654,
+  "DFEval24": 814,
+  "FFIW": 3470,
+  "KoDF": 1395,
+  "IDForge": 5974,
+  "DFDM": 1896
+ },
+ "missing": [],
+ "dir": "/data/umar/Repos/DFB_NeSyNS/logs/branchfusion/branches/P16ctl"
+}
