@@ -219,8 +219,11 @@ def gates_stage() -> int:
         if g1 and g2:
             print(f"REGISTER:{label}")
         else:
-            print(f"  {label} is reported, not registered: a branch that fails either gate would "
-                  f"either duplicate A or be worse than the same network without the residual.")
+            print(f"  {label} is reported, not auto-registered. A gate failure is a reason to "
+                  f"look harder, not a verdict: per UMAR (2026-10-11), a branch that merely EQUALS "
+                  f"an existing view can still earn a row when its construction is novel, because "
+                  f"equal-on-clean does not imply equal under attack. What settles it is the "
+                  f"robustness comparison, not phi on clean data.")
     return 0
 
 
@@ -253,11 +256,18 @@ def final_stage() -> int:
     print("\n## Gates\n")
     gates_stage()
     print("\n## How to read a negative here\n")
-    print("A branch that fails gate 2 is not a weak branch; it is a DUPLICATE of one already in")
-    print("the system. A+V+O was selected in all five nested folds without correlation ever being")
-    print("shown to the search, so the fusion already prefers decorrelated views. A new PE-trunk")
-    print("branch has to leave that cluster to be worth a row, and standalone accuracy cannot tell")
-    print("you whether it did.")
+    print("A branch that fails gate 2 is not a weak branch; on CLEAN data it is a duplicate of one")
+    print("already in the system. A+V+O was selected in all five nested folds without correlation")
+    print("ever being shown to the search, so the fusion already prefers decorrelated views, and")
+    print("standalone accuracy cannot tell you whether a new branch left that cluster.\n")
+    print("But a duplicate on clean data is not automatically a duplicate under attack, and that")
+    print("is where the gate stops being decisive. UMAR's rule (2026-10-11): a comparatively NOVEL")
+    print("construction that merely equals an existing view is still worth keeping, because the")
+    print("two can come apart under compression, resizing or an adversary even when they fail on")
+    print("the same clean videos. So gate 2 now HOLDS such a branch for the robustness comparison")
+    print("in `robustness.py` rather than discarding it, and the campaign reports which of the two")
+    print("reasons -- measured independence under degradation, or novelty of construction alone --")
+    print("the row is being claimed on. Y16 is the branch this applies to.")
     return 0
 
 
