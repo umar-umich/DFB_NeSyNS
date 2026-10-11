@@ -82,47 +82,52 @@ def phi(a: pd.DataFrame, y: pd.DataFrame, taus=None):
     return float(D.matrix(t, ["A", "Y16"], taus)["phi"]["A-Y16"]["all"]), taus, len(t)
 
 
+#: (label in the report, feature-cache suffix, branch-directory suffix). The suffix is what
+#: `extract_adapted` builds -- `process.replace(":", "")` -- so the dot in resize:0.6 survives.
+CONDITIONS = [("jpeg:40", "jpeg40"), ("resize:0.6", "resize0.6")]
+
+
 def main() -> int:
     clean_a = a_opinions("pe_core_lLN")
     clean_y = y16_opinions(C.BRANCH_OUT / "om_eil_Y16")
-    deg_a = a_opinions("pe_core_lLN_jpeg40")
-    deg_y = y16_opinions(C.BRANCH_OUT / "om_eil_Y16j40")
-    missing = [n for n, v in (("A clean", clean_a), ("Y16 clean", clean_y),
-                              ("A jpeg40", deg_a), ("Y16 jpeg40", deg_y)) if v is None]
-    if missing:
-        print(f"not ready: {', '.join(missing)}")
+    if clean_a is None or clean_y is None:
+        print("not ready: clean opinions missing")
         return 1
-
     p_clean, taus, n_c = phi(clean_a, clean_y)
-    p_deg, _, n_d = phi(deg_a, deg_y, taus)                      # CLEAN thresholds, reused
 
-    rows = [("A", auroc(clean_a.y, clean_a.p), auroc(deg_a.y, deg_a.p)),
-            ("Y16", auroc(clean_y.y, clean_y.p), auroc(deg_y.y, deg_y.p))]
-
-    L = ["# Y16 against A under jpeg:40", "",
-         "Development pool. Thresholds are the CLEAN EER points, reused on the degraded data: a",
+    L = ["# Y16 against A under degradation", "",
+         "Development pool. Thresholds are the CLEAN EER points, reused on every degraded pool: a",
          "branch rethresholded after the attack would be scored at an operating point it could not",
          "have chosen in deployment.", "",
-         f"| branch | AUROC clean (n={n_c}) | AUROC jpeg:40 (n={n_d}) | change |",
-         "|---|---:|---:|---:|"]
-    for name, c, d in rows:
-        L.append(f"| {name} | {c:.4f} | {d:.4f} | {d - c:+.4f} |")
-    L += ["", "**Per-video error phi, Y16 against A**", "",
-          "| condition | phi |", "|---|---:|",
-          f"| clean | {p_clean:+.3f} |", f"| jpeg:40 | {p_deg:+.3f} |",
-          f"| change | {p_deg - p_clean:+.3f} |", ""]
-    moved = p_deg - p_clean
-    if moved <= -0.05:
-        L.append(f"Y16 and A SEPARATE under compression: phi falls {abs(moved):.3f}, so the two "
-                 f"views stop failing on the same videos exactly where robustness is at stake. "
-                 f"That is evidence for the row, not just a reason to hope for one.")
-    elif moved >= 0.05:
-        L.append(f"Y16 and A converge FURTHER under compression (phi {moved:+.3f}). Whatever Y16 "
-                 f"adds, it is not independence under this attack.")
+         f"| condition | A AUROC | Y16 AUROC | dA | dY16 | phi(Y16, A) | d phi |",
+         "|---|---:|---:|---:|---:|---:|---:|",
+         f"| clean (n={n_c}) | {auroc(clean_a.y, clean_a.p):.4f} | "
+         f"{auroc(clean_y.y, clean_y.p):.4f} | -- | -- | {p_clean:+.3f} | -- |"]
+
+    seen = 0
+    for name, sfx in CONDITIONS:
+        deg_a = a_opinions(f"pe_core_lLN_{sfx}")
+        deg_y = y16_opinions(C.BRANCH_OUT / f"om_eil_Y16_{sfx}")
+        if deg_a is None or deg_y is None:
+            L.append(f"| {name} | not yet extracted | | | | | |")
+            continue
+        seen += 1
+        p_deg, _, n_d = phi(deg_a, deg_y, taus)
+        a_c, a_d = auroc(clean_a.y, clean_a.p), auroc(deg_a.y, deg_a.p)
+        y_c, y_d = auroc(clean_y.y, clean_y.p), auroc(deg_y.y, deg_y.p)
+        L.append(f"| {name} (n={n_d}) | {a_d:.4f} | {y_d:.4f} | {a_d - a_c:+.4f} | "
+                 f"{y_d - y_c:+.4f} | {p_deg:+.3f} | {p_deg - p_clean:+.3f} |")
+
+    L.append("")
+    if not seen:
+        L.append("No degraded condition has finished extracting yet.")
     else:
-        L.append(f"phi barely moves ({moved:+.3f}). Y16 duplicates A under compression as well as "
-                 f"on clean data, so the case for keeping it rests on novelty of construction, "
-                 f"which is a real reason but a different one -- it should be written as that.")
+        L += ["**How to read this.** A fall in phi is the result that matters: it means Y16 and A",
+              "stop failing on the same videos exactly where robustness is at stake, which is the",
+              "evidence for giving Y16 a row rather than treating it as a duplicate of A. A fall in",
+              "Y16's own AUROC larger than A's is NOT a contradiction and must not be written as a",
+              "robustness win: Y16 is differently wrong, not less wrong, and for a fusion row that",
+              "is the property that counts. The two claims are separate and the table reports both."]
     OUT.write_text("\n".join(L) + "\n")
     print("\n".join(L))
     print(f"\n-> {OUT}")
