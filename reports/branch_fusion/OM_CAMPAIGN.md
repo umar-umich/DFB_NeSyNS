@@ -1,5 +1,24 @@
 # The off-manifold campaign beyond CLIP
 
+> **VOID as of 2026-10-10 — the PE-Core sections of this file, pending the v3 re-run.**
+>
+> `train_om_pecore.install` rebuilt the temporal stage and added the beta-VAE by rebinding the
+> `Branch` attributes, but the trainer builds its optimiser and its checkpoint from
+> `trainable_blocks`, which still held the mixer that `__init__` made and the forward never
+> called. Every P and S run reported here therefore trained only its LoRA adapters and head, on
+> top of a temporal stage and a residual that stayed at random initialisation. A second defect in
+> the same forward dropped `softplus`, so the exported opinions are logits-derived and some are
+> outside [0, 1].
+>
+> **Do not read the P or S numbers below** — in particular not the residual-only 0.4942, which was
+> explained at the time as the alignment term squeezing the residual to zero and was in fact an
+> untrained VAE feeding an untrained transformer. The four runs are repeating as `*_v3` and this
+> file is rewritten when they land.
+>
+> The spatial-trunk results (A, O, frozen Y, in-loop Y16) are **unaffected**: they come from
+> `adapt_om.py` and `seq_branch.py`, which optimise the residual head.
+
+
 Written unattended by `om_report.py`. Every number is read from a run record on disk;
 nothing here is recalled from the session that set the campaign up.
 
