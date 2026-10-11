@@ -1,24 +1,5 @@
 # The off-manifold campaign beyond CLIP
 
-> **VOID as of 2026-10-10 — the PE-Core sections of this file, pending the v3 re-run.**
->
-> `train_om_pecore.install` rebuilt the temporal stage and added the beta-VAE by rebinding the
-> `Branch` attributes, but the trainer builds its optimiser and its checkpoint from
-> `trainable_blocks`, which still held the mixer that `__init__` made and the forward never
-> called. Every P and S run reported here therefore trained only its LoRA adapters and head, on
-> top of a temporal stage and a residual that stayed at random initialisation. A second defect in
-> the same forward dropped `softplus`, so the exported opinions are logits-derived and some are
-> outside [0, 1].
->
-> **Do not read the P or S numbers below** — in particular not the residual-only 0.4942, which was
-> explained at the time as the alignment term squeezing the residual to zero and was in fact an
-> untrained VAE feeding an untrained transformer. The four runs are repeating as `*_v3` and this
-> file is rewritten when they land.
->
-> The spatial-trunk results (A, O, frozen Y, in-loop Y16) are **unaffected**: they come from
-> `adapt_om.py` and `seq_branch.py`, which optimise the residual head.
-
-
 Written unattended by `om_report.py`. Every number is read from a run record on disk;
 nothing here is recalled from the session that set the campaign up.
 
@@ -36,8 +17,6 @@ was never asked to make it informative.
 - A alone: dev v3.1 0.8736
 - O, the CLIP off-manifold: dev v3.1 0.8252
 - in-loop Y16, block 16 (spatial trunk): dev v3.1 0.8673
-- P + OM, residual only (the construction that fails): dev v3.1 0.4942
-- P + OM, concat [f_t ; f_a]: dev v3.1 0.8296
 
 Per-video error correlation against the branches already deployed:
 
@@ -84,13 +63,19 @@ result, not an ordering, and must not be reported as a ranking.
 
 Temporal off-manifold runs, PE-Core trunk, block 16 (development v3.1):
 
-  ombvae_b16_cat                     off-manifold   0.8296  (epoch 9)
-  ombvae_b16                         off-manifold   0.4942  (epoch 2)
+  ombvae_b16_cat                     off-manifold   0.8409  (epoch 9)
+  ombvae_b16_cat_seq                 off-manifold   0.8497  (epoch 9)
+  omnone_b16                         NO-OM CONTROL  0.8678  (epoch 9)
+  omnone_b16_seq                     NO-OM CONTROL  0.8665  (epoch 6)
 
 P16om: ombvae_b16_cat
-  GATE 1 cannot be evaluated -- its no-OM control has not finished. HELD.
-P16om: ombvae_b16
-  GATE 1 cannot be evaluated -- its no-OM control has not finished. HELD.
+  gate 1  0.8409 vs control 0.8678  -> FAIL
+  gate 2  phi vs A +0.415 < 0.6  -> PASS
+  P16om is reported, not registered: a branch that fails either gate would either duplicate A or be worse than the same network without the residual.
+S16om: ombvae_b16_cat_seq
+  gate 1  0.8497 vs control 0.8665  -> FAIL
+  gate 2  phi vs A +0.500 < 0.6  -> PASS
+  S16om is reported, not registered: a branch that fails either gate would either duplicate A or be worse than the same network without the residual.
 
 ## How to read a negative here
 

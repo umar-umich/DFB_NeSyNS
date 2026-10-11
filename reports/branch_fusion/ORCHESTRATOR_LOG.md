@@ -1,9 +1,5 @@
 # Orchestrator decision log
 
-Written unattended. Every line is a decision the orchestrator made, or a number it made
-it on. The live copy is `logs/branchfusion/orchestrator/orchestrator.log`, which is
-gitignored; this is the committed mirror.
-
 ```
 [2026-10-09T23:26:11-04:00] === orchestrator start ===
 [2026-10-09T23:26:11-04:00] GPUs: 0, 46948 MiB 1, 69596 MiB 2, 40246 MiB 3, 36415 MiB 
@@ -69,4 +65,53 @@ gitignored; this is the committed mirror.
     P16om: ombvae_b16
       GATE 1 cannot be evaluated -- its no-OM control has not finished. HELD.
 [2026-10-10T07:18:48-04:00] no branch passed both gates; the screen is NOT re-run and the deployed selection stands
+[2026-10-10T07:19:41-04:00] committed: fusion: final correlation matrix, tables and the off-manifold campaign report
+[2026-10-10T07:19:41-04:00] === orchestrator done ===
+[2026-10-10T07:19:41-04:00] read reports/branch_fusion/OM_CAMPAIGN.md first; the decision log is logs/branchfusion/orchestrator/orchestrator.log
+[2026-10-10T13:11:00-04:00] rerun: om_P_b16_control_v2
+[2026-10-10T13:14:45-04:00] === finisher waiting on the rerun lane ===
+[2026-10-10T14:15:43-04:00] finisher still waiting (60 min)
+[2026-10-10T15:17:33-04:00] finisher still waiting (120 min)
+[2026-10-10T15:35:22-04:00] om_P_b16_control_v2 FAILED again -- see logs/branchfusion/lanes/om_P_b16_control_v2.log
+[2026-10-10T15:35:22-04:00] rerun: om_S_inloop_v2
+[2026-10-10T16:17:58-04:00] finisher still waiting (180 min)
+[2026-10-10T17:18:17-04:00] finisher still waiting (240 min)
+[2026-10-10T18:18:36-04:00] finisher still waiting (300 min)
+[2026-10-10T19:18:55-04:00] finisher still waiting (360 min)
+[2026-10-10T19:27:21-04:00] om_S_inloop_v2 FAILED again -- see logs/branchfusion/lanes/om_S_inloop_v2.log
+[2026-10-10T19:27:21-04:00] rerun: om_S_control_v2
+[2026-10-10T20:19:13-04:00] finisher still waiting (420 min)
+[2026-10-10T21:06:20-04:00] v3 start: om_P_b16_cat_v3 on GPU 1
+[2026-10-10T21:06:20-04:00] v3 start: om_S_b16_cat_v3 on GPU 0
+[2026-10-10T21:06:20-04:00] v3 start: om_S_b16_control_v3 on GPU 2
+[2026-10-10T21:06:20-04:00] v3 start: om_P_b16_control_v3 on GPU 3
+[2026-10-10T21:06:23-04:00] === v3 finisher waiting ===
+[2026-10-10T22:06:40-04:00] v3 finisher still waiting (60 min)
+[2026-10-10T23:06:59-04:00] v3 finisher still waiting (120 min)
+[2026-10-11T00:07:17-04:00] v3 finisher still waiting (180 min)
+[2026-10-11T00:40:52-04:00] om_S_b16_cat_v3 DONE
+[2026-10-11T01:07:41-04:00] v3 finisher still waiting (240 min)
+[2026-10-11T01:37:28-04:00] om_P_b16_control_v3 DONE
+[2026-10-11T02:05:08-04:00] om_P_b16_cat_v3 DONE
+[2026-10-11T02:08:34-04:00] v3 finisher still waiting (300 min)
+[2026-10-11T02:10:26-04:00] om_S_b16_control_v3 DONE
+[2026-10-11T02:10:26-04:00] === v3 LANE DONE ===
+[2026-10-11T02:10:35-04:00] v3 lane finished
+[2026-10-11T02:10:45-04:00] gate verdict:
+    Temporal off-manifold runs, PE-Core trunk, block 16 (development v3.1):
+    
+      ombvae_b16_cat                     off-manifold   0.8409  (epoch 9)
+      ombvae_b16_cat_seq                 off-manifold   0.8497  (epoch 9)
+      omnone_b16                         NO-OM CONTROL  0.8678  (epoch 9)
+      omnone_b16_seq                     NO-OM CONTROL  0.8665  (epoch 6)
+    
+    P16om: ombvae_b16_cat
+      gate 1  0.8409 vs control 0.8678  -> FAIL
+      gate 2  phi vs A +0.415 < 0.6  -> PASS
+      P16om is reported, not registered: a branch that fails either gate would either duplicate A or be worse than the same network without the residual.
+    S16om: ombvae_b16_cat_seq
+      gate 1  0.8497 vs control 0.8665  -> FAIL
+      gate 2  phi vs A +0.500 < 0.6  -> PASS
+      S16om is reported, not registered: a branch that fails either gate would either duplicate A or be worse than the same network without the residual.
+[2026-10-11T02:10:45-04:00] no branch passed both gates; the deployed selection stands
 ```

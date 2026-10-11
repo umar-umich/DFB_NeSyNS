@@ -1,9 +1,15 @@
 Temporal off-manifold runs, PE-Core trunk, block 16 (development v3.1):
 
-  ombvae_b16_cat                     off-manifold   0.8296  (epoch 9)
-  ombvae_b16                         off-manifold   0.4942  (epoch 2)
+  ombvae_b16_cat                     off-manifold   0.8409  (epoch 9)
+  ombvae_b16_cat_seq                 off-manifold   0.8497  (epoch 9)
+  omnone_b16                         NO-OM CONTROL  0.8678  (epoch 9)
+  omnone_b16_seq                     NO-OM CONTROL  0.8665  (epoch 6)
 
 P16om: ombvae_b16_cat
-  GATE 1 cannot be evaluated -- its no-OM control has not finished. HELD.
-P16om: ombvae_b16
-  GATE 1 cannot be evaluated -- its no-OM control has not finished. HELD.
+  gate 1  0.8409 vs control 0.8678  -> FAIL
+  gate 2  phi vs A +0.415 < 0.6  -> PASS
+  P16om is reported, not registered: a branch that fails either gate would either duplicate A or be worse than the same network without the residual.
+S16om: ombvae_b16_cat_seq
+  gate 1  0.8497 vs control 0.8665  -> FAIL
+  gate 2  phi vs A +0.500 < 0.6  -> PASS
+  S16om is reported, not registered: a branch that fails either gate would either duplicate A or be worse than the same network without the residual.
