@@ -51,6 +51,11 @@ from seq_branch import OMFrontEnd                                   # noqa: E402
 
 STATE: dict = {}
 
+#: Set by `train_ce` so the patched forward emits LOGITS instead of evidence. It lives here
+#: rather than in that file because this is where the softplus is applied, and a second copy of
+#: the forward pass kept in step by hand is how two arms stop being comparable.
+CE_MODE = False
+
 #: Where Dr Kutub's trainer writes, and where ours must write instead.
 KUTUB_RUNS = "/data/kutub/conferences/DFD/PECORE_L14_TemporalBranch/runs"
 OUR_RUNS = ROOT / "logs/branchfusion/om_pecore"
@@ -263,7 +268,8 @@ def install(operator: str | None, block: int = 0, temporal: str = "mixer",
         # SOFTPLUS, as in `Branch.forward`. The head emits EVIDENCE, and `opinions` forms
         # `alpha = evidence + 1`; without this the head emits logits, alpha can go negative and the
         # reported p leaves [0, 1] -- which it did, down to -0.186 in the seq control.
-        return torch.nn.functional.softplus(self.head(self.temporal(f).float()))
+        out = self.head(self.temporal(f).float())
+        return out if CE_MODE else torch.nn.functional.softplus(out)
 
     TB.Branch.__init__, TB.Branch.forward = init, forward
 
