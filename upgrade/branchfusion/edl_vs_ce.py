@@ -51,10 +51,14 @@ OUT_JSON = C.ROOT / "analysis/branchfusion/edl_vs_ce.json"
 #: their "Mean", their DS-C, ours. F5 is added because it is the evidential mean -- cumulative
 #: evidence with the prior counted once -- which is closer to DiCoME's "averaging belief masses"
 #: than a probability mean is.
-OPS = [("F1", "uniform probability mean (their 'Mean')"),
-       ("F5", "cumulative evidence, prior once (evidential mean)"),
-       ("F7", "reliability-discounted Dempster (their DS-C)"),
-       ("F8", "direct multisource PCR6+ (ours)")]
+#: Only PCR6+ carries the -R in the naming: it is OUR operator and the R is part of its name.
+#: Every row here is run with the same fitted reliability weights, so the comparison is
+#: like-for-like -- the rule is what changes between rows, not the discount.
+OPS = [("F1", "Mean"),
+       ("F5", "Evidential mean"),
+       ("F7", "DS-C"),
+       ("F8", "PCR6+-R (ours)")]
+LABEL = dict(OPS)
 
 SUBSETS = [("A", "V", "O"), ("A", "V", "O", "P16ctl", "S16ctl")]
 
@@ -83,13 +87,16 @@ def main() -> int:
 
     L = ["# EDL against cross-entropy, and PCR6+ against the alternatives", "",
          "Rebuilt from DiCoME Table 2(b) and Table 3 on our system, **per dataset**. A mean over",
-         "ten corpora that differ by 0.25 in AUROC hides what a reader needs.", ""]
+         "ten corpora that differ by 0.25 in AUROC hides what a reader needs.", "",
+         "Fusion rules in order: Mean, evidential mean, DS-C, and **PCR6+-R**, ours and last in",
+         "each block. Every row uses the same fitted reliability weights, so what changes between",
+         "rows is the rule and nothing else.", ""]
 
     for metric, name, better in [("auroc", "AUROC", "higher"), ("ece15", "ECE-15", "lower"),
                                  ("nll", "NLL", "lower"), ("brier", "Brier", "lower"),
                                  ("fpr_real", "FPR_real at the frozen threshold", "lower")]:
         L += [f"## {name} ({better} is better)", "",
-              "| system | fusion | " + " | ".join(sets) + " | macro |", "|---|---|" +
+              "| system | fusion rule | " + " | ".join(sets) + " | macro |", "|---|---|" +
               "---:|" * (len(sets) + 1)]
         for sub in SUBSETS:
             sid = C.subset_id(sub)
@@ -97,7 +104,7 @@ def main() -> int:
                 r = rows[(sid, op)]
                 vals = [r["per_dataset"][d][metric] for d in sets]
                 mark = "**" if op == "F8" else ""
-                L.append(f"| {mark}{sid}{mark} | {op} | " +
+                L.append(f"| {mark}{sid}{mark} | {mark}{LABEL[op]}{mark} | " +
                          " | ".join(f"{v:.4f}" for v in vals) +
                          f" | {np.mean(vals):.4f} |")
         if metric == "auroc":
