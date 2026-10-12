@@ -114,7 +114,31 @@ BRANCHES = {
 #: candidate, not a replacement for V: the two are video branches that disagree by dataset in
 #: opposite directions (P ahead on CDFv2/DFD/FFIW/DFDCP/IDForge, V ahead on CDFv3/KoDF), which is
 #: the complementarity the subset search exists to find. Six core branches give 63 subsets.
-CORE = ("A", "S", "V", "O", "M", "P")
+#: The candidate set carried forward, cut from seventeen to five on 2026-10-12.
+#:
+#: WHY FIVE. The 131,071-subset grid says only TWO branches are irreplaceable: dropping V costs
+#: 0.0071 of the best achievable macro and dropping O costs 0.0061, while dropping ANY of the other
+#: fifteen costs 0.0000 to 0.0009. Twelve of the seventeen are PE-Core, which is why they
+#: substitute for one another freely -- the ledger had one trunk represented a dozen ways. These
+#: five are one representative per trunk (PE-Core, V-JEPA 2, CLIP) plus the two new PE-Core views
+#: that actually improve the deployed trio, and together they reach the best subset found anywhere
+#: in the full space: A+V+O+P16ctl+S16ctl at macro 0.9250.
+#:
+#: RETIRED, with the reason rather than by omission. R and Rmean are a probe and its control; Y and
+#: Z are falsification tests; P16ctlB is P16ctl's seed replicate and never belonged in a table;
+#: Y16, Y20, P16om and S16om are off-manifold arms the campaign closed as negative; S and P are
+#: superseded on their own trunk by S16ctl and P16ctl. None of them is a weak branch in isolation
+#: -- S and P sit at 0.8951 and 0.8783 solo -- they are simply the same trunk said twice.
+#:
+#: Y specifically, since it was asked: added to A+V+O it gives +0.0011, but P16ctl gives +0.0031
+#: and S16ctl +0.0038 in the same slot, and once either is present Y turns slightly NEGATIVE
+#: (-0.0002). Its marginal contribution to this five is exactly 0.0000. It is dominated, not weak.
+CORE = ("A", "V", "O", "P16ctl", "S16ctl")
+
+#: The full seventeen, kept so the retired branches stay loadable for the appendix and for any
+#: re-check of the cut above. Nothing in the deployed path reads this.
+ALL_CANDIDATES = ("A", "S", "V", "O", "M", "Z", "P", "R", "Rmean", "Y", "Y16", "Y20",
+                  "P16om", "P16ctl", "P16ctlB", "S16om", "S16ctl")
 
 K = 2.0          # binary opinion: |Theta| = 2, so u = K / S
 EPS = 1e-12
