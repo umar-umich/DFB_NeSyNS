@@ -208,15 +208,15 @@ def main() -> int:
         dev = B.dev_table(items, require_all=True)
         test_tabs = B.test_tables(items)
         print(f"branches {items} | development {len(dev)} videos | test sets {list(test_tabs)}")
-        grid = {"locked": O.WEIGHT_GRID, "coarse": (0.0, 0.5, 1.0), "equal": (1.0,)}[a.weight_grid]
+        wgrid = {"locked": O.WEIGHT_GRID, "coarse": (0.0, 0.5, 1.0), "equal": (1.0,)}[a.weight_grid]
         if a.weight_grid != "locked":
-            print(f"WEIGHT GRID {a.weight_grid} {grid} -- NOT the locked fit; these rows are not "
+            print(f"WEIGHT GRID {a.weight_grid} {wgrid} -- NOT the locked fit; these rows are not "
                   f"comparable with locked numbers and every artifact must say so", flush=True)
         shard = None
         if a.shard:
             i, n = (int(x) for x in a.shard.split("/"))
             shard = (i, n)
-        res = sweep(dev, test_tabs, items, sizes, shard=shard, grid=grid)
+        res = sweep(dev, test_tabs, items, sizes, shard=shard, grid=wgrid)
         if shard is not None:
             res["shard"] = list(shard)
             f = C.OUT / f"per_dataset{sfx}_shard{shard[0]}.json"

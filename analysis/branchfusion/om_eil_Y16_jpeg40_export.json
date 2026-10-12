@@ -1,0 +1,27 @@
+{
+ "label": "Y16_jpeg40",
+ "ckpt": "logs/upgrade/om/om_pe_core_l_LN_bvae_s0_b16.pt",
+ "cache": "omEIL_b16_jpeg40",
+ "arm": "r",
+ "epoch": 5,
+ "operator": "bvae",
+ "readout": "b16",
+ "encoder_in_loop": true,
+ "datasets": {
+  "VALmix": 1350,
+  "VALmixV2": 4852,
+  "FFpp_val": 700,
+  "CDFv2": 518,
+  "CDFv3": 5418,
+  "DFD": 3431,
+  "DFDC": 4704,
+  "DFDCP": 654,
+  "DFEval24": 814,
+  "FFIW": 3470,
+  "KoDF": 2239,
+  "IDForge": 5974,
+  "DFDM": 1896
+ },
+ "missing": [],
+ "dir": "/data/umar/Repos/DFB_NeSyNS/logs/branchfusion/branches/om_eil_Y16_jpeg40"
+}
