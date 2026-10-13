@@ -140,6 +140,36 @@ BRANCHES = {
 #: (-0.0002). Its marginal contribution to this five is exactly 0.0000. It is dominated, not weak.
 CORE = ("A", "V", "O", "P16ctl", "S16ctl")
 
+#: Thesis names for the branches. A DISPLAY LAYER ONLY -- the ledger keys, the registry, the
+#: directory names under logs/branchfusion/branches and every stored JSON keep their original ids.
+#: Renaming those would rewrite artefacts that existing reports and checkpoints refer to, for a
+#: change that is cosmetic; a lookup used at render time is reversible and cannot invalidate a
+#: number.
+#:
+#: The two STT entries are one architecture with one knob changed: both read PE-Core block 16
+#: (mid-depth patch mean, where Dr Kutub's P reads the final attention pool), and they differ only
+#: in how the temporal stage encodes position -- real relative timestamps against a learned
+#: embedding per frame slot. That difference is worth 0.0016 against 0.0126 seed noise, so STT is
+#: the branch and STT-order is its positional-encoding ablation, not a second view.
+DISPLAY = {
+    "A": "App",                 # Appearance -- PE-Core-L/336, LoRA + LayerNorm, frame mean
+    "V": "TD",                  # Temporal Dynamics -- V-JEPA 2 LoRA, 16 frames
+    "O": "LFS",                 # Latent Facial Structure -- CLIP/beta-VAE orthogonal residual
+    "S16ctl": "STT",            # Spatio-Temporal Texture -- block 16 + real relative timestamps
+    "P16ctl": "STT-order",      # the same with learned slot positions
+    "P": "P (Kutub)",           # the branch both STT variants are derived from
+    "VCE": "TD-CE", "P16ctlCE": "STT-order-CE", "S16ctlCE": "STT-CE",
+}
+
+
+def show(b: str) -> str:
+    """Thesis name for a branch id, falling back to the id so an unnamed branch is visible."""
+    return DISPLAY.get(b, b)
+
+
+def show_subset(bs) -> str:
+    return "+".join(show(b) for b in bs)
+
 #: The full seventeen, kept so the retired branches stay loadable for the appendix and for any
 #: re-check of the cut above. Nothing in the deployed path reads this.
 ALL_CANDIDATES = ("A", "S", "V", "O", "M", "Z", "P", "R", "Rmean", "Y", "Y16", "Y20",

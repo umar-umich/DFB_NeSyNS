@@ -42,7 +42,7 @@ GEND_CROPS = {"FFIW", "KoDF", "IDForge", "DFDM"}
 MODELS = ["GenD_CLIP", "GenD_PE", "GenD_DINO", "FSFM", "FSFM_Adapter", "Effort", "ForAda"]
 PRETTY = {"GenD_CLIP": "GenD-CLIP", "GenD_PE": "GenD-PE", "GenD_DINO": "GenD-DINO",
           "FSFM_Adapter": "FSFM-Adapter"}
-SUB = ("A", "V", "O", "P16ctl", "S16ctl")
+SUB = ("A", "V", "O", "S16ctl")
 TPR_TARGETS = [0.90, 0.95]
 OUT_MD = C.ROOT / "reports/branch_fusion/TABLE1_DETECTION.md"
 
@@ -97,12 +97,12 @@ def main() -> int:
     sets = [d for d in C.TEST_SETS if d in tabs]
 
     rows = {}
-    rows["**Ours (PCR6+-R, 5 branches)**"] = {}
+    rows["**Ours (App+TD+LFS+STT, PCR6+-R)**"] = {}
     for ds in sets:
         t = tabs[ds]
         p = P.p_of(P.fuse(O.masses(t, SUB, list(w)), True))
         y = t.y.to_numpy()
-        rows["**Ours (PCR6+-R, 5 branches)**"][ds] = {
+        rows["**Ours (App+TD+LFS+STT, PCR6+-R)**"][ds] = {
             "auroc": C.auroc(y, p), **{f"fpr{int(k*100)}": fpr_at_tpr(y, p, k) for k in TPR_TARGETS}}
     rows["DiCoME (trained, their repo)"] = {}
     for ds in sets:

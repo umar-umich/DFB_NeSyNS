@@ -36,8 +36,13 @@ import branches as B                                             # noqa: E402
 import opinions as O                                             # noqa: E402
 import subsets as S                                              # noqa: E402
 
-FINAL = ("A", "V", "O", "P16ctl", "S16ctl")
-CE_SET = ("A", "VCE", "O", "P16ctlCE", "S16ctlCE")
+#: The framework. `App + TD + LFS + STT` -- four branches, best group in the ablation at 0.9534.
+#: The five-branch set is NOT used: its weight fit zeroes S16ctl, so it is literally identical to
+#: App+TD+LFS+STT-order at 0.9518, and presenting a five-branch system in which one branch carries
+#: zero weight would be a claim the fit does not support.
+FINAL = ("A", "V", "O", "S16ctl")
+FINAL_GROUP = ("A", "V", "O", "S16ctl")
+CE_SET = ("AppCE", "VCE", "LFSCE", "S16ctlCE")
 #: The ten ablation groups, per UMAR: each branch alone, the deployed trio, each new branch added
 #: to it, the full five, and the drop-one check on the only branch the subset search found
 #: irreplaceable.
@@ -75,8 +80,11 @@ def main() -> int:
     sets = list(C.TEST_SETS) + NEW_SETS
     avail = list(C.TEST_SETS)                      # the new sets have no branch scores yet
 
-    dev = B.dev_table(list(FINAL), require_all=True)
-    tabs = B.test_tables(list(FINAL))
+    # Every branch any GROUP needs, not just the framework's four: the ablation still reports
+    # STT-order and the singles, and loading only FINAL would make those rows unresolvable.
+    need = sorted({b for g in GROUPS for b in g} | set(FINAL))
+    dev = B.dev_table(need, require_all=True)
+    tabs = B.test_tables(need)
 
     # ---------------------------------------------------------------- Table A
     # Weights are fitted ONCE per group on the development pool and then applied unchanged to
@@ -86,8 +94,8 @@ def main() -> int:
     import ops_pcr6p as P
     auroc_rows, fpr_rows = [], []
     for g in GROUPS:
-        name = "+".join(g) + (" *(deployed)*" if g == ("A", "V", "O") else
-                              " **(final)**" if len(g) == 5 else "")
+        name = C.show_subset(g) + (" *(deployed)*" if g == ("A", "V", "O") else
+                                   " **(final)**" if g == FINAL_GROUP else "")
         w, _ = O.fit_weights(dev, g, "F8", objective="v31")
         a, f = {}, {}
         for ds in avail:
@@ -125,6 +133,12 @@ def main() -> int:
     # CE arm: mean of the five CE branches' probabilities, the mean-of-logits analogue.
     ce_a, ce_f = {}, {}
     try:
+        # A mixed row -- some branches evidential, some cross-entropy -- would answer no question
+        # at all, so this raises and the row reads *in progress* until every CE counterpart is
+        # registered. App's CE head is trained and LFS's is exported; neither is a branch yet.
+        missing = [b for b in CE_SET if b not in B.SOURCES]
+        if missing:
+            raise FileNotFoundError(f"CE counterparts not registered: {missing}")
         cdev = B.dev_table(list(CE_SET), require_all=True)   # noqa: F841  (coverage check)
         ctabs = B.test_tables(list(CE_SET))
         for ds in avail:
@@ -137,8 +151,8 @@ def main() -> int:
     rows_a.insert(0, ("Cross-entropy (mean of logits)", ce_a))
     rows_f.insert(0, ("Cross-entropy (mean of logits)", ce_f))
 
-    L = ["# Table B — fusion operator on the final five-branch combination", "",
-         "`A + V + O + P16ctl + S16ctl` under each decision rule. The cross-entropy row is fused",
+    L = ["# Table B — fusion operator on the final combination (App + TD + LFS + STT)", "",
+         "`App + TD + LFS + STT` under each decision rule. The cross-entropy row is fused",
          "by mean-of-logits and NOT by DS or PCR6+: a CE branch has no Dirichlet, so its",
          "uncertainty is a decision margin, and combining margins as belief masses would invent",
          "evidence that was never measured. Mean-of-logits is what DiCoME's row (D) does.", "",

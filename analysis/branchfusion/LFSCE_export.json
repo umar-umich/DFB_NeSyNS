@@ -1,0 +1,21 @@
+{
+ "label": "LFSCE",
+ "datasets": {
+  "VALmix": 1350,
+  "VALmixV2": 4788,
+  "FFpp_val": 700,
+  "CDFv2": 518,
+  "CDFv3": 5118,
+  "DFD": 3431,
+  "DFDC": 4704,
+  "DFDCP": 654,
+  "FFIW": 3470,
+  "KoDF": 1395,
+  "IDForge": 5974,
+  "DFDM": 1896
+ },
+ "missing": [],
+ "uncertainty_is_margin": true,
+ "note": "DISCERN_Ext simple-CE artifact view, per video",
+ "dir": "/data/umar/Repos/DFB_NeSyNS/logs/branchfusion/branches/LFSCE"
+}
