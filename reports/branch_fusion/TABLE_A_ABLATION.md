@@ -1,0 +1,39 @@
+# Table A — branch ablation
+
+Ten groups, every dataset, fused with **PCR6+-R**. No baseline rows: this table answers
+what each branch contributes, and a SOTA column here would invite two questions to be
+read off one row. The comparison against the field is Table C.
+
+`*in progress*` means the cell is not computable yet, not that it is zero or not applicable.
+The three newly packed sets (UADFV, DeepSpeak-1.1, DeepSpeak-2.0) have no branch scores yet.
+
+## AUROC (higher is better)
+
+| branch group | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| A | 0.9460 | 0.8935 | 0.9505 | 0.8371 | 0.9000 | 0.9760 | 0.8563 | 0.9950 | 0.9653 | *in progress* | *in progress* | *in progress* | 0.9244 |
+| V | 0.7383 | 0.9263 | 0.7967 | 0.7009 | 0.7408 | 0.8011 | 0.9656 | 0.8899 | 0.9798 | *in progress* | *in progress* | *in progress* | 0.8377 |
+| O | 0.9736 | 0.8801 | 0.9338 | 0.8808 | 0.8727 | 0.9354 | 0.8548 | 0.9635 | 0.9920 | *in progress* | *in progress* | *in progress* | 0.9207 |
+| P16ctl | 0.9661 | 0.8942 | 0.9524 | 0.8360 | 0.8887 | 0.9640 | 0.9157 | 0.9935 | 0.9969 | *in progress* | *in progress* | *in progress* | 0.9342 |
+| S16ctl | 0.9683 | 0.8864 | 0.9485 | 0.8176 | 0.8976 | 0.9655 | 0.9268 | 0.9968 | 0.9954 | *in progress* | *in progress* | *in progress* | 0.9337 |
+| A+V+O *(deployed)* | 0.9645 | 0.9627 | 0.9513 | 0.8596 | 0.9058 | 0.9693 | 0.9430 | 0.9950 | 0.9927 | *in progress* | *in progress* | *in progress* | 0.9493 |
+| A+V+O+P16ctl | 0.9738 | 0.9625 | 0.9577 | 0.8593 | 0.9090 | 0.9701 | 0.9426 | 0.9961 | 0.9953 | *in progress* | *in progress* | *in progress* | 0.9518 |
+| A+V+O+S16ctl | 0.9788 | 0.9612 | 0.9569 | 0.8622 | 0.9112 | 0.9743 | 0.9436 | 0.9961 | 0.9966 | *in progress* | *in progress* | *in progress* | 0.9534 |
+| A+V+O+P16ctl+S16ctl **(final)** | 0.9738 | 0.9625 | 0.9577 | 0.8593 | 0.9090 | 0.9701 | 0.9426 | 0.9961 | 0.9953 | *in progress* | *in progress* | *in progress* | 0.9518 |
+| A+O+P16ctl+S16ctl | 0.9847 | 0.9146 | 0.9528 | 0.8652 | 0.9224 | 0.9800 | 0.8974 | 0.9962 | 0.9939 | *in progress* | *in progress* | *in progress* | 0.9452 |
+
+## FPR at TPR = 90% (lower is better)
+
+| branch group | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| A | 0.1910 | 0.3539 | 0.1708 | 0.4894 | 0.2565 | 0.0576 | 0.6055 | 0.0013 | 0.0730 | *in progress* | *in progress* | *in progress* | 0.2444 |
+| V | 0.6180 | 0.2360 | 0.5868 | 0.7525 | 0.6304 | 0.4922 | 0.0397 | 0.3174 | 0.0393 | *in progress* | *in progress* | *in progress* | 0.4125 |
+| O | 0.0618 | 0.4213 | 0.2011 | 0.4289 | 0.3739 | 0.2242 | 0.6476 | 0.1145 | 0.0056 | *in progress* | *in progress* | *in progress* | 0.2755 |
+| P16ctl | 0.1292 | 0.3876 | 0.1736 | 0.4592 | 0.3000 | 0.1101 | 0.2605 | 0.0057 | 0.0000 | *in progress* | *in progress* | *in progress* | 0.2029 |
+| S16ctl | 0.0843 | 0.4213 | 0.2094 | 0.5110 | 0.3130 | 0.0974 | 0.2208 | 0.0020 | 0.0000 | *in progress* | *in progress* | *in progress* | 0.2066 |
+| A+V+O *(deployed)* | 0.1011 | 0.0955 | 0.1653 | 0.3983 | 0.2870 | 0.0997 | 0.0471 | 0.0094 | 0.0112 | *in progress* | *in progress* | *in progress* | 0.1350 |
+| A+V+O+P16ctl | 0.0674 | 0.0674 | 0.1570 | 0.3978 | 0.2739 | 0.1032 | 0.0422 | 0.0037 | 0.0056 | *in progress* | *in progress* | *in progress* | 0.1243 |
+| A+V+O+S16ctl | 0.0674 | 0.1124 | 0.1570 | 0.3948 | 0.2696 | 0.0646 | 0.0397 | 0.0067 | 0.0056 | *in progress* | *in progress* | *in progress* | 0.1242 |
+| A+V+O+P16ctl+S16ctl **(final)** | 0.0674 | 0.0674 | 0.1570 | 0.3978 | 0.2739 | 0.1032 | 0.0422 | 0.0037 | 0.0056 | *in progress* | *in progress* | *in progress* | 0.1243 |
+| A+O+P16ctl+S16ctl | 0.0449 | 0.3146 | 0.1653 | 0.4078 | 0.2348 | 0.0519 | 0.3995 | 0.0003 | 0.0000 | *in progress* | *in progress* | *in progress* | 0.1799 |
+
