@@ -42,6 +42,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True, help="directory name under logs/branchfusion/om_pecore")
     ap.add_argument("--label", required=True, help="branch label to register, e.g. P16om")
+    ap.add_argument("--sets", default="",
+                    help="comma list of datasets to copy instead of DEV+TEST. Without it a newly "
+                         "packed corpus is never copied into the ledger, however complete its "
+                         "export, because that list is the old ten.")
     ap.add_argument("--register", action="store_true")
     a = ap.parse_args()
 
@@ -57,7 +61,9 @@ def main() -> int:
     out = C.BRANCH_OUT / a.label
     out.mkdir(parents=True, exist_ok=True)
     done, missing = {}, []
-    for ds in list(C.DEV_SETS) + list(C.TEST_SETS):
+    wanted = ([x.strip() for x in a.sets.split(",") if x.strip()]
+              or list(C.DEV_SETS) + list(C.TEST_SETS))
+    for ds in wanted:
         f = src / f"{ds}.csv"
         if not f.exists():
             missing.append(ds); print(f"  {ds}: MISSING", flush=True); continue

@@ -23,18 +23,9 @@
  },
  "encoder_in_loop": true,
  "datasets": {
-  "VALmix": 1350,
-  "VALmixV2": 3764,
-  "FFpp_val": 700,
-  "CDFv2": 518,
-  "CDFv3": 5118,
-  "DFD": 3431,
-  "DFDC": 4704,
-  "DFDCP": 654,
-  "FFIW": 3470,
-  "KoDF": 1395,
-  "IDForge": 5974,
-  "DFDM": 1896
+  "UADFV": 98,
+  "DeepSpeak-1.1": 2102,
+  "DeepSpeak-2.0": 2572
  },
  "missing": [],
  "dir": "/data/umar/Repos/DFB_NeSyNS/logs/branchfusion/branches/S16ctl"

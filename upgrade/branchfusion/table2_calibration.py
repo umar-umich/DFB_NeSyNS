@@ -118,7 +118,7 @@ def main() -> int:
 
     tabs = B.test_tables(list(FINAL))
     sets = [d for d in C.TEST_SETS if d in tabs] + NEW_SETS
-    avail = [d for d in C.TEST_SETS if d in tabs]
+    avail = [d for d in sets if d in tabs]
     rows = {"**Ours (App+TD+LFS+STT, PCR6+-R)**": {}}
     for ds in avail:
         t = tabs[ds]

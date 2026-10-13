@@ -40,6 +40,15 @@ prediction CSVs. Blank cells are sets they never ran.
 | **DFDM** | **ours (PCR6+-R, 5 branches)** | 0.9913 | 0.1517 | 6.5 |
 | | DiCoME (trained) | — | — | — |
 | | DiCoME (repro) | — | — | — |
+| **UADFV** | **ours (PCR6+-R, 5 branches)** | 0.9796 | 0.2449 | 4.0 |
+| | DiCoME (trained) | — | — | — |
+| | DiCoME (repro) | — | — | — |
+| **DeepSpeak-1.1** | **ours (PCR6+-R, 5 branches)** | 0.9359 | 0.2528 | 3.7 |
+| | DiCoME (trained) | — | — | — |
+| | DiCoME (repro) | — | — | — |
+| **DeepSpeak-2.0** | **ours (PCR6+-R, 5 branches)** | 0.9323 | 0.2764 | 3.4 |
+| | DiCoME (trained) | — | — | — |
+| | DiCoME (repro) | — | — | — |
 
 ## Target false-alarm rate 5% (set on FF++, applied unchanged)
 
@@ -70,6 +79,15 @@ prediction CSVs. Blank cells are sets they never ran.
 | | DiCoME (trained) | — | — | — |
 | | DiCoME (repro) | — | — | — |
 | **DFDM** | **ours (PCR6+-R, 5 branches)** | 0.9983 | 0.4551 | 2.2 |
+| | DiCoME (trained) | — | — | — |
+| | DiCoME (repro) | — | — | — |
+| **UADFV** | **ours (PCR6+-R, 5 branches)** | 1.0000 | 0.4082 | 2.4 |
+| | DiCoME (trained) | — | — | — |
+| | DiCoME (repro) | — | — | — |
+| **DeepSpeak-1.1** | **ours (PCR6+-R, 5 branches)** | 0.9665 | 0.3623 | 2.7 |
+| | DiCoME (trained) | — | — | — |
+| | DiCoME (repro) | — | — | — |
+| **DeepSpeak-2.0** | **ours (PCR6+-R, 5 branches)** | 0.9619 | 0.4332 | 2.2 |
 | | DiCoME (trained) | — | — | — |
 | | DiCoME (repro) | — | — | — |
 

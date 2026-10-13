@@ -77,14 +77,22 @@ def table(lines, header, rows, sets):
 
 
 def main() -> int:
-    sets = list(C.TEST_SETS) + NEW_SETS
-    avail = list(C.TEST_SETS)                      # the new sets have no branch scores yet
-
     # Every branch any GROUP needs, not just the framework's four: the ablation still reports
     # STT-order and the singles, and loading only FINAL would make those rows unresolvable.
     need = sorted({b for g in GROUPS for b in g} | set(FINAL))
+
+    # NEW_SETS are the corpora promoted into TEST_SETS once every branch covered them, so the
+    # union is de-duplicated rather than concatenated -- otherwise each appears twice as a column.
+    sets = list(dict.fromkeys(list(C.TEST_SETS) + NEW_SETS))
+    # Compute on every set whose branches are ALL present. A newly packed corpus was otherwise
+    # printed as a column and never filled, however complete its coverage -- the table said
+    # "in progress" about data sitting on disk.
+    avail = [d for d in sets if all(B.available(b, d) or (C.BRANCH_OUT / b / f"{d}.csv").exists()
+                                    for b in need)]
+    print(f"computing on {len(avail)} of {len(sets)} sets: {avail}", flush=True)
+
     dev = B.dev_table(need, require_all=True)
-    tabs = B.test_tables(need)
+    tabs = B.test_tables(need, sets=avail)
 
     # ---------------------------------------------------------------- Table A
     # Weights are fitted ONCE per group on the development pool and then applied unchanged to
@@ -132,22 +140,25 @@ def main() -> int:
         print(f"  B: {label}  weights {[round(x, 2) for x in w]}", flush=True)
     # CE arm: mean of the five CE branches' probabilities, the mean-of-logits analogue.
     ce_a, ce_f = {}, {}
-    try:
-        # A mixed row -- some branches evidential, some cross-entropy -- would answer no question
-        # at all, so this raises and the row reads *in progress* until every CE counterpart is
-        # registered. App's CE head is trained and LFS's is exported; neither is a branch yet.
-        missing = [b for b in CE_SET if b not in B.SOURCES]
-        if missing:
-            raise FileNotFoundError(f"CE counterparts not registered: {missing}")
-        cdev = B.dev_table(list(CE_SET), require_all=True)   # noqa: F841  (coverage check)
-        ctabs = B.test_tables(list(CE_SET))
-        for ds in avail:
-            t = ctabs[ds]
-            p = np.mean([t[f"p_{b}"].to_numpy() for b in CE_SET], axis=0)
-            y = t.y.to_numpy()
-            ce_a[ds] = C.auroc(y, p); ce_f[ds] = fpr_at_tpr(y, p)
-    except Exception as e:                                   # noqa: BLE001
-        print(f"  B: CE arm not ready ({type(e).__name__}: {e})", flush=True)
+    # The CE arm has its OWN coverage: its four counterparts were never scored on the three newly
+    # packed corpora. Computing it over `avail` made the whole row fail on the first set it could
+    # not resolve, which reported "in progress" for nine datasets whose CE numbers exist. The row
+    # is built on the sets where every CE branch is present and marked in progress elsewhere.
+    missing = [b for b in CE_SET if b not in B.SOURCES]
+    if missing:
+        print(f"  B: CE counterparts not registered: {missing}", flush=True)
+    else:
+        ce_sets = [d for d in avail
+                   if all(B.available(b, d) or (C.BRANCH_OUT / b / f"{d}.csv").exists()
+                          for b in CE_SET)]
+        print(f"  B: CE arm on {len(ce_sets)} sets", flush=True)
+        if ce_sets:
+            ctabs = B.test_tables(list(CE_SET), sets=ce_sets)
+            for ds in ce_sets:
+                t = ctabs[ds]
+                p_ = np.mean([t[f"p_{b}"].to_numpy() for b in CE_SET], axis=0)
+                y = t.y.to_numpy()
+                ce_a[ds] = C.auroc(y, p_); ce_f[ds] = fpr_at_tpr(y, p_)
     rows_a.insert(0, ("Cross-entropy (mean of logits)", ce_a))
     rows_f.insert(0, ("Cross-entropy (mean of logits)", ce_f))
 

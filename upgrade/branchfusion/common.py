@@ -93,7 +93,11 @@ for d in (PATCH, SEQ, BRANCH_OUT, OUT, REPORT):
 #: 0.86 -- and carrying it dragged every macro down without being part of the comparison the
 #: thesis is making. The per-dataset tables are the deliverable anyway, so nothing is hidden by
 #: its absence; it simply stops distorting the aggregates.
-TEST_SETS = ("CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "FFIW", "KoDF", "IDForge", "DFDM")
+TEST_SETS = ("CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "FFIW", "KoDF", "IDForge", "DFDM",
+              # Added 2026-10-13, once every CORE branch had been scored on them. They are
+              # GenD's own test sets, packed from Dr Kutub's extracted frames with the
+              # lip-sync generators excluded, so a row here is swap and reenactment only.
+              "UADFV", "DeepSpeak-1.1", "DeepSpeak-2.0")
 #: The development pool. VALmix + VALmix-v2 carry the v3.1 cells; FF++ val supplies the real anchor
 #: and the per-view EER thresholds.
 DEV_SETS = ("VALmix", "VALmixV2", "FFpp_val")

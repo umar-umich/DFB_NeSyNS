@@ -411,7 +411,11 @@ def main() -> int:
     op = None if a.operator == "none" else a.operator
     if a.temporal == "seq":
         install_tpos()
-    install(op, a.block, a.temporal, keep_plain=(a.om_mode == "concat"))
+    # `install` rebuilds PE-Core's per-frame stage and raises on any other trunk. A plain replay
+    # of V-JEPA has nothing to install, so attempting it killed the TD export with "vjepa2 has no
+    # per-frame stage to put a residual in front of".
+    if op is not None or a.block or a.temporal != "mixer":
+        install(op, a.block, a.temporal, keep_plain=(a.om_mode == "concat"))
     if a.smoke:
         TB.EPOCHS = 1
         orig = TB.Clips.__init__

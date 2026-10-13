@@ -266,6 +266,21 @@ def meta_for(dataset: str) -> pd.DataFrame:
     spec = SOURCES["O"]
     if dataset in C.DEV_SETS:
         t = A.dev_tables({dataset: C.S23 / f"{spec['spatial']}_{dataset}.csv"}, [1.0])
+    elif not (C.S23 / f"{spec['sel']}_{dataset}.csv").exists():
+        # A corpus packed by THIS project has no stage-23 selection file: that export belongs to
+        # the earlier pipeline and was never run for it. Rebuild the metadata from whichever
+        # branch has already been materialised. `source` is the dataset, which is exactly what the
+        # test path sets below anyway; `subset` is the dataset too, which is sound here ONLY
+        # because the pack step admitted in-scope generators alone, so no subset filter has
+        # anything left to remove. A corpus packed with mixed generators would need its real
+        # subsets and this fallback would be wrong for it.
+        import glob as _glob
+        hit = next(iter(sorted(_glob.glob(str(C.BRANCH_OUT / "*" / f"{dataset}.csv")))), None)
+        if hit is None:
+            raise FileNotFoundError(f"{dataset}: no stage-23 selection and no materialised branch")
+        d = pd.read_csv(hit)
+        v = [str(x) for x in d.v]
+        return pd.DataFrame({"v": v, "source": dataset, "subset": dataset, "vname": v})
     else:
         d = A.load_frames(C.S23 / f"{spec['sel']}_{dataset}.csv")
         keep = (~d.subset.str.contains("IP_LAP") & (d.subset != "fake-audio-driven")

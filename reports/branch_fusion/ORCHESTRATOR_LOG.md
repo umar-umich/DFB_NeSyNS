@@ -221,4 +221,18 @@
 [2026-10-13T02:26:41-04:00] LFS exported: DeepSpeak-1.1
 [2026-10-13T03:05:22-04:00] LFS exported: DeepSpeak-2.0
 [2026-10-13T03:05:42-04:00] overnight: regenerating tables
+[2026-10-13T03:09:45-04:00] === overnight chain done -> reports/branch_fusion/PROPOSAL_TABLES.md ===
+[2026-10-13T09:35:54-04:00] === finishing the new sets ===
+[2026-10-13T09:35:56-04:00] LFS reduced into the ledger
+[2026-10-13T09:43:05-04:00] TD exported
+[2026-10-13T09:43:11-04:00] TD copy FAILED
+[2026-10-13T09:43:13-04:00] proposal_tables FAILED
+[2026-10-13T09:45:46-04:00] === new sets finished ===
+[2026-10-13T16:35:21-04:00] === regenerating all tables over 12 test sets ===
+[2026-10-13T16:35:23-04:00] regen proposal_tables FAILED
+[2026-10-13T16:36:24-04:00] regen sota_table1 ok
+[2026-10-13T16:37:24-04:00] regen table2_calibration ok
+[2026-10-13T16:38:04-04:00] regen uncertainty_figs ok
+[2026-10-13T16:39:17-04:00] regen forensic_metrics ok
+[2026-10-13T16:40:34-04:00] regen sota_operating_points ok
 ```
