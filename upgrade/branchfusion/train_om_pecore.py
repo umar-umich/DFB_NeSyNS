@@ -390,6 +390,15 @@ def main() -> int:
                     help="mixer = P's learned slot positions; seq = S's real-timestamp encoding")
     ap.add_argument("--block", type=int, default=0,
                     help="tap this PE-Core block (1-indexed) instead of the final attention pool")
+    ap.add_argument("--run-dir", default="",
+                    help="absolute path of the run whose best.pt to replay, when it does not live "
+                         "under this file's own output root -- V's checkpoint sits in Dr Kutub's "
+                         "temporal branches directory, not in om_pecore")
+    ap.add_argument("--sets", default="",
+                    help="comma list of test sets to export INSTEAD of the trainer's own TESTS. "
+                         "That list is hardcoded to the original ten, so a newly packed corpus is "
+                         "invisible to --export-only without this: the run silently re-exports "
+                         "what is already on disk and reports success.")
     ap.add_argument("--export-only", action="store_true",
                     help="training already finished and saved best.pt, but the export tail "
                          "crashed: replay only the exports against the selected weights")
@@ -425,6 +434,10 @@ def main() -> int:
         + ("_seq" if a.temporal == "seq" else "") + ("_smoke" if a.smoke else "")]
     print(f"OM-PE: residual {a.operator} between PE-Core's frames and the temporal mixer; "
           f"argv {' '.join(sys.argv[1:])}", flush=True)
+    if a.sets:
+        TB.TESTS = [x.strip() for x in a.sets.split(",") if x.strip()]
+        TB.DEV = []                   # development exports already exist and do not change here
+        print(f"export sets overridden: {TB.TESTS}", flush=True)
     if a.export_only:
         # The run name the trainer would have built, from the same argv it would have parsed.
         def arg(flag, default):
@@ -434,7 +447,8 @@ def main() -> int:
         name = (f"{model}{'_lora' if '--lora' in sys.argv else ''}"
                 f"{'_B' if arg('--augment', None) == 'B' else ''}"
                 f"{arg('--run-suffix', '')}_seed{arg('--seed', '0')}")
-        return export_only(OUR_RUNS / name, int(arg("--workers", "4")),
+        run_dir = Path(a.run_dir) if a.run_dir else OUR_RUNS / name
+        return export_only(run_dir, int(arg("--workers", "4")),
                            model, "--lora" in sys.argv)
     TB.main()
     return 0

@@ -41,7 +41,7 @@ import subsets as S                                              # noqa: E402
 sys.path[:0] = [str(C.ROOT / "analysis/tbiom/pcr6p")]
 import ops_pcr6p as P                                            # noqa: E402
 
-SUB = ("A", "V", "O", "P16ctl", "S16ctl")
+SUB = ("A", "V", "O", "S16ctl")
 OUT = C.ROOT / "reports/branch_fusion/figures"
 #: Validated two-slot categorical palette (dataviz skill, light surface):
 #: adjacent CVD dE 21.6, normal-vision dE 32.3, both well clear of the gates.
