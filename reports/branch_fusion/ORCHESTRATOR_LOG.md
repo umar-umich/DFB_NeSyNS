@@ -114,4 +114,111 @@
       gate 2  phi vs A +0.500 < 0.6  -> PASS
       S16om is reported, not registered: a branch that fails either gate would either duplicate A or be worse than the same network without the residual.
 [2026-10-11T02:10:45-04:00] no branch passed both gates; the deployed selection stands
+[2026-10-11T02:10:54-04:00] committed: fusion: the PE-Core off-manifold campaign re-run with the residual in the optimiser
+[2026-10-11T02:10:54-04:00] === v3 finisher done ===
+[2026-10-11T10:49:36-04:00] seed replicate start: om_P16ctl_seed1 on GPU 1
+[2026-10-11T13:18:51-04:00] === robustness lane: Y16 vs A under jpeg:40 ===
+[2026-10-11T13:18:53-04:00] robustness: A extract failed on VALmix
+[2026-10-11T13:19:46-04:00] === robustness lane: Y16 vs A under jpeg:40 ===
+[2026-10-11T13:54:27-04:00] === robustness lane done -- see reports/branch_fusion/ROBUSTNESS_Y16.md ===
+[2026-10-11T14:13:20-04:00] === all-14 per-dataset grid: 16383 subsets across 32 shards ===
+[2026-10-11T14:15:43-04:00] === robustness lane (full): both conditions, development and test ===
+[2026-10-11T14:18:06-04:00] all-14 grid: shards done, merging
+[2026-10-11T14:18:08-04:00] all-14 grid MERGE FAILED -- see logs/branchfusion/lanes/grid_all14_merge.log
+[2026-10-11T14:18:37-04:00] === all-16 per-dataset grid: 65535 subsets across 64 shards ===
+[2026-10-11T14:28:46-04:00] === grid switch: waiting for P16ctlB to register ===
+[2026-10-11T14:44:21-04:00] grid switch: still waiting for P16ctlB (15 min)
+[2026-10-11T14:55:20-04:00] === robustness (parallel): 52 passes across GPUs 1, 3 and 0 ===
+[2026-10-11T14:59:56-04:00] grid switch: still waiting for P16ctlB (30 min)
+[2026-10-11T15:15:35-04:00] grid switch: still waiting for P16ctlB (45 min)
+[2026-10-11T15:27:22-04:00] all-16 grid retired EARLY: its rows are discarded by the 17-branch switch anyway, and at 4 subsets/min under extraction contention it was burning 64 cores for nothing
+[2026-10-11T15:31:11-04:00] grid switch: still waiting for P16ctlB (60 min)
+[2026-10-11T15:34:33-04:00] grid switch STOPPED: the all-subsets grid is not computable -- fit_weights searches 5^k - 4^k weight vectors, so all 2^17-1 subsets is 3024 core-years
+[2026-10-11T15:40:06-04:00] === final grid: waiting for P16ctlB ===
+[2026-10-11T15:55:53-04:00] final grid: still waiting for P16ctlB (15 min)
+[2026-10-11T16:11:28-04:00] final grid: still waiting for P16ctlB (30 min)
+[2026-10-11T16:27:01-04:00] final grid: still waiting for P16ctlB (45 min)
+[2026-10-11T16:40:43-04:00] om_P16ctl_seed1 DONE
+[2026-10-11T16:41:33-04:00] final grid: P16ctlB registered; 17 branches
+[2026-10-11T16:41:33-04:00] grid all17eq: sizes 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17, weight grid equal, 128 shards
+[2026-10-11T16:43:10-04:00] === om_P16ctl_seed1 lane done ===
+[2026-10-11T16:53:53-04:00] robustness (parallel): extraction done; exporting Y16 opinions
+[2026-10-11T16:54:34-04:00] === robustness (parallel) done ===
+[2026-10-12T16:27:43-04:00] grid all17eq MERGE FAILED -- see logs/branchfusion/lanes/grid_all17eq_merge.log
+[2026-10-12T16:27:43-04:00] grid all17: sizes 1,2,3,4,5,6, weight grid locked, 128 shards
+[2026-10-12T17:16:57-04:00] packing DeepSpeak-2.0
+[2026-10-12T17:18:20-04:00] DeepSpeak-2.0 packed
+[2026-10-12T17:18:20-04:00] packing DeepSpeak-1.1
+[2026-10-12T17:20:33-04:00] DeepSpeak-1.1 packed
+[2026-10-12T17:20:33-04:00] === GenD packing done ===
+[2026-10-12T17:26:22-04:00] === O CE export: artifact view from the simple-CE run, 16 datasets ===
+[2026-10-12T17:26:28-04:00] O-CE CDFv2 FAILED
+[2026-10-12T17:26:34-04:00] O-CE CDFv3 FAILED
+[2026-10-12T17:26:40-04:00] O-CE DFD FAILED
+[2026-10-12T17:26:46-04:00] O-CE DFDC FAILED
+[2026-10-12T17:26:52-04:00] O-CE DFDCP FAILED
+[2026-10-12T17:26:58-04:00] O-CE DFEval24 FAILED
+[2026-10-12T17:27:04-04:00] O-CE FFIW FAILED
+[2026-10-12T17:27:09-04:00] O-CE KoDF FAILED
+[2026-10-12T17:27:16-04:00] O-CE IDForge FAILED
+[2026-10-12T17:27:21-04:00] O-CE DFDM FAILED
+[2026-10-12T17:27:27-04:00] O-CE VALmix FAILED
+[2026-10-12T17:27:33-04:00] O-CE VALmixV2 FAILED
+[2026-10-12T17:27:34-04:00] === O CE export: artifact view from the simple-CE run, 16 datasets ===
+[2026-10-12T17:27:39-04:00] O-CE FFpp_val FAILED
+[2026-10-12T17:27:45-04:00] O-CE UADFV FAILED
+[2026-10-12T17:27:50-04:00] O-CE DeepSpeak-1.1 FAILED
+[2026-10-12T17:27:53-04:00] O-CE CDFv2 FAILED
+[2026-10-12T17:27:57-04:00] O-CE DeepSpeak-2.0 FAILED
+[2026-10-12T17:27:57-04:00] O-CE DeepSpeak-2.0 FAILED
+[2026-10-12T17:28:10-04:00] O-CE CDFv3 FAILED
+[2026-10-12T17:28:27-04:00] O-CE DFD FAILED
+[2026-10-12T17:28:45-04:00] O-CE DFDC FAILED
+[2026-10-12T17:29:01-04:00] O-CE DFDCP FAILED
+[2026-10-12T17:30:03-04:00] === O CE export: artifact view from the simple-CE run, 16 datasets ===
+[2026-10-12T17:34:31-04:00] O-CE CDFv2 done
+[2026-10-12T17:43:04-04:00] CE arm start: ce_P16ctl on GPU 0
+[2026-10-12T17:43:04-04:00] CE arm start: ce_S16ctl on GPU 1
+[2026-10-12T18:16:50-04:00] O-CE CDFv3 done
+[2026-10-12T18:35:34-04:00] O-CE DFD done
+[2026-10-12T18:57:15-04:00] O-CE DFDC done
+[2026-10-12T19:00:20-04:00] O-CE DFDCP done
+[2026-10-12T19:04:25-04:00] O-CE DFEval24 done
+[2026-10-12T19:22:38-04:00] O-CE FFIW done
+[2026-10-12T19:35:03-04:00] O-CE KoDF done
+[2026-10-12T20:01:33-04:00] ce_P16ctl DONE
+[2026-10-12T20:06:11-04:00] O-CE IDForge done
+[2026-10-12T20:16:13-04:00] O-CE DFDM done
+[2026-10-12T20:22:56-04:00] O-CE VALmix done
+[2026-10-12T20:35:58-04:00] O-CE VALmixV2 done
+[2026-10-12T20:39:55-04:00] O-CE FFpp_val done
+[2026-10-12T20:40:45-04:00] O-CE UADFV done
+[2026-10-12T20:44:22-04:00] CE arm start: ce_V on GPU 3
+[2026-10-12T20:57:28-04:00] O-CE DeepSpeak-1.1 done
+[2026-10-12T21:16:07-04:00] ce_S16ctl DONE
+[2026-10-12T21:19:50-04:00] O-CE DeepSpeak-2.0 done
+[2026-10-12T21:19:50-04:00] === O CE export done ===
+[2026-10-12T22:03:05-04:00] ce_V DONE
+[2026-10-12T22:03:05-04:00] === CE arm lane done ===
+[2026-10-13T00:26:54-04:00] === scoring the five branches on UADFV DeepSpeak-1.1 DeepSpeak-2.0 ===
+[2026-10-13T00:27:24-04:00] A trunk cached: UADFV
+[2026-10-13T00:33:33-04:00] === chain: App CE head ===
+[2026-10-13T00:34:23-04:00] App CE head DONE
+[2026-10-13T00:34:23-04:00] chain: waiting for the new-set scoring
+[2026-10-13T00:35:05-04:00] A trunk cached: DeepSpeak-1.1
+[2026-10-13T00:43:50-04:00] A trunk cached: DeepSpeak-2.0
+[2026-10-13T01:14:42-04:00] chain: scoring drained after 40 min
+[2026-10-13T01:14:42-04:00] chain: regenerating tables
+[2026-10-13T01:15:12-04:00] === scoring the new sets (UADFV,DeepSpeak-1.1,DeepSpeak-2.0) ===
+[2026-10-13T01:17:19-04:00] === chain done -> reports/branch_fusion/PROPOSAL_TABLES.md ===
+[2026-10-13T01:34:08-04:00] STT exported on the new sets
+[2026-10-13T01:46:02-04:00] === overnight chain start ===
+[2026-10-13T01:52:26-04:00] STT-order exported on the new sets
+[2026-10-13T01:52:31-04:00] === new-set scoring v2 done ===
+[2026-10-13T01:53:05-04:00] overnight: STT lane drained after 7 min
+[2026-10-13T01:53:10-04:00] TD export FAILED
+[2026-10-13T01:55:02-04:00] LFS exported: UADFV
+[2026-10-13T02:26:41-04:00] LFS exported: DeepSpeak-1.1
+[2026-10-13T03:05:22-04:00] LFS exported: DeepSpeak-2.0
+[2026-10-13T03:05:42-04:00] overnight: regenerating tables
 ```

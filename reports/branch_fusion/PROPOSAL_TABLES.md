@@ -1,6 +1,6 @@
 # Proposal results — all tables, every dataset
 
-Regenerated 2026-10-13T01:10:07-04:00. Framework: **App + TD + LFS + STT**, fused with PCR6+-R.
+Regenerated 2026-10-13T03:09:45-04:00. Framework: **App + TD + LFS + STT**, fused with PCR6+-R.
 
 | id | thesis name | what it is |
 |---|---|---|
@@ -8,10 +8,9 @@ Regenerated 2026-10-13T01:10:07-04:00. Framework: **App + TD + LFS + STT**, fuse
 | V | **TD** | Temporal Dynamics — V-JEPA 2 LoRA, 16 frames |
 | O | **LFS** | Latent Facial Structure — CLIP/β-VAE orthogonal residual |
 | S16ctl | **STT** | Spatio-Temporal Texture — PE-Core block 16 + real relative timestamps |
-| P16ctl | **STT-order** | the same with learned slot positions (positional-encoding ablation) |
+| P16ctl | **STT-order** | the same with learned slot positions |
 
-Both STT variants derive from Dr Kutub's PE-Core temporal branch, which reads the final
-attention pool where these read block 16.
+Figures: reports/branch_fusion/figures/uncertainty_riskcoverage.png
 
 ---
 
@@ -198,4 +197,5 @@ column, not a handicap we imposed.
 | FSFM-Adapter | 0.0758 | 0.0855 | 0.2099 | 0.0968 | 0.0678 | 0.0879 | 0.2186 | 0.0423 | 0.0671 | *in progress* | *in progress* | *in progress* | 0.1057 |
 | Effort | 0.0416 | 0.0346 | 0.0120 | 0.0778 | 0.0627 | 0.0394 | 0.0421 | 0.0438 | 0.0037 | *in progress* | *in progress* | *in progress* | 0.0397 |
 | ForAda | 0.0203 | 0.1552 | 0.0262 | 0.0772 | 0.0634 | 0.0593 | 0.0879 | 0.0436 | 0.0038 | *in progress* | *in progress* | *in progress* | 0.0597 |
+
 
