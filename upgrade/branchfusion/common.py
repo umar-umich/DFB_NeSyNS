@@ -88,13 +88,18 @@ for d in (PATCH, SEQ, BRANCH_OUT, OUT, REPORT):
 
 # ----------------------------------------------------------------------------- the fixed ledgers
 #: Section 9's final datasets, in display order. Macro means use exactly these ten and nothing else.
-TEST_SETS = ("CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "DFEval24", "FFIW", "KoDF", "IDForge", "DFDM")
+#: DFEval24 was DROPPED on 2026-10-12 (UMAR). It is in neither of GenD's dataset lists, it is
+#: the corpus every branch does worst on by a wide margin -- 0.69 AUROC where the next worst is
+#: 0.86 -- and carrying it dragged every macro down without being part of the comparison the
+#: thesis is making. The per-dataset tables are the deliverable anyway, so nothing is hidden by
+#: its absence; it simply stops distorting the aggregates.
+TEST_SETS = ("CDFv2", "CDFv3", "DFD", "DFDC", "DFDCP", "FFIW", "KoDF", "IDForge", "DFDM")
 #: The development pool. VALmix + VALmix-v2 carry the v3.1 cells; FF++ val supplies the real anchor
 #: and the per-view EER thresholds.
 DEV_SETS = ("VALmix", "VALmixV2", "FFpp_val")
 #: Section 3: Deepfake-Eval-2024 is the primary difficult-dataset audit, DFDC secondary. Both have
 #: been evaluated before, so no row may describe them as untouched.
-HARD_SETS = ("DFEval24", "DFDC")
+HARD_SETS = ("DFDC",)                      # DFEval24 dropped 2026-10-12
 #: Held-out stress settings per section 9. Never used for any fit.
 STRESS = ("jpeg40", "rs06")
 
