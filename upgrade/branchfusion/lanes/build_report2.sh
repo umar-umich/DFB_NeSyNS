@@ -25,6 +25,12 @@ done
 
 emit_scope () {                       # $1 = scope dir, $2 = heading
   echo "# $2"; echo
+  echo "Risk-coverage figure: \`$R/$1/figures/uncertainty_riskcoverage.png\`"; echo
+  if [ -f "$R/$1/FIGURE_NOTES.md" ]; then
+    # The figure's verdict is COMPUTED from the figure's own AURC data, so it belongs with the
+    # tables rather than only beside the image a reader of this file may never open.
+    sed -e 's/^# /## /' "$R/$1/FIGURE_NOTES.md"; echo
+  fi
   for t in $TABLES; do
     echo "---"; echo
     if [ "$t" = PER_DATASET_CORE5 ]; then
