@@ -19,6 +19,8 @@ by de-normalising, JPEG/resize on 8-bit pixels, re-normalising. Video ids use th
 "<tst_h5_path>::<key>", so features join the detector exports row for row.
 """
 from __future__ import annotations
+
+import os
 import argparse, io, sys, time
 from pathlib import Path
 import h5py, numpy as np, pandas as pd, torch, yaml
@@ -34,9 +36,33 @@ OUT = Path("/data/umar/Repos/DFB_NeSyNS/logs/tbiom/xclip/feats")
 CLIP_MEAN, CLIP_STD = (0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)
 # X-CLIP's own HF processor (VideoMAEImageProcessor) normalises with ImageNet statistics, not OpenAI CLIP's.
 # Out of the study's scope (protocol v3.1): never extracted, to save time.
-OUT_OF_SCOPE = {"IP_LAP", "fake-audio-driven", "adv-real", "adv-fake",
-                "retalking", "wav2lip", "diff2lip", "latentsync", "memo",
-                "ddim", "DiT", "pixart", "RDDM", "sd2.1", "SiT", "StyleGAN2", "StyleGAN3", "StyleGANXL", "VQGAN"}
+#: Generator families excluded from the evaluation, as THREE separate groups, because they are
+#: excluded for three different reasons and UMAR has now relaxed one of them.
+LIPSYNC_AUDIO = {"IP_LAP", "fake-audio-driven", "retalking", "wav2lip", "diff2lip",
+                 "latentsync", "memo"}
+ADVERSARIAL = {"adv-real", "adv-fake"}
+WHOLE_FACE_SYNTH = {"ddim", "DiT", "pixart", "RDDM", "sd2.1", "SiT",
+                    "StyleGAN2", "StyleGAN3", "StyleGANXL", "VQGAN"}
+
+#: `BF_SCOPE` picks which groups stay excluded. The default reproduces protocol v3.1 exactly,
+#: so nothing already measured moves unless the variable is set.
+#:
+#:   v31       all three groups excluded -- the published protocol
+#:   nolip     lip-sync/audio ADMITTED; adversarial and whole-face synthesis still excluded
+#:   nolipadv  lip-sync/audio AND adversarial admitted; whole-face synthesis still excluded
+#:   all       nothing excluded
+#:
+#: Extraction should always run at the WIDEST scope needed, because the filter can be applied
+#: again at scoring time but a frame that was never encoded cannot be recovered without a
+#: second GPU pass. `nolipadv` is therefore the extraction setting even when a table wants
+#: `nolip`, and the two KoDF variants UMAR asked for are then one subset operation apart.
+_SCOPES = {
+    "v31": LIPSYNC_AUDIO | ADVERSARIAL | WHOLE_FACE_SYNTH,
+    "nolip": ADVERSARIAL | WHOLE_FACE_SYNTH,
+    "nolipadv": WHOLE_FACE_SYNTH,
+    "all": set(),
+}
+OUT_OF_SCOPE = _SCOPES[os.environ.get("BF_SCOPE", "v31")]
 XCLIP_ID, CLIP_ID, T = "microsoft/xclip-base-patch16-16-frames", "openai/clip-vit-base-patch16", 16
 
 

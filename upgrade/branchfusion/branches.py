@@ -167,6 +167,35 @@ def _export_opinions(d: Path, dataset: str) -> pd.DataFrame:
     return C.read_opinions(d / f"{dataset}.csv")
 
 
+def in_scope(d):
+    """Which rows survive the evaluation-scope rule, as ONE function used by every caller.
+
+    THE FILTER IS APPLIED AT READ TIME for the stage-23 views, from exports that already hold
+    every video -- so widening the scope costs nothing but this predicate, where the other
+    branches needed their features re-encoded.
+
+    `BF_SCOPE` selects which groups stay excluded, and `v31` is the default so every published
+    number is reproducible unchanged:
+
+        v31       lip-sync/audio, adversarial and whole-face synthesis all excluded
+        nolip     lip-sync/audio ADMITTED
+        nolipadv  lip-sync/audio and adversarial admitted
+        all       nothing excluded
+
+    This lived twice in this file as a hardcoded boolean expression. Two copies of a filter is
+    how one gets widened and the other does not, and the two readers would then disagree about
+    which videos a dataset contains while both reporting a plausible AUROC.
+    """
+    import os
+    scope = os.environ.get("BF_SCOPE", "v31")
+    keep = pd.Series(True, index=d.index)
+    if scope in ("v31",):
+        keep &= ~d.subset.str.contains("IP_LAP") & (d.subset != "fake-audio-driven")
+    if scope in ("v31", "nolip"):
+        keep &= ~d.subset.str.startswith("adv-")
+    return keep
+
+
 def _stage23_opinions(spec: dict, dataset: str) -> pd.DataFrame:
     """`p_artifact`/`u_artifact` from the DISCERN_Ext export, reduced to video level.
 
@@ -178,8 +207,7 @@ def _stage23_opinions(spec: dict, dataset: str) -> pd.DataFrame:
         t = A.dev_tables({dataset: C.S23 / f"{spec['spatial']}_{dataset}.csv"}, [1.0])
     else:
         d = A.load_frames(C.S23 / f"{spec['sel']}_{dataset}.csv")
-        keep = (~d.subset.str.contains("IP_LAP") & (d.subset != "fake-audio-driven")
-                & ~d.subset.str.startswith("adv-"))
+        keep = in_scope(d)
         t = A.video_table(d[keep].reset_index(drop=True), [1.0])
     return pd.DataFrame({"v": [str(x) for x in t.v], "y": t.y.to_numpy(),
                          "p": t[f"p_{view}"].to_numpy(), "u": t[f"u_{view}"].to_numpy()})
@@ -283,8 +311,7 @@ def meta_for(dataset: str) -> pd.DataFrame:
         return pd.DataFrame({"v": v, "source": dataset, "subset": dataset, "vname": v})
     else:
         d = A.load_frames(C.S23 / f"{spec['sel']}_{dataset}.csv")
-        keep = (~d.subset.str.contains("IP_LAP") & (d.subset != "fake-audio-driven")
-                & ~d.subset.str.startswith("adv-"))
+        keep = in_scope(d)
         t = A.video_table(d[keep].reset_index(drop=True), [1.0])
         t["source"] = dataset
     cols = {"v": [str(x) for x in t.v]}
