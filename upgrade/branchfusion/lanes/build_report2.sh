@@ -52,6 +52,15 @@ emit_scope () {                       # $1 = scope dir, $2 = heading
   echo "Only CDFv3 and KoDF change between parts II and III. The other ten test sets contain none"
   echo "of the excluded families, so their cells are identical in both and a difference between"
   echo "the two parts is a difference in which videos were scored, never in the system."; echo
+  echo "## One caveat, and it decides which table to quote where"; echo
+  echo "**The baselines were never run on the admitted videos.** The GenD runs' prediction files"
+  echo "stop at the v3.1 census for CDFv3 and at the no-adversarial census for KoDF, and DiCoME's"
+  echo "CDFv3 export covers 1,918 videos against our 5,418. Widening the scope widens OUR row and"
+  echo "leaves theirs where it was; each Table 1 below names every cell this affects."; echo
+  echo "So: quote **Table 1 from \`PROPOSAL_TABLES_1.md\`** for the comparison against the field,"
+  echo "where every cell is on one census, and quote the tables here for everything about our own"
+  echo "system — the ablation, the fusion operator, calibration, and the two KoDF variants. The"
+  echo "ten unaffected datasets are identical in both files either way."; echo
   echo "---"; echo
   echo "# Part I — what the scope costs"; echo
   sed -e '1,2d' "$R/SCOPE_COMPARISON.md"

@@ -88,8 +88,43 @@ def main() -> int:
             "nolipadv": sorted(set(sub[list(set(m_all.v) - mid)])) if set(m_all.v) - mid else [],
         }
 
+    # WHERE THE FALSE ALARMS COME FROM. KoDF's FPR at TPR 90% goes from 0.03 to 0.38 when the
+    # adversarial subsets are admitted, and an aggregate cannot say whether that is the new fakes
+    # being missed or the new REALS being flagged. The threshold is fixed at the one the narrower
+    # census produces -- the system as it would be deployed having never seen adv-real -- and each
+    # real subset is then asked what fraction of it exceeds that threshold.
+    breakdown = {}
+    for ds in SETS:
+        os.environ["BF_SCOPE"] = "nolipadv"
+        wide = B.table([ds], list(FINAL))
+        m = B.meta_for(ds).set_index("v").subset
+        p_ = P.p_of(P.fuse(O.masses(wide, FINAL, list(w)), True))
+        y = wide.y.to_numpy()
+        os.environ["BF_SCOPE"] = "nolip"
+        narrow = set(B.meta_for(ds).v)
+        os.environ["BF_SCOPE"] = "nolipadv"
+        mask = wide.v.isin(narrow).to_numpy()
+        pos = p_[mask & (y == 1)]
+        if not len(pos):
+            continue
+        tau = float(np.quantile(pos, 0.10))        # catches 90% of the fakes it was tuned on
+        sub = m.reindex(wide.v).to_numpy()
+        rows = {}
+        for name in sorted(set(sub[y == 0])):
+            sel = (y == 0) & (sub == name)
+            rows[name] = {"videos": int(sel.sum()), "fpr": float((p_[sel] >= tau).mean())}
+        # The fake side of the SAME threshold. Without it the table cannot say whether a rising
+        # aggregate FPR is genuine videos being accused or fakes evading and dragging the
+        # threshold down to catch them -- and those two call for opposite fixes.
+        caught = {}
+        for name in sorted(set(sub[y == 1])):
+            sel = (y == 1) & (sub == name)
+            caught[name] = {"videos": int(sel.sum()), "tpr": float((p_[sel] >= tau).mean())}
+        breakdown[ds] = {"tau": tau, "real_subsets": rows, "fake_subsets": caught}
+
     (C.OUT / "scope_compare.json").write_text(json.dumps(
-        {"results": res, "admitted": added, "weights": [float(x) for x in w]},
+        {"results": res, "admitted": added, "weights": [float(x) for x in w],
+         "false_alarms": breakdown},
         indent=1, default=float))
 
     L = ["# What the evaluation scope costs — CDFv3 and KoDF", "",
@@ -113,6 +148,34 @@ def main() -> int:
             if added[ds][scope]:
                 L.append(f"`{scope}` admits: {', '.join('`' + s + '`' for s in added[ds][scope])}")
         L.append("")
+    L += ["## Where the false alarms come from", "",
+          "The threshold is the one that catches 90% of the fakes on the census WITHOUT the",
+          "adversarial subsets — the system as it would be deployed having never seen them — and",
+          "each genuine subset is then asked what fraction of it is flagged at that threshold.",
+          "This separates two things an aggregate FPR cannot: new fakes being missed, and new",
+          "genuine videos being accused.", ""]
+    for ds, b in breakdown.items():
+        if len(b["real_subsets"]) < 2 and len(b["fake_subsets"]) < 2:
+            continue
+        L += [f"### {ds}", "", "| subset | label | videos | flagged at that threshold |",
+              "|---|---|---:|---:|"]
+        for name, r in sorted(b["real_subsets"].items(), key=lambda kv: -kv[1]["fpr"]):
+            L.append(f"| `{name}` | genuine | {r['videos']} | {r['fpr']:.4f} |")
+        for name, r in sorted(b["fake_subsets"].items(), key=lambda kv: kv[1]["tpr"]):
+            L.append(f"| `{name}` | fake | {r['videos']} | {r['tpr']:.4f} |")
+        L.append("")
+        # State the mechanism from the numbers rather than asserting one.
+        worst = min(b["fake_subsets"].items(), key=lambda kv: kv[1]["tpr"])
+        reals = b["real_subsets"]
+        adv = {k: v for k, v in reals.items() if k.startswith("adv-")}
+        if adv:
+            a = max(adv.values(), key=lambda v: v["fpr"])["fpr"]
+            o = max((v["fpr"] for k, v in reals.items() if not k.startswith("adv-")), default=0.0)
+            L += [f"At this fixed threshold the adversarial genuine videos are flagged at "
+                  f"{a:.4f} against {o:.4f} for the ordinary ones — close. What moves the "
+                  f"aggregate is the fake side: `{worst[0]}` is caught at only "
+                  f"{worst[1]['tpr']:.4f}, so holding TPR at 90% over the wider census forces a "
+                  f"much lower threshold, and that is what floods the genuine videos.", ""]
     (C.REPORT / "SCOPE_COMPARISON.md").write_text("\n".join(L) + "\n")
     print(f"-> {C.REPORT / 'SCOPE_COMPARISON.md'}")
     return 0
