@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
 # One consolidated file from the per-table generators. Assembly only -- it recomputes nothing,
 # so running it after a rename or a reword cannot move a number.
+#
+# THE SCOPE PICKS THE OUTPUT DIRECTORY, through the same `C.REPORT` the generators write to, so a
+# wider census cannot overwrite the v3.1 report with numbers over a different set of videos.
 set -u
 cd /data/umar/Repos/DFB_NeSyNS
-R=tbiom/reports/branch_fusion
+PY=/data/umar/miniconda3/envs/discern_ext/bin/python
+R=$($PY -c "import sys; sys.path.insert(0,'upgrade/branchfusion'); import common as C; print(C.REPORT.relative_to(C.ROOT))")
+NOTE=$($PY -c "import sys; sys.path.insert(0,'upgrade/branchfusion'); import common as C; print(C.scope_note())")
 for t in TABLE_A_ABLATION PER_DATASET_CORE5 TABLE_B_FUSION TABLE1_DETECTION TABLE2_CALIBRATION; do
   [ -f "$R/$t.md" ] || { echo "build_report: missing $R/$t.md" >&2; exit 1; }
 done
 {
   echo "# Proposal results — all tables, every dataset"; echo
   echo "Regenerated $(date -Is). Framework: **App + TD + LFS + STT**, fused with PCR6+-R."; echo
+  echo "**Evaluation scope \`${BF_SCOPE:-v31}\`** — $NOTE."
+  echo "The scope changes the video census of CDFv3 and KoDF only; the other ten sets are unaffected."
+  echo "A number here is comparable to one in another scope's report only where the census matches."
+  echo
   echo "| id | thesis name | what it is |"; echo "|---|---|---|"
   echo "| A | **App** | Appearance — PE-Core-L/336, LoRA + LayerNorm, frame mean |"
   echo "| V | **TD** | Temporal Dynamics — V-JEPA 2 LoRA, 16 frames |"

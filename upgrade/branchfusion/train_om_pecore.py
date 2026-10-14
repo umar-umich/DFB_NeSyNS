@@ -336,7 +336,8 @@ def install_opinion_retry() -> None:
     TB.opinions = opinions
 
 
-def export_only(out_dir: Path, workers: int, model_name: str, lora: bool) -> int:
+def export_only(out_dir: Path, workers: int, model_name: str, lora: bool,
+                named_only: bool = False) -> int:
     """Write the exports of a run whose TRAINING finished but whose export stage crashed.
 
     Both reruns got through all their epochs and saved `best.pt`; the P control then hit the
@@ -347,6 +348,12 @@ def export_only(out_dir: Path, workers: int, model_name: str, lora: bool) -> int
 
     The model must be built AFTER `install`, exactly as in training, or `load_trainable` has no
     rebuilt mixer to load into.
+
+    `named_only` is for the case this was NOT written for: `--sets` naming a few corpora to add to
+    a run whose exports are otherwise complete. The robustness corruptions of CDFv2/DFDCP and the
+    shuffled-order control are properties of the RUN, not of the named sets, and recomputing them
+    is most of the wall clock -- 16 DF40 generator sets would have paid for them 16 times over and
+    overwritten 16 identical copies of files already on disk.
     """
     ck_path = out_dir / "best.pt"
     if not ck_path.exists():
@@ -368,12 +375,13 @@ def export_only(out_dir: Path, workers: int, model_name: str, lora: bool) -> int
     for n in TB.TESTS:
         TB.opinions(model, n, dev, workers=workers).to_csv(
             out_dir / "opinions" / f"{n}.csv", index=False)
-    for n in ("CDFv2", "DFDCP"):
-        for c, spec in (("jpeg40", "jpeg:40"), ("rs06", "resize:0.6")):
-            TB.opinions(model, n, dev, spec, workers).to_csv(
-                out_dir / "opinions" / f"{n}_{c}.csv", index=False)
-    (out_dir / "DONE").touch()
-    TB.export_shuffled(model, dev, out_dir, workers)
+    if not named_only:
+        for n in ("CDFv2", "DFDCP"):
+            for c, spec in (("jpeg40", "jpeg:40"), ("rs06", "resize:0.6")):
+                TB.opinions(model, n, dev, spec, workers).to_csv(
+                    out_dir / "opinions" / f"{n}_{c}.csv", index=False)
+        (out_dir / "DONE").touch()
+        TB.export_shuffled(model, dev, out_dir, workers)
     print("export-only: done", flush=True)
     return 0
 
@@ -453,7 +461,7 @@ def main() -> int:
                 f"{arg('--run-suffix', '')}_seed{arg('--seed', '0')}")
         run_dir = Path(a.run_dir) if a.run_dir else OUR_RUNS / name
         return export_only(run_dir, int(arg("--workers", "4")),
-                           model, "--lora" in sys.argv)
+                           model, "--lora" in sys.argv, named_only=bool(a.sets))
     TB.main()
     return 0
 

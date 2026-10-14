@@ -167,6 +167,24 @@ def _export_opinions(d: Path, dataset: str) -> pd.DataFrame:
     return C.read_opinions(d / f"{dataset}.csv")
 
 
+def sel_csv(dataset: str) -> Path:
+    """The stage-23 selection export for one dataset, under EITHER name the campaigns wrote.
+
+    LFS reads `warmgate_sel_<set>.csv`. The DF40 cross-manipulation campaign wrote the SAME
+    checkpoint's export -- `warm_dicome_gate_seed42` epoch 19, through the same `warmgate_<set>.yaml`
+    config family -- under the tag `ours_<set>.csv`, because that run emitted two checkpoints side
+    by side and named them `ours` and `dicome`. So the file exists for all 41 DF40 generator sets;
+    only the prefix differs. Returning the first that exists is what lets LFS and the metadata cover
+    DF40 without copying 41 files under a second name, and the identity of the checkpoint is what
+    makes the two prefixes interchangeable -- a DIFFERENT model's export must never be reached here.
+    """
+    for tag in ("warmgate_sel", "ours"):
+        f = C.S23 / f"{tag}_{dataset}.csv"
+        if f.exists():
+            return f
+    return C.S23 / f"warmgate_sel_{dataset}.csv"          # the name to report as missing
+
+
 def in_scope(d):
     """Which rows survive the evaluation-scope rule, as ONE function used by every caller.
 
@@ -188,11 +206,15 @@ def in_scope(d):
     """
     import os
     scope = os.environ.get("BF_SCOPE", "v31")
-    keep = pd.Series(True, index=d.index)
+    # Either a frame carrying `subset` or the subset Series itself: `sota_table1` has only the
+    # Series, derived from the baseline's own file paths, and giving it a reason to rebuild the
+    # predicate is how the fourth copy of this filter came to exist.
+    sub = d if isinstance(d, pd.Series) else d.subset
+    keep = pd.Series(True, index=sub.index)
     if scope in ("v31",):
-        keep &= ~d.subset.str.contains("IP_LAP") & (d.subset != "fake-audio-driven")
+        keep &= ~sub.str.contains("IP_LAP") & (sub != "fake-audio-driven")
     if scope in ("v31", "nolip"):
-        keep &= ~d.subset.str.startswith("adv-")
+        keep &= ~sub.str.startswith("adv-")
     return keep
 
 
@@ -206,7 +228,7 @@ def _stage23_opinions(spec: dict, dataset: str) -> pd.DataFrame:
     if dataset in C.DEV_SETS:
         t = A.dev_tables({dataset: C.S23 / f"{spec['spatial']}_{dataset}.csv"}, [1.0])
     else:
-        d = A.load_frames(C.S23 / f"{spec['sel']}_{dataset}.csv")
+        d = A.load_frames(sel_csv(dataset))
         keep = in_scope(d)
         t = A.video_table(d[keep].reset_index(drop=True), [1.0])
     return pd.DataFrame({"v": [str(x) for x in t.v], "y": t.y.to_numpy(),
@@ -238,7 +260,7 @@ def available(branch: str, dataset: str) -> bool:
             return (C.TEMPORAL / spec["branch"] / "opinions" / f"{dataset}.csv").exists()
         if spec["kind"] == "stage23":
             f = (C.S23 / f"{spec['spatial']}_{dataset}.csv" if dataset in C.DEV_SETS
-                 else C.S23 / f"{spec['sel']}_{dataset}.csv")
+                 else sel_csv(dataset))
             return f.exists()
         return (spec["dir"] / f"{dataset}.csv").exists()
     except Exception:
@@ -294,7 +316,7 @@ def meta_for(dataset: str) -> pd.DataFrame:
     spec = SOURCES["O"]
     if dataset in C.DEV_SETS:
         t = A.dev_tables({dataset: C.S23 / f"{spec['spatial']}_{dataset}.csv"}, [1.0])
-    elif not (C.S23 / f"{spec['sel']}_{dataset}.csv").exists():
+    elif not sel_csv(dataset).exists():
         # A corpus packed by THIS project has no stage-23 selection file: that export belongs to
         # the earlier pipeline and was never run for it. Rebuild the metadata from whichever
         # branch has already been materialised. `source` is the dataset, which is exactly what the
@@ -310,7 +332,7 @@ def meta_for(dataset: str) -> pd.DataFrame:
         v = [str(x) for x in d.v]
         return pd.DataFrame({"v": v, "source": dataset, "subset": dataset, "vname": v})
     else:
-        d = A.load_frames(C.S23 / f"{spec['sel']}_{dataset}.csv")
+        d = A.load_frames(sel_csv(dataset))
         keep = in_scope(d)
         t = A.video_table(d[keep].reset_index(drop=True), [1.0])
         t["source"] = dataset

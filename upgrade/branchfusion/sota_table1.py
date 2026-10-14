@@ -61,8 +61,13 @@ OUT_MD = C.REPORT / "TABLE1_DETECTION.md"
 
 
 def scope(df, subset):
-    keep = ~subset.str.contains("IP_LAP") & (subset != "fake-audio-driven") & ~subset.str.startswith("adv-")
-    return df[keep.to_numpy()].reset_index(drop=True)
+    """The baseline's own predictions, restricted to the SAME videos our row is scored on.
+
+    This was a fourth hardcoded copy of the v3.1 exclusion. It did not matter while there was one
+    census; the moment `BF_SCOPE` could widen ours, this one stayed narrow and the table compared
+    rows measured on different sets of videos while looking like a like-for-like comparison.
+    """
+    return df[B.in_scope(subset).to_numpy()].reset_index(drop=True)
 
 
 def fpr_at_tpr(y, s, target):
@@ -116,6 +121,7 @@ def main() -> int:
         p = P.p_of(P.fuse(O.masses(t, SUB, list(w)), True))
         y = t.y.to_numpy()
         rows["**Ours (App+TD+LFS+STT, PCR6+-R)**"][ds] = {
+            "n": int(len(y)),
             "auroc": C.auroc(y, p), **{f"fpr{int(k*100)}": fpr_at_tpr(y, p, k) for k in TPR_TARGETS}}
     rows["DiCoME (trained, their repo)"] = {}
     for ds in sets:
@@ -124,6 +130,7 @@ def main() -> int:
             continue
         y, s_ = r
         rows["DiCoME (trained, their repo)"][ds] = {
+            "n": int(len(y)),
             "auroc": C.auroc(y, s_), **{f"fpr{int(k*100)}": fpr_at_tpr(y, s_, k) for k in TPR_TARGETS}}
     for m in MODELS:
         name = PRETTY.get(m, m)
@@ -133,7 +140,7 @@ def main() -> int:
             if r is None:
                 continue
             y, s = r
-            rows[name][ds] = {"auroc": C.auroc(y, s),
+            rows[name][ds] = {"n": int(len(y)), "auroc": C.auroc(y, s),
                               **{f"fpr{int(k*100)}": fpr_at_tpr(y, s, k) for k in TPR_TARGETS}}
 
     L = ["# Table 1 — detection performance", "",
@@ -148,6 +155,23 @@ def main() -> int:
          "every set. The baselines were never run on the three corpora packed on 2026-10-13, and",
          "DiCoME's public checkpoints cover only the five sets its paper reports.", "",
          *NOTE.split("\n"), ""]
+
+    # WHICH VIDEOS EACH CELL IS OVER. A baseline read from another repo's export is not
+    # necessarily scored on our census: DiCoME's CDFv3 run covers 1,918 videos where ours covers
+    # 5,118, and nothing in a table of four-decimal AUROCs says so. Any cell that disagrees with
+    # our row's count for that dataset is listed here rather than being silently compared.
+    ours = rows["**Ours (App+TD+LFS+STT, PCR6+-R)**"]
+    diffs = [(name, ds, r[ds]["n"], ours[ds]["n"])
+             for name, r in rows.items() if r is not ours
+             for ds in sets if ds in r and ds in ours and r[ds].get("n") != ours[ds].get("n")]
+    if diffs:
+        L += ["**Cells not on our video census.** These rows were scored on a different set of",
+              "videos for that dataset, so the difference against our cell is not only a",
+              "difference in method:", ""]
+        L += [f"- {name}, {ds}: {n} videos against our {n0}" for name, ds, n, n0 in diffs]
+        L.append("")
+    else:
+        L += ["Every baseline cell is scored on the same videos as our row.", ""]
     for metric, title in [("auroc", "AUROC (higher is better)"),
                           ("fpr90", "FPR at TPR = 90% (lower is better)"),
                           ("fpr95", "FPR at TPR = 95% (lower is better)")]:

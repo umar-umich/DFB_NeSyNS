@@ -78,16 +78,36 @@ SEQ = ROOT / "logs/branchfusion/seq"                     # S checkpoints and exp
 BRANCH_OUT = ROOT / "logs/branchfusion/branches"         # per-branch video-level opinions
 S23 = ROOT / "logs/tbiom/stage23"                        # the DISCERN_Ext export: legacy_om lives here
 TEMPORAL = ROOT / "logs/tbiom/temporal/branches"         # V and M opinion CSVs
-OUT = ROOT / "analysis/branchfusion"                     # machine-readable results
+#: THE EVALUATION SCOPE, read once. `branches.in_scope` decides what it MEANS; this is only the
+#: name, and it is here because the output paths depend on it.
+SCOPE = os.environ.get("BF_SCOPE", "v31")
+
+#: A non-default scope writes into its OWN subdirectory, for both the machine-readable results and
+#: the markdown. The alternative -- one output tree per path, overwritten per run -- means a wider
+#: census silently replaces the published v3.1 cells with numbers computed over a different set of
+#: videos, and the file gives no sign of which one it holds. Scoping the two output roots in one
+#: place also means no generator needs to know the scope exists.
+_SCOPED = "" if SCOPE == "v31" else f"scope_{SCOPE}"
+OUT = ROOT / "analysis/branchfusion" / _SCOPED           # machine-readable results
 #: THE one place this path is written. Every generator writes through `C.REPORT`; a module
 #: that rebuilds `ROOT / "tbiom/reports/branch_fusion/..."` by hand is how half the reports
 #: ended up somewhere else the last time this moved.
-REPORT = ROOT / "tbiom/reports/branch_fusion"            # audit.md, INTERIM.md, final report
+REPORT = ROOT / "tbiom/reports/branch_fusion" / _SCOPED  # audit.md, INTERIM.md, final report
 H5 = EXT / "eval_adaptation/data/h5"
 SPLITS = EXT / "eval_adaptation/data/splits"
 
 for d in (PATCH, SEQ, BRANCH_OUT, OUT, REPORT):
     d.mkdir(parents=True, exist_ok=True)
+
+
+def scope_note() -> str:
+    """One line naming the census a report was built over, for the report to carry."""
+    return {
+        "v31": "protocol v3.1 — lip-sync/audio-driven, adversarial and whole-face synthesis excluded",
+        "nolip": "lip-sync/audio-driven ADMITTED; adversarial and whole-face synthesis excluded",
+        "nolipadv": "lip-sync/audio-driven and adversarial ADMITTED; whole-face synthesis excluded",
+        "all": "nothing excluded",
+    }.get(SCOPE, SCOPE)
 
 # ----------------------------------------------------------------------------- the fixed ledgers
 #: Section 9's final datasets, in display order. Macro means use exactly these ten and nothing else.
@@ -393,12 +413,28 @@ def align(branch_tables: dict[str, pd.DataFrame], meta: pd.DataFrame | None = No
     Returns a frame with `v`, `y`, and `p_<B>` / `u_<B>` per branch, restricted to the videos every
     branch covers. Raises when the branches disagree about a label, and reports how many videos each
     branch is missing -- a silent inner join is how a mixed system gets reported as a new one.
+
+    WHEN `meta` IS GIVEN IT IS ALSO THE SCOPE. `branches.meta_for` applies `branches.in_scope`, so
+    the videos it carries are exactly the ones `BF_SCOPE` admits; intersecting against it here is
+    what makes the scope ONE decision for every branch and every table. Before this, the scope was
+    enforced only inside the readers that happened to filter -- so once the opinion exports were
+    widened to the full census, a table whose branch list excluded LFS silently gained the extra
+    videos and the published v3.1 cells moved, while `meta` merely tagged those rows `source=""`.
     """
     if not branch_tables:
         raise ValueError("align: no branches given")
     names = list(branch_tables)
     sets = {b: set(t.v) for b, t in branch_tables.items()}
     shared = set.intersection(*sets.values())
+    out_of_scope = 0
+    if meta is not None:
+        in_scope = set(meta.v)
+        out_of_scope = len(shared - in_scope)
+        shared = shared & in_scope
+        if not shared:
+            raise ValueError(f"align{(' ' + tag) if tag else ''}: no video survives the scope; "
+                             f"meta carries {len(in_scope)} and the branches share "
+                             f"{out_of_scope}, with nothing in common -- check the video-id form")
     if not shared:
         raise ValueError(f"align{(' ' + tag) if tag else ''}: branches share no videos: "
                          + ", ".join(f"{b}={len(sets[b])}" for b in names))
@@ -417,6 +453,7 @@ def align(branch_tables: dict[str, pd.DataFrame], meta: pd.DataFrame | None = No
         out[f"u_{b}"] = t.u.to_numpy()
     out.attrs["dropped"] = drops
     out.attrs["branches"] = names
+    out.attrs["out_of_scope"] = out_of_scope
     if meta is not None:
         m = meta.set_index("v")
         keep = [c for c in ("source", "subset", "vname") if c in m.columns]

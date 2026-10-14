@@ -229,14 +229,47 @@ def _degrade(im, spec):
     return sm.resize((w, h), Image.BILINEAR).convert("RGB")
 
 
+def df40_manifests(dataset):
+    """`DF40_<gen>_<half>` -> that generator's split plus the real pool DF40 ships for its SOURCE.
+
+    DF40 is packed as one 152 GB h5 with one split file per generator, so a generator is not a
+    dataset directory the way every other corpus is -- `splits/DF40_blendface_cdf/` does not
+    exist, and the whole-corpus name `DF40` resolves to all 41 generators at once (858k frames,
+    290 GB of decoded crops), which is why a per-generator name is needed at all.
+
+    THE REAL POOL IS PART OF THE SET, and it is the pool for that generator's source: `cdf`
+    generators are scored against `DF40-cdf-real` and `ff` generators against `DF40-ff-real`.
+    That is the pairing `df40_prepare.py` wrote into the configs and the pairing TD's existing
+    DF40 opinions already use, so the branches being added here land on the same video census
+    rather than a differently-composed one. A missing real pool RAISES instead of yielding an
+    all-fake set, whose AUROC is undefined but whose extraction would look like it worked.
+    """
+    d = EXT / "splits" / "DF40"
+    name = dataset[len("DF40_"):]
+    cands = []
+    if "_" in name:                                  # <gen>_<cdf|ff>
+        gen, half = name.rsplit("_", 1)
+        cands.append((d / f"{gen}-{half}.txt", d / f"DF40-{half}-real.txt"))
+    cands.append((d / f"{name}.txt", d / f"{name}-real.txt"))   # deepfacelab, CollabDiff: own real
+    for fake, real in cands:
+        if fake.exists() and real.exists():
+            return [fake, real]
+    raise FileNotFoundError(
+        f"{dataset}: no DF40 split pair under {d}; tried "
+        + ", ".join(f"{f.name}+{r.name}" for f, r in cands))
+
+
 def frames_of(dataset, size, limit=0, seed=0, process=None):
     """Decoded crops plus their keys. Source-paired for training is handled by the caller's sampler."""
-    man = sorted((EXT / "splits" / dataset).glob("*.txt"))
+    if dataset.startswith("DF40_"):
+        man, h5 = df40_manifests(dataset), EXT / "h5" / "DF40.h5"
+    else:
+        man, h5 = sorted((EXT / "splits" / dataset).glob("*.txt")), EXT / "h5" / f"{dataset}.h5"
     lines = [l.strip() for mm in man for l in mm.read_text().splitlines() if l.strip()]
     if limit and len(lines) > limit:
         lines = list(np.random.default_rng(seed).choice(np.array(lines, dtype=object), limit, replace=False))
     X, K = [], []
-    with h5py.File(EXT / "h5" / f"{dataset}.h5", "r") as f:
+    with h5py.File(h5, "r") as f:
         for k in lines:
             if k not in f:
                 continue
