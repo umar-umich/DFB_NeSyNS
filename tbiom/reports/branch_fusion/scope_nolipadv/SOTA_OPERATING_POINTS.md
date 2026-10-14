@@ -29,25 +29,25 @@ prediction CSVs. Blank cells are sets they never ran.
 | | DiCoME (trained) | 0.8656 | 0.3826 | 2.3 |
 | | DiCoME (repro) | 0.7028 | 0.1130 | 6.2 |
 | **FFIW** | **ours (PCR6+-R, 5 branches)** | 0.8986 | 0.1026 | 8.8 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.5568 | nan | inf |
 | | DiCoME (repro) | — | — | — |
 | **KoDF** | **ours (PCR6+-R, 5 branches)** | 0.7879 | 0.0409 | 19.2 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.7133 | 0.3308 | 2.2 |
 | | DiCoME (repro) | — | — | — |
 | **IDForge** | **ours (PCR6+-R, 5 branches)** | 0.9809 | 0.0425 | 23.1 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.9448 | 0.1617 | 5.8 |
 | | DiCoME (repro) | — | — | — |
 | **DFDM** | **ours (PCR6+-R, 5 branches)** | 0.9913 | 0.1517 | 6.5 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.9889 | 0.1180 | 8.4 |
 | | DiCoME (repro) | — | — | — |
 | **UADFV** | **ours (PCR6+-R, 5 branches)** | 0.9796 | 0.2449 | 4.0 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.9592 | 0.0816 | 11.8 |
 | | DiCoME (repro) | — | — | — |
 | **DeepSpeak-1.1** | **ours (PCR6+-R, 5 branches)** | 0.9359 | 0.2528 | 3.7 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.8571 | 0.3312 | 2.6 |
 | | DiCoME (repro) | — | — | — |
 | **DeepSpeak-2.0** | **ours (PCR6+-R, 5 branches)** | 0.9323 | 0.2764 | 3.4 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.7673 | 0.4138 | 1.9 |
 | | DiCoME (repro) | — | — | — |
 
 ## Target false-alarm rate 5% (set on FF++, applied unchanged)
@@ -70,24 +70,24 @@ prediction CSVs. Blank cells are sets they never ran.
 | | DiCoME (trained) | 0.9127 | 0.5087 | 1.8 |
 | | DiCoME (repro) | 0.8962 | 0.3696 | 2.4 |
 | **FFIW** | **ours (PCR6+-R, 5 branches)** | 0.9545 | 0.1735 | 5.5 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.7810 | nan | inf |
 | | DiCoME (repro) | — | — | — |
 | **KoDF** | **ours (PCR6+-R, 5 branches)** | 0.8158 | 0.0856 | 9.5 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.7818 | 0.4669 | 1.7 |
 | | DiCoME (repro) | — | — | — |
 | **IDForge** | **ours (PCR6+-R, 5 branches)** | 0.9926 | 0.1309 | 7.6 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.9786 | 0.2799 | 3.5 |
 | | DiCoME (repro) | — | — | — |
 | **DFDM** | **ours (PCR6+-R, 5 branches)** | 0.9983 | 0.4551 | 2.2 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.9924 | 0.2472 | 4.0 |
 | | DiCoME (repro) | — | — | — |
 | **UADFV** | **ours (PCR6+-R, 5 branches)** | 1.0000 | 0.4082 | 2.4 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.9592 | 0.3265 | 2.9 |
 | | DiCoME (repro) | — | — | — |
 | **DeepSpeak-1.1** | **ours (PCR6+-R, 5 branches)** | 0.9665 | 0.3623 | 2.7 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.9125 | 0.4823 | 1.9 |
 | | DiCoME (repro) | — | — | — |
 | **DeepSpeak-2.0** | **ours (PCR6+-R, 5 branches)** | 0.9619 | 0.4332 | 2.2 |
-| | DiCoME (trained) | — | — | — |
+| | DiCoME (trained) | 0.8364 | 0.5362 | 1.6 |
 | | DiCoME (repro) | — | — | — |
 

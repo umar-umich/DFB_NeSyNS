@@ -1,6 +1,6 @@
 # Proposal results — all tables, every dataset
 
-Regenerated 2026-10-14T15:16:27-04:00. Framework: **App + TD + LFS + STT**, fused with PCR6+-R.
+Regenerated 2026-10-14T16:44:04-04:00. Framework: **App + TD + LFS + STT**, fused with PCR6+-R.
 
 **Evaluation scope `nolipadv`** — lip-sync/audio-driven and adversarial ADMITTED; whole-face synthesis excluded.
 The scope changes the video census of CDFv3 and KoDF only; the other ten sets are unaffected.
@@ -42,7 +42,6 @@ Ten groups, every dataset, fused with **PCR6+-R**. No baseline rows: this table 
 what each branch contributes, and a SOTA column here would invite two questions to be
 read off one row. The comparison against the field is Table 1.
 
-`*in progress*` means the cell is not computable yet, not that it is zero or not applicable.
 Every branch group is computed on all 12 test sets.
 
 ## AUROC (higher is better)
@@ -169,20 +168,18 @@ by mean-of-logits and NOT by DS or PCR6+: a CE branch has no Dirichlet, so its
 uncertainty is a decision margin, and combining margins as belief masses would invent
 evidence that was never measured. Mean-of-logits is what DiCoME's row (D) does.
 
-`*in progress*` in the CE row is coverage, not failure: the CE counterparts of the four
-branches were trained before the three corpora packed on 2026-10-13 and have not been
-scored on them. The other rows cover every set.
-
 **Mean appears twice on purpose.** F1 is a uniform mean and reads no reliability at all,
 so comparing it against two fitted operators would confound the decision rule with the
 weight fit. The second mean row is the same average on the fitted simplex, which is the
 matched comparator for DS-C and PCR6+-R.
 
+The cross-entropy row is on the same videos as every other row here.
+
 ## AUROC (higher is better)
 
 | fusion rule | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Cross-entropy (mean of logits) | 0.9465 | 0.9397 | 0.9570 | 0.8377 | 0.8922 | 0.9671 | 0.9401 | 0.9907 | 0.9886 | *in progress* | *in progress* | *in progress* | 0.9400 |
+| Cross-entropy (mean of logits) | 0.9465 | 0.9405 | 0.9570 | 0.8377 | 0.8922 | 0.9671 | 0.9204 | 0.9907 | 0.9886 | 0.9838 | 0.9303 | 0.9014 | 0.9380 |
 | Mean (unweighted) | 0.9805 | 0.9589 | 0.9552 | 0.8583 | 0.9144 | 0.9739 | 0.9208 | 0.9951 | 0.9957 | 0.9850 | 0.9308 | 0.9158 | 0.9487 |
 | Mean (fitted weights) | 0.9795 | 0.9601 | 0.9552 | 0.8602 | 0.9156 | 0.9747 | 0.9156 | 0.9957 | 0.9947 | 0.9863 | 0.9312 | 0.9147 | 0.9486 |
 | DS-C | 0.9795 | 0.9690 | 0.9512 | 0.8578 | 0.9116 | 0.9748 | 0.9225 | 0.9966 | 0.9970 | 0.9867 | 0.9321 | 0.9222 | 0.9501 |
@@ -192,7 +189,7 @@ matched comparator for DS-C and PCR6+-R.
 
 | fusion rule | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Cross-entropy (mean of logits) | 0.1011 | 0.1966 | 0.1460 | 0.5136 | 0.3304 | 0.0778 | 0.1216 | 0.0295 | 0.0225 | *in progress* | *in progress* | *in progress* | 0.1710 |
+| Cross-entropy (mean of logits) | 0.1011 | 0.1854 | 0.1460 | 0.5136 | 0.3304 | 0.0778 | 0.2543 | 0.0295 | 0.0225 | 0.0204 | 0.1942 | 0.3097 | 0.1821 |
 | Mean (unweighted) | 0.0506 | 0.1404 | 0.1543 | 0.4086 | 0.2826 | 0.0657 | 0.2233 | 0.0117 | 0.0000 | 0.0204 | 0.1603 | 0.2405 | 0.1465 |
 | Mean (fitted weights) | 0.0506 | 0.1124 | 0.1570 | 0.4039 | 0.2696 | 0.0646 | 0.2903 | 0.0094 | 0.0000 | 0.0204 | 0.1596 | 0.2480 | 0.1488 |
 | DS-C | 0.0674 | 0.0899 | 0.1928 | 0.3991 | 0.2826 | 0.0715 | 0.2469 | 0.0054 | 0.0000 | 0.0204 | 0.1702 | 0.2163 | 0.1469 |
@@ -229,76 +226,58 @@ matched columns are the comparable figures:
 Rank methods on a matched column and say which one. The per-row mean belongs in the
 per-dataset discussion, not in a ranking.
 
-**Cells not on our video census.** These rows were scored on a different set of
-videos for that dataset, so the difference against our cell is not only a
-difference in method:
-
-- DiCoME (trained, their repo), CDFv3: 1918 videos against our 5418
-- GenD-CLIP, CDFv3: 5118 videos against our 5418
-- GenD-CLIP, KoDF: 1509 videos against our 2239
-- GenD-PE, CDFv3: 5118 videos against our 5418
-- GenD-PE, KoDF: 1509 videos against our 2239
-- GenD-DINO, CDFv3: 5118 videos against our 5418
-- GenD-DINO, KoDF: 1509 videos against our 2239
-- FSFM, CDFv3: 5118 videos against our 5418
-- FSFM, KoDF: 1509 videos against our 2239
-- FSFM-Adapter, CDFv3: 5118 videos against our 5418
-- FSFM-Adapter, KoDF: 1509 videos against our 2239
-- Effort, CDFv3: 5118 videos against our 5418
-- Effort, KoDF: 1509 videos against our 2239
-- ForAda, CDFv3: 5118 videos against our 5418
-- ForAda, KoDF: 1509 videos against our 2239
+Every baseline cell is scored on the same videos as our row.
 
 ## AUROC (higher is better)
 
-`mean (all)`: 5 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP).  
-`mean (wide)`: 9 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM).
+`mean (all)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).  
+`mean (wide)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).
 
 | method | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean | mean (all) | mean (wide) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.9788 | 0.9614 | 0.9569 | 0.8622 | 0.9112 | 0.9743 | 0.9112 | 0.9961 | 0.9966 | 0.9875 | 0.9277 | 0.9144 | 0.9482 | 0.9341 | 0.9499 |
-| DiCoME (trained, their repo) | 0.9644 | 0.9516 | 0.9419 | 0.8825 | 0.8576 | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | 0.9196 | 0.9196 | *in progress* |
-| GenD-CLIP | 0.9534 | 0.8458 | 0.9350 | 0.8708 | 0.9162 | 0.9278 | 0.8439 | 0.9839 | 0.9959 | *in progress* | *in progress* | *in progress* | 0.9192 | 0.9042 | 0.9192 |
-| GenD-PE | 0.9548 | 0.8952 | 0.9203 | 0.8158 | 0.8860 | 0.9330 | 0.8344 | 0.9808 | 0.9815 | *in progress* | *in progress* | *in progress* | 0.9113 | 0.8944 | 0.9113 |
-| GenD-DINO | 0.9177 | 0.8172 | 0.9165 | 0.8470 | 0.9114 | 0.9450 | 0.9057 | 0.9860 | 0.9903 | *in progress* | *in progress* | *in progress* | 0.9152 | 0.8820 | 0.9152 |
-| FSFM | 0.9554 | 0.8751 | 0.9219 | 0.8844 | 0.9061 | 0.9168 | 0.8578 | 0.9566 | 0.9790 | *in progress* | *in progress* | *in progress* | 0.9170 | 0.9086 | 0.9170 |
-| FSFM-Adapter | 0.8689 | 0.8381 | 0.7516 | 0.8318 | 0.8486 | 0.8565 | 0.7413 | 0.9077 | 0.8452 | *in progress* | *in progress* | *in progress* | 0.8322 | 0.8278 | 0.8322 |
-| Effort | 0.9312 | 0.7975 | 0.9276 | 0.8536 | 0.8617 | 0.9252 | 0.8815 | 0.9583 | 0.9729 | *in progress* | *in progress* | *in progress* | 0.9011 | 0.8743 | 0.9011 |
-| ForAda | 0.9544 | 0.7494 | 0.9395 | 0.8726 | 0.9289 | 0.9055 | 0.8823 | 0.9101 | 0.9713 | *in progress* | *in progress* | *in progress* | 0.9015 | 0.8890 | 0.9015 |
+| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.9788 | 0.9614 | 0.9569 | 0.8622 | 0.9112 | 0.9743 | 0.9112 | 0.9961 | 0.9966 | 0.9875 | 0.9277 | 0.9144 | 0.9482 | 0.9482 | 0.9482 |
+| DiCoME (trained, their repo) | 0.9644 | 0.8435 | 0.9419 | 0.8825 | 0.8576 | 0.9511 | 0.7835 | 0.9701 | 0.9928 | 0.9842 | 0.8491 | 0.7630 | 0.8986 | 0.8986 | 0.8986 |
+| GenD-CLIP | 0.9534 | 0.8484 | 0.9350 | 0.8708 | 0.9162 | 0.9278 | 0.8011 | 0.9839 | 0.9959 | 0.9921 | 0.8580 | 0.7445 | 0.9022 | 0.9022 | 0.9022 |
+| GenD-PE | 0.9548 | 0.8953 | 0.9203 | 0.8158 | 0.8860 | 0.9330 | 0.8031 | 0.9808 | 0.9815 | 0.9758 | 0.8613 | 0.7865 | 0.8995 | 0.8995 | 0.8995 |
+| GenD-DINO | 0.9177 | 0.8218 | 0.9165 | 0.8470 | 0.9114 | 0.9450 | 0.8675 | 0.9860 | 0.9903 | 0.9871 | 0.8403 | 0.7701 | 0.9001 | 0.9001 | 0.9001 |
+| FSFM | 0.9554 | 0.8744 | 0.9219 | 0.8844 | 0.9061 | 0.9168 | 0.7731 | 0.9566 | 0.9790 | 0.9754 | 0.8601 | 0.7452 | 0.8957 | 0.8957 | 0.8957 |
+| FSFM-Adapter | 0.8689 | 0.8342 | 0.7516 | 0.8318 | 0.8486 | 0.8565 | 0.7245 | 0.9077 | 0.8452 | 0.9933 | 0.7741 | 0.6550 | 0.8243 | 0.8243 | 0.8243 |
+| Effort | 0.9312 | 0.7915 | 0.9276 | 0.8536 | 0.8617 | 0.9252 | 0.8180 | 0.9583 | 0.9729 | 0.9742 | 0.8396 | 0.6622 | 0.8763 | 0.8763 | 0.8763 |
+| ForAda | 0.9544 | 0.7505 | 0.9395 | 0.8726 | 0.9289 | 0.9055 | 0.8133 | 0.9101 | 0.9713 | 0.9942 | 0.7597 | 0.6947 | 0.8746 | 0.8746 | 0.8746 |
 
 ## FPR at TPR = 90% (lower is better)
 
-`mean (all)`: 5 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP).  
-`mean (wide)`: 9 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM).
+`mean (all)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).  
+`mean (wide)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).
 
 | method | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean | mean (all) | mean (wide) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.0674 | 0.1124 | 0.1570 | 0.3948 | 0.2696 | 0.0646 | 0.3834 | 0.0067 | 0.0056 | 0.0204 | 0.1645 | 0.2222 | 0.1557 | 0.2002 | 0.1624 |
-| DiCoME (trained, their repo) | 0.1011 | 0.1292 | 0.1901 | 0.3970 | 0.4783 | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | 0.2591 | 0.2591 | *in progress* |
-| GenD-CLIP | 0.1685 | 0.5000 | 0.2507 | 0.4082 | 0.2217 | 0.2196 | 0.6377 | 0.0305 | 0.0056 | *in progress* | *in progress* | *in progress* | 0.2714 | 0.3098 | 0.2714 |
-| GenD-PE | 0.1404 | 0.3539 | 0.3003 | 0.5296 | 0.3348 | 0.1712 | 0.7122 | 0.0495 | 0.0449 | *in progress* | *in progress* | *in progress* | 0.2930 | 0.3318 | 0.2930 |
-| GenD-DINO | 0.2135 | 0.6348 | 0.3416 | 0.4985 | 0.2174 | 0.1481 | 0.4342 | 0.0171 | 0.0225 | *in progress* | *in progress* | *in progress* | 0.2809 | 0.3812 | 0.2809 |
-| FSFM | 0.1236 | 0.4494 | 0.3251 | 0.3434 | 0.3348 | 0.2565 | 0.5682 | 0.1570 | 0.0449 | *in progress* | *in progress* | *in progress* | 0.2892 | 0.3153 | 0.2892 |
-| FSFM-Adapter | 0.3427 | 0.4775 | 0.6556 | 0.5240 | 0.4391 | 0.4259 | 0.7767 | 0.3190 | 0.4326 | *in progress* | *in progress* | *in progress* | 0.4881 | 0.4878 | 0.4881 |
-| Effort | 0.2640 | 0.6236 | 0.2507 | 0.5132 | 0.4348 | 0.2582 | 0.5211 | 0.1336 | 0.0562 | *in progress* | *in progress* | *in progress* | 0.3395 | 0.4173 | 0.3395 |
-| ForAda | 0.1236 | 0.6854 | 0.2259 | 0.4095 | 0.2087 | 0.2859 | 0.4715 | 0.2929 | 0.0562 | *in progress* | *in progress* | *in progress* | 0.3066 | 0.3306 | 0.3066 |
+| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.0674 | 0.1124 | 0.1570 | 0.3948 | 0.2696 | 0.0646 | 0.3834 | 0.0067 | 0.0056 | 0.0204 | 0.1645 | 0.2222 | 0.1557 | 0.1557 | 0.1557 |
+| DiCoME (trained, their repo) | 0.1011 | 0.5955 | 0.1901 | 0.3970 | 0.4783 | 0.1573 | 0.7457 | 0.0947 | 0.0112 | 0.0000 | 0.4449 | 0.6973 | 0.3261 | 0.3261 | 0.3261 |
+| GenD-CLIP | 0.1685 | 0.4775 | 0.2507 | 0.4082 | 0.2217 | 0.2196 | 0.7084 | 0.0305 | 0.0056 | 0.0000 | 0.4541 | 0.7558 | 0.3084 | 0.3084 | 0.3084 |
+| GenD-PE | 0.1404 | 0.3539 | 0.3003 | 0.5296 | 0.3348 | 0.1712 | 0.7022 | 0.0495 | 0.0449 | 0.0612 | 0.4011 | 0.6634 | 0.3127 | 0.3127 | 0.3127 |
+| GenD-DINO | 0.2135 | 0.5955 | 0.3416 | 0.4985 | 0.2174 | 0.1481 | 0.5471 | 0.0171 | 0.0225 | 0.0204 | 0.4781 | 0.6715 | 0.3143 | 0.3143 | 0.3143 |
+| FSFM | 0.1236 | 0.4494 | 0.3251 | 0.3434 | 0.3348 | 0.2565 | 0.7047 | 0.1570 | 0.0449 | 0.0204 | 0.4845 | 0.6575 | 0.3252 | 0.3252 | 0.3252 |
+| FSFM-Adapter | 0.3427 | 0.4831 | 0.6556 | 0.5240 | 0.4391 | 0.4259 | 0.7978 | 0.3190 | 0.4326 | 0.0204 | 0.6250 | 0.7719 | 0.4864 | 0.4864 | 0.4864 |
+| Effort | 0.2640 | 0.6292 | 0.2507 | 0.5132 | 0.4348 | 0.2582 | 0.6675 | 0.1336 | 0.0562 | 0.0000 | 0.5395 | 0.7950 | 0.3785 | 0.3785 | 0.3785 |
+| ForAda | 0.1236 | 0.6854 | 0.2259 | 0.4095 | 0.2087 | 0.2859 | 0.6216 | 0.2929 | 0.0562 | 0.0000 | 0.7274 | 0.8159 | 0.3711 | 0.3711 | 0.3711 |
 
 ## FPR at TPR = 95% (lower is better)
 
-`mean (all)`: 5 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP).  
-`mean (wide)`: 9 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM).
+`mean (all)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).  
+`mean (wide)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).
 
 | method | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean | mean (all) | mean (wide) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.1067 | 0.2303 | 0.2397 | 0.5892 | 0.3609 | 0.1487 | 0.6576 | 0.0144 | 0.0056 | 0.0204 | 0.2712 | 0.3548 | 0.2500 | 0.3054 | 0.2615 |
-| DiCoME (trained, their repo) | 0.1629 | 0.2584 | 0.4353 | 0.5944 | 0.7130 | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | 0.4328 | 0.4328 | *in progress* |
-| GenD-CLIP | 0.2809 | 0.6966 | 0.3747 | 0.5646 | 0.3478 | 0.3746 | 0.8213 | 0.0870 | 0.0112 | *in progress* | *in progress* | *in progress* | 0.3954 | 0.4529 | 0.3954 |
-| GenD-PE | 0.1910 | 0.6011 | 0.5289 | 0.7158 | 0.4522 | 0.3078 | 0.8536 | 0.1058 | 0.1011 | *in progress* | *in progress* | *in progress* | 0.4286 | 0.4978 | 0.4286 |
-| GenD-DINO | 0.3483 | 0.7865 | 0.5234 | 0.6873 | 0.3522 | 0.2565 | 0.5980 | 0.0807 | 0.0225 | *in progress* | *in progress* | *in progress* | 0.4061 | 0.5395 | 0.4061 |
-| FSFM | 0.1629 | 0.6180 | 0.4683 | 0.5123 | 0.4348 | 0.4081 | 0.7593 | 0.2266 | 0.1067 | *in progress* | *in progress* | *in progress* | 0.4108 | 0.4393 | 0.4108 |
-| FSFM-Adapter | 0.4775 | 0.6404 | 0.7741 | 0.6540 | 0.5435 | 0.5458 | 0.8834 | 0.4372 | 0.5281 | *in progress* | *in progress* | *in progress* | 0.6093 | 0.6179 | 0.6093 |
-| Effort | 0.3596 | 0.7978 | 0.5041 | 0.7201 | 0.5217 | 0.4063 | 0.7295 | 0.2417 | 0.1461 | *in progress* | *in progress* | *in progress* | 0.4919 | 0.5807 | 0.4919 |
-| ForAda | 0.2360 | 0.8090 | 0.3857 | 0.5862 | 0.3217 | 0.4323 | 0.7146 | 0.4054 | 0.1517 | *in progress* | *in progress* | *in progress* | 0.4492 | 0.4677 | 0.4492 |
+| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.1067 | 0.2303 | 0.2397 | 0.5892 | 0.3609 | 0.1487 | 0.6576 | 0.0144 | 0.0056 | 0.0204 | 0.2712 | 0.3548 | 0.2500 | 0.2500 | 0.2500 |
+| DiCoME (trained, their repo) | 0.1629 | 0.8202 | 0.4353 | 0.5944 | 0.7130 | 0.2761 | 0.8697 | 0.1758 | 0.0225 | 0.0000 | 0.6970 | 0.8631 | 0.4692 | 0.4692 | 0.4692 |
+| GenD-CLIP | 0.2809 | 0.6798 | 0.3747 | 0.5646 | 0.3478 | 0.3746 | 0.8486 | 0.0870 | 0.0112 | 0.0000 | 0.6893 | 0.8900 | 0.4290 | 0.4290 | 0.4290 |
+| GenD-PE | 0.1910 | 0.5955 | 0.5289 | 0.7158 | 0.4522 | 0.3078 | 0.8300 | 0.1058 | 0.1011 | 0.1633 | 0.5360 | 0.8019 | 0.4441 | 0.4441 | 0.4441 |
+| GenD-DINO | 0.3483 | 0.7865 | 0.5234 | 0.6873 | 0.3522 | 0.2565 | 0.7246 | 0.0807 | 0.0225 | 0.0408 | 0.6730 | 0.7837 | 0.4400 | 0.4400 | 0.4400 |
+| FSFM | 0.1629 | 0.6067 | 0.4683 | 0.5123 | 0.4348 | 0.4081 | 0.8350 | 0.2266 | 0.1067 | 0.0612 | 0.6179 | 0.8164 | 0.4381 | 0.4381 | 0.4381 |
+| FSFM-Adapter | 0.4775 | 0.6517 | 0.7741 | 0.6540 | 0.5435 | 0.5458 | 0.8908 | 0.4372 | 0.5281 | 0.0612 | 0.7938 | 0.8583 | 0.6013 | 0.6013 | 0.6013 |
+| Effort | 0.3596 | 0.7978 | 0.5041 | 0.7201 | 0.5217 | 0.4063 | 0.8164 | 0.2417 | 0.1461 | 0.0816 | 0.7415 | 0.8959 | 0.5194 | 0.5194 | 0.5194 |
+| ForAda | 0.2360 | 0.7921 | 0.3857 | 0.5862 | 0.3217 | 0.4323 | 0.7928 | 0.4054 | 0.1517 | 0.0408 | 0.8651 | 0.9034 | 0.4928 | 0.4928 | 0.4928 |
 
 
 ---
@@ -337,53 +316,53 @@ per-dataset discussion, not in a ranking.
 
 ## ECE-15 (lower is better)
 
-`mean (all)`: 5 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP).  
-`mean (wide)`: 9 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM).
+`mean (all)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).  
+`mean (wide)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).
 
 | method | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean | mean (all) | mean (wide) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.1194 | 0.1732 | 0.1940 | 0.1296 | 0.1796 | 0.0623 | 0.1825 | 0.0505 | 0.0281 | 0.0988 | 0.0990 | 0.0933 | 0.1175 | 0.1592 | 0.1244 |
-| DiCoME (trained, their repo) | 0.1119 | 0.1520 | 0.1191 | 0.0916 | 0.0480 | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | 0.1045 | 0.1045 | *in progress* |
-| GenD-CLIP | 0.1180 | 0.1949 | 0.1162 | 0.0588 | 0.0641 | 0.0759 | 0.0823 | 0.1251 | 0.0597 | *in progress* | *in progress* | *in progress* | 0.0994 | 0.1104 | 0.0994 |
-| GenD-PE | 0.0654 | 0.1986 | 0.1929 | 0.1095 | 0.0979 | 0.0732 | 0.2283 | 0.0681 | 0.0385 | *in progress* | *in progress* | *in progress* | 0.1191 | 0.1329 | 0.1191 |
-| GenD-DINO | 0.0849 | 0.2693 | 0.2266 | 0.0681 | 0.0846 | 0.1054 | 0.2176 | 0.1150 | 0.0609 | *in progress* | *in progress* | *in progress* | 0.1369 | 0.1467 | 0.1369 |
-| FSFM | 0.1373 | 0.2876 | 0.2697 | 0.0850 | 0.1334 | 0.1498 | 0.2652 | 0.1159 | 0.0984 | *in progress* | *in progress* | *in progress* | 0.1714 | 0.1826 | 0.1714 |
-| FSFM-Adapter | 0.2054 | 0.3750 | 0.3975 | 0.1142 | 0.1470 | 0.1433 | 0.2761 | 0.1585 | 0.3383 | *in progress* | *in progress* | *in progress* | 0.2395 | 0.2478 | 0.2395 |
-| Effort | 0.1242 | 0.2435 | 0.0939 | 0.0870 | 0.1168 | 0.1400 | 0.0564 | 0.1826 | 0.0677 | *in progress* | *in progress* | *in progress* | 0.1236 | 0.1331 | 0.1236 |
-| ForAda | 0.0969 | 0.3643 | 0.1586 | 0.0944 | 0.1883 | 0.0848 | 0.2617 | 0.0658 | 0.0607 | *in progress* | *in progress* | *in progress* | 0.1528 | 0.1805 | 0.1528 |
+| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.1194 | 0.1732 | 0.1940 | 0.1296 | 0.1796 | 0.0623 | 0.1825 | 0.0505 | 0.0281 | 0.0988 | 0.0990 | 0.0933 | 0.1175 | 0.1175 | 0.1175 |
+| DiCoME (trained, their repo) | 0.1119 | 0.3197 | 0.1191 | 0.0916 | 0.0480 | 0.0748 | 0.1163 | 0.0944 | 0.0450 | 0.1235 | 0.2111 | 0.2634 | 0.1349 | 0.1349 | 0.1349 |
+| GenD-CLIP | 0.1180 | 0.1943 | 0.1162 | 0.0588 | 0.0641 | 0.0759 | 0.0840 | 0.1251 | 0.0597 | 0.1867 | 0.2112 | 0.2316 | 0.1271 | 0.1271 | 0.1271 |
+| GenD-PE | 0.0654 | 0.2008 | 0.1929 | 0.1095 | 0.0979 | 0.0732 | 0.2525 | 0.0681 | 0.0385 | 0.1893 | 0.1399 | 0.1095 | 0.1281 | 0.1281 | 0.1281 |
+| GenD-DINO | 0.0849 | 0.2662 | 0.2266 | 0.0681 | 0.0846 | 0.1054 | 0.2117 | 0.1150 | 0.0609 | 0.1407 | 0.1344 | 0.1387 | 0.1364 | 0.1364 | 0.1364 |
+| FSFM | 0.1373 | 0.2912 | 0.2697 | 0.0850 | 0.1334 | 0.1498 | 0.2741 | 0.1159 | 0.0984 | 0.1627 | 0.0700 | 0.0585 | 0.1538 | 0.1538 | 0.1538 |
+| FSFM-Adapter | 0.2054 | 0.3797 | 0.3975 | 0.1142 | 0.1470 | 0.1433 | 0.2682 | 0.1585 | 0.3383 | 0.2664 | 0.1589 | 0.1316 | 0.2257 | 0.2257 | 0.2257 |
+| Effort | 0.1242 | 0.2506 | 0.0939 | 0.0870 | 0.1168 | 0.1400 | 0.0629 | 0.1826 | 0.0677 | 0.2045 | 0.2760 | 0.3393 | 0.1621 | 0.1621 | 0.1621 |
+| ForAda | 0.0969 | 0.3657 | 0.1586 | 0.0944 | 0.1883 | 0.0848 | 0.2258 | 0.0658 | 0.0607 | 0.1403 | 0.0505 | 0.1013 | 0.1361 | 0.1361 | 0.1361 |
 
 ## Brier (lower is better)
 
-`mean (all)`: 5 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP).  
-`mean (wide)`: 9 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM).
+`mean (all)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).  
+`mean (wide)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).
 
 | method | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean | mean (all) | mean (wide) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.0730 | 0.0889 | 0.1406 | 0.1688 | 0.1626 | 0.0711 | 0.1584 | 0.0257 | 0.0150 | 0.0562 | 0.1162 | 0.1166 | 0.0994 | 0.1268 | 0.1005 |
-| DiCoME (trained, their repo) | 0.0829 | 0.0838 | 0.0828 | 0.1498 | 0.1477 | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | 0.1094 | 0.1094 | *in progress* |
-| GenD-CLIP | 0.1070 | 0.1002 | 0.0815 | 0.1503 | 0.1140 | 0.1151 | 0.1567 | 0.0722 | 0.0258 | *in progress* | *in progress* | *in progress* | 0.1025 | 0.1106 | 0.1025 |
-| GenD-PE | 0.0795 | 0.1183 | 0.1377 | 0.1878 | 0.1421 | 0.1115 | 0.2347 | 0.0637 | 0.0319 | *in progress* | *in progress* | *in progress* | 0.1230 | 0.1331 | 0.1230 |
-| GenD-DINO | 0.1101 | 0.1566 | 0.1546 | 0.1636 | 0.1155 | 0.1117 | 0.1877 | 0.0627 | 0.0223 | *in progress* | *in progress* | *in progress* | 0.1205 | 0.1401 | 0.1205 |
-| FSFM | 0.0914 | 0.1465 | 0.1539 | 0.1476 | 0.1394 | 0.1490 | 0.2343 | 0.0995 | 0.0399 | *in progress* | *in progress* | *in progress* | 0.1335 | 0.1358 | 0.1335 |
-| FSFM-Adapter | 0.1817 | 0.1819 | 0.2551 | 0.1830 | 0.1721 | 0.1813 | 0.2534 | 0.1548 | 0.1801 | *in progress* | *in progress* | *in progress* | 0.1937 | 0.1948 | 0.1937 |
-| Effort | 0.1234 | 0.1215 | 0.0763 | 0.1615 | 0.1567 | 0.1329 | 0.1291 | 0.1298 | 0.0421 | *in progress* | *in progress* | *in progress* | 0.1192 | 0.1279 | 0.1192 |
-| ForAda | 0.0915 | 0.2276 | 0.1060 | 0.1567 | 0.1612 | 0.1355 | 0.2302 | 0.1276 | 0.0440 | *in progress* | *in progress* | *in progress* | 0.1423 | 0.1486 | 0.1423 |
+| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.0730 | 0.0889 | 0.1406 | 0.1688 | 0.1626 | 0.0711 | 0.1584 | 0.0257 | 0.0150 | 0.0562 | 0.1162 | 0.1166 | 0.0994 | 0.0994 | 0.0994 |
+| DiCoME (trained, their repo) | 0.0829 | 0.1971 | 0.0828 | 0.1498 | 0.1477 | 0.0939 | 0.1939 | 0.0830 | 0.0224 | 0.0634 | 0.1945 | 0.2498 | 0.1301 | 0.1301 | 0.1301 |
+| GenD-CLIP | 0.1070 | 0.0980 | 0.0815 | 0.1503 | 0.1140 | 0.1151 | 0.1749 | 0.0722 | 0.0258 | 0.0817 | 0.1884 | 0.2294 | 0.1199 | 0.1199 | 0.1199 |
+| GenD-PE | 0.0795 | 0.1182 | 0.1377 | 0.1878 | 0.1421 | 0.1115 | 0.2591 | 0.0637 | 0.0319 | 0.1366 | 0.1715 | 0.1580 | 0.1331 | 0.1331 | 0.1331 |
+| GenD-DINO | 0.1101 | 0.1526 | 0.1546 | 0.1636 | 0.1155 | 0.1117 | 0.1989 | 0.0627 | 0.0223 | 0.0754 | 0.1700 | 0.1829 | 0.1267 | 0.1267 | 0.1267 |
+| FSFM | 0.0914 | 0.1478 | 0.1539 | 0.1476 | 0.1394 | 0.1490 | 0.2609 | 0.0995 | 0.0399 | 0.0702 | 0.1360 | 0.1692 | 0.1337 | 0.1337 | 0.1337 |
+| FSFM-Adapter | 0.1817 | 0.1844 | 0.2551 | 0.1830 | 0.1721 | 0.1813 | 0.2702 | 0.1548 | 0.1801 | 0.1147 | 0.1919 | 0.2073 | 0.1897 | 0.1897 | 0.1897 |
+| Effort | 0.1234 | 0.1242 | 0.0763 | 0.1615 | 0.1567 | 0.1329 | 0.1664 | 0.1298 | 0.0421 | 0.1167 | 0.2269 | 0.3130 | 0.1475 | 0.1475 | 0.1475 |
+| ForAda | 0.0915 | 0.2267 | 0.1060 | 0.1567 | 0.1612 | 0.1355 | 0.2312 | 0.1276 | 0.0440 | 0.0695 | 0.1707 | 0.2026 | 0.1436 | 0.1436 | 0.1436 |
 
 ## E-AURC (lower is better)
 
-`mean (all)`: 5 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP).  
-`mean (wide)`: 9 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM).
+`mean (all)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).  
+`mean (wide)`: 12 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP, FFIW, KoDF, IDForge, DFDM, UADFV, DeepSpeak-1.1, DeepSpeak-2.0).
 
 | method | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean | mean (all) | mean (wide) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.0167 | 0.0109 | 0.0278 | 0.0886 | 0.0571 | 0.0197 | 0.0362 | 0.0047 | 0.0016 | 0.0448 | 0.1297 | 0.1005 | 0.0449 | 0.0402 | 0.0293 |
-| DiCoME (trained, their repo) | 0.0164 | 0.0172 | 0.0141 | 0.0670 | 0.0634 | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | *in progress* | 0.0356 | 0.0356 | *in progress* |
-| GenD-CLIP | 0.0342 | 0.0278 | 0.0134 | 0.0720 | 0.0439 | 0.0353 | 0.0564 | 0.0124 | 0.0015 | *in progress* | *in progress* | *in progress* | 0.0330 | 0.0382 | 0.0330 |
-| GenD-PE | 0.0217 | 0.0462 | 0.0484 | 0.1177 | 0.0599 | 0.0417 | 0.0680 | 0.0107 | 0.0024 | *in progress* | *in progress* | *in progress* | 0.0463 | 0.0588 | 0.0463 |
-| GenD-DINO | 0.0427 | 0.0838 | 0.0773 | 0.0913 | 0.0420 | 0.0402 | 0.1409 | 0.0076 | 0.0020 | *in progress* | *in progress* | *in progress* | 0.0586 | 0.0674 | 0.0586 |
-| FSFM | 0.0227 | 0.0672 | 0.0630 | 0.0637 | 0.0507 | 0.0638 | 0.0854 | 0.0176 | 0.0026 | *in progress* | *in progress* | *in progress* | 0.0485 | 0.0535 | 0.0485 |
-| FSFM-Adapter | 0.0758 | 0.0855 | 0.2099 | 0.0968 | 0.0678 | 0.0879 | 0.2186 | 0.0423 | 0.0671 | *in progress* | *in progress* | *in progress* | 0.1057 | 0.1072 | 0.1057 |
-| Effort | 0.0416 | 0.0346 | 0.0120 | 0.0778 | 0.0627 | 0.0394 | 0.0421 | 0.0438 | 0.0037 | *in progress* | *in progress* | *in progress* | 0.0397 | 0.0457 | 0.0397 |
-| ForAda | 0.0203 | 0.1552 | 0.0262 | 0.0772 | 0.0634 | 0.0593 | 0.0879 | 0.0436 | 0.0038 | *in progress* | *in progress* | *in progress* | 0.0597 | 0.0685 | 0.0597 |
+| **Ours (App+TD+LFS+STT, PCR6+-R)** | 0.0167 | 0.0109 | 0.0278 | 0.0886 | 0.0571 | 0.0197 | 0.0362 | 0.0047 | 0.0016 | 0.0448 | 0.1297 | 0.1005 | 0.0449 | 0.0449 | 0.0449 |
+| DiCoME (trained, their repo) | 0.0164 | 0.1091 | 0.0141 | 0.0670 | 0.0634 | 0.0262 | 0.0821 | 0.0154 | 0.0010 | 0.0123 | 0.1529 | 0.2099 | 0.0642 | 0.0642 | 0.0642 |
+| GenD-CLIP | 0.0342 | 0.0266 | 0.0134 | 0.0720 | 0.0439 | 0.0353 | 0.0765 | 0.0124 | 0.0015 | 0.0131 | 0.1208 | 0.1970 | 0.0539 | 0.0539 | 0.0539 |
+| GenD-PE | 0.0217 | 0.0466 | 0.0484 | 0.1177 | 0.0599 | 0.0417 | 0.0888 | 0.0107 | 0.0024 | 0.0452 | 0.0981 | 0.0899 | 0.0559 | 0.0559 | 0.0559 |
+| GenD-DINO | 0.0427 | 0.0804 | 0.0773 | 0.0913 | 0.0420 | 0.0402 | 0.1363 | 0.0076 | 0.0020 | 0.0131 | 0.1110 | 0.1175 | 0.0634 | 0.0634 | 0.0634 |
+| FSFM | 0.0227 | 0.0680 | 0.0630 | 0.0637 | 0.0507 | 0.0638 | 0.1354 | 0.0176 | 0.0026 | 0.0140 | 0.0657 | 0.1106 | 0.0565 | 0.0565 | 0.0565 |
+| FSFM-Adapter | 0.0758 | 0.0899 | 0.2099 | 0.0968 | 0.0678 | 0.0879 | 0.2465 | 0.0423 | 0.0671 | 0.0046 | 0.1096 | 0.2008 | 0.1082 | 0.1082 | 0.1082 |
+| Effort | 0.0416 | 0.0368 | 0.0120 | 0.0778 | 0.0627 | 0.0394 | 0.0706 | 0.0438 | 0.0037 | 0.0329 | 0.1748 | 0.3342 | 0.0775 | 0.0775 | 0.0775 |
+| ForAda | 0.0203 | 0.1562 | 0.0262 | 0.0772 | 0.0634 | 0.0593 | 0.1103 | 0.0436 | 0.0038 | 0.0123 | 0.1232 | 0.2051 | 0.0751 | 0.0751 | 0.0751 |
 
 
