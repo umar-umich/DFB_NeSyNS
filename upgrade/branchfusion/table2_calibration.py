@@ -40,7 +40,10 @@ import branches as B                                             # noqa: E402
 import opinions as O                                             # noqa: E402
 
 BASE = C.ROOT / "logs/tbiom/baselines"
-GEND_CROPS = {"FFIW", "KoDF", "IDForge", "DFDM"}
+#: Datasets whose baseline runs use the GenD release's OWN crops rather than ours. KoDF left this
+#: set on 2026-10-14: its adversarial subsets exist only in our h5, so widening its census meant
+#: dumping it from our crops, and a dataset must not mix two crop sources inside one column.
+GEND_CROPS = {"FFIW", "IDForge", "DFDM"}
 MODELS = ["GenD_CLIP", "GenD_PE", "GenD_DINO", "FSFM", "FSFM_Adapter", "Effort", "ForAda"]
 PRETTY = {"GenD_CLIP": "GenD-CLIP", "GenD_PE": "GenD-PE", "GenD_DINO": "GenD-DINO",
           "FSFM_Adapter": "FSFM-Adapter"}
@@ -97,9 +100,10 @@ def baseline_videos(model, ds):
     if not hits:
         return None
     d = pd.read_csv(hits[0])
-    sub = d.files.str.split("/").str[-3]
-    keep = ~sub.str.contains("IP_LAP") & (sub != "fake-audio-driven") & ~sub.str.startswith("adv-")
-    d = d[keep.to_numpy()]
+    # A SEVENTH hardcoded copy of the scope filter lived here. Same consequence as the others:
+    # once BF_SCOPE could widen our rows, this one stayed at v3.1 and Table 2 compared rows over
+    # different videos. `branches.in_scope` takes the subset Series directly.
+    d = d[B.in_scope(d.files.str.split("/").str[-3]).to_numpy()]
     d = d.assign(v=d.files.str.rsplit("/", n=1).str[0])
     g = d.groupby("v").agg(y=("labels", "max"), s=("prob_class_1", "mean"))
     return g.y.to_numpy(), g.s.to_numpy()
@@ -109,12 +113,36 @@ def baseline_videos(model, ds):
 DICOME_RUNS = pathlib.Path("/data/umar/Repos/DiCoME/runs/dicome_trained")
 
 
+def scope(df, subset):
+    """The one scope predicate, for both readers in this file."""
+    return df[B.in_scope(subset).to_numpy()].reset_index(drop=True)
+
+
 def dicome_videos(ds):
-    f = DICOME_RUNS / f"dicome_trained_{ds}" / "csv_logs/version_0/test_video_predictions.csv"
+    """DiCoME's own run, aggregated by OUR video rule from its FRAME predictions.
+
+    NOT `test_video_predictions.csv`. That file keys on a bare `video_id` -- `test_00000000` --
+    and FFIW ships that same id in both `FFIW-fake` and `FFIW-real`, so its rows merge one fake
+    and one real video into a single prediction: 3,470 videos collapse to 1,735, with a label
+    that belongs to whichever of the pair won the aggregation. The number such a cell produces is
+    wrong, not merely on a different census, and it is the same id-collision DiCoME's own
+    adaptation notes document.
+
+    The frame file carries the full path, so the video key and the scope filter are the SAME ones
+    every other baseline row uses, via `baseline_videos`'s rule below.
+    """
+    f = DICOME_RUNS / f"dicome_trained_{ds}_full" / "csv_logs/version_0/test_frame_predictions.csv"
+    if not f.exists():
+        # `_full` is the re-run on our census; CDFv3's original export covers 1,918 videos of our
+        # 5,418 and is kept on disk so the v3.1 numbers stay reproducible.
+        f = DICOME_RUNS / f"dicome_trained_{ds}" / "csv_logs/version_0/test_frame_predictions.csv"
     if not f.exists():
         return None
     d = pd.read_csv(f)
-    return d.label.to_numpy().astype(int), d.prob_class_1.to_numpy().astype(float)
+    d = scope(d, d.files.str.split("/").str[-3])
+    d = d.assign(v=d.files.str.rsplit("/", n=1).str[0])
+    g = d.groupby("v").agg(y=("labels", "max"), s=("prob_class_1", "mean"))
+    return g.y.to_numpy().astype(int), g.s.to_numpy().astype(float)
 
 
 def main() -> int:

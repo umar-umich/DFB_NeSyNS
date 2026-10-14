@@ -2,7 +2,13 @@
 """Write our DISCERN test frames out of the h5 files as PNGs so the GenD-repo baselines see exactly our crops.
 Layout /data/umar/Datasets/tbiom_frames/<DS>/<subset>/<video>/<frame> — GenD reads the label from <subset>
 ('real' substring = genuine), which matches the h5 label rule. Writes one GenD file list per subset.
-Skips files that already exist, so it can be resumed. CDFv3 IP_LAP (lip-sync only) is out of scope and not dumped."""
+Skips files that already exist, so it can be resumed.
+
+DUMPS EVERY SUBSET. This used to skip CDFv3's IP_LAP as "out of scope" -- a SIXTH hardcoded copy
+of the evaluation-scope filter, and the one that made every baseline's CDFv3 cell 5,118 videos
+against our 5,418 once the scope widened. The scope is applied at SCORING, by `branches.in_scope`
+through `sota_table1.scope`, which follows BF_SCOPE; a frame that was never dumped cannot be
+admitted later by any amount of widening. Dumping everything costs disk and nothing else."""
 import sys, os
 from multiprocessing import Pool
 from pathlib import Path
@@ -34,8 +40,6 @@ def main():
     jobs = []
     (LISTS / ds).mkdir(parents=True, exist_ok=True)
     for f in sorted((EXT / "splits" / ds).glob("*.txt")):
-        if "IP_LAP" in f.name:
-            continue
         keys = [k for k in f.read_text().split("\n") if k]
         (LISTS / ds / f.name).write_text("\n".join(str(ROOT / k) for k in keys) + "\n")
         for i in range(0, len(keys), 500):
