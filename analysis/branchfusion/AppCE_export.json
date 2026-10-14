@@ -12,7 +12,10 @@
   "FFIW": 3470,
   "KoDF": 2239,
   "IDForge": 5974,
-  "DFDM": 1896
+  "DFDM": 1896,
+  "UADFV": 98,
+  "DeepSpeak-1.1": 2102,
+  "DeepSpeak-2.0": 2572
  },
  "missing": [],
  "uncertainty_is_margin": true,

@@ -4,7 +4,6 @@ Ten groups, every dataset, fused with **PCR6+-R**. No baseline rows: this table 
 what each branch contributes, and a SOTA column here would invite two questions to be
 read off one row. The comparison against the field is Table 1.
 
-`*in progress*` means the cell is not computable yet, not that it is zero or not applicable.
 Every branch group is computed on all 12 test sets.
 
 ## AUROC (higher is better)

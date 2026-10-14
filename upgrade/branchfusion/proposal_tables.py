@@ -126,7 +126,6 @@ def main() -> int:
          "Ten groups, every dataset, fused with **PCR6+-R**. No baseline rows: this table answers",
          "what each branch contributes, and a SOTA column here would invite two questions to be",
          "read off one row. The comparison against the field is Table 1.", "",
-         f"`{TODO}` means the cell is not computable yet, not that it is zero or not applicable.",
          f"Every branch group is computed on all {len(avail)} test sets.", "",
          "## AUROC (higher is better)", ""]
     table(L, "branch group", auroc_rows, sets)
@@ -152,7 +151,7 @@ def main() -> int:
               f"{'n/a (operator reads none)' if op in NO_WEIGHTS else [round(x, 2) for x in w]}",
               flush=True)
     # CE arm: mean of the five CE branches' probabilities, the mean-of-logits analogue.
-    ce_a, ce_f = {}, {}
+    ce_a, ce_f, ce_n = {}, {}, {}
     # The CE arm has its OWN coverage: its four counterparts were never scored on the three newly
     # packed corpora. Computing it over `avail` made the whole row fail on the first set it could
     # not resolve, which reported "in progress" for nine datasets whose CE numbers exist. The row
@@ -172,22 +171,37 @@ def main() -> int:
                 p_ = np.mean([t[f"p_{b}"].to_numpy() for b in CE_SET], axis=0)
                 y = t.y.to_numpy()
                 ce_a[ds] = C.auroc(y, p_); ce_f[ds] = fpr_at_tpr(y, p_)
+                ce_n[ds] = int(len(t))          # the CE row's own census, for the note below
     rows_a.insert(0, ("Cross-entropy (mean of logits)", ce_a))
     rows_f.insert(0, ("Cross-entropy (mean of logits)", ce_f))
+
+    # The CE arm is five SEPARATELY exported branches, so its census is its own. It sat at the
+    # v3.1 count for CDFv3 and KoDF while the evidential rows widened -- one table, two
+    # populations, four decimal places and nothing saying so.
+    ce_census = [(d, ce_n[d], len(tabs[d])) for d in sorted(ce_n) if ce_n[d] != len(tabs[d])]
+    if ce_census:
+        ce_note = ["**The cross-entropy row is not on the same videos as the rest of this table.**",
+                   "Its five branches are exported separately, so their coverage is their own:", ""]
+        ce_note += [f"- {d}: CE {n} videos, every other row {m}" for d, n, m in ce_census]
+        ce_note.append("")
+    elif ce_n:
+        ce_note = ["The cross-entropy row is on the same videos as every other row here.", ""]
+    else:
+        ce_note = []
 
     L = ["# Table B — fusion operator on the final combination (App + TD + LFS + STT)", "",
          "`App + TD + LFS + STT` under each decision rule. The cross-entropy row is fused",
          "by mean-of-logits and NOT by DS or PCR6+: a CE branch has no Dirichlet, so its",
          "uncertainty is a decision margin, and combining margins as belief masses would invent",
          "evidence that was never measured. Mean-of-logits is what DiCoME's row (D) does.", "",
-         f"`{TODO}` in the CE row is coverage, not failure: the CE counterparts of the four",
-         "branches were trained before the three corpora packed on 2026-10-13 and have not been",
-         "scored on them. The other rows cover every set.", "",
+         *([f"`{TODO}` in the CE row is coverage, not failure: a CE counterpart not scored on a",
+            "corpus leaves the cell empty rather than borrowing another row's number.", ""]
+           if any(d not in ce_a for d in avail) else []),
          "**Mean appears twice on purpose.** F1 is a uniform mean and reads no reliability at all,",
          "so comparing it against two fitted operators would confound the decision rule with the",
          "weight fit. The second mean row is the same average on the fitted simplex, which is the",
          "matched comparator for DS-C and PCR6+-R.", "",
-         "## AUROC (higher is better)", ""]
+         *ce_note, "## AUROC (higher is better)", ""]
     table(L, "fusion rule", rows_a, sets)
     L += ["## FPR at TPR = 90% (lower is better)", ""]
     table(L, "fusion rule", rows_f, sets)

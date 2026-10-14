@@ -116,6 +116,15 @@ def main() -> int:
     ap.add_argument("--smoke", type=int, default=0, metavar="N",
                     help="end-to-end rehearsal: N training clips, 1 epoch, 1 test export; the "
                          "DEVELOPMENT sets stay whole because the trainer asserts full coverage")
+    # This module could only TRAIN. So when three corpora were packed and when the evaluation
+    # scope widened, the CE counterparts could not follow without retraining all three runs --
+    # and the CE row of Table B silently stayed on nine sets and the narrow census instead.
+    # `OM.export_only` already replays a finished run; `install_ce` has swapped `TB.opinions`
+    # for the softmax one by the time it is called, so the replay cannot score differently
+    # than this arm's own training did.
+    ap.add_argument("--sets", default="", help="comma list of datasets to export")
+    ap.add_argument("--export-only", action="store_true",
+                    help="replay the exports of a finished run against its best.pt")
     a, rest = ap.parse_known_args()
     OM.redirect_outputs()
     OM.install_opinion_retry()
@@ -140,6 +149,20 @@ def main() -> int:
         "--run-suffix", "_ce" + (f"_b{a.block}" if a.block else "")
         + ("_seq" if a.temporal == "seq" else "")]
     print(f"CE arm: logits + cross-entropy; argv {' '.join(sys.argv[1:])}", flush=True)
+    if a.sets:
+        TB.TESTS = [x.strip() for x in a.sets.split(",") if x.strip()]
+        TB.DEV = []               # the development exports exist and do not change here
+        print(f"export sets overridden: {TB.TESTS}", flush=True)
+    if a.export_only:
+        def arg(flag, default):
+            return next((sys.argv[i + 1] for i, x in enumerate(sys.argv) if x == flag), default)
+
+        model = arg("--model", "pecore_l14")
+        name = (f"{model}{'_lora' if '--lora' in sys.argv else ''}"
+                f"{'_B' if arg('--augment', None) == 'B' else ''}"
+                f"{arg('--run-suffix', '')}_seed{arg('--seed', '0')}")
+        return OM.export_only(OM.OUR_RUNS / name, int(arg("--workers", "4")),
+                              model, "--lora" in sys.argv, named_only=bool(a.sets))
     TB.main()
     return 0
 

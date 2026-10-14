@@ -73,10 +73,12 @@ def lfs_ce() -> int:
             missing.append(ds); continue
         d = pd.read_csv(f)
         # Same scope filter the evidential LFS export applies, so the two arms cover the same
-        # videos and a difference between them is the loss and not the population.
+        # videos and a difference between them is the loss and not the population. This was a
+        # FIFTH hardcoded copy of that predicate, and it is why LFSCE stayed at the v3.1 census
+        # (CDFv3 5118, KoDF 1395) while the evidential branches widened -- putting a CE row and
+        # an evidential row in one table over different videos.
         sub = d.key.astype(str).str.split("::").str[-1].str.split("/").str[-3]
-        keep = ~sub.str.contains("IP_LAP") & (sub != "fake-audio-driven") & ~sub.str.startswith("adv-")
-        d = d[keep.to_numpy()]
+        d = d[B.in_scope(sub).to_numpy()]
         # NOT the file's own `video` column. It holds `id0` for every frame of id0_0001, id0_0002
         # and so on -- the id collision DiCoME's own adaptation notes document -- which collapsed
         # CDFv2 from 518 videos to 124 and FFIW from 3470 to 1. `video_id` is the project's single
