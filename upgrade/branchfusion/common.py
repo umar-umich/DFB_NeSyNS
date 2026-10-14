@@ -79,7 +79,10 @@ BRANCH_OUT = ROOT / "logs/branchfusion/branches"         # per-branch video-leve
 S23 = ROOT / "logs/tbiom/stage23"                        # the DISCERN_Ext export: legacy_om lives here
 TEMPORAL = ROOT / "logs/tbiom/temporal/branches"         # V and M opinion CSVs
 OUT = ROOT / "analysis/branchfusion"                     # machine-readable results
-REPORT = ROOT / "reports/branch_fusion"                  # audit.md, INTERIM.md, final report
+#: THE one place this path is written. Every generator writes through `C.REPORT`; a module
+#: that rebuilds `ROOT / "tbiom/reports/branch_fusion/..."` by hand is how half the reports
+#: ended up somewhere else the last time this moved.
+REPORT = ROOT / "tbiom/reports/branch_fusion"            # audit.md, INTERIM.md, final report
 H5 = EXT / "eval_adaptation/data/h5"
 SPLITS = EXT / "eval_adaptation/data/splits"
 

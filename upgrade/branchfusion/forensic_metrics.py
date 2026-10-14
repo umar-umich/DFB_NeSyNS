@@ -43,7 +43,7 @@ import common as C                                               # noqa: E402
 import branches as B                                             # noqa: E402
 import opinions as O                                             # noqa: E402
 
-OUT_MD = C.ROOT / "reports/branch_fusion/FORENSIC_OPERATING_POINTS.md"
+OUT_MD = C.REPORT / "FORENSIC_OPERATING_POINTS.md"
 SUB = ("A", "V", "O", "P16ctl", "S16ctl")
 TARGET_FPR = [0.01, 0.001]
 

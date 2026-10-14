@@ -1,6 +1,6 @@
 # Proposal results — all tables, every dataset
 
-Regenerated 2026-10-13T21:42:56-04:00. Framework: **App + TD + LFS + STT**, fused with PCR6+-R.
+Regenerated 2026-10-13T21:56:13-04:00. Framework: **App + TD + LFS + STT**, fused with PCR6+-R.
 
 | id | thesis name | what it is |
 |---|---|---|
@@ -20,7 +20,7 @@ comparable across rows — ours spans twelve sets, DiCoME five. `mean (all)` and
 `mean (wide)` are matched supports and are the only columns a ranking may be read from.
 Each section states which datasets each one covers.
 
-Figure: `reports/branch_fusion/figures/uncertainty_riskcoverage.png`
+Figure: `tbiom/reports/branch_fusion/figures/uncertainty_riskcoverage.png`
 
 | table | what it answers |
 |---|---|

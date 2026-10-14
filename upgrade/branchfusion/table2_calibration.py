@@ -59,7 +59,7 @@ matched columns are the comparable figures:
 Rank methods on a matched column and say which one. The per-row mean belongs in the
 per-dataset discussion, not in a ranking."""
 TODO = "*in progress*"
-OUT = C.ROOT / "reports/branch_fusion/TABLE2_CALIBRATION.md"
+OUT = C.REPORT / "TABLE2_CALIBRATION.md"
 
 
 def ece(y, p, bins=15):

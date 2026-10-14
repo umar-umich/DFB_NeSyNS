@@ -31,16 +31,8 @@ say "chain: regenerating tables"
 $PY upgrade/branchfusion/proposal_tables.py >> "$L/chain_tables.log" 2>&1 || say "tables A/B FAILED"
 $PY upgrade/branchfusion/sota_table1.py     >> "$L/chain_tables.log" 2>&1 || say "table C FAILED"
 
-{
-  echo "# Proposal results — all tables, every dataset"
-  echo
-  echo "Regenerated $(date -Is)."
-  echo
-  echo "---"; echo
-  cat reports/branch_fusion/TABLE_A_ABLATION.md
-  echo; echo "---"; echo
-  cat reports/branch_fusion/TABLE_B_FUSION.md
-  echo; echo "---"; echo
-  cat reports/branch_fusion/TABLE1_DETECTION.md
-} > reports/branch_fusion/PROPOSAL_TABLES.md
-say "=== chain done -> reports/branch_fusion/PROPOSAL_TABLES.md ==="
+# The report is assembled in ONE place. These lanes each carried their own copy of the
+# heredoc, which silently went stale -- the version here was still emitting three tables
+# with no name key and no Table A2 long after the generators had five.
+bash upgrade/branchfusion/lanes/build_report.sh
+say "=== chain done -> tbiom/reports/branch_fusion/PROPOSAL_TABLES.md ==="

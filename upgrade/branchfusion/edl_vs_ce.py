@@ -45,7 +45,7 @@ import common as C                                               # noqa: E402
 import branches as B                                             # noqa: E402
 import subsets as S                                              # noqa: E402
 
-OUT_MD = C.ROOT / "reports/branch_fusion/EDL_VS_CE.md"
+OUT_MD = C.REPORT / "EDL_VS_CE.md"
 OUT_JSON = C.ROOT / "analysis/branchfusion/edl_vs_ce.json"
 
 #: their "Mean", their DS-C, ours. F5 is added because it is the evidential mean -- cumulative

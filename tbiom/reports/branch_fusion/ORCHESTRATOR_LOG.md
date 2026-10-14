@@ -67,7 +67,7 @@
 [2026-10-10T07:18:48-04:00] no branch passed both gates; the screen is NOT re-run and the deployed selection stands
 [2026-10-10T07:19:41-04:00] committed: fusion: final correlation matrix, tables and the off-manifold campaign report
 [2026-10-10T07:19:41-04:00] === orchestrator done ===
-[2026-10-10T07:19:41-04:00] read reports/branch_fusion/OM_CAMPAIGN.md first; the decision log is logs/branchfusion/orchestrator/orchestrator.log
+[2026-10-10T07:19:41-04:00] read tbiom/reports/branch_fusion/OM_CAMPAIGN.md first; the decision log is logs/branchfusion/orchestrator/orchestrator.log
 [2026-10-10T13:11:00-04:00] rerun: om_P_b16_control_v2
 [2026-10-10T13:14:45-04:00] === finisher waiting on the rerun lane ===
 [2026-10-10T14:15:43-04:00] finisher still waiting (60 min)
@@ -120,7 +120,7 @@
 [2026-10-11T13:18:51-04:00] === robustness lane: Y16 vs A under jpeg:40 ===
 [2026-10-11T13:18:53-04:00] robustness: A extract failed on VALmix
 [2026-10-11T13:19:46-04:00] === robustness lane: Y16 vs A under jpeg:40 ===
-[2026-10-11T13:54:27-04:00] === robustness lane done -- see reports/branch_fusion/ROBUSTNESS_Y16.md ===
+[2026-10-11T13:54:27-04:00] === robustness lane done -- see tbiom/reports/branch_fusion/ROBUSTNESS_Y16.md ===
 [2026-10-11T14:13:20-04:00] === all-14 per-dataset grid: 16383 subsets across 32 shards ===
 [2026-10-11T14:15:43-04:00] === robustness lane (full): both conditions, development and test ===
 [2026-10-11T14:18:06-04:00] all-14 grid: shards done, merging
@@ -210,7 +210,7 @@
 [2026-10-13T01:14:42-04:00] chain: scoring drained after 40 min
 [2026-10-13T01:14:42-04:00] chain: regenerating tables
 [2026-10-13T01:15:12-04:00] === scoring the new sets (UADFV,DeepSpeak-1.1,DeepSpeak-2.0) ===
-[2026-10-13T01:17:19-04:00] === chain done -> reports/branch_fusion/PROPOSAL_TABLES.md ===
+[2026-10-13T01:17:19-04:00] === chain done -> tbiom/reports/branch_fusion/PROPOSAL_TABLES.md ===
 [2026-10-13T01:34:08-04:00] STT exported on the new sets
 [2026-10-13T01:46:02-04:00] === overnight chain start ===
 [2026-10-13T01:52:26-04:00] STT-order exported on the new sets
@@ -221,7 +221,7 @@
 [2026-10-13T02:26:41-04:00] LFS exported: DeepSpeak-1.1
 [2026-10-13T03:05:22-04:00] LFS exported: DeepSpeak-2.0
 [2026-10-13T03:05:42-04:00] overnight: regenerating tables
-[2026-10-13T03:09:45-04:00] === overnight chain done -> reports/branch_fusion/PROPOSAL_TABLES.md ===
+[2026-10-13T03:09:45-04:00] === overnight chain done -> tbiom/reports/branch_fusion/PROPOSAL_TABLES.md ===
 [2026-10-13T09:35:54-04:00] === finishing the new sets ===
 [2026-10-13T09:35:56-04:00] LFS reduced into the ledger
 [2026-10-13T09:43:05-04:00] TD exported

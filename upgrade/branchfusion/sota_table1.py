@@ -57,7 +57,7 @@ matched columns are the comparable figures:
 
 Rank methods on a matched column and say which one. The per-row mean belongs in the
 per-dataset discussion, not in a ranking."""
-OUT_MD = C.ROOT / "reports/branch_fusion/TABLE1_DETECTION.md"
+OUT_MD = C.REPORT / "TABLE1_DETECTION.md"
 
 
 def scope(df, subset):

@@ -48,7 +48,7 @@ pass () {   # pass <tag> <sizes> <weight-grid>
   wait
   $PY upgrade/branchfusion/per_dataset.py --branches "$BR" --sizes "$sizes" \
       --weight-grid "$wg" --tag "$tag" --merge $N > "$L/grid_${tag}_merge.log" 2>&1 \
-    && { touch "$M/grid_$tag.done"; say "grid $tag DONE -> reports/branch_fusion/PER_DATASET_${tag^^}.md"; } \
+    && { touch "$M/grid_$tag.done"; say "grid $tag DONE -> tbiom/reports/branch_fusion/PER_DATASET_${tag^^}.md"; } \
     || say "grid $tag MERGE FAILED -- see $L/grid_${tag}_merge.log"
 }
 

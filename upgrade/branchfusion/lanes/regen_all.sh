@@ -14,8 +14,8 @@ for s in proposal_tables sota_table1 table2_calibration uncertainty_figs forensi
 done
 bash upgrade/branchfusion/lanes/build_report.sh >> "$L/regen_all.log" 2>&1
 { echo "# Orchestrator decision log"; echo; echo '```'; cat "$M/orchestrator.log"; echo '```'; } \
-  > reports/branch_fusion/ORCHESTRATOR_LOG.md
-git add -A upgrade reports analysis logs/branchfusion/branches/registry.json 2>/dev/null
+  > tbiom/reports/branch_fusion/ORCHESTRATOR_LOG.md
+git add -A upgrade tbiom/reports analysis logs/branchfusion/branches/registry.json 2>/dev/null
 git diff --cached --quiet 2>/dev/null || git commit -q -m "fusion: all tables over twelve test sets, with the three GenD corpora in
 
 UADFV, DeepSpeak-1.1 and DeepSpeak-2.0 promoted into TEST_SETS now that every CORE branch is

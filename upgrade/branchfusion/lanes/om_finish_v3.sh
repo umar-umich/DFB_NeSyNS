@@ -13,17 +13,17 @@ M=logs/branchfusion/orchestrator
 say () { echo "[$(date -Is)] $*" >> "$M/orchestrator.log"; }
 
 commit () {
-  mkdir -p reports/branch_fusion
+  mkdir -p tbiom/reports/branch_fusion
   { echo "# Orchestrator decision log"; echo; echo '```'; cat "$M/orchestrator.log"; echo '```'; } \
-    > reports/branch_fusion/ORCHESTRATOR_LOG.md
+    > tbiom/reports/branch_fusion/ORCHESTRATOR_LOG.md
   for v in depth gate; do
-    [ -f "$M/${v}_verdict.txt" ] && cp "$M/${v}_verdict.txt" "reports/branch_fusion/${v}_verdict.txt"
+    [ -f "$M/${v}_verdict.txt" ] && cp "$M/${v}_verdict.txt" "tbiom/reports/branch_fusion/${v}_verdict.txt"
   done
-  git add -A analysis reports upgrade 2>/dev/null
+  git add -A analysis tbiom/reports upgrade 2>/dev/null
   git diff --cached --quiet 2>/dev/null && return 0
   git commit -q -m "$1
 
-Committed unattended; see reports/branch_fusion/ORCHESTRATOR_LOG.md.
+Committed unattended; see tbiom/reports/branch_fusion/ORCHESTRATOR_LOG.md.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>" && say "committed: $1"
 }
@@ -60,6 +60,6 @@ else
   say "no branch passed both gates; the deployed selection stands"
 fi
 
-$PY upgrade/branchfusion/om_report.py --stage final > reports/branch_fusion/OM_CAMPAIGN.md 2>&1 || true
+$PY upgrade/branchfusion/om_report.py --stage final > tbiom/reports/branch_fusion/OM_CAMPAIGN.md 2>&1 || true
 commit "fusion: the PE-Core off-manifold campaign re-run with the residual in the optimiser"
 say "=== v3 finisher done ==="

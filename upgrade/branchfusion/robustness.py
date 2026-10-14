@@ -35,7 +35,7 @@ import common as C                                               # noqa: E402
 import branches as B                                             # noqa: E402
 import decorrelation as D                                        # noqa: E402
 
-OUT = C.ROOT / "reports/branch_fusion/ROBUSTNESS_Y16.md"
+OUT = C.REPORT / "ROBUSTNESS_Y16.md"
 #: A's head, replayed over whichever feature cache the prefix names.
 A_HEAD = "view_pe_core_lLN_s0.pt"
 

@@ -23,11 +23,11 @@ A PE-Core sequence transformer is a candidate branch, not an established contrib
 
 Deliver runnable code, explicit configuration files, complete prediction provenance, the combined result tables and a decision report. Reuse working infrastructure rather than building another training framework. Discover existing entry points before writing new ones, and document the commands actually implemented.
 
-**Interim report.** At 24 hours after launch, write `reports/branch_fusion/INTERIM.md` with the audit, the B0 reproduction, the branch configuration table and every cached-feature result completed so far. The final report follows at the end of the campaign.
+**Interim report.** At 24 hours after launch, write `tbiom/reports/branch_fusion/INTERIM.md` with the audit, the B0 reproduction, the branch configuration table and every cached-feature result completed so far. The final report follows at the end of the campaign.
 
 ## 1. Configuration and provenance audit
 
-Read the repository instructions and the current run ledger. Locate the real encoder wrappers, head definitions, fusion operators, checkpoint selectors, dataset manifests and feature and prediction caches. Record their paths and the git commit in `reports/branch_fusion/audit.md`.
+Read the repository instructions and the current run ledger. Locate the real encoder wrappers, head definitions, fusion operators, checkpoint selectors, dataset manifests and feature and prediction caches. Record their paths and the git commit in `tbiom/reports/branch_fusion/audit.md`.
 
 Resolve these items from code and artifacts before training.
 

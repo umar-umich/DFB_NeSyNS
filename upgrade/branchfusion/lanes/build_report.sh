@@ -3,7 +3,7 @@
 # so running it after a rename or a reword cannot move a number.
 set -u
 cd /data/umar/Repos/DFB_NeSyNS
-R=reports/branch_fusion
+R=tbiom/reports/branch_fusion
 for t in TABLE_A_ABLATION PER_DATASET_CORE5 TABLE_B_FUSION TABLE1_DETECTION TABLE2_CALIBRATION; do
   [ -f "$R/$t.md" ] || { echo "build_report: missing $R/$t.md" >&2; exit 1; }
 done

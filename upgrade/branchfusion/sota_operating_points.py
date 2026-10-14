@@ -42,7 +42,7 @@ DICOME = Path("/data/umar/Repos/DiCoME/runs")
 ARMS = {"DiCoME (trained)": "dicome_trained", "DiCoME (repro)": "dicome_repro"}
 SUB = ("A", "V", "O", "P16ctl", "S16ctl")
 TARGETS = [0.01, 0.05]
-OUT_MD = C.ROOT / "reports/branch_fusion/SOTA_OPERATING_POINTS.md"
+OUT_MD = C.REPORT / "SOTA_OPERATING_POINTS.md"
 
 
 def dicome_scores(arm: str, ds: str):

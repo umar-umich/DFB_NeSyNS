@@ -51,4 +51,4 @@ $PY upgrade/branchfusion/om_eil_export.py --ckpt logs/upgrade/om/om_pe_core_l_LN
     --cache omEIL_b16_jpeg40 --label Y16j40 >> "$log" 2>&1 \
   || { say "robustness: Y16 opinion export failed"; exit 1; }
 $PY upgrade/branchfusion/robustness.py >> "$log" 2>&1 || say "robustness: report failed"
-say "=== robustness lane done -- see reports/branch_fusion/ROBUSTNESS_Y16.md ==="
+say "=== robustness lane done -- see tbiom/reports/branch_fusion/ROBUSTNESS_Y16.md ==="

@@ -47,7 +47,7 @@ sys.path[:0] = [str(C.ROOT / "analysis/tbiom/pcr6p")]
 import ops_pcr6p as P                                            # noqa: E402
 
 SUB = ("A", "V", "O", "S16ctl")
-OUT = C.ROOT / "reports/branch_fusion/figures"
+OUT = C.REPORT / "figures"
 #: Validated two-slot categorical palette (dataviz skill, light surface):
 #: adjacent CVD dE 21.6, normal-vision dE 32.3, both well clear of the gates.
 CORRECT, WRONG = "#2a78d6", "#e34948"

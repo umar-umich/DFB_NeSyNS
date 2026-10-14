@@ -213,7 +213,7 @@ def main() -> int:
 
     sfx = f"_{a.tag}" if a.tag else ""
     json.dump(res, open(C.OUT / f"decorrelation{sfx}.json", "w"), indent=1, default=str)
-    out = C.ROOT / f"reports/branch_fusion/CORRELATION{sfx.upper()}.md"
+    out = C.REPORT / f"CORRELATION{sfx.upper()}.md"
     out.write_text("\n".join(md) + "\n")
     print(f"\n-> {C.OUT / f'decorrelation{sfx}.json'}\n-> {out}")
     return 0

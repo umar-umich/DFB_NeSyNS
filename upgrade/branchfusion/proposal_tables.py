@@ -62,7 +62,7 @@ OPS = [("F1", "Mean (unweighted)"), ("F2", "Mean (fitted weights)"),
 NO_WEIGHTS = ("F1", "F5")
 NEW_SETS = ["UADFV", "DeepSpeak-1.1", "DeepSpeak-2.0"]
 TODO = "*in progress*"
-OUT = C.ROOT / "reports/branch_fusion"
+OUT = C.REPORT
 
 
 def fpr_at_tpr(y, s, target=0.90):

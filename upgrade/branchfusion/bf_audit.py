@@ -3,7 +3,7 @@
 
     <discern_ext_timm python> upgrade/branchfusion/bf_audit.py
 
-Writes `reports/branch_fusion/audit.md` and `analysis/branchfusion/audit.json`. Nothing else in this
+Writes `tbiom/reports/branch_fusion/audit.md` and `analysis/branchfusion/audit.json`. Nothing else in this
 campaign may launch until the B0 reproduction passes, because section 11 makes an unreproducible B0 a
 hard stop.
 

@@ -41,5 +41,5 @@ wait
 say "all-16 grid: shards done, merging"
 $PY upgrade/branchfusion/per_dataset.py --branches "$BR" --sizes "$SZ" --tag all16 --merge $N \
     > "$L/grid_all16_merge.log" 2>&1 \
-  && say "=== all-16 grid done -> reports/branch_fusion/PER_DATASET_ALL16.md ===" \
+  && say "=== all-16 grid done -> tbiom/reports/branch_fusion/PER_DATASET_ALL16.md ===" \
   || say "all-16 grid MERGE FAILED -- see $L/grid_all16_merge.log"

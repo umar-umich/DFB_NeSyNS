@@ -56,28 +56,18 @@ $PY upgrade/branchfusion/sota_table1.py        >> "$L/overnight.log" 2>&1 || say
 $PY upgrade/branchfusion/table2_calibration.py >> "$L/overnight.log" 2>&1 || say "table 2 FAILED"
 $PY upgrade/branchfusion/uncertainty_figs.py   >> "$L/overnight.log" 2>&1 || say "figure FAILED"
 
-{
-  echo "# Proposal results — all tables, every dataset"; echo
-  echo "Regenerated $(date -Is). Framework: **App + TD + LFS + STT**, fused with PCR6+-R."; echo
-  echo "| id | thesis name | what it is |"; echo "|---|---|---|"
-  echo "| A | **App** | Appearance — PE-Core-L/336, LoRA + LayerNorm, frame mean |"
-  echo "| V | **TD** | Temporal Dynamics — V-JEPA 2 LoRA, 16 frames |"
-  echo "| O | **LFS** | Latent Facial Structure — CLIP/β-VAE orthogonal residual |"
-  echo "| S16ctl | **STT** | Spatio-Temporal Texture — PE-Core block 16 + real relative timestamps |"
-  echo "| P16ctl | **STT-order** | the same with learned slot positions |"
-  echo; echo "Figures: reports/branch_fusion/figures/uncertainty_riskcoverage.png"; echo
-  for t in TABLE_A_ABLATION TABLE_B_FUSION TABLE1_DETECTION TABLE2_CALIBRATION; do
-    echo "---"; echo; cat "reports/branch_fusion/$t.md"; echo
-  done
-} > reports/branch_fusion/PROPOSAL_TABLES.md
+# The report is assembled in ONE place. These lanes each carried their own copy of the
+# heredoc, which silently went stale -- the version here was still emitting three tables
+# with no name key and no Table A2 long after the generators had five.
+bash upgrade/branchfusion/lanes/build_report.sh
 
-mkdir -p reports/branch_fusion
+mkdir -p tbiom/reports/branch_fusion
 { echo "# Orchestrator decision log"; echo; echo '```'; cat "$M/orchestrator.log"; echo '```'; } \
-  > reports/branch_fusion/ORCHESTRATOR_LOG.md
-git add -A upgrade reports analysis logs/branchfusion/branches/registry.json 2>/dev/null
+  > tbiom/reports/branch_fusion/ORCHESTRATOR_LOG.md
+git add -A upgrade tbiom/reports analysis logs/branchfusion/branches/registry.json 2>/dev/null
 git diff --cached --quiet 2>/dev/null || git commit -q -m "fusion: new GenD sets scored, all tables and the figure regenerated
 
-Committed unattended overnight; see reports/branch_fusion/ORCHESTRATOR_LOG.md.
+Committed unattended overnight; see tbiom/reports/branch_fusion/ORCHESTRATOR_LOG.md.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
-say "=== overnight chain done -> reports/branch_fusion/PROPOSAL_TABLES.md ==="
+say "=== overnight chain done -> tbiom/reports/branch_fusion/PROPOSAL_TABLES.md ==="

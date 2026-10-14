@@ -240,7 +240,7 @@ def main() -> int:
         json.dump(res, open(C.OUT / f"per_dataset{sfx}.json", "w"), indent=1, default=str)
     df = grid(res)
     df.to_csv(C.OUT / f"per_dataset_auroc{sfx}.csv", index=False)
-    out = C.ROOT / f"reports/branch_fusion/PER_DATASET{sfx.upper()}.md"
+    out = C.REPORT / f"PER_DATASET{sfx.upper()}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(markdown(res, df, a.top))
     print(f"\n-> {C.OUT / f'per_dataset{sfx}.json'}\n"
