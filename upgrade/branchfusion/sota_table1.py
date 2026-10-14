@@ -44,6 +44,19 @@ PRETTY = {"GenD_CLIP": "GenD-CLIP", "GenD_PE": "GenD-PE", "GenD_DINO": "GenD-DIN
           "FSFM_Adapter": "FSFM-Adapter"}
 SUB = ("A", "V", "O", "S16ctl")
 TPR_TARGETS = [0.90, 0.95]
+TODO = "*in progress*"
+NOTE = """A ROW'S `mean` IS OVER ITS OWN COVERAGE, which is not a comparison. Our row spans twelve
+sets, most baselines nine, DiCoME five -- and the three corpora only we cover are not the
+easy ones, so our own mean is read off a harder average than anyone else's. The two
+matched columns are the comparable figures:
+
+- `mean (all)` -- every set every row in the table resolves. DiCoME's five-set coverage
+  sets that width, so it is honest for all nine methods but narrow.
+- `mean (wide)` -- every set that every method covering nine or more sets resolves. The
+  narrow rows say in progress there rather than shrinking the column for everyone.
+
+Rank methods on a matched column and say which one. The per-row mean belongs in the
+per-dataset discussion, not in a ranking."""
 OUT_MD = C.ROOT / "reports/branch_fusion/TABLE1_DETECTION.md"
 
 
@@ -130,17 +143,30 @@ def main() -> int:
          "method is tuned to catch 90% (resp. 95%) of the fakes.", "",
          "This is an ROC property, like AUROC. Whether a threshold fixed in advance survives the",
          "domain shift is a different and far less flattering question, answered in",
-         "`SOTA_OPERATING_POINTS.md`. The two must not be quoted as the same measurement.", ""]
+         "`SOTA_OPERATING_POINTS.md`. The two must not be quoted as the same measurement.", "",
+         f"`{TODO}`: not scored on that corpus yet, not zero and not inapplicable. Our row covers",
+         "every set. The baselines were never run on the three corpora packed on 2026-10-13, and",
+         "DiCoME's public checkpoints cover only the five sets its paper reports.", "",
+         *NOTE.split("\n"), ""]
     for metric, title in [("auroc", "AUROC (higher is better)"),
                           ("fpr90", "FPR at TPR = 90% (lower is better)"),
                           ("fpr95", "FPR at TPR = 95% (lower is better)")]:
-        L += [f"## {title}", "", "| method | " + " | ".join(sets) + " | mean |",
-              "|---|" + "---:|" * (len(sets) + 1)]
+        all_s, wide_s = C.common_supports(rows, sets, metric)
+        L += [f"## {title}", "",
+              f"`mean (all)`: {len(all_s)} sets ({', '.join(all_s) or 'none'}).  ",
+              f"`mean (wide)`: {len(wide_s)} sets ({', '.join(wide_s) or 'none'}).", "",
+              "| method | " + " | ".join(sets) + " | mean | mean (all) | mean (wide) |",
+              "|---|" + "---:|" * (len(sets) + 3)]
         for name, r in rows.items():
             vals = [r.get(d, {}).get(metric) for d in sets]
             got = [v for v in vals if v is not None and np.isfinite(v)]
-            L.append(f"| {name} | " + " | ".join("—" if v is None else f"{v:.4f}" for v in vals) +
-                     f" | {np.mean(got):.4f} |" if got else f"| {name} | " + " | ".join("—" for _ in vals) + " | — |")
+            ctail = (C.matched_cells(r, all_s, metric, TODO) +
+                     C.matched_cells(r, wide_s, metric, TODO))
+            # IN PROGRESS, not an em dash. A dash reads as "not applicable" and these cells are
+            # baselines that have not been scored on the corpus yet -- a difference a reader of
+            # the draft cannot recover from the glyph.
+            L.append(f"| {name} | " + " | ".join(TODO if v is None else f"{v:.4f}" for v in vals) +
+                     (f" | {np.mean(got):.4f} |" if got else f" | {TODO} |") + ctail)
         L.append("")
     OUT_MD.write_text("\n".join(L) + "\n")
     json.dump(rows, open(C.ROOT / "analysis/branchfusion/table1_detection.json", "w"),

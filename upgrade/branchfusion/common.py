@@ -162,7 +162,8 @@ DISPLAY = {
     "S16ctl": "STT",            # Spatio-Temporal Texture -- block 16 + real relative timestamps
     "P16ctl": "STT-order",      # the same with learned slot positions
     "P": "P (Kutub)",           # the branch both STT variants are derived from
-    "VCE": "TD-CE", "P16ctlCE": "STT-order-CE", "S16ctlCE": "STT-CE",
+    "AppCE": "App-CE", "VCE": "TD-CE", "LFSCE": "LFS-CE",
+    "P16ctlCE": "STT-order-CE", "S16ctlCE": "STT-CE",
 }
 
 
@@ -173,6 +174,47 @@ def show(b: str) -> str:
 
 def show_subset(bs) -> str:
     return "+".join(show(b) for b in bs)
+
+
+def common_supports(rows: dict, sets, key: str, wide_min: int = 9):
+    """The dataset supports a comparison table may average over, widest useful first.
+
+    A per-row mean is over that row's own coverage, so ranking methods by it compares
+    different averages -- ours over twelve corpora, DiCoME's over the five its public
+    checkpoints cover. Two matched columns fix that without throwing a row away:
+
+      all   every set that EVERY row resolves. Honest for all rows, but the narrowest
+            row sets the width, so one five-set baseline shrinks the whole table.
+      wide  every set that every row with at least `wide_min` sets resolves. The narrow
+            rows print in progress in that column rather than dragging it down.
+
+    Returns `(all_sets, wide_sets)`, both ordered as `sets`.
+    """
+    def cov(r):
+        return [d for d in sets if r.get(d, {}).get(key) is not None]
+    all_sets = [d for d in sets if all(r.get(d, {}).get(key) is not None for r in rows.values())]
+    wide = [r for r in rows.values() if len(cov(r)) >= wide_min]
+    wide_sets = [d for d in sets if wide and all(r.get(d, {}).get(key) is not None for r in wide)]
+    return all_sets, wide_sets
+
+
+def matched_cells(r: dict, support, key: str, todo: str = "*in progress*") -> str:
+    """One row's mean over `support`, or in progress when the row does not cover all of it."""
+    import numpy as _np
+    if not support or any(r.get(d, {}).get(key) is None for d in support):
+        return f" {todo} |"
+    return f" {_np.mean([r[d][key] for d in support]):.4f} |"
+
+
+def show_subset_id(s: str) -> str:
+    """Thesis names for a stored subset id like `A+V+O+S16ctl`.
+
+    The ids in every JSON and CSV stay as they are -- this is the render-time inverse, so the
+    ablation grid can print `App+TD+LFS+STT` without any artefact being rewritten. A token with
+    no DISPLAY entry passes through unchanged, and a label that is not a subset id at all (the
+    ORACLE row) survives because none of its words are branch ids.
+    """
+    return "+".join(DISPLAY.get(b, b) for b in s.split("+"))
 
 #: The full seventeen, kept so the retired branches stay loadable for the appendix and for any
 #: re-check of the cut above. Nothing in the deployed path reads this.

@@ -4,83 +4,123 @@
   "err": 0.07528957528957525,
   "u_correct_mean": 0.0039378810562749845,
   "u_wrong_mean": 0.013811491483215796,
-  "n_wrong": 39
+  "n_wrong": 39,
+  "plotted": false,
+  "aurc": null
  },
  "CDFv3": {
   "auroc": 0.961171132238548,
   "err": 0.07073075420085972,
   "u_correct_mean": 0.005421368023862357,
   "u_wrong_mean": 0.019301960430745384,
-  "n_wrong": 362
+  "n_wrong": 362,
+  "plotted": true,
+  "aurc": {
+   "vacuity": 0.095587441480584,
+   "margin": 0.09314274864454827,
+   "oracle": 0.010500279681532785
+  }
  },
  "DFD": {
   "auroc": 0.9569159653905417,
   "err": 0.15563975517341888,
   "u_correct_mean": 0.0034365061197744857,
   "u_wrong_mean": 0.009954797577198731,
-  "n_wrong": 534
+  "n_wrong": 534,
+  "plotted": true,
+  "aurc": {
+   "vacuity": 0.047759510482682864,
+   "margin": 0.12012748902237465,
+   "oracle": 0.014911798529703715
+  }
  },
  "DFDC": {
   "auroc": 0.8621784330087414,
   "err": 0.21003401360544216,
   "u_correct_mean": 0.007208119675174254,
   "u_wrong_mean": 0.013554346297210432,
-  "n_wrong": 988
+  "n_wrong": 988,
+  "plotted": false,
+  "aurc": null
  },
  "DFDCP": {
   "auroc": 0.9111874487284659,
   "err": 0.19266055045871555,
   "u_correct_mean": 0.007541179715637215,
   "u_wrong_mean": 0.014214087736858377,
-  "n_wrong": 126
+  "n_wrong": 126,
+  "plotted": false,
+  "aurc": null
  },
  "FFIW": {
   "auroc": 0.9742949447300451,
   "err": 0.08501440922190207,
   "u_correct_mean": 0.007473434858101959,
   "u_wrong_mean": 0.025394776631956995,
-  "n_wrong": 295
+  "n_wrong": 295,
+  "plotted": true,
+  "aurc": {
+   "vacuity": 0.04333635498612927,
+   "margin": 0.16417276541923725,
+   "oracle": 0.00468457519444137
+  }
  },
  "KoDF": {
   "auroc": 0.9436459417273674,
   "err": 0.09462365591397848,
   "u_correct_mean": 0.0023166232961226024,
   "u_wrong_mean": 0.009475714407229482,
-  "n_wrong": 132
+  "n_wrong": 132,
+  "plotted": false,
+  "aurc": null
  },
  "IDForge": {
   "auroc": 0.9961363654958788,
   "err": 0.029126213592232997,
   "u_correct_mean": 0.005887191914265735,
   "u_wrong_mean": 0.02084431724597489,
-  "n_wrong": 174
+  "n_wrong": 174,
+  "plotted": true,
+  "aurc": {
+   "vacuity": 0.009428325115251032,
+   "margin": 0.10846927909078237,
+   "oracle": 0.0007050704185043715
+  }
  },
  "DFDM": {
   "auroc": 0.9966416397431034,
   "err": 0.017405063291139222,
   "u_correct_mean": 0.001285792797382692,
   "u_wrong_mean": 0.010389744508056648,
-  "n_wrong": 33
+  "n_wrong": 33,
+  "plotted": false,
+  "aurc": null
  },
  "UADFV": {
   "auroc": 0.9875052061640983,
   "err": 0.11224489795918369,
   "u_correct_mean": 0.002968414347555321,
   "u_wrong_mean": 0.003347170494299857,
-  "n_wrong": 11
+  "n_wrong": 11,
+  "plotted": false,
+  "aurc": null
  },
  "DeepSpeak-1.1": {
   "auroc": 0.9276881454761081,
   "err": 0.19029495718363465,
   "u_correct_mean": 0.006146782016994468,
   "u_wrong_mean": 0.007504223394828427,
-  "n_wrong": 400
+  "n_wrong": 400,
+  "plotted": false,
+  "aurc": null
  },
  "DeepSpeak-2.0": {
   "auroc": 0.9143729080974845,
   "err": 0.20489891135303262,
   "u_correct_mean": 0.008239121670186214,
   "u_wrong_mean": 0.013427840835904446,
-  "n_wrong": 527
+  "n_wrong": 527,
+  "plotted": false,
+  "aurc": null
  }
 }

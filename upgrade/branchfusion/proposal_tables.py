@@ -51,7 +51,15 @@ GROUPS = [("A",), ("V",), ("O",), ("P16ctl",), ("S16ctl",),
           ("A", "V", "O", "P16ctl"), ("A", "V", "O", "S16ctl"),
           ("A", "V", "O", "P16ctl", "S16ctl"),
           ("A", "O", "P16ctl", "S16ctl")]
-OPS = [("F1", "Mean"), ("F7", "DS-C"), ("F8", "PCR6+-R (ours)")]
+#: F1 reads NO weights -- `fuse` calls `_prob_mean(t, branches, None)` for it, by definition of a
+#: uniform mean. Comparing it against two fitted operators is a weighted-versus-unweighted
+#: comparison, which is not the question the table asks, so F2 (the same mean on the fitted
+#: simplex) is carried alongside it. Without that row PCR6+-R's margin over "Mean" could be
+#: nothing but the reliability fit.
+OPS = [("F1", "Mean (unweighted)"), ("F2", "Mean (fitted weights)"),
+       ("F7", "DS-C"), ("F8", "PCR6+-R (ours)")]
+#: Operators `fuse` ignores `w` for; fitting one is an exhaustive grid search thrown away.
+NO_WEIGHTS = ("F1", "F5")
 NEW_SETS = ["UADFV", "DeepSpeak-1.1", "DeepSpeak-2.0"]
 TODO = "*in progress*"
 OUT = C.ROOT / "reports/branch_fusion"
@@ -117,9 +125,9 @@ def main() -> int:
     L = ["# Table A — branch ablation", "",
          "Ten groups, every dataset, fused with **PCR6+-R**. No baseline rows: this table answers",
          "what each branch contributes, and a SOTA column here would invite two questions to be",
-         "read off one row. The comparison against the field is Table C.", "",
+         "read off one row. The comparison against the field is Table 1.", "",
          f"`{TODO}` means the cell is not computable yet, not that it is zero or not applicable.",
-         f"The three newly packed sets ({', '.join(NEW_SETS)}) have no branch scores yet.", "",
+         f"Every branch group is computed on all {len(avail)} test sets.", "",
          "## AUROC (higher is better)", ""]
     table(L, "branch group", auroc_rows, sets)
     L += ["## FPR at TPR = 90% (lower is better)", ""]
@@ -129,7 +137,10 @@ def main() -> int:
     # ---------------------------------------------------------------- Table B
     rows_a, rows_f = [], []
     for op, label in OPS:
-        w, _ = O.fit_weights(dev, FINAL, op, objective="v31")
+        if op in NO_WEIGHTS:
+            w = (1.0,) * len(FINAL)
+        else:
+            w, _ = O.fit_weights(dev, FINAL, op, objective="v31")
         a, f = {}, {}
         for ds in avail:
             t = tabs[ds]
@@ -137,7 +148,9 @@ def main() -> int:
             y = t.y.to_numpy()
             a[ds] = C.auroc(y, p_); f[ds] = fpr_at_tpr(y, p_)
         rows_a.append((label, a)); rows_f.append((label, f))
-        print(f"  B: {label}  weights {[round(x, 2) for x in w]}", flush=True)
+        print(f"  B: {label}  weights "
+              f"{'n/a (operator reads none)' if op in NO_WEIGHTS else [round(x, 2) for x in w]}",
+              flush=True)
     # CE arm: mean of the five CE branches' probabilities, the mean-of-logits analogue.
     ce_a, ce_f = {}, {}
     # The CE arm has its OWN coverage: its four counterparts were never scored on the three newly
@@ -167,6 +180,13 @@ def main() -> int:
          "by mean-of-logits and NOT by DS or PCR6+: a CE branch has no Dirichlet, so its",
          "uncertainty is a decision margin, and combining margins as belief masses would invent",
          "evidence that was never measured. Mean-of-logits is what DiCoME's row (D) does.", "",
+         f"`{TODO}` in the CE row is coverage, not failure: the CE counterparts of the four",
+         "branches were trained before the three corpora packed on 2026-10-13 and have not been",
+         "scored on them. The other rows cover every set.", "",
+         "**Mean appears twice on purpose.** F1 is a uniform mean and reads no reliability at all,",
+         "so comparing it against two fitted operators would confound the decision rule with the",
+         "weight fit. The second mean row is the same average on the fitted simplex, which is the",
+         "matched comparator for DS-C and PCR6+-R.", "",
          "## AUROC (higher is better)", ""]
     table(L, "fusion rule", rows_a, sets)
     L += ["## FPR at TPR = 90% (lower is better)", ""]

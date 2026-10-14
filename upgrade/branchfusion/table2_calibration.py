@@ -46,6 +46,18 @@ PRETTY = {"GenD_CLIP": "GenD-CLIP", "GenD_PE": "GenD-PE", "GenD_DINO": "GenD-DIN
           "FSFM_Adapter": "FSFM-Adapter"}
 FINAL = ("A", "V", "O", "S16ctl")
 NEW_SETS = ["UADFV", "DeepSpeak-1.1", "DeepSpeak-2.0"]
+NOTE = """A ROW'S `mean` IS OVER ITS OWN COVERAGE, which is not a comparison. Our row spans twelve
+sets, most baselines nine, DiCoME five -- and the three corpora only we cover are not the
+easy ones, so our own mean is read off a harder average than anyone else's. The two
+matched columns are the comparable figures:
+
+- `mean (all)` -- every set every row in the table resolves. DiCoME's five-set coverage
+  sets that width, so it is honest for all nine methods but narrow.
+- `mean (wide)` -- every set that every method covering nine or more sets resolves. The
+  narrow rows say in progress there rather than shrinking the column for everyone.
+
+Rank methods on a matched column and say which one. The per-row mean belongs in the
+per-dataset discussion, not in a ranking."""
 TODO = "*in progress*"
 OUT = C.ROOT / "reports/branch_fusion/TABLE2_CALIBRATION.md"
 
@@ -117,7 +129,13 @@ def main() -> int:
     tau = float(eer(dev.y.to_numpy()[ff], pdev[ff])[1])
 
     tabs = B.test_tables(list(FINAL))
-    sets = [d for d in C.TEST_SETS if d in tabs] + NEW_SETS
+    # De-duplicated union, NOT a concatenation. NEW_SETS were promoted into C.TEST_SETS on
+    # 2026-10-13 once every CORE branch covered them, so `TEST_SETS + NEW_SETS` printed each of
+    # the three twice AND averaged them twice -- the reported mean was over fifteen cells, three
+    # of them copies, which pulled every "Ours" mean toward the three easiest corpora.
+    # Columns come from the union so a set with no coverage still prints and says so; a table
+    # that silently drops a column is how a missing number stops being noticed.
+    sets = list(dict.fromkeys(list(C.TEST_SETS) + NEW_SETS))
     avail = [d for d in sets if d in tabs]
     rows = {"**Ours (App+TD+LFS+STT, PCR6+-R)**": {}}
     for ds in avail:
@@ -161,16 +179,26 @@ def main() -> int:
          "Ours ranks by the fused **vacuity**; the baselines rank by **1 − max p**, which is the",
          "only uncertainty a cross-entropy detector emits. That asymmetry is the point of the",
          "column, not a handicap we imposed.", "",
-         f"`{TODO}`: not computable yet. The three newly packed sets have no branch scores.", ""]
+         f"`{TODO}`: not computable yet, and not zero or not applicable. Our row covers every",
+         "set. The baselines were never run on the three corpora packed on 2026-10-13 (UADFV,",
+         "DeepSpeak-1.1, DeepSpeak-2.0), and DiCoME's public checkpoints cover only the five",
+         "sets its paper reports; closing those cells needs a scoring pass, not a re-run.", "",
+         *NOTE.split("\n"), ""]
     for key, title in [("ece", "ECE-15 (lower is better)"), ("brier", "Brier (lower is better)"),
                        ("eaurc", "E-AURC (lower is better)")]:
-        L += [f"## {title}", "", "| method | " + " | ".join(sets) + " | mean |",
-              "|---|" + "---:|" * (len(sets) + 1)]
+        all_s, wide_s = C.common_supports(rows, sets, key)
+        L += [f"## {title}", "",
+              f"`mean (all)`: {len(all_s)} sets ({', '.join(all_s) or 'none'}).  ",
+              f"`mean (wide)`: {len(wide_s)} sets ({', '.join(wide_s) or 'none'}).", "",
+              "| method | " + " | ".join(sets) + " | mean | mean (all) | mean (wide) |",
+              "|---|" + "---:|" * (len(sets) + 3)]
         for name, r in rows.items():
             vals = [r.get(d, {}).get(key) for d in sets]
             got = [v for v in vals if v is not None]
             L.append(f"| {name} | " + " | ".join(TODO if v is None else f"{v:.4f}" for v in vals) +
-                     (f" | {np.mean(got):.4f} |" if got else f" | {TODO} |"))
+                     (f" | {np.mean(got):.4f} |" if got else f" | {TODO} |") +
+                     C.matched_cells(r, all_s, key, TODO) +
+                     C.matched_cells(r, wide_s, key, TODO))
         L.append("")
     OUT.write_text("\n".join(L) + "\n")
     json.dump(rows, open(C.ROOT / "analysis/branchfusion/table2_calibration.json", "w"),

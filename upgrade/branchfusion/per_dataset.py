@@ -148,15 +148,16 @@ def markdown(res: dict, df: pd.DataFrame, top: int = 0) -> str:
     d2 = df if not top else pd.concat([df.head(top), df.tail(1)]).drop_duplicates(subset=["subset"])
     for _, r in d2.iterrows():
         cells = " | ".join("--" if not np.isfinite(r[d]) else f"{r[d]:.4f}" for d in sets)
-        L.append(f"| {r['subset']} | {cells} | **{r['macro']:.4f}** | "
+        L.append(f"| {C.show_subset_id(r['subset'])} | {cells} | **{r['macro']:.4f}** | "
                  f"{r['worst']:.4f} ({r['worst_set']}) | {r['spread']:.4f} |")
     L += ["", "## Best single branch per set (the oracle's choice)", "",
-          "| set | best branch | AUROC | " + " | ".join(res["oracle"]["per_dataset"][sets[0]]["per_branch"]) + " |",
+          "| set | best branch | AUROC | " +
+          " | ".join(C.show(b) for b in res["oracle"]["per_dataset"][sets[0]]["per_branch"]) + " |",
           "|---|---|---:|" + "---:|" * len(res["oracle"]["per_dataset"][sets[0]]["per_branch"])]
     for d in sets:
         o = res["oracle"]["per_dataset"][d]
         pb = " | ".join(f"{o['per_branch'][b]:.4f}" for b in o["per_branch"])
-        L.append(f"| {d} | **{o['branch']}** | {o['auroc']:.4f} | {pb} |")
+        L.append(f"| {d} | **{C.show(o['branch'])}** | {o['auroc']:.4f} | {pb} |")
     return "\n".join(L) + "\n"
 
 
@@ -179,12 +180,24 @@ def main() -> int:
                          "and equal exactly 1.")
     ap.add_argument("--merge", type=int, default=0, metavar="N",
                     help="read the N shard files for --tag and write the combined grid and report")
+    ap.add_argument("--render-only", action="store_true",
+                    help="rebuild the grid and the markdown from the stored JSON for --tag, "
+                         "without refitting a single weight. For a presentation change -- a "
+                         "renamed branch, a reworded header -- where recomputing would risk "
+                         "a number moving for a reason nobody can point at.")
     a = ap.parse_args()
     items = [x.strip() for x in a.branches.split(",") if x.strip()]
     sizes = tuple(int(x) for x in a.sizes.split(","))
     sfx = f"_{a.tag}" if a.tag else ""
 
-    if a.merge:
+    if a.render_only:
+        f = C.OUT / f"per_dataset{sfx}.json"
+        if not f.exists():
+            print(f"--render-only: no stored grid at {f}")
+            return 1
+        res = json.load(open(f))
+        print(f"rendering {len(res['rows'])} stored subsets from {f}")
+    elif a.merge:
         parts, miss = [], []
         for i in range(a.merge):
             f = C.OUT / f"per_dataset{sfx}_shard{i}.json"
@@ -223,7 +236,8 @@ def main() -> int:
             json.dump(res, open(f, "w"), indent=1, default=str)
             print(f"-> {f}")
             return 0
-    json.dump(res, open(C.OUT / f"per_dataset{sfx}.json", "w"), indent=1, default=str)
+    if not a.render_only:
+        json.dump(res, open(C.OUT / f"per_dataset{sfx}.json", "w"), indent=1, default=str)
     df = grid(res)
     df.to_csv(C.OUT / f"per_dataset_auroc{sfx}.csv", index=False)
     out = C.ROOT / f"reports/branch_fusion/PER_DATASET{sfx.upper()}.md"

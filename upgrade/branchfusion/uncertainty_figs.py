@@ -20,9 +20,14 @@ what remains. THREE curves, because the figure has to argue something:
   oracle         the dashed bound -- the same predictions ranked by whether they are actually
                  wrong. No rejector can do better; it fixes the scale of the other two.
 
-Opinions are the deployed five-branch system under PCR6+-R, with the reliability weights fitted
+Opinions are the deployed FOUR-branch framework (App + TD + LFS + STT) under PCR6+-R, with the
+reliability weights fitted
 on development and the threshold taken from FF++ validation rows -- never from the test set being
 plotted.
+
+The caption is WRITTEN FROM THE NUMBERS, not asserted: `FIGURE_NOTES.md` is generated here with
+the area under each risk-coverage curve, so whether vacuity actually beats the margin baseline is
+read off the figure's own data instead of being claimed alongside it.
 """
 from __future__ import annotations
 
@@ -72,6 +77,18 @@ def risk_coverage(y, p, u, tau):
         be = 0.5 * ((pp[pos] == 0).mean() + (pp[neg] == 1).mean())
         cov.append(k / len(y)); risk.append(be)
     return np.array(cov), np.array(risk)
+
+
+def aurc(cov, risk) -> float:
+    """Area under the risk-coverage curve, normalised by the coverage range actually plotted.
+
+    Lower is better. Two rejectors are only comparable through this if they are integrated over
+    the same coverage grid, which they are: `risk_coverage` drops a point only when a retained
+    set runs out of one class, and that happens at the same coverage for both.
+    """
+    if len(cov) < 2:
+        return float("nan")
+    return float(np.trapezoid(risk, cov) / (cov[-1] - cov[0]))
 
 
 def main() -> int:
@@ -129,6 +146,8 @@ def main() -> int:
         ax.plot(cov * 100, risk, color=CORRECT, linewidth=2.0, label="vacuity (ours)")
         ax.plot(mcov * 100, mrisk, color=MARGIN, linewidth=2.0, label=r"margin $|p-\tau|$")
         ax.plot(ocov * 100, orisk, color=INK2, linewidth=1.3, linestyle="--", label="oracle")
+        s["aurc"] = {"vacuity": aurc(cov, risk), "margin": aurc(mcov, mrisk),
+                     "oracle": aurc(ocov, orisk)}
         ax.set_xlabel("coverage (%)", fontsize=9, color=INK2)
         if j == 0:
             ax.set_ylabel("balanced error", fontsize=9, color=INK2)
@@ -152,9 +171,66 @@ def main() -> int:
                    for k, v in s.items() if k in ("auroc", "err")}
                | {"u_correct_mean": float(s["u"][s["correct"]].mean()),
                   "u_wrong_mean": float(s["u"][~s["correct"]].mean()),
-                  "n_wrong": int((~s["correct"]).sum())}
+                  "n_wrong": int((~s["correct"]).sum()),
+                  "plotted": d in pick, "aurc": s.get("aurc")}
                for d, s in stats.items()},
               open(C.ROOT / "analysis/branchfusion/uncertainty_figs.json", "w"), indent=1)
+
+    # ------------------------------------------------------------------ caption, from the numbers
+    wins = [d for d in pick if stats[d]["aurc"]["vacuity"] < stats[d]["aurc"]["margin"]]
+    N = ["# Figure — vacuity and risk-coverage", "",
+         f"`figures/uncertainty_riskcoverage.png`, regenerated with the panels chosen by AUROC "
+         f"among the sets with at least forty errors: {', '.join(pick)}.", "",
+         "## Top row — the separation holds", "",
+         "Vacuity split by whether the fused prediction is right. Misclassified videos carry",
+         "visibly more vacuity than correct ones on every panel, which is the claim DiCoME's",
+         "Figure 3 makes and it reproduces here:", "",
+         "| set | u(correct) | u(wrong) | ratio | errors |", "|---|---:|---:|---:|---:|"]
+    for d in pick:
+        s_ = stats[d]
+        uc = float(s_["u"][s_["correct"]].mean()); uw = float(s_["u"][~s_["correct"]].mean())
+        N.append(f"| {d} | {uc:.4f} | {uw:.4f} | {uw / uc:.2f}x | {int((~s_['correct']).sum())} |")
+    N += ["", "## Bottom row — is it actually a better rejector?", "",
+          "Separating errors in a histogram does not by itself make a quantity a better rejector",
+          "than the decision margin, which costs nothing and needs no evidential model. So the",
+          "verdict below is computed, not asserted. Area under the risk-coverage curve, lower is",
+          "better, both rejectors on the same coverage grid:", "",
+          r"| set | vacuity (ours) | margin \|p-tau\| | oracle | vacuity better? |",
+          "|---|---:|---:|---:|---|"]
+    for d in pick:
+        a = stats[d]["aurc"]
+        N.append(f"| {d} | {a['vacuity']:.4f} | {a['margin']:.4f} | {a['oracle']:.4f} | "
+                 f"{'yes' if a['vacuity'] < a['margin'] else 'NO'} |")
+    lost = [d for d in pick if d not in wins]
+    N += ["",
+          f"Vacuity wins {len(wins)} of the {len(pick)} panels "
+          f"({', '.join(wins) if wins else 'none'})" +
+          (f", and loses on {', '.join(lost)}." if lost else "."), "",
+          "### What may be claimed from this"]
+    if len(wins) == len(pick):
+        N += ["", "Both rows. Vacuity separates errors in the histogram AND orders them better",
+              "than the decision margin on every panel, so the evidential apparatus is paying",
+              "for itself as a rejector and not only as an interpretable quantity."]
+    elif wins:
+        N += ["",
+              f"The first row on every panel, the second on {len(wins)} of {len(pick)}. Vacuity",
+              "is the better rejector where it wins and the margin is free, so the claim to make",
+              "is the one the table supports: vacuity dominates the margin on most sets, by a",
+              f"wide margin on {min(wins, key=lambda d: stats[d]['aurc']['vacuity'])}, and ties or",
+              f"loses on {', '.join(lost)}. State the exception. A reviewer who runs the margin",
+              "baseline will find it, and it costs nothing to report."]
+    else:
+        N += ["",
+              "The FIRST ROW ONLY. A quantity can separate errors in a histogram and still not",
+              "order them better than the decision margin, which costs nothing and needs no",
+              "evidential model -- that is what happened here. The figure supports *uncertainty",
+              "that is interpretable and decomposable*: vacuity is a stated quantity of ignorance,",
+              "separable from conflict, and it is what the fusion rule operates on. It does NOT",
+              "support a claim of better selective prediction. Reading the second claim off the",
+              "first panel is the mistake this file exists to prevent."]
+    N += [""]
+    (OUT.parent / "FIGURE_NOTES.md").write_text("\n".join(N))
+    print(f"-> {OUT.parent / 'FIGURE_NOTES.md'}")
     return 0
 
 
