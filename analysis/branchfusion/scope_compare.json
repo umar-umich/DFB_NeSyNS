@@ -1,0 +1,237 @@
+{
+ "results": {
+  "CDFv3/v31": {
+   "videos": 5118,
+   "real": 178,
+   "fake": 4940,
+   "auroc": 0.961171132238548,
+   "fpr90": 0.11235955056179775,
+   "branch_A": 0.8935370513578674,
+   "branch_V": 0.9262526725196742,
+   "branch_O": 0.8801050811991084,
+   "branch_S16ctl": 0.8863735613883456
+  },
+  "CDFv3/nolip": {
+   "videos": 5418,
+   "real": 178,
+   "fake": 5240,
+   "auroc": 0.9613592503645253,
+   "fpr90": 0.11235955056179775,
+   "branch_A": 0.8893462132258341,
+   "branch_V": 0.9288462775538211,
+   "branch_O": 0.8790280041169911,
+   "branch_S16ctl": 0.8883829016210653
+  },
+  "CDFv3/nolipadv": {
+   "videos": 5418,
+   "real": 178,
+   "fake": 5240,
+   "auroc": 0.9613592503645253,
+   "fpr90": 0.11235955056179775,
+   "branch_A": 0.8893462132258341,
+   "branch_V": 0.9288462775538211,
+   "branch_O": 0.8790280041169911,
+   "branch_S16ctl": 0.8883829016210653
+  },
+  "KoDF/v31": {
+   "videos": 1395,
+   "real": 403,
+   "fake": 992,
+   "auroc": 0.9436459417273674,
+   "fpr90": 0.03970223325062035,
+   "branch_A": 0.8562870207316097,
+   "branch_V": 0.9655532097974866,
+   "branch_O": 0.8547736732570239,
+   "branch_S16ctl": 0.9267764948371088
+  },
+  "KoDF/nolip": {
+   "videos": 1509,
+   "real": 403,
+   "fake": 1106,
+   "auroc": 0.9493670886075949,
+   "fpr90": 0.03225806451612903,
+   "branch_A": 0.8691526929583279,
+   "branch_V": 0.9653278530371221,
+   "branch_O": 0.8647373451375084,
+   "branch_S16ctl": 0.9335499127250863
+  },
+  "KoDF/nolipadv": {
+   "videos": 2239,
+   "real": 806,
+   "fake": 1433,
+   "auroc": 0.9111756037672792,
+   "fpr90": 0.38337468982630274,
+   "branch_A": 0.8116801933856163,
+   "branch_V": 0.9297726056668496,
+   "branch_O": 0.7998567962888248,
+   "branch_S16ctl": 0.9093474620735273
+  }
+ },
+ "admitted": {
+  "CDFv3": {
+   "nolip": [
+    "synthesis-TalkingFace-IP_LAP"
+   ],
+   "nolipadv": []
+  },
+  "KoDF": {
+   "nolip": [
+    "fake-audio-driven"
+   ],
+   "nolipadv": [
+    "adv-fake",
+    "adv-real"
+   ]
+  }
+ },
+ "weights": [
+  0.5,
+  0.25,
+  1.0,
+  0.25
+ ],
+ "false_alarms": {
+  "CDFv3": {
+   "tau": 0.4415464801373252,
+   "real_subsets": {
+    "Celeb-real": {
+     "videos": 108,
+     "fpr": 0.10185185185185185
+    },
+    "YouTube-real": {
+     "videos": 70,
+     "fpr": 0.12857142857142856
+    }
+   },
+   "fake_subsets": {
+    "synthesis-FaceReenact-DaGAN": {
+     "videos": 200,
+     "tpr": 0.75
+    },
+    "synthesis-FaceReenact-FSRT": {
+     "videos": 200,
+     "tpr": 0.865
+    },
+    "synthesis-FaceReenact-HyperReenact": {
+     "videos": 200,
+     "tpr": 0.97
+    },
+    "synthesis-FaceReenact-LIA": {
+     "videos": 200,
+     "tpr": 0.97
+    },
+    "synthesis-FaceReenact-LivePortrait": {
+     "videos": 200,
+     "tpr": 0.835
+    },
+    "synthesis-FaceReenact-MCNET": {
+     "videos": 200,
+     "tpr": 0.91
+    },
+    "synthesis-FaceReenact-TPSMM": {
+     "videos": 200,
+     "tpr": 0.91
+    },
+    "synthesis-FaceSwap-BlendFace": {
+     "videos": 200,
+     "tpr": 1.0
+    },
+    "synthesis-FaceSwap-Celeb-DF-v2": {
+     "videos": 340,
+     "tpr": 0.9529411764705882
+    },
+    "synthesis-FaceSwap-GHOST": {
+     "videos": 200,
+     "tpr": 0.94
+    },
+    "synthesis-FaceSwap-HifiFace": {
+     "videos": 200,
+     "tpr": 0.995
+    },
+    "synthesis-FaceSwap-InSwapper": {
+     "videos": 200,
+     "tpr": 1.0
+    },
+    "synthesis-FaceSwap-MobileFaceSwap": {
+     "videos": 200,
+     "tpr": 0.945
+    },
+    "synthesis-FaceSwap-SimSwap": {
+     "videos": 200,
+     "tpr": 0.57
+    },
+    "synthesis-FaceSwap-UniFace": {
+     "videos": 200,
+     "tpr": 1.0
+    },
+    "synthesis-TalkingFace-AniTalker": {
+     "videos": 300,
+     "tpr": 0.8533333333333334
+    },
+    "synthesis-TalkingFace-EDTalk": {
+     "videos": 300,
+     "tpr": 1.0
+    },
+    "synthesis-TalkingFace-EchoMimic": {
+     "videos": 300,
+     "tpr": 0.8566666666666667
+    },
+    "synthesis-TalkingFace-FLOAT": {
+     "videos": 300,
+     "tpr": 0.9466666666666667
+    },
+    "synthesis-TalkingFace-IP_LAP": {
+     "videos": 300,
+     "tpr": 0.91
+    },
+    "synthesis-TalkingFace-R3DPortrait": {
+     "videos": 300,
+     "tpr": 1.0
+    },
+    "synthesis-TalkingFace-SadTalker": {
+     "videos": 300,
+     "tpr": 0.6333333333333333
+    }
+   }
+  },
+  "KoDF": {
+   "tau": 0.2846704688604561,
+   "real_subsets": {
+    "adv-real": {
+     "videos": 403,
+     "fpr": 0.05459057071960298
+    },
+    "real": {
+     "videos": 403,
+     "fpr": 0.03225806451612903
+    }
+   },
+   "fake_subsets": {
+    "adv-fake": {
+     "videos": 327,
+     "tpr": 0.41284403669724773
+    },
+    "fake-audio-driven": {
+     "videos": 114,
+     "tpr": 1.0
+    },
+    "fake-dffs": {
+     "videos": 223,
+     "tpr": 1.0
+    },
+    "fake-dfl": {
+     "videos": 212,
+     "tpr": 1.0
+    },
+    "fake-fo": {
+     "videos": 352,
+     "tpr": 0.90625
+    },
+    "fake-fsgan": {
+     "videos": 205,
+     "tpr": 0.6195121951219512
+    }
+   }
+  }
+ }
+}

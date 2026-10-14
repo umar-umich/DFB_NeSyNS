@@ -60,7 +60,7 @@ PUBLISHED = {
     "ProDet (NIPS'24)": [0.908, 0.929, 0.975, 0.771, 0.747, 0.928, 0.837, 0.844],
     "Effort (ICML'25)": [0.962, 0.873, 0.953, 0.983, 0.926, 0.957, 0.936, 0.926],
     "GenD (WACV'26)":   [0.974, 0.935, 0.976, 0.983, 0.942, 0.974, 0.943, 0.938],
-    "DiCoME (published)": [0.982, 0.963, 0.978, 0.991, 0.972, 0.989, 0.970, 0.965],
+    "DiCoME": [0.982, 0.963, 0.978, 0.991, 0.972, 0.989, 0.970, 0.965],
 }
 
 CAMPAIGN = C.ROOT / "tbiom/reports/EXP_DF40_CROSS_MANIPULATION.json"
@@ -167,8 +167,9 @@ def main() -> int:
             continue
         gcols = [C.show_subset(g) for g in GROUPS]
         L += [f"## {title} generators", "",
-              "| generator | videos (real / fake) | **" + "** | ".join(gcols)
-              + "** | DiCoME (our training) | Δ (four) | " + " | ".join(C.show(b) for b in need)
+              "| generator | videos (real / fake) | "
+              + " | ".join(f"**{c}**" for c in gcols)
+              + " | DiCoME (our training) | Δ (four) | " + " | ".join(C.show(b) for b in need)
               + " |",
               "|---|---|" + "---:|" * (len(GROUPS) + 2) + "---:|" * len(need)]
         for g, ds in rows:
@@ -194,8 +195,9 @@ def main() -> int:
     eight = [g for g in DICOME_EIGHT if any(f"DF40_{g}_{h}" in res for h in ("cdf", "ff"))]
     if eight:
         L += ["## Against the published cross-manipulation table", "",
-              "Column order is DiCoME's. Our three rows are the two halves and their pool; every",
-              "other row is transcribed from the paper and was not re-measured here.", "",
+              "Column order is DiCoME's. Each of our groups contributes three rows — the two",
+              "source halves and their pool; every other row is transcribed from the paper and was",
+              "not re-measured here, on a census we cannot inspect.", "",
               "| method | " + " | ".join(PRETTY[g] for g in eight) + " | Avg. |",
               "|---|" + "---:|" * (len(eight) + 1)]
         for q in GROUPS:

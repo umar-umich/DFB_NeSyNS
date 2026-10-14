@@ -26,6 +26,12 @@ matched columns are the comparable figures:
 Rank methods on a matched column and say which one. The per-row mean belongs in the
 per-dataset discussion, not in a ranking.
 
+**Cells not on our video census.** These rows were scored on a different set of
+videos for that dataset, so the difference against our cell is not only a
+difference in method:
+
+- DiCoME (trained, their repo), CDFv3: 1918 videos against our 5118
+
 ## AUROC (higher is better)
 
 `mean (all)`: 5 sets (CDFv2, CDFv3, DFD, DFDC, DFDCP).  
