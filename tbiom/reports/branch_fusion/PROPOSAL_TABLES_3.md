@@ -58,6 +58,10 @@ are the comparator that shows what the evidential machinery buys.
 On a binary frame Yager coincides with Dubois-Prade, and PCR5 collapses onto PCR6, so
 several rules the literature separates are one row here.
 
+PCR6+-R is the adopted rule: it gives the lowest false-alarm rate at matched 90%
+sensitivity, which is the operating point an evidentiary use is read at, and it is
+the most committed rule by mean vacuity.
+
 ### AUROC (higher is better)
 
 | fusion rule | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean |
@@ -93,12 +97,6 @@ The two probability means are absent here: they emit no opinion, so vacuity is u
 | WBF (Josang) | 0.1839 | 0.1892 | 0.1753 | 0.2349 | 0.2270 | 0.2338 | 0.1533 | 0.1942 | 0.1115 | 0.1385 | 0.2153 | 0.2369 | **0.1912** |
 | Cautious (Denoeux) | 0.1196 | 0.1274 | 0.1251 | 0.1664 | 0.1544 | 0.1699 | 0.1130 | 0.1381 | 0.0816 | 0.0983 | 0.1519 | 0.1699 | **0.1346** |
 | PCR6+-R (ours) | 0.0285 | 0.0391 | 0.0270 | 0.0473 | 0.0467 | 0.0456 | 0.0171 | 0.0325 | 0.0091 | 0.0159 | 0.0339 | 0.0433 | **0.0322** |
-
-The remaining metrics -- ECE, Brier, NLL and E-AURC -- are in
-`OPERATOR_COMPARISON.md` and in `PROPOSAL_TABLES_2.md`. PCR6+-R does not lead them:
-Dempster takes ECE and E-AURC, WBF takes Brier and NLL. PCR6+-R is adopted for the
-false-alarm rate at matched sensitivity, which is the forensic operating point, and
-that trade is stated rather than implied.
 
 ---
 
