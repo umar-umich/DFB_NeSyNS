@@ -251,11 +251,17 @@ def main() -> int:
           "On a binary frame Yager coincides with Dubois-Prade, and PCR5 collapses onto PCR6, so",
           "several rules the literature separates are one row here.", ""]
     for m, title, direction in METRICS:
-        if not any(r[1] for r in op[m]):
+        # A probability mean has no vacuity at all -- an all-dash row is structurally empty, not
+        # a missing measurement, so those rows leave this table rather than printing dashes.
+        rows_m = [(n, c) for n, c in op[m] if c]
+        if not rows_m:
             continue
         arrow = "" if direction == "—" else f" ({direction} is better)"
         L += [f"### {title}{arrow}", ""]
-        md(L, "fusion rule", op[m], sets)
+        if m == "vac":
+            L += ["The two probability means are absent here: they emit no opinion, so vacuity "
+                  "is undefined for them rather than zero.", ""]
+        md(L, "fusion rule", rows_m, sets)
 
     L += ["---", "", "## Table 3 — Comparison with the state of the art", "",
           "FPR is read at a MATCHED true-positive rate, so every method is compared at the same",

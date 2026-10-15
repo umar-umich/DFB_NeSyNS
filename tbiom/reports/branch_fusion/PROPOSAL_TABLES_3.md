@@ -132,10 +132,10 @@ several rules the literature separates are one row here.
 
 ### mean vacuity
 
+The two probability means are absent here: they emit no opinion, so vacuity is undefined for them rather than zero.
+
 | fusion rule | CDFv2 | CDFv3 | DFD | DFDC | DFDCP | FFIW | KoDF | IDForge | DFDM | UADFV | DeepSpeak-1.1 | DeepSpeak-2.0 | mean |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Mean (unweighted) † | — | — | — | — | — | — | — | — | — | — | — | — | **—** |
-| Mean (fitted weights) † | — | — | — | — | — | — | — | — | — | — | — | — | **—** |
 | Dempster | 0.0420 | 0.0546 | 0.0372 | 0.0624 | 0.0647 | 0.0584 | 0.0257 | 0.0408 | 0.0121 | 0.0212 | 0.0466 | 0.0580 | **0.0436** |
 | Yager | 0.4113 | 0.3151 | 0.2196 | 0.2513 | 0.2993 | 0.2433 | 0.1591 | 0.2083 | 0.1082 | 0.1639 | 0.2384 | 0.2505 | **0.2390** |
 | WBF (Josang) | 0.1839 | 0.1892 | 0.1753 | 0.2349 | 0.2270 | 0.2338 | 0.1533 | 0.1942 | 0.1115 | 0.1385 | 0.2153 | 0.2369 | **0.1912** |
