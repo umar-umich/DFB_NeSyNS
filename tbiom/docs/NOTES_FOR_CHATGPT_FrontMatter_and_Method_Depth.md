@@ -232,6 +232,38 @@ point.
 
 ---
 
+## PART E-bis — THE FUSION RULE, AND HOW TO ARGUE FOR IT
+
+The operator comparison reports **AUROC, FPR at TPR 90%, and mean vacuity** over seven rules on
+the same branches and the same discounted masses.
+
+| fusion rule | AUROC | FPR@TPR90 | mean vacuity |
+|---|---:|---:|---:|
+| Mean (unweighted) † | 0.9453 | 0.1473 | — |
+| Mean (fitted weights) † | 0.9461 | 0.1455 | — |
+| Dempster | **0.9484** | 0.1433 | 0.0436 |
+| Yager | 0.9453 | 0.1414 | 0.2390 |
+| WBF (Jøsang) | 0.9459 | 0.1491 | 0.1912 |
+| Cautious (Denœux) | 0.9440 | 0.1554 | 0.1346 |
+| **PCR6+-R (ours)** | 0.9468 | **0.1406** | **0.0322** |
+
+† no opinion, so no vacuity.
+
+**The argument for PCR6+-R has to be made, not implied by a bold number.** Write it as:
+the rule is chosen for the operating characteristic the application is read at — the lowest
+false-alarm rate at matched sensitivity — and its mean vacuity confirms it is doing what PCR6
+is designed to do, returning conflicting mass to the sources that committed to it rather than
+normalising it away. It is second on AUROC by 0.0016, which the text should state.
+
+**Connect this to the Background chain (Part D).** Dempster normalises conflict away through
+`1 − C`; PCR6+ redistributes it. The vacuity column is the direct evidence of that difference:
+0.0322 against Dempster's 0.0436, and against Yager's 0.2390, which parks conflict in the
+uncommitted mass instead. A reader who has Part D's chain can read that column as a mechanism,
+not a statistic. This is the single best place in the paper to show the theory and the
+measurement meeting.
+
+---
+
 ## PART F — TONE
 
 Three habits to fix throughout the front matter:
@@ -243,5 +275,5 @@ Three habits to fix throughout the front matter:
    burying them.
 3. **State limitations in the body, not only in a closing section.** Three belong in the method
    chapter where they arise: the fixed reliability weights underperforming VD on reenactment;
-   the timestamp encoding not being vindicated; PCR6+ trailing Dempster on AUROC while leading
-   on FPR.
+   the timestamp encoding not being vindicated; and PCR6+-R sitting second on AUROC, 0.0016
+   behind Dempster, while leading the false-alarm rate it is adopted for.

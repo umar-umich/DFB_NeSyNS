@@ -48,6 +48,8 @@ def show_subset(g):
     """Full form for a single branch, abbreviations for a combination."""
     return FULL[g[0]] if len(g) == 1 else "+".join(SHORT[b] for b in g)
 OUT = C.REPORT / "PROPOSAL_TABLES_3.md"
+#: `--all-metrics` renders every operator metric instead of the reported three.
+ALL_METRICS = "--all-metrics" in sys.argv
 #: UMAR's term for DF40's reenactment family.
 FAMILY_NAME = {"face swap": "FaceSwap", "reenactment": "ExpressionSwap"}
 #: The decision rules the framework could be fused with, on the SAME three branches. Restored
@@ -201,6 +203,11 @@ def main() -> int:
                ("ece", "ECE-15", "lower"), ("brier", "Brier", "lower"),
                ("nll", "NLL", "lower"), ("eaurc", "E-AURC", "lower"),
                ("vac", "mean vacuity", "—")]
+    #: UMAR 2026-10-15, reaffirmed: the operator comparison reports these three everywhere, in
+    #: the paper file AND in the full-detail one. All seven are still COMPUTED -- regenerating
+    #: them is `--all-metrics`, and they remain in git history -- so the restriction is a
+    #: reporting decision that can be reversed without re-running anything.
+    PAPER_METRICS = ("auroc", "fpr90", "vac")
     op = {m: [] for m, _t, _d in METRICS}
 
     def nll(y, p):
@@ -249,19 +256,27 @@ def main() -> int:
           "E-AURC is ranked by the decision margin `1 - |2p - 1|` rather than by evidence. They",
           "are the comparator that shows what the evidential machinery buys.", "",
           "On a binary frame Yager coincides with Dubois-Prade, and PCR5 collapses onto PCR6, so",
-          "several rules the literature separates are one row here.", ""]
-    for m, title, direction in METRICS:
-        # A probability mean has no vacuity at all -- an all-dash row is structurally empty, not
-        # a missing measurement, so those rows leave this table rather than printing dashes.
-        rows_m = [(n, c) for n, c in op[m] if c]
-        if not rows_m:
-            continue
-        arrow = "" if direction == "—" else f" ({direction} is better)"
-        L += [f"### {title}{arrow}", ""]
-        if m == "vac":
-            L += ["The two probability means are absent here: they emit no opinion, so vacuity "
-                  "is undefined for them rather than zero.", ""]
-        md(L, "fusion rule", rows_m, sets)
+          "several rules the literature separates are one row here.", "",
+          "PCR6+-R is the adopted rule: it gives the lowest false-alarm rate at matched 90%",
+          "sensitivity, which is the operating point an evidentiary use is read at, and it is",
+          "the most committed rule by mean vacuity.", ""]
+    def emit_operator_tables(dest, which):
+        for m, title, direction in METRICS:
+            if m not in which:
+                continue
+            # A probability mean has no vacuity at all -- an all-dash row is structurally empty,
+            # not a missing measurement, so those rows leave this table rather than dashing.
+            rows_m = [(n, c) for n, c in op[m] if c]
+            if not rows_m:
+                continue
+            arrow = "" if direction == "—" else f" ({direction} is better)"
+            dest += [f"### {title}{arrow}", ""]
+            if m == "vac":
+                dest += ["The two probability means are absent here: they emit no opinion, so "
+                         "vacuity is undefined for them rather than zero.", ""]
+            md(dest, "fusion rule", rows_m, sets)
+
+    emit_operator_tables(L, tuple(m for m, _t, _d in METRICS) if ALL_METRICS else PAPER_METRICS)
 
     L += ["---", "", "## Table 3 — Comparison with the state of the art", "",
           "FPR is read at a MATCHED true-positive rate, so every method is compared at the same",

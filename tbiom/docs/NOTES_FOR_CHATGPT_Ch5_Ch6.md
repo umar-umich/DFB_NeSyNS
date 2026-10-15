@@ -175,27 +175,37 @@ chapter has. Per-generator: DiCoME scores **0.5283 on mcnet** and **0.6264 on fa
 at or near chance — so "weak on reenactment" understates it; on specific generators it is not
 detecting at all.
 
-### 4.4 Fusion operator (Table 2) — report the split honestly
+### 4.4 Fusion operator (Table 2) — seven rules, three metrics
 
-| rule | AUROC | FPR@TPR90 |
-|---|---:|---:|
-| Mean (unweighted) | 0.9453 | 0.1473 |
-| Mean (fitted weights) | 0.9461 | 0.1455 |
-| Dempster (DS-C) | **0.9484** | 0.1433 |
-| **PCR6+-R (ours)** | 0.9468 | **0.1406** |
+Reported metrics are **AUROC, FPR at TPR 90%, and mean vacuity**. All seven rules read the same
+three branches and the same reliability-discounted masses, so the only thing that varies is
+where conflicting mass goes.
 
-**Do not claim PCR6+ wins outright.** Dempster leads AUROC by 0.0016; PCR6+ leads FPR at
-matched sensitivity by 0.0027. The same split appeared on a four-branch set (0.9501 vs 0.9482)
-and in a standalone operator sweep — three independent measurements, so it is not noise.
+| fusion rule | AUROC | FPR@TPR90 | mean vacuity |
+|---|---:|---:|---:|
+| Mean (unweighted) † | 0.9453 | 0.1473 | — |
+| Mean (fitted weights) † | 0.9461 | 0.1455 | — |
+| Dempster | **0.9484** | 0.1433 | 0.0436 |
+| Yager | 0.9453 | 0.1414 | 0.2390 |
+| WBF (Jøsang) | 0.9459 | 0.1491 | 0.1912 |
+| Cautious (Denœux) | 0.9440 | 0.1554 | 0.1346 |
+| **PCR6+-R (ours)** | 0.9468 | **0.1406** | **0.0322** |
 
-Two defensible framings; pick one and commit:
-- **(a) Lead on FPR.** PCR6+ is adopted because it reduces false alarms at matched sensitivity,
-  which is the operating characteristic that matters forensically, at a cost of 0.0016 AUROC.
-  State the cost in the text, not only in the table.
-- **(b) Adopt Dempster** and drop the PCR6+ claim, keeping PCR6+ as a reported alternative.
+† The two probability means emit a probability, not an opinion, so vacuity is undefined for
+them — not zero. They are the comparator that shows what the opinion-level machinery buys.
 
-(a) is well supported and consistent with the dissertation's stated courtroom framing, but it
-must be argued, not implied by bolding.
+**PCR6+-R is the adopted rule.** The argument to make, in this order:
+1. It gives the **lowest false-alarm rate at matched 90% sensitivity** (0.1406). For evidentiary
+   use this is the operating point a result is read at, and it is the metric the dissertation
+   has framed from the start.
+2. It is the **most committed rule** by mean vacuity (0.0322) — it resolves conflict onto the
+   classes that caused it rather than leaving mass uncommitted, which is what PCR6 is for.
+3. On AUROC it is **second, behind Dempster by 0.0016**. State this plainly in the text. Do not
+   let bolding carry the claim; a 0.0016 gap is not a win for anyone and saying so is cheap.
+
+On a binary frame Yager coincides with Dubois–Prade and PCR5 collapses onto PCR6, so several
+rules the literature separates are one row here — worth one sentence so a reviewer does not
+ask where they went.
 
 ---
 
