@@ -73,19 +73,27 @@ GROUPS = [FINAL, ("A", "V", "O")]
 
 
 def gens_available(gens, halves=("cdf", "ff")):
-    """Generator sets where EVERY branch of the framework resolves, and why one does not."""
+    """Generator sets where EVERY branch of the framework resolves, and why one does not.
+
+    A generator with no `<gen>-<half>` split is named without a half -- DeepFaceLab ships one
+    source and its own real pool -- so the half-less form is tried too rather than reported as
+    two missing sets that never existed.
+    """
     out, missing = [], {}
     for g in gens:
-        for h in halves:
-            ds = f"DF40_{g}_{h}"
+        names = [f"DF40_{g}_{h}" for h in halves] + [f"DF40_{g}"]
+        found = False
+        for ds in names:
             if not B.sel_csv(ds).exists():
-                missing[ds] = "no stage-23 selection export"
                 continue
+            found = True
             gone = [b for b in set().union(*GROUPS) if not B.available(b, ds)]
             if gone:
                 missing[ds] = "branches " + ",".join(C.show(b) for b in gone)
                 continue
             out.append(ds)
+        if not found:
+            missing[f"DF40_{g}"] = "no stage-23 selection export under any name"
     return out, missing
 
 
@@ -158,37 +166,76 @@ def main() -> int:
          "would be a choice this table hides, so neither is picked.", "",
          "`DiCoME (our training)` is our own trained DiCoME checkpoint on the IDENTICAL videos and",
          "is the comparison to read. The published rows below are transcribed from the paper on a",
-         "census we cannot inspect and are context, not a measured difference.", ""]
+         "census we cannot inspect and are context, not a measured difference.", "",
+         "★ marks a generator DiCoME's published table does not list.", ""]
 
-    halves = [("cdf", "Celeb-DF-sourced"), ("ff", "FaceForensics++-sourced")]
-    for h, title in halves:
-        rows = [(g, f"DF40_{g}_{h}") for g in gens if f"DF40_{g}_{h}" in res]
-        if not rows:
-            continue
-        gcols = [C.show_subset(g) for g in GROUPS]
-        L += [f"## {title} generators", "",
-              "| generator | videos (real / fake) | "
-              + " | ".join(f"**{c}**" for c in gcols)
-              + " | DiCoME (our training) | Δ (four) | " + " | ".join(C.show(b) for b in need)
-              + " |",
-              "|---|---|" + "---:|" * (len(GROUPS) + 2) + "---:|" * len(need)]
+    # GROUPED BY MANIPULATION FAMILY, not just by source. DiCoME's published table is face swap
+    # only; DF40's other eleven generators are face REENACTMENT, which is a different problem and
+    # the one the temporal branch exists for. Averaging the two families into one number would
+    # hide exactly the contrast this table is here to show.
+    FAM = {m: v["family"] for v in meta.values() for m in [v["method"]]}
+    halves = [("cdf", "Celeb-DF-sourced"), ("ff", "FaceForensics++-sourced"), ("", "single-source")]
+    gcols = [C.show_subset(g) for g in GROUPS]
+    fam_means = {}
+
+    def section(title, rows):
+        """One table of generator rows; returns the per-group means over those rows."""
+        L.append(f"### {title}")
+        L.append("")
+        L.append("| generator | videos (real / fake) | "
+                 + " | ".join(f"**{c}**" for c in gcols)
+                 + " | DiCoME (our training) | Δ (four) | " + " | ".join(C.show(b) for b in need)
+                 + " |")
+        L.append("|---|---|" + "---:|" * (len(GROUPS) + 2) + "---:|" * len(need))
         for g, ds in rows:
             r = res[ds]
             d = r.get("dicome_our_training")
             delta = f"{r['ours'] - d:+.4f}" if isinstance(d, float) else "—"
-            L.append(f"| {PRETTY.get(g, g)} | {r['real']} / {r['fake']} | "
+            star = "" if g in DICOME_EIGHT else " ★"
+            L.append(f"| {PRETTY.get(g, g)}{star} | {r['real']} / {r['fake']} | "
                      + " | ".join(f"**{r['+'.join(q)]:.4f}**" for q in GROUPS)
                      + f" | {cell(d)} | {delta} | "
                      + " | ".join(cell(r[f'branch_{b}']) for b in need) + " |")
-        m_dic = mean_of([res[ds].get("dicome_our_training") for _g, ds in rows])
-        m_ours = mean_of([res[ds]["ours"] for _g, ds in rows])
-        delta = f"{m_ours - m_dic:+.4f}" if isinstance(m_dic, float) else "—"
+        ms = {"+".join(q): mean_of([res[ds]["+".join(q)] for _g, ds in rows]) for q in GROUPS}
+        md = mean_of([res[ds].get("dicome_our_training") for _g, ds in rows])
+        delta = (f"{ms['+'.join(FINAL)] - md:+.4f}"
+                 if isinstance(md, float) and isinstance(ms["+".join(FINAL)], float) else "—")
         L.append(f"| **mean over {len(rows)}** | | "
-                 + " | ".join("**" + cell(mean_of([res[ds]["+".join(q)] for _g, ds in rows]))
-                              + "**" for q in GROUPS)
-                 + f" | {cell(m_dic)} | {delta} | "
+                 + " | ".join("**" + cell(ms["+".join(q)]) + "**" for q in GROUPS)
+                 + f" | {cell(md)} | {delta} | "
                  + " | ".join(cell(mean_of([res[ds][f'branch_{b}'] for _g, ds in rows]))
                               for b in need) + " |")
+        L.append("")
+        return ms, md, len(rows)
+
+    for fam in ("face swap", "reenactment"):
+        fam_gens = [g for g in gens if FAM.get(g) == fam]
+        if not fam_gens:
+            continue
+        L += [f"## {fam.title()}", ""]
+        allrows = []
+        for h, title in halves:
+            rows = [(g, f"DF40_{g}_{h}" if h else f"DF40_{g}")
+                    for g in fam_gens if (f"DF40_{g}_{h}" if h else f"DF40_{g}") in res]
+            if not rows:
+                continue
+            allrows += rows
+            section(f"{fam.title()} — {title} generators", rows)
+        if allrows:
+            ms, md, n = section(f"{fam.title()} — ALL {len(allrows)} sets pooled", allrows)
+            fam_means[fam] = (ms, md, n)
+
+    if len(fam_means) > 1:
+        L += ["## The two families side by side", "",
+              "The contrast this table exists for. DiCoME's published cross-manipulation table is",
+              "face swap only; reenactment is the half of DF40 it does not report.", "",
+              "| family | sets | " + " | ".join(f"**{c}**" for c in gcols)
+              + " | DiCoME (our training) |",
+              "|---|---:|" + "---:|" * (len(GROUPS) + 1)]
+        for fam, (ms, md, n) in fam_means.items():
+            L.append(f"| {fam.title()} | {n} | "
+                     + " | ".join("**" + cell(ms["+".join(q)]) + "**" for q in GROUPS)
+                     + f" | {cell(md)} |")
         L.append("")
 
     # The published table, with our pooled number beside it in the same column order.

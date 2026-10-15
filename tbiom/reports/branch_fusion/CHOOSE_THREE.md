@@ -6,16 +6,16 @@ own banner says that maximum is biased upward; this table is what that banner po
 
 The four-branch set is the last row, for reference only.
 
-| branches | dev v3.1 | 12 sets, no adv | 12 sets, with adv | DF40 (16 sets) |
-|---|---:|---:|---:|---:|
-| App+TD+LFS | 0.9056 | 0.9480 | 0.9441 | 0.9915 |
-| App+TD+STT-order | 0.9045 | 0.9462 | 0.9427 | 0.9917 |
-| App+TD+STT | 0.9039 | 0.9464 | 0.9434 | 0.9906 |
-| TD+LFS+STT | 0.9009 | 0.9472 | 0.9452 | 0.9898 |
-| TD+LFS+STT-order | 0.8986 | 0.9446 | 0.9423 | 0.9887 |
-| App+LFS+STT-order | 0.8835 | 0.9407 | 0.9368 | 0.9941 |
-| App+LFS+STT | 0.8834 | 0.9402 | 0.9366 | 0.9940 |
-| **App+TD+LFS+STT** | 0.9065 | 0.9514 | 0.9482 | 0.9938 |
+| branches | dev v3.1 | 12 sets | DF40 face swap | DF40 reenact | DF40 all |
+|---|---:|---:|---:|---:|---:|
+| App+TD+LFS | 0.9056 | 0.9441 | 0.9918 | 0.9456 | 0.9670 |
+| App+TD+STT-order | 0.9045 | 0.9427 | 0.9922 | 0.9499 | 0.9695 |
+| App+TD+STT | 0.9039 | 0.9434 | 0.9910 | 0.9385 | 0.9628 |
+| TD+LFS+STT | 0.9009 | 0.9452 | 0.9894 | 0.9335 | 0.9594 |
+| TD+LFS+STT-order | 0.8986 | 0.9423 | 0.9889 | 0.9548 | 0.9706 |
+| App+LFS+STT-order | 0.8835 | 0.9368 | 0.9939 | 0.8934 | 0.9400 |
+| App+LFS+STT | 0.8834 | 0.9366 | 0.9939 | 0.8755 | 0.9303 |
+| **App+TD+LFS+STT** | 0.9065 | 0.9482 | 0.9936 | 0.9342 | 0.9617 |
 
 ## What the numbers do and do not settle
 

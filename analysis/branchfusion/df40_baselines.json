@@ -1,0 +1,1451 @@
+{
+ "GenD-CLIP": {
+  "DF40_blendface_cdf": {
+   "auroc": 0.9259655898876404,
+   "real": 178,
+   "fake": 640
+  },
+  "DF40_blendface_ff": {
+   "auroc": 0.9281122448979592,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_e4s_cdf": {
+   "auroc": 0.9937471140526397,
+   "real": 178,
+   "fake": 292
+  },
+  "DF40_e4s_ff": {
+   "auroc": 0.9883229813664596,
+   "real": 140,
+   "fake": 115
+  },
+  "DF40_facedancer_cdf": {
+   "auroc": 0.9739908447773616,
+   "real": 178,
+   "fake": 648
+  },
+  "DF40_facedancer_ff": {
+   "auroc": 0.9518367346938775,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_faceswap_cdf": {
+   "auroc": 0.9985888910447498,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_faceswap_ff": {
+   "auroc": 0.9760714285714286,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fsgan_cdf": {
+   "auroc": 0.9803917992120239,
+   "real": 178,
+   "fake": 616
+  },
+  "DF40_fsgan_ff": {
+   "auroc": 0.9813775510204081,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_inswap_cdf": {
+   "auroc": 0.8791074835700657,
+   "real": 178,
+   "fake": 424
+  },
+  "DF40_inswap_ff": {
+   "auroc": 0.9625302663438257,
+   "real": 140,
+   "fake": 118
+  },
+  "DF40_mobileswap_cdf": {
+   "auroc": 0.9322138535621681,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_mobileswap_ff": {
+   "auroc": 0.9792457542457542,
+   "real": 140,
+   "fake": 858
+  },
+  "DF40_simswap_cdf": {
+   "auroc": 0.8849322512226332,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_simswap_ff": {
+   "auroc": 0.9522448979591837,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_uniface_cdf": {
+   "auroc": 0.9654934127867323,
+   "real": 178,
+   "fake": 626
+  },
+  "DF40_uniface_ff": {
+   "auroc": 0.981734693877551,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_danet_cdf": {
+   "auroc": 0.735173575534446,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_danet_ff": {
+   "auroc": 0.9095918367346939,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_facevid2vid_cdf": {
+   "auroc": 0.8481911347079887,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_facevid2vid_ff": {
+   "auroc": 0.9258673469387755,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fomm_cdf": {
+   "auroc": 0.9352239376204783,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_fomm_ff": {
+   "auroc": 0.9837755102040816,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_hyperreenact_cdf": {
+   "auroc": 0.9140826307209592,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_hyperreenact_ff": {
+   "auroc": 0.9764795918367347,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_lia_cdf": {
+   "auroc": 0.8970240372908478,
+   "real": 178,
+   "fake": 646
+  },
+  "DF40_lia_ff": {
+   "auroc": 0.9898469387755102,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_mcnet_cdf": {
+   "auroc": 0.8042304152267162,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_mcnet_ff": {
+   "auroc": 0.9429591836734694,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_MRAA_cdf": {
+   "auroc": 0.9562594137913125,
+   "real": 178,
+   "fake": 649
+  },
+  "DF40_MRAA_ff": {
+   "auroc": 0.9935714285714285,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_one_shot_free_cdf": {
+   "auroc": 0.9028706389038431,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_one_shot_free_ff": {
+   "auroc": 0.9447959183673469,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_pirender_cdf": {
+   "auroc": 0.8671825312698749,
+   "real": 178,
+   "fake": 636
+  },
+  "DF40_pirender_ff": {
+   "auroc": 0.9436224489795918,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_sadtalker_cdf": {
+   "auroc": 0.5788049029622063,
+   "real": 178,
+   "fake": 660
+  },
+  "DF40_sadtalker_ff": {
+   "auroc": 0.7584368530020704,
+   "real": 140,
+   "fake": 138
+  },
+  "DF40_tpsm_cdf": {
+   "auroc": 0.6980315370855982,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_tpsm_ff": {
+   "auroc": 0.9333163265306123,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_deepfacelab": {
+   "auroc": 0.9812244897959184,
+   "real": 49,
+   "fake": 100
+  }
+ },
+ "GenD-PE": {
+  "DF40_blendface_cdf": {
+   "auroc": 0.9456197331460674,
+   "real": 178,
+   "fake": 640
+  },
+  "DF40_blendface_ff": {
+   "auroc": 0.9587244897959184,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_e4s_cdf": {
+   "auroc": 0.9961520701862399,
+   "real": 178,
+   "fake": 292
+  },
+  "DF40_e4s_ff": {
+   "auroc": 0.9898757763975156,
+   "real": 140,
+   "fake": 115
+  },
+  "DF40_facedancer_cdf": {
+   "auroc": 0.9803717575253156,
+   "real": 178,
+   "fake": 648
+  },
+  "DF40_facedancer_ff": {
+   "auroc": 0.9620918367346939,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_faceswap_cdf": {
+   "auroc": 0.9994267369869296,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_faceswap_ff": {
+   "auroc": 0.9832142857142857,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fsgan_cdf": {
+   "auroc": 0.9888370056909382,
+   "real": 178,
+   "fake": 616
+  },
+  "DF40_fsgan_ff": {
+   "auroc": 0.9862244897959184,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_inswap_cdf": {
+   "auroc": 0.9622774008903965,
+   "real": 178,
+   "fake": 424
+  },
+  "DF40_inswap_ff": {
+   "auroc": 0.9804479418886198,
+   "real": 140,
+   "fake": 118
+  },
+  "DF40_mobileswap_cdf": {
+   "auroc": 0.9238706718642513,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_mobileswap_ff": {
+   "auroc": 0.9777930402930403,
+   "real": 140,
+   "fake": 858
+  },
+  "DF40_simswap_cdf": {
+   "auroc": 0.9558362109765289,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_simswap_ff": {
+   "auroc": 0.966530612244898,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_uniface_cdf": {
+   "auroc": 0.9896884086585059,
+   "real": 178,
+   "fake": 626
+  },
+  "DF40_uniface_ff": {
+   "auroc": 0.9903571428571428,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_danet_cdf": {
+   "auroc": 0.7522793185488773,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_danet_ff": {
+   "auroc": 0.8687755102040816,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_facevid2vid_cdf": {
+   "auroc": 0.8628225706877393,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_facevid2vid_ff": {
+   "auroc": 0.8935714285714286,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fomm_cdf": {
+   "auroc": 0.9537450289147839,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_fomm_ff": {
+   "auroc": 0.9762755102040817,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_hyperreenact_cdf": {
+   "auroc": 0.9107609248190153,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_hyperreenact_ff": {
+   "auroc": 0.9362755102040816,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_lia_cdf": {
+   "auroc": 0.9635092357463387,
+   "real": 178,
+   "fake": 646
+  },
+  "DF40_lia_ff": {
+   "auroc": 0.9886224489795918,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_mcnet_cdf": {
+   "auroc": 0.8383290207179203,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_mcnet_ff": {
+   "auroc": 0.9156632653061224,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_MRAA_cdf": {
+   "auroc": 0.9822631187133187,
+   "real": 178,
+   "fake": 649
+  },
+  "DF40_MRAA_ff": {
+   "auroc": 0.9959183673469387,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_one_shot_free_cdf": {
+   "auroc": 0.9415626139659274,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_one_shot_free_ff": {
+   "auroc": 0.9435714285714286,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_pirender_cdf": {
+   "auroc": 0.9151473394106423,
+   "real": 178,
+   "fake": 636
+  },
+  "DF40_pirender_ff": {
+   "auroc": 0.935765306122449,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_sadtalker_cdf": {
+   "auroc": 0.5682328907048008,
+   "real": 178,
+   "fake": 660
+  },
+  "DF40_sadtalker_ff": {
+   "auroc": 0.6832298136645962,
+   "real": 140,
+   "fake": 138
+  },
+  "DF40_tpsm_cdf": {
+   "auroc": 0.6883194692878106,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_tpsm_ff": {
+   "auroc": 0.9013775510204082,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_deepfacelab": {
+   "auroc": 0.9446938775510204,
+   "real": 49,
+   "fake": 100
+  }
+ },
+ "GenD-DINO": {
+  "DF40_blendface_cdf": {
+   "auroc": 0.9338219803370786,
+   "real": 178,
+   "fake": 640
+  },
+  "DF40_blendface_ff": {
+   "auroc": 0.9450510204081632,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_e4s_cdf": {
+   "auroc": 0.9782784362013237,
+   "real": 178,
+   "fake": 292
+  },
+  "DF40_e4s_ff": {
+   "auroc": 0.9832298136645963,
+   "real": 140,
+   "fake": 115
+  },
+  "DF40_facedancer_cdf": {
+   "auroc": 0.9551602163961714,
+   "real": 178,
+   "fake": 648
+  },
+  "DF40_facedancer_ff": {
+   "auroc": 0.9002551020408164,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_faceswap_cdf": {
+   "auroc": 0.9922741784700051,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_faceswap_ff": {
+   "auroc": 0.9851020408163266,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fsgan_cdf": {
+   "auroc": 0.9791332263242376,
+   "real": 178,
+   "fake": 616
+  },
+  "DF40_fsgan_ff": {
+   "auroc": 0.9711734693877551,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_inswap_cdf": {
+   "auroc": 0.8972996608013568,
+   "real": 178,
+   "fake": 424
+  },
+  "DF40_inswap_ff": {
+   "auroc": 0.951634382566586,
+   "real": 140,
+   "fake": 118
+  },
+  "DF40_mobileswap_cdf": {
+   "auroc": 0.9174413066868926,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_mobileswap_ff": {
+   "auroc": 0.9846361971361971,
+   "real": 140,
+   "fake": 858
+  },
+  "DF40_simswap_cdf": {
+   "auroc": 0.9245210257848516,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_simswap_ff": {
+   "auroc": 0.9679081632653062,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_uniface_cdf": {
+   "auroc": 0.9767069318304197,
+   "real": 178,
+   "fake": 626
+  },
+  "DF40_uniface_ff": {
+   "auroc": 0.9879591836734694,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_danet_cdf": {
+   "auroc": 0.7318956983832033,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_danet_ff": {
+   "auroc": 0.8911224489795918,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_facevid2vid_cdf": {
+   "auroc": 0.8498756460233186,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_facevid2vid_ff": {
+   "auroc": 0.9315816326530613,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fomm_cdf": {
+   "auroc": 0.9356320441797058,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_fomm_ff": {
+   "auroc": 0.9869897959183673,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_hyperreenact_cdf": {
+   "auroc": 0.8946782590404739,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_hyperreenact_ff": {
+   "auroc": 0.9681632653061224,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_lia_cdf": {
+   "auroc": 0.8210161060284551,
+   "real": 178,
+   "fake": 646
+  },
+  "DF40_lia_ff": {
+   "auroc": 0.9393877551020409,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_mcnet_cdf": {
+   "auroc": 0.7996457287741173,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_mcnet_ff": {
+   "auroc": 0.9269897959183674,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_MRAA_cdf": {
+   "auroc": 0.8941327193088763,
+   "real": 178,
+   "fake": 649
+  },
+  "DF40_MRAA_ff": {
+   "auroc": 0.9856632653061225,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_one_shot_free_cdf": {
+   "auroc": 0.9142715732073702,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_one_shot_free_ff": {
+   "auroc": 0.9593367346938776,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_pirender_cdf": {
+   "auroc": 0.8655660377358491,
+   "real": 178,
+   "fake": 636
+  },
+  "DF40_pirender_ff": {
+   "auroc": 0.9489795918367347,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_sadtalker_cdf": {
+   "auroc": 0.564334354783793,
+   "real": 178,
+   "fake": 660
+  },
+  "DF40_sadtalker_ff": {
+   "auroc": 0.7026915113871636,
+   "real": 140,
+   "fake": 138
+  },
+  "DF40_tpsm_cdf": {
+   "auroc": 0.6955872392893736,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_tpsm_ff": {
+   "auroc": 0.9170918367346939,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_deepfacelab": {
+   "auroc": 0.9712244897959184,
+   "real": 49,
+   "fake": 100
+  }
+ },
+ "FSFM": {
+  "DF40_blendface_cdf": {
+   "auroc": 0.9676088483146067,
+   "real": 178,
+   "fake": 640
+  },
+  "DF40_blendface_ff": {
+   "auroc": 0.9651530612244898,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_e4s_cdf": {
+   "auroc": 0.9349507464983838,
+   "real": 178,
+   "fake": 292
+  },
+  "DF40_e4s_ff": {
+   "auroc": 0.9822360248447205,
+   "real": 140,
+   "fake": 115
+  },
+  "DF40_facedancer_cdf": {
+   "auroc": 0.9126179081703426,
+   "real": 178,
+   "fake": 648
+  },
+  "DF40_facedancer_ff": {
+   "auroc": 0.9725510204081632,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_faceswap_cdf": {
+   "auroc": 0.9854655777609229,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_faceswap_ff": {
+   "auroc": 0.9782142857142857,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fsgan_cdf": {
+   "auroc": 0.9857361739384212,
+   "real": 178,
+   "fake": 616
+  },
+  "DF40_fsgan_ff": {
+   "auroc": 0.979030612244898,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_inswap_cdf": {
+   "auroc": 0.9529693131227475,
+   "real": 178,
+   "fake": 424
+  },
+  "DF40_inswap_ff": {
+   "auroc": 0.9647699757869249,
+   "real": 140,
+   "fake": 118
+  },
+  "DF40_mobileswap_cdf": {
+   "auroc": 0.9192051928809554,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_mobileswap_ff": {
+   "auroc": 0.9682317682317683,
+   "real": 140,
+   "fake": 858
+  },
+  "DF40_simswap_cdf": {
+   "auroc": 0.9221721677855879,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_simswap_ff": {
+   "auroc": 0.9504081632653061,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_uniface_cdf": {
+   "auroc": 0.9871845496643572,
+   "real": 178,
+   "fake": 626
+  },
+  "DF40_uniface_ff": {
+   "auroc": 0.981938775510204,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_danet_cdf": {
+   "auroc": 0.6031684698608965,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_danet_ff": {
+   "auroc": 0.745969387755102,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_facevid2vid_cdf": {
+   "auroc": 0.7771241599492,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_facevid2vid_ff": {
+   "auroc": 0.8401530612244898,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fomm_cdf": {
+   "auroc": 0.9214004133164302,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_fomm_ff": {
+   "auroc": 0.9613265306122449,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_hyperreenact_cdf": {
+   "auroc": 0.9671072236147873,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_hyperreenact_ff": {
+   "auroc": 0.9875,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_lia_cdf": {
+   "auroc": 0.934258357393815,
+   "real": 178,
+   "fake": 646
+  },
+  "DF40_lia_ff": {
+   "auroc": 0.9666326530612245,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_mcnet_cdf": {
+   "auroc": 0.6529487869683761,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_mcnet_ff": {
+   "auroc": 0.8076530612244898,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_MRAA_cdf": {
+   "auroc": 0.9903135333529545,
+   "real": 178,
+   "fake": 649
+  },
+  "DF40_MRAA_ff": {
+   "auroc": 0.9983163265306122,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_one_shot_free_cdf": {
+   "auroc": 0.8821527186843339,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_one_shot_free_ff": {
+   "auroc": 0.9068877551020408,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_pirender_cdf": {
+   "auroc": 0.9070472051445128,
+   "real": 178,
+   "fake": 636
+  },
+  "DF40_pirender_ff": {
+   "auroc": 0.9286224489795918,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_sadtalker_cdf": {
+   "auroc": 0.4850825672454886,
+   "real": 178,
+   "fake": 660
+  },
+  "DF40_sadtalker_ff": {
+   "auroc": 0.6652691511387163,
+   "real": 140,
+   "fake": 138
+  },
+  "DF40_tpsm_cdf": {
+   "auroc": 0.4812270982755327,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_tpsm_ff": {
+   "auroc": 0.7757397959183674,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_deepfacelab": {
+   "auroc": 0.9734693877551021,
+   "real": 49,
+   "fake": 100
+  }
+ },
+ "FSFM-Adapter": {
+  "DF40_blendface_cdf": {
+   "auroc": 0.9530723314606742,
+   "real": 178,
+   "fake": 640
+  },
+  "DF40_blendface_ff": {
+   "auroc": 0.8834183673469388,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_e4s_cdf": {
+   "auroc": 0.9679275050023087,
+   "real": 178,
+   "fake": 292
+  },
+  "DF40_e4s_ff": {
+   "auroc": 0.9559006211180124,
+   "real": 140,
+   "fake": 115
+  },
+  "DF40_facedancer_cdf": {
+   "auroc": 0.8873630184491608,
+   "real": 178,
+   "fake": 648
+  },
+  "DF40_facedancer_ff": {
+   "auroc": 0.8644897959183674,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_faceswap_cdf": {
+   "auroc": 0.9902633482087736,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_faceswap_ff": {
+   "auroc": 0.9510204081632653,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fsgan_cdf": {
+   "auroc": 0.9881438785933168,
+   "real": 178,
+   "fake": 616
+  },
+  "DF40_fsgan_ff": {
+   "auroc": 0.9556122448979592,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_inswap_cdf": {
+   "auroc": 0.885255458978164,
+   "real": 178,
+   "fake": 424
+  },
+  "DF40_inswap_ff": {
+   "auroc": 0.8458837772397094,
+   "real": 140,
+   "fake": 118
+  },
+  "DF40_mobileswap_cdf": {
+   "auroc": 0.9271823681936041,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_mobileswap_ff": {
+   "auroc": 0.8799700299700299,
+   "real": 140,
+   "fake": 858
+  },
+  "DF40_simswap_cdf": {
+   "auroc": 0.8822854037757016,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_simswap_ff": {
+   "auroc": 0.8578571428571429,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_uniface_cdf": {
+   "auroc": 0.9683068887532756,
+   "real": 178,
+   "fake": 626
+  },
+  "DF40_uniface_ff": {
+   "auroc": 0.9331887755102041,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_danet_cdf": {
+   "auroc": 0.692773908966188,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_danet_ff": {
+   "auroc": 0.6656632653061224,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_facevid2vid_cdf": {
+   "auroc": 0.827685957702009,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_facevid2vid_ff": {
+   "auroc": 0.7655102040816326,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fomm_cdf": {
+   "auroc": 0.9473803032144904,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_fomm_ff": {
+   "auroc": 0.9266326530612244,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_hyperreenact_cdf": {
+   "auroc": 0.9614016021315009,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_hyperreenact_ff": {
+   "auroc": 0.943469387755102,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_lia_cdf": {
+   "auroc": 0.8597331895502139,
+   "real": 178,
+   "fake": 646
+  },
+  "DF40_lia_ff": {
+   "auroc": 0.8052551020408163,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_mcnet_cdf": {
+   "auroc": 0.7082776166576941,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_mcnet_ff": {
+   "auroc": 0.6932142857142857,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_MRAA_cdf": {
+   "auroc": 0.9808694447810806,
+   "real": 178,
+   "fake": 649
+  },
+  "DF40_MRAA_ff": {
+   "auroc": 0.9700510204081633,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_one_shot_free_cdf": {
+   "auroc": 0.9315943941788375,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_one_shot_free_ff": {
+   "auroc": 0.8646428571428572,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_pirender_cdf": {
+   "auroc": 0.9292276164228677,
+   "real": 178,
+   "fake": 636
+  },
+  "DF40_pirender_ff": {
+   "auroc": 0.8722448979591837,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_sadtalker_cdf": {
+   "auroc": 0.5960759278175009,
+   "real": 178,
+   "fake": 660
+  },
+  "DF40_sadtalker_ff": {
+   "auroc": 0.5940993788819876,
+   "real": 140,
+   "fake": 138
+  },
+  "DF40_tpsm_cdf": {
+   "auroc": 0.5660090651754858,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_tpsm_ff": {
+   "auroc": 0.6624744897959184,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_deepfacelab": {
+   "auroc": 0.9710204081632653,
+   "real": 49,
+   "fake": 100
+  }
+ },
+ "Effort": {
+  "DF40_blendface_cdf": {
+   "auroc": 0.8925035112359551,
+   "real": 178,
+   "fake": 640
+  },
+  "DF40_blendface_ff": {
+   "auroc": 0.877704081632653,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_e4s_cdf": {
+   "auroc": 0.9951708480837309,
+   "real": 178,
+   "fake": 292
+  },
+  "DF40_e4s_ff": {
+   "auroc": 0.983664596273292,
+   "real": 140,
+   "fake": 115
+  },
+  "DF40_facedancer_cdf": {
+   "auroc": 0.9803110694964627,
+   "real": 178,
+   "fake": 648
+  },
+  "DF40_facedancer_ff": {
+   "auroc": 0.9286734693877551,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_faceswap_cdf": {
+   "auroc": 0.9961900058208244,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_faceswap_ff": {
+   "auroc": 0.9772448979591837,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fsgan_cdf": {
+   "auroc": 0.9786042609076316,
+   "real": 178,
+   "fake": 616
+  },
+  "DF40_fsgan_ff": {
+   "auroc": 0.964234693877551,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_inswap_cdf": {
+   "auroc": 0.8618428026287895,
+   "real": 178,
+   "fake": 424
+  },
+  "DF40_inswap_ff": {
+   "auroc": 0.938135593220339,
+   "real": 140,
+   "fake": 118
+  },
+  "DF40_mobileswap_cdf": {
+   "auroc": 0.9114088159031979,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_mobileswap_ff": {
+   "auroc": 0.9549908424908425,
+   "real": 140,
+   "fake": 858
+  },
+  "DF40_simswap_cdf": {
+   "auroc": 0.8485863030026819,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_simswap_ff": {
+   "auroc": 0.9210204081632654,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_uniface_cdf": {
+   "auroc": 0.9228919122662167,
+   "real": 178,
+   "fake": 626
+  },
+  "DF40_uniface_ff": {
+   "auroc": 0.9652551020408163,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_danet_cdf": {
+   "auroc": 0.6343625722869597,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_danet_ff": {
+   "auroc": 0.7489795918367347,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_facevid2vid_cdf": {
+   "auroc": 0.7367840826909848,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_facevid2vid_ff": {
+   "auroc": 0.8091836734693878,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fomm_cdf": {
+   "auroc": 0.8210843478109858,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_fomm_ff": {
+   "auroc": 0.9124489795918367,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_hyperreenact_cdf": {
+   "auroc": 0.8664700520605094,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_hyperreenact_ff": {
+   "auroc": 0.9451530612244898,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_lia_cdf": {
+   "auroc": 0.7910216718266254,
+   "real": 178,
+   "fake": 646
+  },
+  "DF40_lia_ff": {
+   "auroc": 0.9145918367346939,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_mcnet_cdf": {
+   "auroc": 0.6648880746053523,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_mcnet_ff": {
+   "auroc": 0.7752040816326531,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_MRAA_cdf": {
+   "auroc": 0.8529544156091481,
+   "real": 178,
+   "fake": 649
+  },
+  "DF40_MRAA_ff": {
+   "auroc": 0.948265306122449,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_one_shot_free_cdf": {
+   "auroc": 0.767743952208117,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_one_shot_free_ff": {
+   "auroc": 0.8221938775510204,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_pirender_cdf": {
+   "auroc": 0.7411976185428591,
+   "real": 178,
+   "fake": 636
+  },
+  "DF40_pirender_ff": {
+   "auroc": 0.8171938775510204,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_sadtalker_cdf": {
+   "auroc": 0.5436840313244807,
+   "real": 178,
+   "fake": 660
+  },
+  "DF40_sadtalker_ff": {
+   "auroc": 0.6063664596273292,
+   "real": 140,
+   "fake": 138
+  },
+  "DF40_tpsm_cdf": {
+   "auroc": 0.6508431307851276,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_tpsm_ff": {
+   "auroc": 0.7651530612244898,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_deepfacelab": {
+   "auroc": 0.9526530612244898,
+   "real": 49,
+   "fake": 100
+  }
+ },
+ "ForAda": {
+  "DF40_blendface_cdf": {
+   "auroc": 0.8278002106741573,
+   "real": 178,
+   "fake": 640
+  },
+  "DF40_blendface_ff": {
+   "auroc": 0.8808673469387756,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_e4s_cdf": {
+   "auroc": 0.8864475911959366,
+   "real": 178,
+   "fake": 292
+  },
+  "DF40_e4s_ff": {
+   "auroc": 0.9686956521739131,
+   "real": 140,
+   "fake": 115
+  },
+  "DF40_facedancer_cdf": {
+   "auroc": 0.8957466361492579,
+   "real": 178,
+   "fake": 648
+  },
+  "DF40_facedancer_ff": {
+   "auroc": 0.9461734693877552,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_faceswap_cdf": {
+   "auroc": 0.996234102975676,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_faceswap_ff": {
+   "auroc": 0.9736734693877551,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fsgan_cdf": {
+   "auroc": 0.9780844155844156,
+   "real": 178,
+   "fake": 616
+  },
+  "DF40_fsgan_ff": {
+   "auroc": 0.9748469387755102,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_inswap_cdf": {
+   "auroc": 0.8927019291922832,
+   "real": 178,
+   "fake": 424
+  },
+  "DF40_inswap_ff": {
+   "auroc": 0.9492130750605327,
+   "real": 140,
+   "fake": 118
+  },
+  "DF40_mobileswap_cdf": {
+   "auroc": 0.9027304958284091,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_mobileswap_ff": {
+   "auroc": 0.9791042291042291,
+   "real": 140,
+   "fake": 858
+  },
+  "DF40_simswap_cdf": {
+   "auroc": 0.7587687777174008,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_simswap_ff": {
+   "auroc": 0.9130612244897959,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_uniface_cdf": {
+   "auroc": 0.860394155867466,
+   "real": 178,
+   "fake": 626
+  },
+  "DF40_uniface_ff": {
+   "auroc": 0.9514795918367347,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_danet_cdf": {
+   "auroc": 0.4992966674192036,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_danet_ff": {
+   "auroc": 0.7453061224489796,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_facevid2vid_cdf": {
+   "auroc": 0.6272158820312913,
+   "real": 178,
+   "fake": 637
+  },
+  "DF40_facevid2vid_ff": {
+   "auroc": 0.7784183673469388,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_fomm_cdf": {
+   "auroc": 0.7341576506955177,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_fomm_ff": {
+   "auroc": 0.8844387755102041,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_hyperreenact_cdf": {
+   "auroc": 0.7456397132289786,
+   "real": 178,
+   "fake": 641
+  },
+  "DF40_hyperreenact_ff": {
+   "auroc": 0.8954591836734694,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_lia_cdf": {
+   "auroc": 0.7966222562354333,
+   "real": 178,
+   "fake": 646
+  },
+  "DF40_lia_ff": {
+   "auroc": 0.9272448979591836,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_mcnet_cdf": {
+   "auroc": 0.5404806974280604,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_mcnet_ff": {
+   "auroc": 0.7785204081632653,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_MRAA_cdf": {
+   "auroc": 0.8944789737019788,
+   "real": 178,
+   "fake": 649
+  },
+  "DF40_MRAA_ff": {
+   "auroc": 0.9653571428571428,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_one_shot_free_cdf": {
+   "auroc": 0.6738664189083584,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_one_shot_free_ff": {
+   "auroc": 0.8143367346938776,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_pirender_cdf": {
+   "auroc": 0.6197574376369162,
+   "real": 178,
+   "fake": 636
+  },
+  "DF40_pirender_ff": {
+   "auroc": 0.8273979591836734,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_sadtalker_cdf": {
+   "auroc": 0.5035069799114743,
+   "real": 178,
+   "fake": 660
+  },
+  "DF40_sadtalker_ff": {
+   "auroc": 0.7304347826086957,
+   "real": 140,
+   "fake": 138
+  },
+  "DF40_tpsm_cdf": {
+   "auroc": 0.6266519632530434,
+   "real": 178,
+   "fake": 647
+  },
+  "DF40_tpsm_ff": {
+   "auroc": 0.774795918367347,
+   "real": 140,
+   "fake": 140
+  },
+  "DF40_deepfacelab": {
+   "auroc": 0.9614285714285714,
+   "real": 49,
+   "fake": 100
+  }
+ }
+}

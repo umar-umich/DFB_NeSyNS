@@ -45,8 +45,13 @@ NOVELTY = {
     "P16ctl": "the same construction with learned slot positions — STT's ablation, not a view",
 }
 STT_PAIR = {"S16ctl", "P16ctl"}
-DF40_GENS = ["uniface", "blendface", "mobileswap", "e4s", "facedancer", "fsgan",
-             "inswap", "simswap"]
+#: ALL 21 generators, not DiCoME's eight. The eight are face swap only, and the branches do not
+#: rank the same way on the two families: STT averages 0.9829 on face swap and 0.7963 on
+#: reenactment, so a verdict drawn from the eight is a face-swap verdict wearing a general one.
+#: DF40 ships eleven reenactment generators and they are half the corpus.
+import json as _json
+DF40_GENS = sorted({v["method"] for v in
+                    _json.loads((C.ROOT / "logs/tbiom/df40/meta.json").read_text()).values()})
 
 
 def main() -> int:
@@ -62,6 +67,8 @@ def main() -> int:
     need = sorted(set(C.CORE))
     dev = B.dev_table(need, require_all=True)
     df40_sets, _ = D.gens_available(DF40_GENS)
+    _meta = _json.loads((C.ROOT / "logs/tbiom/df40/meta.json").read_text())
+    FAM = {k: v["family"] for k, v in _meta.items()}
     print(f"{len(cands)} candidates, {len(df40_sets)} DF40 generator sets", flush=True)
 
     # The widest tables once; the narrower census is a row selection on them, since the scopes nest.
@@ -83,12 +90,18 @@ def main() -> int:
         narrowm = float(np.mean([auroc_on(wide[ds][wide[ds].v.isin(narrow[ds])]
                                           .reset_index(drop=True)) for ds in C.TEST_SETS]))
         df40m = float(np.mean([auroc_on(d40[ds]) for ds in df40_sets])) if df40_sets else None
+        fs = [ds for ds in df40_sets if FAM.get(ds) == "face swap"]
+        fr = [ds for ds in df40_sets if FAM.get(ds) == "reenactment"]
+        df40fs = float(np.mean([auroc_on(d40[ds]) for ds in fs])) if fs else None
+        df40fr = float(np.mean([auroc_on(d40[ds]) for ds in fr])) if fr else None
         rows.append({"subset": "+".join(g), "name": C.show_subset(g), "n": len(g),
                      "dev_v31": float(devscore), "mean_nolip": narrowm,
                      "mean_nolipadv": widem, "df40": df40m,
+                     "df40_faceswap": df40fs, "df40_reenact": df40fr,
                      "weights": [float(x) for x in w]})
-        print(f"  {C.show_subset(g):26s} dev {devscore:.4f}  12set {narrowm:.4f}/{widem:.4f}"
-              + (f"  DF40 {df40m:.4f}" if df40m else ""), flush=True)
+        print(f"  {C.show_subset(g):26s} dev {devscore:.4f}  12set {widem:.4f}"
+              + (f"  DF40 fs {df40fs:.4f} fr {df40fr:.4f} all {df40m:.4f}" if df40m else ""),
+              flush=True)
 
     (C.OUT / "choose_three.json").write_text(json.dumps(rows, indent=1))
     three = sorted([r for r in rows if r["n"] == 3], key=lambda r: -r["dev_v31"])
@@ -108,13 +121,14 @@ def main() -> int:
          "own banner says that maximum is biased upward; this table is what that banner points to.",
          "",
          "The four-branch set is the last row, for reference only.", "",
-         "| branches | dev v3.1 | 12 sets, no adv | 12 sets, with adv | DF40 (16 sets) |",
-         "|---|---:|---:|---:|---:|"]
+         f"| branches | dev v3.1 | 12 sets | DF40 face swap | DF40 reenact | DF40 all |",
+         "|---|---:|---:|---:|---:|---:|"]
     for r in sorted(rows, key=lambda r: (r["n"], -r["dev_v31"])):
         bold = "**" if r["n"] == 4 else ""
-        d = f"{r['df40']:.4f}" if r["df40"] else "—"
-        L.append(f"| {bold}{r['name']}{bold} | {r['dev_v31']:.4f} | {r['mean_nolip']:.4f} | "
-                 f"{r['mean_nolipadv']:.4f} | {d} |")
+        def q(k):
+            return f"{r[k]:.4f}" if isinstance(r.get(k), float) else "—"
+        L.append(f"| {bold}{r['name']}{bold} | {r['dev_v31']:.4f} | {r['mean_nolipadv']:.4f} | "
+                 f"{q('df40_faceswap')} | {q('df40_reenact')} | {q('df40')} |")
     L += ["",
           f"## What the numbers do and do not settle", "",
           f"The development spread across all {len(three)} candidates is {spread:.4f}, which is",
