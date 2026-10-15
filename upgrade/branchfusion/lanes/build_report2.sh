@@ -17,7 +17,7 @@ SCOPE=${1:-nolipadv}
 R=tbiom/reports/branch_fusion
 S=$R/scope_$SCOPE
 TABLES="TABLE_A_ABLATION PER_DATASET_CORE5 TABLE_B_FUSION TABLE1_DETECTION TABLE2_CALIBRATION"
-for f in "$R/SCOPE_COMPARISON.md" "$R/DF40_CROSSMANIP.md" "$R/CHOOSE_THREE.md"; do
+for f in "$R/SCOPE_COMPARISON.md" "$R/DF40_RESULTS.md" "$R/CHOOSE_THREE.md"; do
   [ -f "$f" ] || { echo "build_report2: missing $f" >&2; exit 1; }
 done
 for t in $TABLES; do
@@ -35,7 +35,7 @@ done
   echo "| I | what admitting each family cost, and where the false alarms come from |"
   echo "| II | which three branches to take forward, if three is the number |"
   echo "| III | every table on this census |"
-  echo "| IV | DF40 cross-manipulation — the structure of DiCoME Table 1's second half |"
+  echo "| IV | DF40 — our variants against every comparative method, all 41 generator sets |"
   echo
   echo "## One caveat, and it decides which table to quote where"; echo
   echo "**The baselines were never run on the admitted videos.** The GenD runs' prediction files"
@@ -66,7 +66,7 @@ done
     echo
   done
   echo "---"; echo
-  echo "# Part IV — DF40 cross-manipulation"; echo
-  sed -e '1,2d' "$R/DF40_CROSSMANIP.md"
+  echo "# Part IV — DF40, every method on every generator"; echo
+  sed -e '1,2d' "$R/DF40_RESULTS.md"
 } > "$R/PROPOSAL_TABLES_2.md"
 echo "-> $R/PROPOSAL_TABLES_2.md  (census $SCOPE)"
