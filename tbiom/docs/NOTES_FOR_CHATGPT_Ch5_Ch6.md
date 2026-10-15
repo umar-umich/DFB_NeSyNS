@@ -75,8 +75,8 @@ sound derived from it.
 
 **What is ours, stated precisely.** Not the evidential framework and not PCR6+ itself (cite
 Smarandache & Dezert, already ref. [19]). Ours is:
-1. the **choice of three complementary representations**, with the redundancy of a fourth
-   demonstrated rather than assumed;
+1. the **choice of three complementary representations**, shown by ablation and by the
+   per-family split to carry information the others miss rather than assumed to;
 2. **replacing Dempster's rule with direct multisource PCR6+** inside the TMC-style pipeline —
    evaluated jointly over sources, not as a sequential pairwise fold, since proportional
    redistribution is not associative (§5.2.7 already says this well; keep it);
@@ -132,10 +132,10 @@ census (5,418 and 2,239 videos; lip-sync/audio-driven and adversarial subsets ad
 | LFS+STT | 0.9379 |
 | **VD+LFS+STT (CROSS-EXAM)** | **0.9468** |
 
-Say explicitly that monotonicity **did not have to hold** — on DF40's reenactment half a
-four-branch set is beaten by three — so it is a result rather than an artefact of adding
-parameters. Note also that weights are refitted for each row, so each row is the best that
-subset can do, not the full model with parts switched off. That is the stricter reading.
+Note that weights are **refitted for each row**, so a row is the best that subset can do, not
+the full model with parts switched off. That is the stricter reading of an ablation and worth
+one sentence, because it rules out the objection that the gains come from the removed branch's
+weight being stranded.
 
 ### 4.2 Against the state of the art (Table 3), twelve sets
 
