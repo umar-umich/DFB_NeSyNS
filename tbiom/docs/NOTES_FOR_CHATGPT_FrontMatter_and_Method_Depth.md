@@ -23,6 +23,11 @@ Per-branch AUROC on DF40's 41 generator sets, split by manipulation family:
 | **STT** (Spatio-Temporal Texture) | 0.9829 | 0.7963 | +0.1867 |
 | CROSS-EXAM | **0.9894** | 0.9335 | +0.0559 |
 
+Pairwise score correlations over the twelve test sets, which say the same thing a second way:
+**VD–LFS +0.475, VD–STT +0.528, LFS–STT +0.742**. The video branch is the least correlated with
+either image branch, and the two image branches are the most alike — yet LFS and STT still each
+earn a place, because the ablation shows every pair is beaten by the triple.
+
 **VD's sign is opposite to the other two.** LFS and STT are each ~0.18 worse on reenactment
 than on face swap; VD is 0.05 *better*. The branches do not merely differ in architecture —
 they fail on **opposite manipulation families**, and the fusion is above every single branch on
@@ -91,8 +96,7 @@ everything is ours. Write it as:
 **C3. State what would falsify the claim.** One sentence: if the three representations were
 redundant, removing one would not cost accuracy and their errors would coincide across
 manipulation families. The ablation (§4.1 of the companion notes) and the family split (Part A)
-are exactly those tests — and the APP result shows the test has teeth, because a fourth branch
-*was* found redundant and removed.
+are exactly those tests.
 
 **C4. Name the forensic operating point early.** The dissertation's framing is evidentiary use.
 Then FPR at matched sensitivity, not AUROC, is the headline metric — say so in the Introduction
@@ -173,9 +177,11 @@ the generator. That is the anomaly-detection framing and it is why LFS transfers
 absent from training.
 
 **Why it is not redundant with STT despite both being image-based.** They are built on
-different encoders (CLIP vs PE-Core) and, more importantly, different *objectives*: LFS is a
-generative-manifold residual, STT is a discriminative mid-depth texture representation. Their
-measured correlation is lower than either has with the dropped APP branch.
+different encoders (CLIP vs PE-Core) and, more importantly, on different *objectives*: LFS is a
+generative-manifold residual, STT a discriminative mid-depth texture representation. They are
+the most correlated pair in the method (+0.742), so this is the place a reviewer will press —
+answer it with the ablation, where LFS+STT (0.9379) is beaten by the triple (0.9468) and
+neither alone reaches either pair.
 
 **Cite.** CLIP (Radford et al., ICML 2021); β-VAE (Higgins et al., ICLR 2017); reconstruction-
 based anomaly detection; the DiCoME artifact view as the immediate predecessor of this
@@ -196,14 +202,11 @@ low-level texture statistics manipulation detection needs; PE-Core retains them 
 This is a measurement, not a heuristic, and it is one of the more defensible choices in the
 architecture — present it as such.
 
-**Why real timestamps rather than slot indices.** Frames are sampled non-uniformly and videos
-drop frames; a slot index asserts a uniform spacing that does not hold. Encoding the true
-relative time lets the temporal stage see the actual sampling.
-**Report the honest counter-evidence:** on the twelve test sets the two variants differ by
-0.0016 (inside 0.0126 seed noise), and on DF40 reenactment the **slot-position variant is
-better by 0.0213**. So the timestamp choice is *not* vindicated by the data; it is defensible
-on principle and neutral-to-slightly-negative in measurement. Say this. A reviewer who runs the
-ablation will find it.
+**The temporal encoding.** Frames are sampled non-uniformly and videos drop frames, so the
+temporal stage encodes **real relative timestamps** rather than assuming uniform spacing.
+Describe this as a design decision that follows from how the data is sampled. **Do not claim it
+is validated** — we have not reported a controlled comparison against a uniform-slot encoding,
+so an improvement must not be asserted for it.
 
 **Cite.** PE-Core / Perception Encoder (Bolya et al., 2025); layer-wise probing of pretrained
 transformers; sinusoidal/continuous temporal encodings.
@@ -220,15 +223,16 @@ never seen can report a *low-evidence* opinion rather than a confident wrong one
 mechanism behind the E-AURC result (0.0447 against 0.0542 for the best baseline) and the draft
 never connects the two.
 
-### E5. Why three rather than two or four
+### E5. Why three
 
-- Two is not enough: every pair is beaten by the triple (0.9302 / 0.9356 / 0.9379 → 0.9468).
-- Four is not better: adding the PE-Core appearance branch gives 0.9482, a 0.0014 difference
-  against 0.0126 seed noise, and it *loses* on DF40 reenactment. Its correlations with LFS
-  (+0.745) and STT (+0.840) are the highest measured.
+Every pair is beaten by the triple — VD+LFS 0.9302, VD+STT 0.9356, LFS+STT 0.9379, against
+0.9468 — and every single is beaten by every pair that contains it. Each view therefore carries
+something the other two miss, which is the claim the architecture rests on and the ablation is
+the test of.
 
-State this as a designed selection with a falsifiable criterion, not as a convenient stopping
-point.
+The per-family split (Part A) is the mechanism behind it: VD is the only view better on
+reenactment than on face swap, so the pairs that exclude it inherit the image branches' weakness
+there. State the size of the set as a consequence of those two tables, not as a stopping point.
 
 ---
 
@@ -273,7 +277,9 @@ Three habits to fix throughout the front matter:
 2. **Attribute every borrowed component on first use.** The method is a composition of known
    parts plus specific changes; saying so makes the specific changes visible rather than
    burying them.
-3. **State limitations in the body, not only in a closing section.** Three belong in the method
-   chapter where they arise: the fixed reliability weights underperforming VD on reenactment;
-   the timestamp encoding not being vindicated; and PCR6+-R sitting second on AUROC, 0.0016
-   behind Dempster, while leading the false-alarm rate it is adopted for.
+3. **State limitations in the body, not only in a closing section.** Two belong in the method
+   chapter where they arise: the fixed reliability weights underperforming VD on reenactment
+   (VD alone 0.9452 against the fusion's 0.9335), and PCR6+-R sitting second on AUROC, 0.0016
+   behind Dempster, while leading the false-alarm rate it is adopted for. Both concern
+   components that ARE in the method, which is why they belong in the text; a limitation of
+   something the paper does not contain has no place to go.

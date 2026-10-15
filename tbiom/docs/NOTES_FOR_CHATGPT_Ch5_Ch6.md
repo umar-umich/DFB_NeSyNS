@@ -14,49 +14,42 @@ placeholder and flag it.**
 
 ---
 
-## 1. THE FRAMEWORK COMPOSITION CHANGED — this is the single biggest edit
+## 1. THE FRAMEWORK COMPOSITION — what the chapter must describe
 
-The proposal defines CROSS-EXAM as **APP + LFS + TD**. It is now **VD + LFS + STT**.
+The proposal defines CROSS-EXAM as **APP + LFS + TD**. The method is **VD + LFS + STT**.
 
-| proposal | revision | what it is |
+| in the draft | in the method | what it is |
 |---|---|---|
 | TD | **VD — Video Dynamics** | V-JEPA 2 ViT-L, LoRA on encoder q/v, 16-frame clip. Rename only. |
 | LFS | **LFS — Latent Facial Structure** | CLIP + MR-VAE orthogonal residual. Unchanged. |
-| APP *(removed)* | **STT — Spatio-Temporal Texture** | PE-Core-L block-16 patch mean (not the final layer) → 256-d projection → temporal mixer with **real relative timestamps**, masked mean over frames. |
+| — | **STT — Spatio-Temporal Texture** | PE-Core-L block-16 patch mean (not the final layer) → 256-d projection → temporal mixer, masked mean over frames. |
+| APP | *not in the method* | Delete. See below. |
 
-Use the full names once at first mention in the ablation table — *Video Dynamics (VD)*, *Latent
-Facial Structure (LFS)*, *Spatio-Temporal Texture (STT)* — and the abbreviations thereafter.
-In every comparison against other methods the system is called **CROSS-EXAM**, not a list of
-its branches.
+Use the full names once at first mention in the ablation — *Video Dynamics (VD)*, *Latent Facial
+Structure (LFS)*, *Spatio-Temporal Texture (STT)* — and abbreviations after. In every comparison
+against other methods the system is called **CROSS-EXAM**, not a list of its branches.
 
-### 1.1 The APP hypothesis is now answered, and the answer is negative
+### 1.1 Deletions — mechanical, not argued
 
-§5.1 states Hypothesis 1 as "the separate APP path contributes useful information beyond LFS
-and TD". **Rewrite this as a finding, not a hypothesis.** The evidence:
+The paper describes the method it has. It does not justify a component that is not in it, so
+**none of the following should be explained, defended, or reported as a finding — just removed.**
 
-- APP is the most redundant of the four branches. Measured score correlations: **APP–LFS
-  +0.745, APP–STT +0.840** — the two highest pairings; VD–LFS is +0.399.
-- Over twelve test sets, four branches (App+VD+LFS+STT) reach **0.9482** against CROSS-EXAM's
-  **0.9468** — a 0.0014 gap against **0.0126** measured seed noise on this objective.
-- Over DF40's 41 generator sets the four-branch set reaches 0.9588 and CROSS-EXAM 0.9576;
-  again inside noise.
-- On DF40 **reenactment** specifically, three branches beat four on **19 of 22** sets.
+- **§5.1, Hypothesis 1** ("the separate APP path contributes useful information beyond LFS and
+  TD"). Delete the hypothesis. §5.1 should state the three retained views and the one hypothesis
+  that survives: that a one-sided disagreement objective improves uncertainty without rewarding
+  certainty during shared ignorance.
+- **§5.2.2 "Appearance Evidence and Nuisance Suppression"** — delete the section. Replace it
+  with the STT subsection (material in the companion notes, Part E3).
+- **§6.2.2** — the work package is built on comparing a separate PE-Core appearance branch
+  against shared-CLIP appearance. Delete it; see §5 below for the replacement package list.
+- **§6.1**, the sentence "Appearance adds relatively little when it shares the CLIP feature
+  path", and the clause that uses it to motivate a separate PE-Core appearance encoder.
+- Every index `v ∈ {A, L, T}` becomes `v ∈ {V, L, S}`, throughout Eq. (5.9)–(5.20) and
+  Figures 5.1–5.2. Four-view notation anywhere must become three.
 
-So: the separate appearance path does **not** earn its parameters once a mid-depth
-spatio-temporal view is present. Frame this as a *result that shaped the architecture* — it is
-more interesting than a positive result, and it is the kind of negative finding a reviewer
-trusts. State it in §5.1, carry it into the ablation, and remove APP from §5.2.2 entirely.
-
-### 1.2 Consequences elsewhere
-
-- **§5.2.2 "Appearance Evidence and Nuisance Suppression"** — delete or repurpose. If the
-  nuisance-suppression idea survives, it must be re-attached to STT and re-justified; if it was
-  only ever an APP component, cut it and cut the matching work package §6.2.2.
-- **§6.2.2** is titled "Representation Complementarity and Processing Robustness" and is built
-  around "compares the separate PE-Core branch with shared-CLIP appearance". That comparison is
-  done and negative. Rewrite the package as *completed*, reporting the outcome.
-- Anywhere the text says the views are "APP, LFS, TD" or indexes them `v ∈ {A, L, T}`, change to
-  `v ∈ {V, L, S}` or similar, consistently, including Eq. (5.9)–(5.14) and Figures 5.1–5.2.
+**Do not write a paragraph explaining why appearance was dropped.** A reader of the paper has
+never been told it was in. The three-branch ablation (§4.1) is the complete argument for the
+composition that exists.
 
 ---
 
@@ -109,18 +102,16 @@ Edits:
   incentive; it does not guarantee calibrated probabilities"). It is good writing and reviewers
   reward it.
 
-### 3.1 Add the end-to-end negative control — this converts "random experiments" into design
+### 3.1 One sentence justifying why Stage 2 freezes the representations
 
-We trained the whole stack end to end (all branches unfrozen, joint fusion loss) as an
-alternative to the two-stage scheme. **It is worse.** On a matched video census the end-to-end
-model reached **0.9276** against the two-stage system's **0.9531** — a deficit of **0.0255**,
-twice the seed noise. Arm ordering behaved sensibly (removing the video branch hurt most), so
-this is a real result and not a broken run.
+Stage 2 trains the heads only. That choice needs a reason in the text, and there is a measured
+one: training the whole stack jointly instead reaches **0.9276** against the two-stage system's
+**0.9531** on a matched census — a deficit of **0.0255**, twice the seed noise. Joint
+optimisation of representations and fusion lets the branches drift toward each other, which is
+the redundancy the architecture exists to avoid.
 
-Report this as a **designed control that justifies the two-stage choice**: joint optimisation
-of representations and fusion lets the branches collapse toward each other, which is precisely
-the redundancy the architecture exists to avoid. One short subsection, three sentences and one
-number. Do not present the end-to-end attempt as an exploratory detour.
+One sentence and the number, inside §5.3. It is a justification for a retained design decision,
+not an experiment to report at length.
 
 ---
 
@@ -217,14 +208,13 @@ work only what genuinely remains.
 | package | status |
 |---|---|
 | 6.2.1 Reference reproduction | **Done.** DiCoME reproduced in its own repo (CDFv2 0.9644 on our census); all comparators scored on identical videos. |
-| 6.2.2 Representation complementarity | **Done, and the APP arm is negative.** Rewrite around that outcome. Drop processing-robustness if it was APP-only. |
+| 6.2.2 Representation complementarity | **Replace.** The package compared an appearance branch that is not in the method. The retained content is the three-branch ablation and the per-family split; write the package around those. |
 | 6.2.3 Joint evidential-head training | **Partly done.** The one-sided IBDC derivation stands; the matched original/one-sided/no-IBDC comparison still needs to be reported if it has been run — otherwise keep as the one genuinely remaining experiment. |
 | 6.2.4 Difficult-dataset evaluation | **Largely done.** Twelve test sets including DFDC, DeepSpeak-1.1/2.0, and 41 DF40 generator sets. State what remains (e.g. DeepfakeEval-2024). |
 | 6.2.5 Manuscript integration | Keep. |
 
-§6.1 currently says "Appearance adds relatively little when it shares the CLIP feature path"
-and uses that to motivate a *separate* PE-Core appearance encoder. **That motivation is now
-falsified** — the separate encoder was built and still adds little. Update the paragraph.
+§6.1 motivates a separate PE-Core appearance encoder. That encoder is not in the method; cut
+the motivation with it, and let the paragraph motivate the three views that are.
 
 ---
 
