@@ -16,9 +16,16 @@ framework's own EER on FF++-val.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from itertools import combinations
 from pathlib import Path
+
+# THE PAPER TABLES ARE THE WIDENED CENSUS. Set BEFORE `common` is imported, because that module
+# reads BF_SCOPE at import time to pick its output paths. Relying on the caller's environment
+# produced a file whose header said 5,418 and 2,239 while its numbers were 5,118 and 1,395 --
+# a mislabelled census is worse than a wrong one, because nothing in the file contradicts it.
+os.environ.setdefault("BF_SCOPE", "nolipadv")
 
 import numpy as np
 
@@ -47,7 +54,11 @@ SHORT = {"V": "VD", "O": "LFS", "S16ctl": "STT"}
 def show_subset(g):
     """Full form for a single branch, abbreviations for a combination."""
     return FULL[g[0]] if len(g) == 1 else "+".join(SHORT[b] for b in g)
-OUT = C.REPORT / "PROPOSAL_TABLES_3.md"
+# THE TOP LEVEL, not `C.REPORT`. This file IS the paper's table set and there is exactly one of
+# it; `C.REPORT` moves into `scope_<name>/` for a non-default census, which would have left the
+# stale v3.1 copy sitting at the path everyone reads while the corrected one hid in a
+# subdirectory. The census it used is stated in its own header, counted from the data.
+OUT = C.ROOT / "tbiom/reports/branch_fusion/PROPOSAL_TABLES_3.md"
 #: `--all-metrics` renders every operator metric instead of the reported three.
 ALL_METRICS = "--all-metrics" in sys.argv
 #: UMAR's term for DF40's reenactment family.
@@ -181,8 +192,8 @@ def main() -> int:
          "development pool and applied unchanged to every test set.", "",
          "Paper tables only. The full grids — all five branches, all 31 combinations, both KoDF",
          "censuses, FPR at 95%, the per-source DF40 halves — are in `PROPOSAL_TABLES_2.md`.", "",
-         "Twelve test sets, video level. CDFv3 and KoDF carry the widened census (5,418 and",
-         "2,239 videos): lip-sync/audio-driven and adversarial subsets admitted.", "",
+         f"Twelve test sets, video level. Census `{C.SCOPE}` — {C.scope_note()}.",
+         f"CDFv3 {len(tabs['CDFv3']):,} videos, KoDF {len(tabs['KoDF']):,}.", "",
          "---", "", "## Table 1 — Ablation", "",
          "Each branch alone and every combination of the three. Weights are refitted for each",
          "row, so a row is the best that subset can do rather than the full model with parts",
