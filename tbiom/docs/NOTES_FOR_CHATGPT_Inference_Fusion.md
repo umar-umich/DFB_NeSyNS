@@ -21,8 +21,13 @@ For a video, each branch `v ∈ {VD, LFS, STT}` independently produces:
 3. **A subjective-logic opinion.** `b_v,k = (α_v,k − 1)/S_v` for `k ∈ {genuine, fake}`, and
    **vacuity** `u_v = K/S_v` with `K = 2`. By construction `b_v,G + b_v,F + u_v = 1`.
 
-The three opinions are then combined by **direct multisource PCR6+**, and the system outputs
-three quantities, not one:
+4. **A reliability-scaled opinion.** The evidence is scaled by a fixed coefficient,
+   `e'_v = r_v e_v`, before fusion — the step that makes the operator **ES-PCR6+** rather than
+   plain PCR6+. The vector is `r = [0.25, 1.00, 0.25]` over `(VD, LFS, STT)`, fitted once on
+   development and held fixed. See §4.
+
+The three scaled opinions are then combined by **ES-PCR6+, evaluated directly over all three
+sources**, and the system outputs three quantities, not one:
 
 - **`p_f = b_f,F + u_f/2`** — the authenticity score, the projected probability.
 - **`u_f = Π_v u_v`** — fused vacuity: how little evidence there is in total.
@@ -33,9 +38,13 @@ re-tuned per benchmark.
 
 ### 1.1 Three properties to state explicitly, because a reviewer will derive them anyway
 
-- **The fusion has no fitted parameters.** As of 2026-10-15 the reliability discount is gone (§4).
-  Inference is: heads → opinions → PCR6+ → score. Nothing at fusion time was tuned on any
-  development set. This is a *strength* and the chapter should say it plainly.
+- **The fusion has exactly three fitted scalars, and they are not sample-dependent.** Do not
+  claim the fusion is parameter-free — it is not, and §4.2 gives the vector. Claim the thing
+  that is actually true and is almost as strong: the three reliability coefficients are fitted
+  **once** on source-grouped development partitions and then **held fixed** for every test set
+  and at inference. There is no reliability network, nothing is conditioned on the video, and
+  nothing is re-tuned per benchmark. Inference is: heads → opinions → evidence scaling by a
+  constant `r` → ES-PCR6+ → score.
 - **`u_f` is a product, so it is small when ANY branch is confident.** Say so. It follows that
   fused vacuity alone cannot express "the branches disagree" — which is exactly why `K` is
   reported beside it rather than folded into it. §5.2.8 already makes this point; keep it.
@@ -58,8 +67,9 @@ the novel ones; a reviewer who finds an uncited standard component will distrust
 > Dezert & Smarandache, *JAIF* 16(1), 2021).
 >
 > **Ours.** (i) The three-representation set and the evidence that they are jointly necessary.
-> (ii) **Substituting PCR6+ for Dempster's rule inside the TMC-style evidential pipeline**, and
-> evaluating it jointly over sources. (iii) Reporting retained conflict `K` as an output
+> (ii) **Substituting ES-PCR6+ for Dempster's rule inside the TMC-style evidential pipeline** —
+> evidence scaling by a fixed reliability vector, then proportional conflict redistribution
+> evaluated jointly over all three sources rather than as a pairwise fold. (iii) Reporting retained conflict `K` as an output
 > distinct from vacuity. (iv) A cross-manipulation evaluation that includes reenactment.
 
 **Do not claim the evidential framework, the vacuity definition, or PCR6+ itself.** The

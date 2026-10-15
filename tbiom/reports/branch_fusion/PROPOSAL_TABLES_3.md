@@ -46,7 +46,7 @@ switched off.
 
 ## Table 2 — Fusion operator
 
-The same three branches and the same reliability-discounted masses under every rule,
+The same three branches and the same reliability-scaled evidence under every rule,
 so the only thing that varies is where conflicting mass goes. The belief rules all
 come from one implementation; `Dempster` is the rule DiCoME uses and the one TMC's
 `DS_Combin` implements.

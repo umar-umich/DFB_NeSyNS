@@ -57,12 +57,12 @@ Rewrite around outcomes. The structure to hit, in roughly this order:
    are weakest — our trained DiCoME reaches 0.7896 there, and on individual generators
    (mcnet 0.5283, facevid2vid 0.6264) it is at or near chance.
 3. **The method in one sentence.** Three complementary facial representations, each producing
-   a Dirichlet opinion, combined by direct multisource PCR6+ under an evidential
-   multi-view formulation, trained in two stages.
+   a Dirichlet opinion, combined by ES-PCR6+ under an evidential multi-view formulation.
 4. **The headline numbers.** Twelve cross-dataset benchmarks and 21 DF40 generators.
-   AUROC **0.9468** against **0.9039** for the strongest baseline. At matched 90% sensitivity,
-   **14.1%** of genuine videos flagged against **31.5%** — less than half the false-alarm rate.
-   Calibration leads on all three of ECE (0.1230), Brier (0.1048), E-AURC (0.0447).
+   AUROC **0.9452** against **0.9022** for the strongest baseline. At matched 90% sensitivity,
+   **15.1%** of genuine videos flagged against **30.8%** — less than half the false-alarm rate.
+   Calibration leads on all three of ECE (0.1263), Brier (0.1088), E-AURC (0.0455) — but the ECE
+   lead is 0.0008, so write "no worse calibrated", not "better calibrated".
 5. **The distinguishing result.** The largest margin is on reenactment: **0.9300** against
    **0.7240** for DiCoME's own checkpoint.
 
@@ -87,7 +87,7 @@ everything is ours. Write it as:
 > low-rank adaptation (Hu et al., ICLR 2022).
 >
 > *Ours:* (i) the three-representation set, shown by ablation and by the per-family split to
-> be jointly necessary rather than assumed to be; (ii) substituting direct multisource PCR6+ for Dempster's rule inside the
+> be jointly necessary rather than assumed to be; (ii) substituting ES-PCR6+, evaluated directly over all three sources, for Dempster's rule inside the
 > evidential pipeline, evaluated jointly over sources rather than as a pairwise fold;
 > (iii) one-sided IBDC, which removes a certainty incentive that exists under shared ignorance;
 > (iv) retaining conflict K as an output distinct from vacuity;
@@ -157,7 +157,7 @@ identity and texture but drives motion from a different source. A flow-based cue
 motion; a predictive cue measures motion **consistency with the rest of the scene**.
 
 **Evidence.** VD is the only branch better on reenactment than on face swap (0.9452 vs 0.8933).
-It is also the weakest branch overall on the twelve datasets (0.8477), which is the point — it
+It is also the weakest branch overall on the twelve datasets (0.8450), which is the point — it
 is a specialist, and the ablation shows its removal costs the most on the family it owns.
 
 **Cite.** V-JEPA 2 (Assran et al., 2025); LoRA (Hu et al., ICLR 2022); JEPA/I-JEPA for the
@@ -180,7 +180,7 @@ absent from training.
 different encoders (CLIP vs PE-Core) and, more importantly, on different *objectives*: LFS is a
 generative-manifold residual, STT a discriminative mid-depth texture representation. They are
 the most correlated pair in the method (+0.742), so this is the place a reviewer will press —
-answer it with the ablation, where LFS+STT (0.9379) is beaten by the triple (0.9468) and
+answer it with the ablation, where LFS+STT (0.9361) is beaten by the triple (0.9452) and
 neither alone reaches either pair.
 
 **Cite.** CLIP (Radford et al., ICML 2021); β-VAE (Higgins et al., ICLR 2017); reconstruction-
@@ -220,15 +220,20 @@ KL to a uniform prior with the target class masked (Eq. 5.15 — already correct
 **Make explicit why `u` is not `1 − max p`.** The baselines emit only a decision margin; `u`
 here is a function of total evidence, so a branch asked about a manipulation family it has
 never seen can report a *low-evidence* opinion rather than a confident wrong one. This is the
-mechanism behind the E-AURC result (0.0447 against 0.0542 for the best baseline) and the draft
+mechanism behind the E-AURC result (0.0455 against 0.0539 for the best baseline) and the draft
 never connects the two.
 
 ### E5. Why three
 
-Every pair is beaten by the triple — VD+LFS 0.9302, VD+STT 0.9356, LFS+STT 0.9379, against
-0.9468 — and every single is beaten by every pair that contains it. Each view therefore carries
-something the other two miss, which is the claim the architecture rests on and the ablation is
-the test of.
+Every pair is beaten by the triple — VD+LFS 0.9273, VD+STT 0.9345, LFS+STT 0.9361, against
+0.9452 — and every single is beaten by **every pair that contains it**. Each view therefore
+carries something the other two miss, which is the claim the architecture rests on and the
+ablation is the test of.
+
+Write the ordering as containment, not as a blanket statement. "Every pair beats every single"
+is false on this table: VD+LFS (0.9273) sits just under STT alone (0.9277), and a reviewer
+reading the table will see it. The containment form is what the data supports and it is the
+form the complementarity claim actually needs.
 
 The per-family split (Part A) is the mechanism behind it: VD is the only view better on
 reenactment than on face swap, so the pairs that exclude it inherit the image branches' weakness
@@ -249,13 +254,13 @@ the same branches and the same discounted masses.
 
 | fusion rule | AUROC | FPR@TPR90 | mean vacuity |
 |---|---:|---:|---:|
-| Mean (unweighted) † | 0.9453 | 0.1473 | — |
-| Mean (fitted weights) † | 0.9461 | 0.1455 | — |
-| Dempster | **0.9484** | 0.1433 | 0.0436 |
-| Yager | 0.9453 | 0.1414 | 0.2390 |
-| WBF (Jøsang) | 0.9459 | 0.1491 | 0.1912 |
-| Cautious (Denœux) | 0.9440 | 0.1554 | 0.1346 |
-| **ES-PCR6+ (ours)** | 0.9468 | **0.1406** | **0.0322** |
+| Mean (unweighted) † | 0.9437 | 0.1573 | — |
+| Mean (fitted weights) † | 0.9446 | 0.1550 | — |
+| Dempster | **0.9469** | 0.1521 | 0.0445 |
+| Yager | 0.9434 | 0.1532 | 0.2393 |
+| WBF (Jøsang) | 0.9440 | 0.1634 | 0.1940 |
+| Cautious (Denœux) | 0.9416 | 0.1693 | 0.1368 |
+| **ES-PCR6+ (ours)** | 0.9452 | **0.1507** | **0.0330** |
 
 † no opinion, so no vacuity.
 
@@ -263,11 +268,11 @@ the same branches and the same discounted masses.
 the rule is chosen for the operating characteristic the application is read at — the lowest
 false-alarm rate at matched sensitivity — and its mean vacuity confirms it is doing what PCR6
 is designed to do, returning conflicting mass to the sources that committed to it rather than
-normalising it away. It is second on AUROC by 0.0016, which the text should state.
+normalising it away. It is second on AUROC by 0.0017, which the text should state.
 
 **Connect this to the Background chain (Part D).** Dempster normalises conflict away through
 `1 − C`; PCR6+ redistributes it. The vacuity column is the direct evidence of that difference:
-0.0322 against Dempster's 0.0436, and against Yager's 0.2390, which parks conflict in the
+0.0330 against Dempster's 0.0445, and against Yager's 0.2393, which parks conflict in the
 uncommitted mass instead. A reader who has Part D's chain can read that column as a mechanism,
 not a statistic. This is the single best place in the paper to show the theory and the
 measurement meeting.
@@ -285,7 +290,7 @@ Three habits to fix throughout the front matter:
    burying them.
 3. **State limitations in the body, not only in a closing section.** Two belong in the method
    chapter where they arise: the fixed reliability weights underperforming VD on reenactment
-   (VD alone 0.9452 against the fusion's 0.9335), and ES-PCR6+ sitting second on AUROC, 0.0016
+   (VD alone 0.9452 against the fusion's 0.9335), and ES-PCR6+ sitting second on AUROC, 0.0017
    behind Dempster, while leading the false-alarm rate it is adopted for. Both concern
    components that ARE in the method, which is why they belong in the text; a limitation of
    something the paper does not contain has no place to go.

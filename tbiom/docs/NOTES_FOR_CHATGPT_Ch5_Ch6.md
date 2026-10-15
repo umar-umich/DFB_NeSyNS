@@ -77,7 +77,7 @@ sound derived from it.
 Smarandache & Dezert, already ref. [19]). Ours is:
 1. the **choice of three complementary representations**, shown by ablation and by the
    per-family split to carry information the others miss rather than assumed to;
-2. **replacing Dempster's rule with direct multisource PCR6+** inside the TMC-style pipeline —
+2. **replacing Dempster's rule with ES-PCR6+, evaluated directly over all three sources** inside the TMC-style pipeline —
    evaluated jointly over sources, not as a sequential pairwise fold, since proportional
    redistribution is not associative (§5.2.7 already says this well; keep it);
 3. **one-sided IBDC** (§5.3.2), which removes a certainty incentive present under shared
@@ -188,7 +188,7 @@ detecting at all.
 ### 4.4 Fusion operator (Table 2) — seven rules, three metrics
 
 Reported metrics are **AUROC, FPR at TPR 90%, and mean vacuity**. All seven rules read the same
-three branches and the same reliability-discounted masses, so the only thing that varies is
+three branches and the same reliability-scaled evidence, so the only thing that varies is
 where conflicting mass goes.
 
 | fusion rule | AUROC | FPR@TPR90 | mean vacuity |
@@ -256,7 +256,7 @@ the motivation with it, and let the paragraph motivate the three views that are.
 ## 6. ABSTRACT, INTRODUCTION, BACKGROUND — the specific weaknesses
 
 **Abstract.** Currently describes intentions. It should state the result in numbers: three
-complementary facial representations fused by direct multisource PCR6+ under evidential
+complementary facial representations fused by ES-PCR6+ under evidential
 uncertainty; twelve cross-dataset benchmarks and 21 DF40 generators; AUROC 0.9452 against 0.9022
 for the strongest baseline; **false-alarm rate at matched 90% sensitivity less than half** the
 best baseline's; and the largest margin on reenactment, the manipulation family prior
@@ -297,7 +297,7 @@ Reviewers will check these.
    published numbers are context only, and must be labelled as such.
 4. **Do not quote the 12-set baseline numbers from the earlier draft.** Baselines were re-run
    on the widened CDFv3/KoDF census and several moved — DiCoME's mean was 0.9196 on a 5-set
-   matched support and is 0.9039 over twelve.
+   matched support and is 0.8986 over twelve.
 5. **Do not describe reliability coefficients as learned per video.** They are fitted once on
    development and held fixed — §5.2.6 says this; keep it.
 6. **Vacuity is not a complete description of uncertainty.** §5.2.8 says so and reports conflict
