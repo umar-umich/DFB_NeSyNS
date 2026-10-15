@@ -86,8 +86,8 @@ everything is ours. Write it as:
 > PCR6/PCR6+ (Smarandache & Dezert); the pretrained encoders (V-JEPA 2, CLIP, PE-Core) and
 > low-rank adaptation (Hu et al., ICLR 2022).
 >
-> *Ours:* (i) the three-representation set, with the redundancy of a fourth **demonstrated**
-> rather than assumed; (ii) substituting direct multisource PCR6+ for Dempster's rule inside the
+> *Ours:* (i) the three-representation set, shown by ablation and by the per-family split to
+> be jointly necessary rather than assumed to be; (ii) substituting direct multisource PCR6+ for Dempster's rule inside the
 > evidential pipeline, evaluated jointly over sources rather than as a pairwise fold;
 > (iii) one-sided IBDC, which removes a certainty incentive that exists under shared ignorance;
 > (iv) retaining conflict K as an output distinct from vacuity;
@@ -134,7 +134,7 @@ Also add to Background, because the results depend on them and nothing sets them
   identity- and texture-based cues weaken while temporal cues strengthen. This single paragraph
   explains Part A's table.
 - **Why mid-depth features.** Layer-probing evidence that the most transferable visual features
-  are not at the output of a contrastively-trained encoder — see D3 below.
+  are not at the output of a contrastively-trained encoder — the measurement is in Part E3.
 
 ---
 
