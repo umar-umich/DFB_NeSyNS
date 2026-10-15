@@ -33,10 +33,28 @@ import df40_baselines as DB                                      # noqa: E402
 
 C.thread_caps()
 
-FRAME = ("V", "O", "S16ctl")                     # TD + LFS + STT, in display order
+FRAME = ("V", "O", "S16ctl")                     # VD + LFS + STT, in display order
+#: The framework's name in every comparative table. A row that lists its branches invites the
+#: reader to compare branch counts instead of methods.
+OURS_NAME = "**CROSS-EXAM (ours)**"
+#: Full forms, for the ablation's single-branch rows. UMAR 2026-10-15: spell them out once where
+#: a reader meets them, and keep the abbreviations in the combination rows.
+FULL = {"V": "Video Dynamics (VD)", "O": "Latent Facial Structure (LFS)",
+        "S16ctl": "Spatio-Temporal Texture (STT)"}
+SHORT = {"V": "VD", "O": "LFS", "S16ctl": "STT"}
+
+
+def show_subset(g):
+    """Full form for a single branch, abbreviations for a combination."""
+    return FULL[g[0]] if len(g) == 1 else "+".join(SHORT[b] for b in g)
 OUT = C.REPORT / "PROPOSAL_TABLES_3.md"
 #: UMAR's term for DF40's reenactment family.
 FAMILY_NAME = {"face swap": "FaceSwap", "reenactment": "ExpressionSwap"}
+#: The decision rules the framework could be fused with, on the SAME three branches. Restored
+#: 2026-10-15: dropping it left the paper asserting PCR6+-R without the comparison that earns it.
+OPS = [("F1", "Mean (unweighted)"), ("F2", "Mean (fitted weights)"),
+       ("F7", "Dempster (DS-C)"), ("F8", "PCR6+-R (ours)")]
+NO_WEIGHTS = ("F1",)
 
 
 def md(lines, header, rows, cols, fmt="{:.4f}"):
@@ -66,7 +84,7 @@ def main() -> int:
     fd = P.fuse(O.masses(dev, FRAME, list(w_full)), True)
     ffv = np.where(dev.source.to_numpy() == "FFpp_val")[0]
     tau = float(eer(dev.y.to_numpy()[ffv], P.p_of(fd)[ffv])[1])
-    OURS = f"**Ours ({C.show_subset(FRAME)})**"
+    OURS = OURS_NAME
 
     def fused(t, g, w):
         fo = P.fuse(O.masses(t, g, list(w)), True)
@@ -82,9 +100,10 @@ def main() -> int:
             p, _u, y = fused(tabs[ds], g, w)
             a[ds] = C.auroc(y, p)
             f[ds] = T1.fpr_at_tpr(y, p, 0.90)
-        nm = C.show_subset(g) + (" **(ours)**" if len(g) == 3 else "")
+        nm = show_subset(g) + (" **(CROSS-EXAM)**" if len(g) == len(FRAME) else "")
         ab_a.append((nm, a)); ab_f.append((nm, f))
-        print(f"  ablation {C.show_subset(g):18s} {np.mean(list(a.values())):.4f}", flush=True)
+        print(f"  ablation {'+'.join(SHORT[b] for b in g):14s} "
+              f"{np.mean(list(a.values())):.4f}", flush=True)
 
     # ------------------------------------------------------------------ Tables 2 and 3
     det_a, det_f, cal = {}, {}, {}
@@ -153,7 +172,8 @@ def main() -> int:
 
     # ------------------------------------------------------------------ render
     L = ["# Proposal results — paper tables", "",
-         f"Framework: **{C.show_subset(FRAME)}**, fused with PCR6+-R. Weights fitted once on the",
+         f"Framework: **CROSS-EXAM** = {'+'.join(SHORT[b] for b in FRAME)}, fused with",
+         "PCR6+-R. Weights fitted once on the",
          "development pool and applied unchanged to every test set.", "",
          "Paper tables only. The full grids — all five branches, all 31 combinations, both KoDF",
          "censuses, FPR at 95%, the per-source DF40 halves — are in `PROPOSAL_TABLES_2.md`.", "",
@@ -167,7 +187,29 @@ def main() -> int:
     L += ["### FPR at TPR = 90% (lower is better)", ""]
     md(L, "branches", ab_f, sets)
 
-    L += ["---", "", "## Table 2 — Comparison with the state of the art", "",
+    # ------------------------------------------------------------------ Table 2: operators
+    op_a, op_f = [], []
+    for op, label in OPS:
+        w = (1.0,) * len(FRAME) if op in NO_WEIGHTS else \
+            O.fit_weights(dev, FRAME, op, objective="v31")[0]
+        a, f = {}, {}
+        for ds in sets:
+            pr = O.fuse(tabs[ds], FRAME, op, list(w))
+            y = tabs[ds].y.to_numpy()
+            a[ds] = C.auroc(y, pr); f[ds] = T1.fpr_at_tpr(y, pr, 0.90)
+        op_a.append((label, a)); op_f.append((label, f))
+        print(f"  operator {label:24s} {np.mean(list(a.values())):.4f}", flush=True)
+
+    L += ["---", "", "## Table 2 — Fusion operator", "",
+          f"The same three branches under each decision rule. `Mean (unweighted)` reads no",
+          "reliability at all, so comparing it against a fitted operator would confound the rule",
+          "with the weight fit; `Mean (fitted weights)` is the matched comparator.", "",
+          "### AUROC (higher is better)", ""]
+    md(L, "fusion rule", op_a, sets)
+    L += ["### FPR at TPR = 90% (lower is better)", ""]
+    md(L, "fusion rule", op_f, sets)
+
+    L += ["---", "", "## Table 3 — Comparison with the state of the art", "",
           "FPR is read at a MATCHED true-positive rate, so every method is compared at the same",
           "sensitivity: of the genuine videos, what fraction is flagged when the method is tuned",
           "to catch 90% of the fakes.", "", "### AUROC (higher is better)", ""]
@@ -175,7 +217,7 @@ def main() -> int:
     L += ["### FPR at TPR = 90% (lower is better)", ""]
     md(L, "method", rows_f, sets)
 
-    L += ["---", "", "## Table 3 — Probability quality and uncertainty", "",
+    L += ["---", "", "## Table 4 — Probability quality and uncertainty", "",
           "ECE and Brier ask whether a reported probability means what it says; E-AURC asks",
           "whether the model knows which of its own answers to distrust. Ours ranks by the fused",
           "vacuity, the baselines by `1 - max p`, the only uncertainty a cross-entropy detector",
@@ -184,7 +226,7 @@ def main() -> int:
         L += [f"### {title} (lower is better)", ""]
         md(L, "method", rows_c[m], sets)
 
-    for tno, f in enumerate(("face swap", "reenactment"), start=4):
+    for tno, f in enumerate(("face swap", "reenactment"), start=5):
         ks = sorted(g for g in pooled if fam[g] == f)
         if not ks:
             continue
