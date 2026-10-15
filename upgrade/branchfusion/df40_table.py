@@ -93,7 +93,11 @@ def main() -> int:
         dic = PL.dicome_ours_pooled(jobs)
     if dic:
         rows["DiCoME (our training)"] = dic
-    repo = C.ROOT / "logs/tbiom/df40/dicome_repo_df40.json"
+    # The POOLED run when the halves are pooled, the per-half run when they are not. Reading the
+    # per-half file in pooled mode found exactly one usable row -- DeepFaceLab, the only generator
+    # with no halves to pool -- and reported it as a complete method.
+    repo = C.ROOT / ("logs/tbiom/df40/dicome_repo_df40.json" if a.by_half
+                     else "logs/tbiom/df40/dicome_repo_df40_combined.json")
     if repo.exists():
         r = json.loads(repo.read_text())
         got = {}
