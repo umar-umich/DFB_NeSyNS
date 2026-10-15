@@ -82,36 +82,46 @@ Smarandache & Dezert, already ref. [19]). Ours is:
    redistribution is not associative (§5.2.7 already says this well; keep it);
 3. **one-sided IBDC** (§5.3.2), which removes a certainty incentive present under shared
    ignorance — the derivation there is sound and is a genuine contribution;
-4. retaining **conflict K** alongside vacuity as a separate output.
+4. a cross-manipulation evaluation that reports **reenactment**, which prior tables omit.
+
+One-sided IBDC is NOT in this list: it is proposed in Chapter 6 as future work, with the
+measurement that justifies deferring it (§4.5).
 
 ---
 
-## 3. THE METHOD IS TWO-STAGE — §5.3 is already right, but must be made the backbone
+## 3. THE REPORTED METHOD IS STAGE 1 PLUS ES-PCR6+ AT INFERENCE
 
-§5.3 already describes Stage 1 (separate view training with EDL) and Stage 2 (joint head
-training with one-sided IBDC, representations frozen). **This is the method. Present it as
-settled and deliberate, not as one option among experiments.**
+UMAR, 2026-10-15: **the second training stage is not part of the reported method.** The chapter
+reports each branch trained separately, then combined at inference by ES-PCR6+. §5.3.2's joint
+head training and the one-sided IBDC objective move to Chapter 6 as future work.
 
-Edits:
-- Update the branch names (VD/LFS/STT) in Eq. (5.15)–(5.20) and Figure 5.2.
-- Stage 1: VD updates V-JEPA 2 LoRA + head; LFS updates CLIP LoRA + MR-VAE + head; STT updates
-  PE-Core LoRA/LayerNorm + temporal mixer + head. All other backbone weights frozen.
-- Stage 2: **the three evidential heads only**. Reliability coefficients are fitted after
-  Stage 1 on source-grouped development partitions and held fixed through Stage 2 and inference.
-- Keep the honest paragraph at the end of §5.3.2 ("The loss removes a specific certainty
-  incentive; it does not guarantee calibrated probabilities"). It is good writing and reviewers
-  reward it.
+### 3.1 What §5.3 becomes
 
-### 3.1 One sentence justifying why Stage 2 freezes the representations
+- **Keep §5.3.1 (Stage 1)** essentially as written, with the branch renames. It is the method:
+  VD updates V-JEPA 2 LoRA + head; LFS updates CLIP LoRA + MR-VAE + head; STT updates PE-Core
+  LoRA/LayerNorm + temporal mixer + head. All other backbone weights frozen. Each branch learns
+  without any loss that matches another branch's class probability — that sentence is the
+  independence claim and it should stay.
+- **Rename the section.** "Two-Stage Evidential Training" becomes something like "Branch-wise
+  Evidential Training", because there is now one training stage and a fusion rule.
+- **Move §5.3.2 to Chapter 6** intact. The derivation is sound and worth keeping; it becomes a
+  proposed extension with a measured reason for not having adopted it (§4.5 below).
 
-Stage 2 trains the heads only. That choice needs a reason in the text, and there is a measured
-one: training the whole stack jointly instead reaches **0.9276** against the two-stage system's
-**0.9531** on a matched census — a deficit of **0.0255**, twice the seed noise. Joint
-optimisation of representations and fusion lets the branches drift toward each other, which is
-the redundancy the architecture exists to avoid.
+### 3.2 Why separate training is the right design — argue it, with two controls
 
-One sentence and the number, inside §5.3. It is a justification for a retained design decision,
-not an experiment to report at length.
+The chapter should not merely assert that branch-wise training is correct. Two measurements
+support it, and both are negative results about the alternatives:
+
+1. **End-to-end from scratch is worse.** Training all branches jointly on FF++ reaches **0.9209**
+   against **0.9558** for separately-trained branches fused, on five matched test sets — and the
+   loss concentrates where generalisation is hardest (KoDF −0.098, CDFv3 −0.046) while the
+   easiest set ties (UADFV +0.005).
+2. **Joint head training does not recover it.** A second stage over frozen representations gains
+   only +0.0145 on development, and the three objective variants land within 0.001 of each other.
+
+One mechanism explains both: the branches' value comes from their **separate** pretraining and
+adaptation, and re-fitting them together on one source erodes the diversity the fusion exploits.
+State that as the design rationale, with the two numbers.
 
 ---
 
@@ -120,17 +130,22 @@ not an experiment to report at length.
 Twelve test sets, video level, video-level AUROC unless stated. CDFv3 and KoDF use the widened
 census (5,418 and 2,239 videos; lip-sync/audio-driven and adversarial subsets admitted).
 
-### 4.1 Ablation (Table 1) — every pair beats every single, the triple beats every pair
+### 4.1 Ablation (Table 1) — every pair beats the singles it contains, the triple beats every pair
 
 | branches | 12-set AUROC |
 |---|---:|
-| Video Dynamics (VD) | 0.8477 |
-| Latent Facial Structure (LFS) | 0.9087 |
-| Spatio-Temporal Texture (STT) | 0.9290 |
-| VD+LFS | 0.9302 |
-| VD+STT | 0.9356 |
-| LFS+STT | 0.9379 |
-| **VD+LFS+STT (CROSS-EXAM)** | **0.9468** |
+| Video Dynamics (VD) | 0.8450 |
+| Latent Facial Structure (LFS) | 0.9041 |
+| Spatio-Temporal Texture (STT) | 0.9277 |
+| VD+LFS | 0.9273 |
+| VD+STT | 0.9345 |
+| LFS+STT | 0.9361 |
+| **VD+LFS+STT (CROSS-EXAM)** | **0.9452** |
+
+Say it as containment, not as a blanket ordering: every pair beats both singles it is built
+from, and the triple beats every pair. VD+LFS (0.9273) sits just under STT alone (0.9277), so
+the sentence "every pair beats every single" is false and a reviewer reading the table will
+see it.
 
 Note that weights are **refitted for each row**, so a row is the best that subset can do, not
 the full model with parts switched off. That is the stricter reading of an ablation and worth
@@ -141,13 +156,17 @@ weight being stranded.
 
 | method | AUROC | FPR@TPR90 | ECE-15 | Brier | E-AURC |
 |---|---:|---:|---:|---:|---:|
-| **CROSS-EXAM** | **0.9468** | **0.1406** | **0.1230** | **0.1048** | **0.0447** |
-| DiCoME | 0.9039 | 0.3210 | 0.1357 | 0.1275 | 0.0619 |
-| GenD-PE | 0.9008 | 0.3154 | 0.1259 | 0.1311 | 0.0542 |
+| **CROSS-EXAM** | **0.9452** | **0.1507** | **0.1263** | **0.1088** | **0.0455** |
+| GenD-CLIP | 0.9022 | 0.3084 | 0.1271 | 0.1199 | 0.0539 |
+| GenD-PE | 0.8995 | 0.3127 | 0.1281 | 0.1331 | 0.0559 |
+| DiCoME | 0.8986 | 0.3261 | 0.1349 | 0.1301 | 0.0642 |
 
-CROSS-EXAM leads every column. The **FPR result is the one to foreground**: at matched 90%
-sensitivity it flags **14.1%** of genuine videos where the best baseline flags **31.5%** —
-less than half the false-alarm rate. For a forensic framing that matters more than AUROC.
+CROSS-EXAM leads every column, over all eight baselines, not only the three shown. The **FPR
+result is the one to foreground**: at matched 90% sensitivity it flags **15.1%** of genuine
+videos where the best baseline flags **30.8%** — less than half the false-alarm rate. For a
+forensic framing that matters more than AUROC. On ECE the lead is **0.0008** over GenD-CLIP;
+that is a tie, and the text should say the fused probabilities are *no worse* calibrated
+rather than better.
 
 ### 4.3 DF40 cross-manipulation (Tables 5 and 6), 21 generators, source halves pooled
 
@@ -160,7 +179,7 @@ less than half the false-alarm rate. For a forensic framing that matters more th
 
 **ExpressionSwap is the headline of the chapter.** DiCoME's published cross-manipulation table
 reports face swap only; reenactment is half of DF40 and the half where their method is weakest.
-The baselines lose 0.09–0.16 between the two families; CROSS-EXAM loses 0.058. That spread is
+The baselines lose 0.08–0.25 between the two families; CROSS-EXAM loses 0.058. That spread is
 the complementarity claim *measured*, not asserted, and it is the strongest argument the
 chapter has. Per-generator: DiCoME scores **0.5283 on mcnet** and **0.6264 on facevid2vid** —
 at or near chance — so "weak on reenactment" understates it; on specific generators it is not
@@ -174,29 +193,45 @@ where conflicting mass goes.
 
 | fusion rule | AUROC | FPR@TPR90 | mean vacuity |
 |---|---:|---:|---:|
-| Mean (unweighted) † | 0.9453 | 0.1473 | — |
-| Mean (fitted weights) † | 0.9461 | 0.1455 | — |
-| Dempster | **0.9484** | 0.1433 | 0.0436 |
-| Yager | 0.9453 | 0.1414 | 0.2390 |
-| WBF (Jøsang) | 0.9459 | 0.1491 | 0.1912 |
-| Cautious (Denœux) | 0.9440 | 0.1554 | 0.1346 |
-| **PCR6+-R (ours)** | 0.9468 | **0.1406** | **0.0322** |
+| Mean (unweighted) † | 0.9437 | 0.1573 | — |
+| Mean (fitted weights) † | 0.9446 | 0.1550 | — |
+| Dempster | **0.9469** | 0.1521 | 0.0445 |
+| Yager | 0.9434 | 0.1532 | 0.2393 |
+| WBF (Jøsang) | 0.9440 | 0.1634 | 0.1940 |
+| Cautious (Denœux) | 0.9416 | 0.1693 | 0.1368 |
+| **ES-PCR6+ (ours)** | 0.9452 | **0.1507** | **0.0330** |
 
 † The two probability means emit a probability, not an opinion, so vacuity is undefined for
 them — not zero. They are the comparator that shows what the opinion-level machinery buys.
 
-**PCR6+-R is the adopted rule.** The argument to make, in this order:
-1. It gives the **lowest false-alarm rate at matched 90% sensitivity** (0.1406). For evidentiary
+**ES-PCR6+ is the adopted rule.** The argument to make, in this order:
+1. It gives the **lowest false-alarm rate at matched 90% sensitivity** (0.1507). For evidentiary
    use this is the operating point a result is read at, and it is the metric the dissertation
    has framed from the start.
-2. It is the **most committed rule** by mean vacuity (0.0322) — it resolves conflict onto the
+2. It is the **most committed rule** by mean vacuity (0.0330) — it resolves conflict onto the
    classes that caused it rather than leaving mass uncommitted, which is what PCR6 is for.
-3. On AUROC it is **second, behind Dempster by 0.0016**. State this plainly in the text. Do not
-   let bolding carry the claim; a 0.0016 gap is not a win for anyone and saying so is cheap.
+3. On AUROC it is **second, behind Dempster by 0.0017**. State this plainly in the text. Do not
+   let bolding carry the claim; a 0.0017 gap is not a win for anyone and saying so is cheap.
 
 On a binary frame Yager coincides with Dubois–Prade and PCR5 collapses onto PCR6, so several
 rules the literature separates are one row here — worth one sentence so a reviewer does not
 ask where they went.
+
+### 4.5 Why the disagreement objective is deferred — the measurement to give
+
+Chapter 6 should propose one-sided IBDC with the reason it is not yet adopted, which is
+empirical and specific:
+
+- Three matched arms, differing ONLY in the disagreement term, over frozen representations.
+  Validation AUROC: **no IBDC 0.8588, one-sided 0.8596, original 0.8598.**
+- One-sided and original are **0.0002 apart, and that is structural, not noise**: the two
+  objectives are identical wherever committed conflict `κ ≥ u_f`, and across the twelve test
+  sets fused vacuity exceeds conflict in only **3.50% of videos (1,158 of 33,076)**.
+
+So the shared-ignorance regime the one-sided form corrects for is almost absent once the
+branches are trained. The derivation stands; the condition it addresses is rare here. The sharp
+version of the experiment — does one-sided win **on the 3.5% where the objectives differ** — has
+not been run, and that is the right thing for Chapter 6 to propose.
 
 ---
 
@@ -222,7 +257,7 @@ the motivation with it, and let the paragraph motivate the three views that are.
 
 **Abstract.** Currently describes intentions. It should state the result in numbers: three
 complementary facial representations fused by direct multisource PCR6+ under evidential
-uncertainty; twelve cross-dataset benchmarks and 21 DF40 generators; AUROC 0.9468 against 0.9039
+uncertainty; twelve cross-dataset benchmarks and 21 DF40 generators; AUROC 0.9452 against 0.9022
 for the strongest baseline; **false-alarm rate at matched 90% sensitivity less than half** the
 best baseline's; and the largest margin on reenactment, the manipulation family prior
 cross-manipulation tables omit.

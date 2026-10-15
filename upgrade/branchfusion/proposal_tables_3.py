@@ -64,12 +64,20 @@ ALL_METRICS = "--all-metrics" in sys.argv
 #: UMAR's term for DF40's reenactment family.
 FAMILY_NAME = {"face swap": "FaceSwap", "reenactment": "ExpressionSwap"}
 #: The decision rules the framework could be fused with, on the SAME three branches. Restored
-#: 2026-10-15: dropping it left the paper asserting PCR6+-R without the comparison that earns it.
+#: 2026-10-15: dropping it left the paper asserting ES-PCR6+ without the comparison that earns it.
 #: Probability means, which produce no opinion -- their only uncertainty is the decision margin.
 PROB_OPS = [("F1", "Mean (unweighted)"), ("F2", "Mean (fitted weights)")]
 #: Belief-combination rules, all from ONE implementation (`src.fusion.rules`) reading the SAME
 #: discounted masses, so the comparison isolates where conflicting mass goes and nothing else.
-BELIEF_OPS = ["Dempster", "Yager", "WBF (Josang)", "Cautious (Denoeux)", "PCR6+-R (ours)"]
+BELIEF_OPS = ["Dempster", "Yager", "WBF (Josang)", "Cautious (Denoeux)", "ES-PCR6+ (ours)"]
+#: ES-PCR6+ = Evidence-Scaled PCR6+. Each source's evidence is scaled by a fixed reliability
+#: coefficient BEFORE proportional conflict redistribution: e'_v = r_v e_v. Named for the
+#: operation it performs, because it is NOT Shafer discounting -- that acts on belief masses,
+#: this acts in the evidence domain, and the two are different functions. The coefficients are
+#: fitted once on the development pool and held fixed at inference, so they are a property of
+#: the representation rather than of the video. The coefficients are `w_full` below -- the same
+#: vector every other table in this file fuses with, so there is one source of truth for them
+#: and the operator comparison cannot silently use a different weighting than the headline rows.
 
 
 def md(lines, header, rows, cols, fmt="{:.4f}"):
@@ -188,7 +196,7 @@ def main() -> int:
     # ------------------------------------------------------------------ render
     L = ["# Proposal results — paper tables", "",
          f"Framework: **CROSS-EXAM** = {'+'.join(SHORT[b] for b in FRAME)}, fused with",
-         "PCR6+-R. Weights fitted once on the",
+         "ES-PCR6+. Weights fitted once on the",
          "development pool and applied unchanged to every test set.", "",
          "Paper tables only. The full grids — all five branches, all 31 combinations, both KoDF",
          "censuses, FPR at 95%, the per-source DF40 halves — are in `PROPOSAL_TABLES_2.md`.", "",
@@ -208,7 +216,7 @@ def main() -> int:
     from src.fusion import rules as R
     from src.fusion import pcr6p as PP
     FNS = {"Dempster": R.dempster, "Yager": R.yager, "WBF (Josang)": R.wbf,
-           "Cautious (Denoeux)": R.cautious, "PCR6+-R (ours)": R.pcr6_plus}
+           "Cautious (Denoeux)": R.cautious, "ES-PCR6+ (ours)": R.pcr6_plus}
 
     METRICS = [("auroc", "AUROC", "higher"), ("fpr90", "FPR at TPR = 90%", "lower"),
                ("ece", "ECE-15", "lower"), ("brier", "Brier", "lower"),
@@ -263,12 +271,16 @@ def main() -> int:
           "so the only thing that varies is where conflicting mass goes. The belief rules all",
           "come from one implementation; `Dempster` is the rule DiCoME uses and the one TMC's",
           "`DS_Combin` implements.", "",
+          "**ES-PCR6+** is Evidence-Scaled PCR6+: each source's evidence is scaled by a fixed",
+          "reliability coefficient before proportional conflict redistribution, `e'_v = r_v e_v`.",
+          "The scaling acts in the EVIDENCE domain and is therefore not Shafer discounting, which",
+          "acts on belief masses. Coefficients are fitted once on development and held fixed.", "",
           "† The two means produce a probability, not an opinion: they have no vacuity, and their",
           "E-AURC is ranked by the decision margin `1 - |2p - 1|` rather than by evidence. They",
           "are the comparator that shows what the evidential machinery buys.", "",
           "On a binary frame Yager coincides with Dubois-Prade, and PCR5 collapses onto PCR6, so",
           "several rules the literature separates are one row here.", "",
-          "PCR6+-R is the adopted rule: it gives the lowest false-alarm rate at matched 90%",
+          "ES-PCR6+ is the adopted rule: it gives the lowest false-alarm rate at matched 90%",
           "sensitivity, which is the operating point an evidentiary use is read at, and it is",
           "the most committed rule by mean vacuity.", ""]
     def emit_operator_tables(dest, which):

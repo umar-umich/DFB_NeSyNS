@@ -15,7 +15,7 @@ which removes the accuracy term and leaves the quality of the ranking alone. It 
 to compare uncertainty across systems of different accuracy, and it is why the column is E-AURC.
 
 WHAT EACH SYSTEM RANKS BY, which is the asymmetry the table exists to show:
-  ours        the fused VACUITY, the Theta mass of the PCR6+-R opinion -- an epistemic quantity
+  ours        the fused VACUITY, the Theta mass of the ES-PCR6+ opinion -- an epistemic quantity
   baselines   1 - max p, the softmax confidence, because that is the only uncertainty a
               cross-entropy detector has. This is not a handicap imposed by us; it is what the
               model emits.
@@ -165,12 +165,12 @@ def main() -> int:
     # that silently drops a column is how a missing number stops being noticed.
     sets = list(dict.fromkeys(list(C.TEST_SETS) + NEW_SETS))
     avail = [d for d in sets if d in tabs]
-    rows = {"**Ours (App+TD+LFS+STT, PCR6+-R)**": {}}
+    rows = {"**Ours (App+TD+LFS+STT, ES-PCR6+)**": {}}
     for ds in avail:
         t = tabs[ds]
         fo = P.fuse(O.masses(t, FINAL, list(w)), True)
         p, u, y = P.p_of(fo), fo[:, 2], t.y.to_numpy()
-        rows["**Ours (App+TD+LFS+STT, PCR6+-R)**"][ds] = {
+        rows["**Ours (App+TD+LFS+STT, ES-PCR6+)**"][ds] = {
             "ece": ece(y, p), "brier": brier(y, p), "eaurc": e_aurc(y, p, u, tau)}
         print(f"  ours {ds}", flush=True)
     rows["DiCoME (trained, their repo)"] = {}

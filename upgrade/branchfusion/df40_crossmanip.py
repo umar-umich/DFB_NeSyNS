@@ -154,7 +154,7 @@ def main() -> int:
         got = [v for v in vals if isinstance(v, float)]
         return float(np.mean(got)) if got else None
 
-    L = [f"# DF40 cross-manipulation — {C.show_subset(FINAL)} fused with PCR6+-R", "",
+    L = [f"# DF40 cross-manipulation — {C.show_subset(FINAL)} fused with ES-PCR6+", "",
          "The structure of DiCoME Table 1's second half, measured on our videos.", "",
          "**Both framework sizes are reported.** The four-branch set and the best three-branch set",
          f"(`{C.show_subset(GROUPS[1])}`) each carry their own weights, fitted on development and",

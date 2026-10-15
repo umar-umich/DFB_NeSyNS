@@ -92,35 +92,56 @@ design choice. It is far stronger than "we use PCR6+ because it handles conflict
 
 ---
 
-## 4. THE RELIABILITY DISCOUNT HAS BEEN REMOVED — and the reason is worth a paragraph
+## 4. THE OPERATOR IS **ES-PCR6+** — Evidence-Scaled PCR6+
 
-Earlier drafts fuse reliability-discounted evidence `e'_v = r_v e_v` with `r` fitted by grid
-search on development (`PCR6+-R`). **This is dropped.** Two reasons, and give both:
+**Name it this everywhere.** `ES-PCR6+` reads as an internal code and the suffix says nothing.
 
-1. **It is subsumed by the evidential heads.** Reliability discounting is evidence scaling, and
-   the heads are what produce the evidence. A head can learn to emit smaller evidence; a fixed
-   external `r` is capacity the model already has. (Be precise: it is not an exact
-   reparameterisation, since `r·softplus(z) ≠ softplus(r·z)`, but the head's freedom strictly
-   contains the scalar's.)
-2. **It removes the last fitted quantity from inference.** Without it, nothing in the fusion was
-   tuned on held-out data, so "how were the weights chosen and does the gain survive refitting"
-   stops being a question the paper has to answer.
+### 4.1 The definition, and why the name is the accurate one
 
-**Report what it cost, honestly.** On twelve test sets at the widened census, VD+LFS+STT:
+Each source's evidence is scaled by a fixed reliability coefficient before proportional conflict
+redistribution:
+
+> `e'_v = r_v · e_v`,  equivalently  `b'_v,k = r_v b_v,k / d_v` and `u'_v = u_v / d_v`
+> with `d_v = r_v(1 − u_v) + u_v`.
+
+**The scaling happens in the EVIDENCE domain.** That is why it is called evidence-scaled and not
+discounted: classical Shafer discounting acts on belief masses and is a different function.
+§5.2.6 of the draft already makes this distinction correctly — *"This operation scales evidence;
+it differs from linear discounting of belief masses"* — so the name and the text now agree.
+Keep that sentence and put the name next to it.
+
+`r_v = 1` leaves a source untouched; `r_v = 0` makes it vacuous and it drops out of the fusion.
+Intermediate values reduce evidence strength while preserving the source's class-support ratio,
+which is the property that makes this a reliability statement rather than a vote re-weighting.
+
+### 4.2 Where the coefficients come from — say this precisely
+
+Fitted **once** on source-grouped development partitions, then **held fixed** for every test set
+and at inference. They are a property of the representation, not of the video: there is no
+sample-dependent reliability network, and nothing is re-tuned per benchmark. For the deployed
+set the fitted vector is **`r = [0.25, 1.00, 0.25]`** over `(VD, LFS, STT)`.
+
+A reviewer will ask what the fit costs in generality. The answer to give: three coefficients on
+a coarse grid, fitted on development only, and the alternative was measured — see below.
+
+### 4.3 Report what the scaling is worth, and what it changes
+
+Twelve test sets, widened census, VD+LFS+STT:
 
 | | AUROC | FPR@TPR90 | mean vacuity |
 |---|---:|---:|---:|
-| PCR6+ with fitted `r = [0.25, 1.00, 0.25]` | 0.9452 | 0.1507 | 0.0330 |
-| **PCR6+, no discount (adopted)** | 0.9420 | 0.1581 | 0.0082 |
+| **ES-PCR6+** (`r = [0.25, 1.00, 0.25]`) | **0.9452** | **0.1507** | 0.0330 |
+| Plain PCR6+ (`r = 1`, no scaling) | 0.9420 | 0.1581 | 0.0082 |
 
-So dropping it costs 0.0032 AUROC and 0.0074 FPR. Say that, and say why it is worth paying:
-a parameter-free fusion is a stronger claim than a marginally better fitted one.
+The scaling is worth **+0.0032 AUROC and −0.0074 FPR**. State both numbers. The AUROC gain is
+inside seed noise (0.0126); the FPR gain is not, and FPR at matched sensitivity is the metric
+this work is framed on — so the honest justification for ES-PCR6+ is the false-alarm rate, not
+the ranking.
 
-**Note the vacuity column.** Discounting removes evidence, so it inflates fused vacuity four-fold
-(0.0082 → 0.0330). Without `r`, the vacuity the paper reports is a property of the *rule*, not
-of a tuning choice — which is what makes it interpretable as a mechanism.
-
----
+**Explain the vacuity column rather than leaving it to be noticed.** Scaling removes evidence, so
+fused vacuity rises four-fold (0.0082 → 0.0330). This is mechanical, not a finding: a reader
+comparing vacuity across operators must know that ES-PCR6+'s figure reflects the scaling as well
+as the rule. One sentence in the caption.
 
 ## 5. CROSS-DOMAIN GROUNDING — where this behaviour is already established
 
@@ -167,10 +188,15 @@ Do not overstate the parallel. Say "analogous problem structure", not "the same 
 - ✗ *"Fused vacuity captures the model's total uncertainty."* It is a product and it is small
   whenever any branch is confident.
 
-### 6.1 The one-sided IBDC result — report it as a measurement, not a disappointment
+### 6.1 The one-sided IBDC result — it belongs in future work, with its measurement
 
-Stage 2 was run in three matched arms differing only in the disagreement term. Validation AUROC
-on VALmix: **no IBDC 0.8588, one-sided 0.8596, original 0.8598.**
+**Second-stage head training is NOT part of the reported method** (UMAR, 2026-10-15). The
+chapter reports Stage 1 — each branch trained separately — followed by ES-PCR6+ at inference.
+The second stage and the disagreement objective move to future work, and the reason is a
+measurement rather than a preference, so give it:
+
+Three matched arms were run, differing only in the disagreement term. Validation AUROC on
+VALmix: **no IBDC 0.8588, one-sided 0.8596, original 0.8598.**
 
 One-sided and original are **0.0002 apart, and that is not noise — it is structural.** The two
 objectives are identical wherever committed conflict `κ ≥ u_f`, and across the twelve test sets
@@ -187,18 +213,14 @@ version, and it has not been run.
 
 ## 7. ONE THING THAT MUST BE RESOLVED BEFORE THESE TABLES ARE QUOTED
 
-**The reported tables still use `PCR6+-R`.** `PROPOSAL_TABLES_3.md` was generated with the
-reliability discount in place; §4 removes it. Those tables must be regenerated with plain PCR6+
-before the chapter quotes them, or the text and the numbers will disagree. Mark every fusion
-number `[VERIFY]` until that is done.
+The same Stage-1 weights score **0.8897** on VALmix through the cached-opinion path and
+**0.8453** through the DISCERN_Ext inference path — a **0.044 gap on identical weights**. Every
+reported table comes from the first path.
 
-**A second, larger discrepancy is open.** The same Stage-1 weights score **0.8897** on VALmix
-through the cached-opinion path and **0.8453** through the DISCERN_Ext inference path — a
-**0.044 gap on identical weights**, three times anything the training stage changes. All reported
-tables come from the first path. Until it is attributed, the chapter should not claim that the
-reported numbers are reproducible from the deployed inference code. The likely locus is the
-V-JEPA preprocessing route — VD's per-video opinions correlate at 0.874 between the two paths
-where STT's correlate at 0.985.
+Until that is attributed, the chapter should not claim the reported numbers are reproducible
+from the deployed inference code. The likely locus is the V-JEPA preprocessing route: VD's
+per-video opinions correlate at 0.874 between the two paths where STT's correlate at 0.985, and
+the two routes reach 256 pixels differently.
 
-Do not paper over either of these. The first is a regeneration; the second is a real open
-question and should be stated as one until measured.
+This is a real open question, not a formatting issue. State it as a limitation or resolve it;
+do not let the chapter imply the two paths are interchangeable.

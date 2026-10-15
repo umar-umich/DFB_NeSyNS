@@ -7,7 +7,7 @@
                                 "what does each branch contribute", and a SOTA column in it
                                 would invite the two questions to be read off one row.
   Table B  FUSION OPERATOR      the final five-branch combination under each decision rule --
-                                mean-of-logits (the CE arm), Mean, DS-C, and PCR6+-R.
+                                mean-of-logits (the CE arm), Mean, DS-C, and ES-PCR6+.
   Table C  COMPARATIVE          the final combination against every state-of-the-art method we
                                 hold weights or scores for. Built by `sota_table1.py`.
 
@@ -54,10 +54,10 @@ GROUPS = [("A",), ("V",), ("O",), ("P16ctl",), ("S16ctl",),
 #: F1 reads NO weights -- `fuse` calls `_prob_mean(t, branches, None)` for it, by definition of a
 #: uniform mean. Comparing it against two fitted operators is a weighted-versus-unweighted
 #: comparison, which is not the question the table asks, so F2 (the same mean on the fitted
-#: simplex) is carried alongside it. Without that row PCR6+-R's margin over "Mean" could be
+#: simplex) is carried alongside it. Without that row ES-PCR6+'s margin over "Mean" could be
 #: nothing but the reliability fit.
 OPS = [("F1", "Mean (unweighted)"), ("F2", "Mean (fitted weights)"),
-       ("F7", "DS-C"), ("F8", "PCR6+-R (ours)")]
+       ("F7", "DS-C"), ("F8", "ES-PCR6+ (ours)")]
 #: Operators `fuse` ignores `w` for; fitting one is an exhaustive grid search thrown away.
 NO_WEIGHTS = ("F1", "F5")
 NEW_SETS = ["UADFV", "DeepSpeak-1.1", "DeepSpeak-2.0"]
@@ -123,7 +123,7 @@ def main() -> int:
         print(f"  A: {name}  weights {[round(x, 2) for x in w]}", flush=True)
 
     L = ["# Table A — branch ablation", "",
-         "Ten groups, every dataset, fused with **PCR6+-R**. No baseline rows: this table answers",
+         "Ten groups, every dataset, fused with **ES-PCR6+**. No baseline rows: this table answers",
          "what each branch contributes, and a SOTA column here would invite two questions to be",
          "read off one row. The comparison against the field is Table 1.", "",
          f"Every branch group is computed on all {len(avail)} test sets.", "",
@@ -200,7 +200,7 @@ def main() -> int:
          "**Mean appears twice on purpose.** F1 is a uniform mean and reads no reliability at all,",
          "so comparing it against two fitted operators would confound the decision rule with the",
          "weight fit. The second mean row is the same average on the fitted simplex, which is the",
-         "matched comparator for DS-C and PCR6+-R.", "",
+         "matched comparator for DS-C and ES-PCR6+.", "",
          *ce_note, "## AUROC (higher is better)", ""]
     table(L, "fusion rule", rows_a, sets)
     L += ["## FPR at TPR = 90% (lower is better)", ""]

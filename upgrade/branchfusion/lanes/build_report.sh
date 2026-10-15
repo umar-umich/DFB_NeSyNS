@@ -14,7 +14,7 @@ for t in TABLE_A_ABLATION PER_DATASET_CORE5 TABLE_B_FUSION TABLE1_DETECTION TABL
 done
 {
   echo "# Proposal results — all tables, every dataset"; echo
-  echo "Regenerated $(date -Is). Framework: **App + TD + LFS + STT**, fused with PCR6+-R."; echo
+  echo "Regenerated $(date -Is). Framework: **App + TD + LFS + STT**, fused with ES-PCR6+."; echo
   echo "**Evaluation scope \`${BF_SCOPE:-v31}\`** — $NOTE."
   echo "The scope changes the video census of CDFv3 and KoDF only; the other ten sets are unaffected."
   echo "A number here is comparable to one in another scope's report only where the census matches."

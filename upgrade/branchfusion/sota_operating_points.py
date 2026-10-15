@@ -105,7 +105,7 @@ def main() -> int:
         for ds in sets:
             y, p = tabs[ds].y.to_numpy(), fused(tabs[ds])
             tpr, fpr, lr = point(y, p, our_tau)
-            L.append(f"| **{ds}** | **ours (PCR6+-R, 5 branches)** | {tpr:.4f} | {fpr:.4f} | {lr:.1f} |")
+            L.append(f"| **{ds}** | **ours (ES-PCR6+, 5 branches)** | {tpr:.4f} | {fpr:.4f} | {lr:.1f} |")
             res.setdefault(f"{t}", {}).setdefault(ds, {})["ours"] = [tpr, fpr, lr]
             for label, arm in ARMS.items():
                 s = dicome_scores(arm, ds)

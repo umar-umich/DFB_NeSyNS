@@ -137,12 +137,12 @@ def main() -> int:
     sets = [d for d in C.TEST_SETS if d in tabs]
 
     rows = {}
-    rows["**Ours (App+TD+LFS+STT, PCR6+-R)**"] = {}
+    rows["**Ours (App+TD+LFS+STT, ES-PCR6+)**"] = {}
     for ds in sets:
         t = tabs[ds]
         p = P.p_of(P.fuse(O.masses(t, SUB, list(w)), True))
         y = t.y.to_numpy()
-        rows["**Ours (App+TD+LFS+STT, PCR6+-R)**"][ds] = {
+        rows["**Ours (App+TD+LFS+STT, ES-PCR6+)**"][ds] = {
             "n": int(len(y)),
             "auroc": C.auroc(y, p), **{f"fpr{int(k*100)}": fpr_at_tpr(y, p, k) for k in TPR_TARGETS}}
     rows["DiCoME (trained, their repo)"] = {}
@@ -182,7 +182,7 @@ def main() -> int:
     # necessarily scored on our census: DiCoME's CDFv3 run covers 1,918 videos where ours covers
     # 5,118, and nothing in a table of four-decimal AUROCs says so. Any cell that disagrees with
     # our row's count for that dataset is listed here rather than being silently compared.
-    ours = rows["**Ours (App+TD+LFS+STT, PCR6+-R)**"]
+    ours = rows["**Ours (App+TD+LFS+STT, ES-PCR6+)**"]
     diffs = [(name, ds, r[ds]["n"], ours[ds]["n"])
              for name, r in rows.items() if r is not ours
              for ds in sets if ds in r and ds in ours and r[ds].get("n") != ours[ds].get("n")]

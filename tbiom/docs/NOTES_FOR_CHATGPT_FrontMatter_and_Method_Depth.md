@@ -238,6 +238,12 @@ there. State the size of the set as a consequence of those two tables, not as a 
 
 ## PART E-bis — THE FUSION RULE, AND HOW TO ARGUE FOR IT
 
+The operator is **ES-PCR6+ (Evidence-Scaled PCR6+)**: each source's evidence is scaled by a
+fixed reliability coefficient before proportional conflict redistribution, `e'_v = r_v e_v`.
+Named for the operation because it is NOT Shafer discounting, which acts on belief masses.
+Coefficients are fitted once on development and held fixed — a property of the representation,
+not of the video.
+
 The operator comparison reports **AUROC, FPR at TPR 90%, and mean vacuity** over seven rules on
 the same branches and the same discounted masses.
 
@@ -249,11 +255,11 @@ the same branches and the same discounted masses.
 | Yager | 0.9453 | 0.1414 | 0.2390 |
 | WBF (Jøsang) | 0.9459 | 0.1491 | 0.1912 |
 | Cautious (Denœux) | 0.9440 | 0.1554 | 0.1346 |
-| **PCR6+-R (ours)** | 0.9468 | **0.1406** | **0.0322** |
+| **ES-PCR6+ (ours)** | 0.9468 | **0.1406** | **0.0322** |
 
 † no opinion, so no vacuity.
 
-**The argument for PCR6+-R has to be made, not implied by a bold number.** Write it as:
+**The argument for ES-PCR6+ has to be made, not implied by a bold number.** Write it as:
 the rule is chosen for the operating characteristic the application is read at — the lowest
 false-alarm rate at matched sensitivity — and its mean vacuity confirms it is doing what PCR6
 is designed to do, returning conflicting mass to the sources that committed to it rather than
@@ -279,7 +285,7 @@ Three habits to fix throughout the front matter:
    burying them.
 3. **State limitations in the body, not only in a closing section.** Two belong in the method
    chapter where they arise: the fixed reliability weights underperforming VD on reenactment
-   (VD alone 0.9452 against the fusion's 0.9335), and PCR6+-R sitting second on AUROC, 0.0016
+   (VD alone 0.9452 against the fusion's 0.9335), and ES-PCR6+ sitting second on AUROC, 0.0016
    behind Dempster, while leading the false-alarm rate it is adopted for. Both concern
    components that ARE in the method, which is why they belong in the text; a limitation of
    something the paper does not contain has no place to go.

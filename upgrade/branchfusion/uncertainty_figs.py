@@ -20,7 +20,7 @@ what remains. THREE curves, because the figure has to argue something:
   oracle         the dashed bound -- the same predictions ranked by whether they are actually
                  wrong. No rejector can do better; it fixes the scale of the other two.
 
-Opinions are the deployed FOUR-branch framework (App + TD + LFS + STT) under PCR6+-R, with the
+Opinions are the deployed FOUR-branch framework (App + TD + LFS + STT) under ES-PCR6+, with the
 reliability weights fitted
 on development and the threshold taken from FF++ validation rows -- never from the test set being
 plotted.
@@ -57,7 +57,7 @@ SURFACE, INK, INK2 = "#fcfcfb", "#0b0b0b", "#52514e"
 
 
 def fused_pu(t, w):
-    """(p, u) of the fused PCR6+-R opinion -- vacuity is the Theta mass, not 1 - p."""
+    """(p, u) of the fused ES-PCR6+ opinion -- vacuity is the Theta mass, not 1 - p."""
     m = O.masses(t, SUB, list(w))
     f = P.fuse(m, True)
     return P.p_of(f), f[:, 2]

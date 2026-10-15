@@ -65,7 +65,7 @@ TOL = {"max_abs_auroc": 5e-4, "min_spearman": 0.9999, "max_flips": 0}
 
 #: The expected B0, to be CONFIRMED from artifacts rather than trusted. Section 1 names the candidate:
 #: the measured PE-Core-L/336 appearance view with LoRA + LayerNorm (dev fused 0.9364, ten-set 0.9240),
-#: the existing CLIP off-manifold export, and V-JEPA 2 with LoRA, fused with PCR6+-R.
+#: the existing CLIP off-manifold export, and V-JEPA 2 with LoRA, fused with ES-PCR6+.
 B0_CLAIM = {
     "appearance": {"backbone": "pe_core_l", "timm_id": "vit_pe_core_large_patch14_336",
                    "recipe": "LoRA + LayerNorm", "readout": "attention pool (last)",

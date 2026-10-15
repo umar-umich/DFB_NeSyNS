@@ -130,7 +130,7 @@ def main() -> int:
     L = ["# What the evaluation scope costs — CDFv3 and KoDF", "",
          "These are the only two test sets whose video census the scope touches. The other ten",
          "contain none of the excluded families and are byte-identical under every scope.", "",
-         "The system is unchanged across the rows: `App + TD + LFS + STT` under PCR6+-R with the",
+         "The system is unchanged across the rows: `App + TD + LFS + STT` under ES-PCR6+ with the",
          "weights fitted once on the development pool, which no scope touches. A difference below",
          "is a difference in which videos are scored, and nothing else.", ""]
     for ds in SETS:

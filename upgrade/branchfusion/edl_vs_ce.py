@@ -57,7 +57,7 @@ OUT_JSON = C.ROOT / "analysis/branchfusion/edl_vs_ce.json"
 OPS = [("F1", "Mean"),
        ("F5", "Evidential mean"),
        ("F7", "DS-C"),
-       ("F8", "PCR6+-R (ours)")]
+       ("F8", "ES-PCR6+ (ours)")]
 LABEL = dict(OPS)
 
 SUBSETS = [("A", "V", "O"), ("A", "V", "O", "P16ctl", "S16ctl")]
@@ -88,7 +88,7 @@ def main() -> int:
     L = ["# EDL against cross-entropy, and PCR6+ against the alternatives", "",
          "Rebuilt from DiCoME Table 2(b) and Table 3 on our system, **per dataset**. A mean over",
          "ten corpora that differ by 0.25 in AUROC hides what a reader needs.", "",
-         "Fusion rules in order: Mean, evidential mean, DS-C, and **PCR6+-R**, ours and last in",
+         "Fusion rules in order: Mean, evidential mean, DS-C, and **ES-PCR6+**, ours and last in",
          "each block. Every row uses the same fitted reliability weights, so what changes between",
          "rows is the rule and nothing else.", ""]
 

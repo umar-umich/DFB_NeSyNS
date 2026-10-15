@@ -1,7 +1,7 @@
 # Proposal results — paper tables
 
 Framework: **CROSS-EXAM** = VD+LFS+STT, fused with
-PCR6+-R. Weights fitted once on the
+ES-PCR6+. Weights fitted once on the
 development pool and applied unchanged to every test set.
 
 Paper tables only. The full grids — all five branches, all 31 combinations, both KoDF
@@ -51,6 +51,11 @@ so the only thing that varies is where conflicting mass goes. The belief rules a
 come from one implementation; `Dempster` is the rule DiCoME uses and the one TMC's
 `DS_Combin` implements.
 
+**ES-PCR6+** is Evidence-Scaled PCR6+: each source's evidence is scaled by a fixed
+reliability coefficient before proportional conflict redistribution, `e'_v = r_v e_v`.
+The scaling acts in the EVIDENCE domain and is therefore not Shafer discounting, which
+acts on belief masses. Coefficients are fitted once on development and held fixed.
+
 † The two means produce a probability, not an opinion: they have no vacuity, and their
 E-AURC is ranked by the decision margin `1 - |2p - 1|` rather than by evidence. They
 are the comparator that shows what the evidential machinery buys.
@@ -58,7 +63,7 @@ are the comparator that shows what the evidential machinery buys.
 On a binary frame Yager coincides with Dubois-Prade, and PCR5 collapses onto PCR6, so
 several rules the literature separates are one row here.
 
-PCR6+-R is the adopted rule: it gives the lowest false-alarm rate at matched 90%
+ES-PCR6+ is the adopted rule: it gives the lowest false-alarm rate at matched 90%
 sensitivity, which is the operating point an evidentiary use is read at, and it is
 the most committed rule by mean vacuity.
 
@@ -72,7 +77,7 @@ the most committed rule by mean vacuity.
 | Yager | 0.9729 | 0.9655 | 0.9498 | 0.8547 | 0.8805 | 0.9623 | 0.9342 | 0.9891 | 0.9974 | 0.9846 | 0.9244 | 0.9057 | **0.9434** |
 | WBF (Josang) | 0.9709 | 0.9687 | 0.9469 | 0.8532 | 0.8792 | 0.9630 | 0.9367 | 0.9938 | 0.9980 | 0.9879 | 0.9192 | 0.9102 | **0.9440** |
 | Cautious (Denoeux) | 0.9679 | 0.9677 | 0.9486 | 0.8502 | 0.8683 | 0.9607 | 0.9372 | 0.9934 | 0.9979 | 0.9842 | 0.9158 | 0.9077 | **0.9416** |
-| PCR6+-R (ours) | 0.9764 | 0.9680 | 0.9495 | 0.8566 | 0.8857 | 0.9638 | 0.9369 | 0.9904 | 0.9977 | 0.9846 | 0.9249 | 0.9078 | **0.9452** |
+| ES-PCR6+ (ours) | 0.9764 | 0.9680 | 0.9495 | 0.8566 | 0.8857 | 0.9638 | 0.9369 | 0.9904 | 0.9977 | 0.9846 | 0.9249 | 0.9078 | **0.9452** |
 
 ### FPR at TPR = 90% (lower is better)
 
@@ -84,7 +89,7 @@ the most committed rule by mean vacuity.
 | Yager | 0.0506 | 0.0899 | 0.1625 | 0.4229 | 0.3609 | 0.1228 | 0.1762 | 0.0295 | 0.0000 | 0.0204 | 0.1942 | 0.2083 | **0.1532** |
 | WBF (Josang) | 0.0674 | 0.0899 | 0.2011 | 0.4484 | 0.3652 | 0.1078 | 0.2047 | 0.0164 | 0.0000 | 0.0204 | 0.2210 | 0.2190 | **0.1634** |
 | Cautious (Denoeux) | 0.0730 | 0.0899 | 0.2011 | 0.4618 | 0.3870 | 0.1205 | 0.1998 | 0.0161 | 0.0000 | 0.0204 | 0.2472 | 0.2152 | **0.1693** |
-| PCR6+-R (ours) | 0.0506 | 0.0899 | 0.1791 | 0.4181 | 0.3478 | 0.1130 | 0.1563 | 0.0248 | 0.0000 | 0.0204 | 0.1928 | 0.2158 | **0.1507** |
+| ES-PCR6+ (ours) | 0.0506 | 0.0899 | 0.1791 | 0.4181 | 0.3478 | 0.1130 | 0.1563 | 0.0248 | 0.0000 | 0.0204 | 0.1928 | 0.2158 | **0.1507** |
 
 ### mean vacuity
 
@@ -96,7 +101,7 @@ The two probability means are absent here: they emit no opinion, so vacuity is u
 | Yager | 0.4113 | 0.3144 | 0.2196 | 0.2513 | 0.2993 | 0.2433 | 0.1635 | 0.2083 | 0.1082 | 0.1639 | 0.2384 | 0.2505 | **0.2393** |
 | WBF (Josang) | 0.1839 | 0.1916 | 0.1753 | 0.2349 | 0.2270 | 0.2338 | 0.1850 | 0.1942 | 0.1115 | 0.1385 | 0.2153 | 0.2369 | **0.1940** |
 | Cautious (Denoeux) | 0.1196 | 0.1290 | 0.1251 | 0.1664 | 0.1544 | 0.1699 | 0.1369 | 0.1381 | 0.0816 | 0.0983 | 0.1519 | 0.1699 | **0.1368** |
-| PCR6+-R (ours) | 0.0285 | 0.0400 | 0.0270 | 0.0473 | 0.0467 | 0.0456 | 0.0260 | 0.0325 | 0.0091 | 0.0159 | 0.0339 | 0.0433 | **0.0330** |
+| ES-PCR6+ (ours) | 0.0285 | 0.0400 | 0.0270 | 0.0473 | 0.0467 | 0.0456 | 0.0260 | 0.0325 | 0.0091 | 0.0159 | 0.0339 | 0.0433 | **0.0330** |
 
 ---
 
