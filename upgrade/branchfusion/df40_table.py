@@ -44,6 +44,9 @@ def main() -> int:
     ap.add_argument("--ours", default="V+O+S16ctl,V+O+P16ctl",
                     help="comma list of our candidate branch sets")
     ap.add_argument("--out", default="DF40_RESULTS")
+    ap.add_argument("--by-half", action="store_true",
+                    help="keep cdf and ff as separate columns (19 + 22) instead of pooling them "
+                         "into one column per generator (10 + 11)")
     a = ap.parse_args()
     import ops_pcr6p as P
 
@@ -57,6 +60,17 @@ def main() -> int:
 
     dev = B.dev_table(need, require_all=True)
     tabs = {ds: B.table([ds], need) for ds in sets}
+
+    import df40_pool as PL
+    if not a.by_half:
+        jobs = PL.jobs_for(meta)
+        pooled = PL.pool_tables(tabs, sets)
+        fam = {g: fam[members[0]] for g, members in PL.group(sets).items()}
+        tabs, sets = pooled, sorted(pooled)
+        print(f"pooled to {len(sets)} generators "
+              f"({sum(1 for x in sets if fam[x] == 'face swap')} face swap, "
+              f"{sum(1 for x in sets if fam[x] == 'reenactment')} reenactment)", flush=True)
+
     rows = {}                                   # label -> {set: auroc}
     census = {}
     for g in cands:
@@ -71,9 +85,12 @@ def main() -> int:
         print(f"  {lbl}: {np.mean(list(rows[lbl].values())):.4f}", flush=True)
 
     # Comparative methods, each from the module that owns its computation.
-    prior = json.loads((C.OUT / "DF40_CROSSMANIP_ALL.json").read_text())
-    dic = {k: v.get("dicome_our_training") for k, v in prior.items()
-           if v.get("dicome_our_training") is not None}
+    if a.by_half:
+        prior = json.loads((C.OUT / "DF40_CROSSMANIP_ALL.json").read_text())
+        dic = {k: v.get("dicome_our_training") for k, v in prior.items()
+               if v.get("dicome_our_training") is not None}
+    else:
+        dic = PL.dicome_ours_pooled(jobs)
     if dic:
         rows["DiCoME (our training)"] = dic
     repo = C.ROOT / "logs/tbiom/df40/dicome_repo_df40.json"
@@ -85,12 +102,29 @@ def main() -> int:
             key = (n.rsplit("_", 1)[0] + "-" + n.rsplit("_", 1)[1]) if "_" in n else n
             if key in r:
                 got[ds] = r[key]["auc_video"]
-        if got:
+        if got and a.by_half:
             rows["DiCoME (their repo)"] = got
             print(f"  DiCoME (their repo): {len(got)} of {len(sets)} rows", flush=True)
-    base = json.loads((C.OUT / "df40_baselines.json").read_text())
-    for m, r in base.items():
-        rows[m] = {k: v["auroc"] for k, v in r.items()}
+        elif got:
+            # `eval_df40.py` reports AUROC per row and keeps no per-video scores, so this row
+            # cannot be POOLED from what it wrote -- and averaging its two halves would make it
+            # a different quantity from every other row here. Its combined configs are scored
+            # directly instead; until that run lands the row is simply absent.
+            comb = {g: r[g[len("DF40_"):]]["auc_video"]
+                    for g in sets if g[len("DF40_"):] in r}
+            if comb:
+                rows["DiCoME (their repo)"] = comb
+            print(f"  DiCoME (their repo): {len(comb)} pooled rows available", flush=True)
+    if a.by_half:
+        base = json.loads((C.OUT / "df40_baselines.json").read_text())
+        for m, r in base.items():
+            rows[m] = {k: v["auroc"] for k, v in r.items()}
+    else:
+        import df40_baselines as DB
+        for m in DB.MODELS:
+            r = PL.baseline_pooled(m, jobs)
+            if r:
+                rows[DB.PRETTY[m]] = r
 
     def fam_mean(d, f):
         v = [x for k, x in d.items() if fam.get(k) == f]
@@ -99,7 +133,12 @@ def main() -> int:
     def cell(x):
         return f"{x:.4f}" if isinstance(x, float) else "—"
 
-    order = sorted(rows, key=lambda k: -float(np.mean(list(rows[k].values()))))
+    # Rank on the mean, but a row that does not cover every generator sorts LAST whatever its
+    # mean says: a 0.96 over one generator is not better than a 0.95 over twenty-one, and putting
+    # it above would invite exactly that reading.
+    full = len(sets)
+    order = sorted(rows, key=lambda k: (len(rows[k]) < full,
+                                        -float(np.mean(list(rows[k].values())))))
     L = [f"# DF40 — every method on every generator", "",
          f"{len(sets)} generator sets, {len(rows)} methods. Each generator is scored against the",
          "real pool DF40 ships for ITS source, aggregated to video level by the project's rule,",
@@ -110,8 +149,10 @@ def main() -> int:
          "| method | face swap | reenactment | all sets | covered |", "|---|---:|---:|---:|---:|"]
     for k in order:
         d = rows[k]
-        L.append(f"| {k} | {cell(fam_mean(d, 'face swap'))} | {cell(fam_mean(d, 'reenactment'))} "
-                 f"| **{np.mean(list(d.values())):.4f}** | {len(d)} |")
+        part = "" if len(d) == full else "  *(partial)*"
+        L.append(f"| {k}{part} | {cell(fam_mean(d, 'face swap'))} "
+                 f"| {cell(fam_mean(d, 'reenactment'))} "
+                 f"| **{np.mean(list(d.values())):.4f}** | {len(d)}/{full} |")
     L += ["",
           "Reenactment is half of DF40 and the half DiCoME's published cross-manipulation table",
           "does not report.", ""]
