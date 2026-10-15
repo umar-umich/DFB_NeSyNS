@@ -52,9 +52,11 @@ OUT = C.REPORT / "PROPOSAL_TABLES_3.md"
 FAMILY_NAME = {"face swap": "FaceSwap", "reenactment": "ExpressionSwap"}
 #: The decision rules the framework could be fused with, on the SAME three branches. Restored
 #: 2026-10-15: dropping it left the paper asserting PCR6+-R without the comparison that earns it.
-OPS = [("F1", "Mean (unweighted)"), ("F2", "Mean (fitted weights)"),
-       ("F7", "Dempster (DS-C)"), ("F8", "PCR6+-R (ours)")]
-NO_WEIGHTS = ("F1",)
+#: Probability means, which produce no opinion -- their only uncertainty is the decision margin.
+PROB_OPS = [("F1", "Mean (unweighted)"), ("F2", "Mean (fitted weights)")]
+#: Belief-combination rules, all from ONE implementation (`src.fusion.rules`) reading the SAME
+#: discounted masses, so the comparison isolates where conflicting mass goes and nothing else.
+BELIEF_OPS = ["Dempster", "Yager", "WBF (Josang)", "Cautious (Denoeux)", "PCR6+-R (ours)"]
 
 
 def md(lines, header, rows, cols, fmt="{:.4f}"):
@@ -188,26 +190,72 @@ def main() -> int:
     md(L, "branches", ab_f, sets)
 
     # ------------------------------------------------------------------ Table 2: operators
-    op_a, op_f = [], []
-    for op, label in OPS:
-        w = (1.0,) * len(FRAME) if op in NO_WEIGHTS else \
-            O.fit_weights(dev, FRAME, op, objective="v31")[0]
-        a, f = {}, {}
+    import torch
+    sys.path.insert(0, "/data/umar/Repos/DISCERN_Ext")
+    from src.fusion import rules as R
+    from src.fusion import pcr6p as PP
+    FNS = {"Dempster": R.dempster, "Yager": R.yager, "WBF (Josang)": R.wbf,
+           "Cautious (Denoeux)": R.cautious, "PCR6+-R (ours)": R.pcr6_plus}
+
+    METRICS = [("auroc", "AUROC", "higher"), ("fpr90", "FPR at TPR = 90%", "lower"),
+               ("ece", "ECE-15", "lower"), ("brier", "Brier", "lower"),
+               ("nll", "NLL", "lower"), ("eaurc", "E-AURC", "lower"),
+               ("vac", "mean vacuity", "—")]
+    op = {m: [] for m, _t, _d in METRICS}
+
+    def nll(y, p):
+        """Binary negative log-likelihood, clipped so a saturated opinion cannot return inf."""
+        q = np.clip(p, 1e-7, 1 - 1e-7)
+        return float(-np.mean(y * np.log(q) + (1 - y) * np.log(1 - q)))
+
+    def record(label, per):
+        for m, _t, _d in METRICS:
+            op[m].append((label, {d: per[d][m] for d in sets if m in per[d]}))
+
+    for opc, label in PROB_OPS:                 # probability means: no opinion, margin only
+        w = (1.0,) * len(FRAME) if opc == "F1" else \
+            O.fit_weights(dev, FRAME, opc, objective="v31")[0]
+        per = {}
         for ds in sets:
-            pr = O.fuse(tabs[ds], FRAME, op, list(w))
+            pr = O.fuse(tabs[ds], FRAME, opc, list(w))
             y = tabs[ds].y.to_numpy()
-            a[ds] = C.auroc(y, pr); f[ds] = T1.fpr_at_tpr(y, pr, 0.90)
-        op_a.append((label, a)); op_f.append((label, f))
-        print(f"  operator {label:24s} {np.mean(list(a.values())):.4f}", flush=True)
+            u = 1.0 - np.abs(2.0 * pr - 1.0)    # the only uncertainty a mean emits
+            per[ds] = {"auroc": C.auroc(y, pr), "fpr90": T1.fpr_at_tpr(y, pr, 0.90),
+                       "ece": T2.ece(y, pr), "brier": T2.brier(y, pr), "nll": nll(y, pr),
+                       "eaurc": T2.e_aurc(y, pr, u, tau)}
+        record(label + " †", per)
+        print(f"  operator {label:22s} {np.mean([per[d]['auroc'] for d in sets]):.4f}", flush=True)
+
+    for label in BELIEF_OPS:
+        per = {}
+        for ds in sets:
+            t = tabs[ds]
+            y = t.y.to_numpy()
+            m = torch.tensor(O.masses(t, FRAME, list(w_full)), dtype=torch.float64)
+            f = FNS[label](m)
+            pr, u = PP.p_of(f).numpy(), f[:, 2].numpy()
+            per[ds] = {"auroc": C.auroc(y, pr), "fpr90": T1.fpr_at_tpr(y, pr, 0.90),
+                       "ece": T2.ece(y, pr), "brier": T2.brier(y, pr), "nll": nll(y, pr),
+                       "eaurc": T2.e_aurc(y, pr, u, tau), "vac": float(u.mean())}
+        record(label, per)
+        print(f"  operator {label:22s} {np.mean([per[d]['auroc'] for d in sets]):.4f}", flush=True)
 
     L += ["---", "", "## Table 2 — Fusion operator", "",
-          f"The same three branches under each decision rule. `Mean (unweighted)` reads no",
-          "reliability at all, so comparing it against a fitted operator would confound the rule",
-          "with the weight fit; `Mean (fitted weights)` is the matched comparator.", "",
-          "### AUROC (higher is better)", ""]
-    md(L, "fusion rule", op_a, sets)
-    L += ["### FPR at TPR = 90% (lower is better)", ""]
-    md(L, "fusion rule", op_f, sets)
+          "The same three branches and the same reliability-discounted masses under every rule,",
+          "so the only thing that varies is where conflicting mass goes. The belief rules all",
+          "come from one implementation; `Dempster` is the rule DiCoME uses and the one TMC's",
+          "`DS_Combin` implements.", "",
+          "† The two means produce a probability, not an opinion: they have no vacuity, and their",
+          "E-AURC is ranked by the decision margin `1 - |2p - 1|` rather than by evidence. They",
+          "are the comparator that shows what the evidential machinery buys.", "",
+          "On a binary frame Yager coincides with Dubois-Prade, and PCR5 collapses onto PCR6, so",
+          "several rules the literature separates are one row here.", ""]
+    for m, title, direction in METRICS:
+        if not any(r[1] for r in op[m]):
+            continue
+        arrow = "" if direction == "—" else f" ({direction} is better)"
+        L += [f"### {title}{arrow}", ""]
+        md(L, "fusion rule", op[m], sets)
 
     L += ["---", "", "## Table 3 — Comparison with the state of the art", "",
           "FPR is read at a MATCHED true-positive rate, so every method is compared at the same",
