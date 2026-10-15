@@ -1,6 +1,6 @@
 # Proposal results, pass 2
 
-Regenerated 2026-10-15T00:15:12-04:00. Census: **`nolipadv`** — the lip-sync / audio-driven exclusion
+Regenerated 2026-10-15T00:16:22-04:00. Census: **`nolipadv`** — the lip-sync / audio-driven exclusion
 removed, and the adversarial subsets admitted. CDFv3 **5,418** videos, KoDF **2,239**.
 
 `PROPOSAL_TABLES_1.md` holds the protocol-v3.1 census and is unchanged; this file is the
@@ -562,8 +562,8 @@ This is the only DF40 table. It replaces `DF40_CROSSMANIP`, `DF40_CROSSMANIP_ALL
 | DiCoME (our training) | 0.9685 | 0.7896 | **0.8748** | 21/21 |
 | FSFM-Adapter | 0.9330 | 0.8104 | **0.8688** | 21/21 |
 | Effort | 0.9431 | 0.7832 | **0.8593** | 21/21 |
+| DiCoME (their repo) | 0.9749 | 0.7240 | **0.8435** | 21/21 |
 | ForAda | 0.9234 | 0.7401 | **0.8274** | 21/21 |
-| DiCoME (their repo)  *(partial)* | 0.9627 | — | **0.9627** | 1/21 |
 
 Reenactment is half of DF40 and the half DiCoME's published cross-manipulation table
 does not report.
@@ -583,8 +583,8 @@ does not report.
 | DiCoME (our training) | 0.9549 | 0.9378 | 0.9914 | 0.9733 | 0.9932 | 0.9923 | 0.9527 | 0.9624 | 0.9478 | 0.9788 | **0.9685** |
 | FSFM-Adapter | 0.9393 | 0.9710 | 0.9636 | 0.8793 | 0.9843 | 0.9823 | 0.8730 | 0.9023 | 0.8739 | 0.9611 | **0.9330** |
 | Effort | 0.9008 | 0.9527 | 0.9896 | 0.9675 | 0.9907 | 0.9764 | 0.8960 | 0.9303 | 0.8841 | 0.9432 | **0.9431** |
+| DiCoME (their repo) | 0.9579 | 0.9627 | 0.9950 | 0.9765 | 0.9958 | 0.9923 | 0.9643 | 0.9564 | 0.9614 | 0.9871 | **0.9749** |
 | ForAda | 0.8618 | 0.9614 | 0.9253 | 0.9227 | 0.9897 | 0.9795 | 0.9189 | 0.9433 | 0.8286 | 0.9032 | **0.9234** |
-| DiCoME (their repo) | — | 0.9627 | — | — | — | — | — | — | — | — | **0.9627** |
 
 ## Reenactment — 11 generator sets
 
@@ -601,6 +601,6 @@ does not report.
 | DiCoME (our training) | 0.9848 | 0.6126 | 0.7586 | 0.9173 | 0.8086 | 0.9896 | 0.6816 | 0.8783 | 0.8582 | 0.5803 | 0.6153 | **0.7896** |
 | FSFM-Adapter | 0.9789 | 0.6811 | 0.8111 | 0.9420 | 0.9571 | 0.8452 | 0.6982 | 0.9168 | 0.9166 | 0.5896 | 0.5782 | **0.8104** |
 | Effort | 0.8917 | 0.7005 | 0.7834 | 0.8620 | 0.8984 | 0.8427 | 0.7280 | 0.8061 | 0.7879 | 0.6026 | 0.7117 | **0.7832** |
+| DiCoME (their repo) | 0.9838 | 0.4495 | 0.6264 | 0.8903 | 0.7077 | 0.9856 | 0.5283 | 0.8393 | 0.8222 | 0.5989 | 0.5320 | **0.7240** |
 | ForAda | 0.9271 | 0.6107 | 0.7110 | 0.8067 | 0.8107 | 0.8547 | 0.6493 | 0.7523 | 0.7142 | 0.6061 | 0.6984 | **0.7401** |
-| DiCoME (their repo) | — | — | — | — | — | — | — | — | — | — | — | — |
 
